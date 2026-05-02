@@ -1,5 +1,5 @@
 {
-  "updated_at": "2026-05-02T20:58:31.073823+00:00",
+  "updated_at": "2026-05-02T21:12:58.718892+00:00",
   "service": "kibot_manager",
   "operational_wib_date": "2026-05-03",
   "actual_wib_date": "2026-05-03",
@@ -19,7 +19,7 @@
   "kinance_target": "152.69.218.198:9999",
   "system_state": "SUSPENDED",
   "trading_mode": "CONSERVATIVE",
-  "api_fail_streak": 1387,
+  "api_fail_streak": 1444,
   "control_plane_healthy": false,
   "daily_hard_stop": false,
   "daily_pnl_pct": 0.0,
@@ -86,9 +86,9 @@
   },
   "strategy_governor": {
     "directives": {
-      "plan_id": "fallback-1777755437",
-      "plan_generated_at": "2026-05-02T20:57:17.555282Z",
-      "expires_at": "2026-05-02T21:12:17.555282Z",
+      "plan_id": "fallback-1777756359",
+      "plan_generated_at": "2026-05-02T21:12:39.075598Z",
+      "expires_at": "2026-05-02T21:27:39.075598Z",
       "plan_ttl_sec": 900,
       "plan_state": "ACTIVE",
       "strategy_mode": "DEFENSIVE",
@@ -99,11 +99,11 @@
       "why": [
         "capital or gate health requires defensive fallback"
       ],
-      "updated_at": "2026-05-02T20:57:17.555554Z",
+      "updated_at": "2026-05-02T21:12:39.075720Z",
       "provider": "heuristic",
       "model": "local-fallback",
       "confidence": 0.42,
-      "effective_confidence": 0.4188,
+      "effective_confidence": 0.4197,
       "confidence_decay_per_hour": 0.06,
       "fallback_if_expired": "SURVIVAL_MODE",
       "what_could_make_this_wrong": [
@@ -173,19 +173,19 @@
         "max_risk_pct": 0.5,
         "focus_markets": []
       },
-      "plan_age_sec": 73.52,
+      "plan_age_sec": 19.64,
       "plan_is_expired": false
     },
     "state": {
-      "last_refresh_at": "2026-05-02T20:57:17.555554Z",
+      "last_refresh_at": "2026-05-02T21:12:39.075720Z",
       "last_reason": "medium_cycle",
       "last_profile": "MEDIUM",
       "last_provider": "heuristic",
-      "last_plan_id": "fallback-1777755437",
+      "last_plan_id": "fallback-1777756359",
       "last_plan_state": "ACTIVE",
-      "last_fingerprint": "4527c6242a3db15334de12f977259921",
+      "last_fingerprint": "5efea48f6020aacbac06ce1606b81b48",
       "last_event_fingerprint": "5eb98304f699fe3e61425d5420b4cefb",
-      "refresh_count": 147,
+      "refresh_count": 153,
       "last_error": ""
     },
     "loop_targets": {
@@ -263,7 +263,7 @@
     ]
   },
   "brain_assist": {
-    "checked_at": "2026-05-02T20:45:00Z",
+    "checked_at": "2026-05-02T21:00:10Z",
     "mode": "sovereign_support",
     "provider_status": {
       "tavily": {
@@ -535,9 +535,9 @@
     },
     "internet_checks": {
       "binance": 0,
-      "bybit": 200,
-      "kucoin": 200,
-      "mexc": 200,
+      "bybit": 0,
+      "kucoin": 0,
+      "mexc": 0,
       "indodax": 200
     },
     "daily_target": {
@@ -586,21 +586,40 @@
       "timestamp": "1777680000"
     },
     "funding_rate": {
-      "symbols": {},
+      "symbols": {
+        "BTCUSDT": {
+          "funding_rate": -2.5e-05,
+          "funding_rate_pct_8h": -0.0025,
+          "open_interest": 102028.64,
+          "leverage_bias": "NEUTRAL"
+        },
+        "ETHUSDT": {
+          "funding_rate": -4e-06,
+          "funding_rate_pct_8h": -0.0004,
+          "open_interest": 1971080.45,
+          "leverage_bias": "NEUTRAL"
+        },
+        "SOLUSDT": {
+          "funding_rate": -1.8e-05,
+          "funding_rate_pct_8h": -0.0018,
+          "open_interest": 9464366.91,
+          "leverage_bias": "NEUTRAL"
+        }
+      },
       "aggregate_signal": "BALANCED",
       "overleveraged_long_count": 0,
       "overleveraged_short_count": 0
     },
     "stablecoin_flow": {
-      "total_market_cap_usd": 2687161110483.0,
-      "total_volume_24h_usd": 50182565906.0,
-      "market_cap_change_24h_pct": 0.72,
+      "total_market_cap_usd": 2688197596453.0,
+      "total_volume_24h_usd": 49037039094.0,
+      "market_cap_change_24h_pct": 0.76,
       "flow_signal": "MILD_INFLOW",
       "active_cryptocurrencies": 17486
     },
     "world_model": {
       "version": 1,
-      "built_at": "2026-05-02T20:45:00Z",
+      "built_at": "2026-05-02T21:00:10Z",
       "market_regime": "MIXED",
       "confidence": 0.5904,
       "summary": "",
@@ -632,15 +651,34 @@
         "timestamp": "1777680000"
       },
       "funding_rate": {
-        "symbols": {},
+        "symbols": {
+          "BTCUSDT": {
+            "funding_rate": -2.5e-05,
+            "funding_rate_pct_8h": -0.0025,
+            "open_interest": 102028.64,
+            "leverage_bias": "NEUTRAL"
+          },
+          "ETHUSDT": {
+            "funding_rate": -4e-06,
+            "funding_rate_pct_8h": -0.0004,
+            "open_interest": 1971080.45,
+            "leverage_bias": "NEUTRAL"
+          },
+          "SOLUSDT": {
+            "funding_rate": -1.8e-05,
+            "funding_rate_pct_8h": -0.0018,
+            "open_interest": 9464366.91,
+            "leverage_bias": "NEUTRAL"
+          }
+        },
         "aggregate_signal": "BALANCED",
         "overleveraged_long_count": 0,
         "overleveraged_short_count": 0
       },
       "stablecoin_flow": {
-        "total_market_cap_usd": 2687161110483.0,
-        "total_volume_24h_usd": 50182565906.0,
-        "market_cap_change_24h_pct": 0.72,
+        "total_market_cap_usd": 2688197596453.0,
+        "total_volume_24h_usd": 49037039094.0,
+        "market_cap_change_24h_pct": 0.76,
         "flow_signal": "MILD_INFLOW",
         "active_cryptocurrencies": 17486
       },
@@ -714,105 +752,105 @@
   },
   "recent_events": [
     {
-      "at": "2026-05-02T20:58:16.480051+00:00",
+      "at": "2026-05-02T21:12:44.448607+00:00",
       "kind": "trinity_heartbeat_emit",
       "detail": {
         "sender": "kibot"
       }
     },
     {
-      "at": "2026-05-02T20:58:17.487489+00:00",
+      "at": "2026-05-02T21:12:45.453927+00:00",
       "kind": "trinity_heartbeat_emit",
       "detail": {
         "sender": "kibot"
       }
     },
     {
-      "at": "2026-05-02T20:58:18.492221+00:00",
+      "at": "2026-05-02T21:12:46.459221+00:00",
       "kind": "trinity_heartbeat_emit",
       "detail": {
         "sender": "kibot"
       }
     },
     {
-      "at": "2026-05-02T20:58:19.497882+00:00",
+      "at": "2026-05-02T21:12:47.460126+00:00",
       "kind": "trinity_heartbeat_emit",
       "detail": {
         "sender": "kibot"
       }
     },
     {
-      "at": "2026-05-02T20:58:20.502906+00:00",
+      "at": "2026-05-02T21:12:48.464036+00:00",
       "kind": "trinity_heartbeat_emit",
       "detail": {
         "sender": "kibot"
       }
     },
     {
-      "at": "2026-05-02T20:58:21.507554+00:00",
+      "at": "2026-05-02T21:12:49.468322+00:00",
       "kind": "trinity_heartbeat_emit",
       "detail": {
         "sender": "kibot"
       }
     },
     {
-      "at": "2026-05-02T20:58:22.514176+00:00",
+      "at": "2026-05-02T21:12:50.471188+00:00",
       "kind": "trinity_heartbeat_emit",
       "detail": {
         "sender": "kibot"
       }
     },
     {
-      "at": "2026-05-02T20:58:23.517151+00:00",
+      "at": "2026-05-02T21:12:51.476687+00:00",
       "kind": "trinity_heartbeat_emit",
       "detail": {
         "sender": "kibot"
       }
     },
     {
-      "at": "2026-05-02T20:58:24.520395+00:00",
+      "at": "2026-05-02T21:12:52.482145+00:00",
       "kind": "trinity_heartbeat_emit",
       "detail": {
         "sender": "kibot"
       }
     },
     {
-      "at": "2026-05-02T20:58:25.525451+00:00",
+      "at": "2026-05-02T21:12:53.486859+00:00",
       "kind": "trinity_heartbeat_emit",
       "detail": {
         "sender": "kibot"
       }
     },
     {
-      "at": "2026-05-02T20:58:26.530176+00:00",
+      "at": "2026-05-02T21:12:54.489283+00:00",
       "kind": "trinity_heartbeat_emit",
       "detail": {
         "sender": "kibot"
       }
     },
     {
-      "at": "2026-05-02T20:58:27.536204+00:00",
+      "at": "2026-05-02T21:12:55.490879+00:00",
       "kind": "trinity_heartbeat_emit",
       "detail": {
         "sender": "kibot"
       }
     },
     {
-      "at": "2026-05-02T20:58:28.542577+00:00",
+      "at": "2026-05-02T21:12:56.495595+00:00",
       "kind": "trinity_heartbeat_emit",
       "detail": {
         "sender": "kibot"
       }
     },
     {
-      "at": "2026-05-02T20:58:29.548316+00:00",
+      "at": "2026-05-02T21:12:57.497740+00:00",
       "kind": "trinity_heartbeat_emit",
       "detail": {
         "sender": "kibot"
       }
     },
     {
-      "at": "2026-05-02T20:58:30.553162+00:00",
+      "at": "2026-05-02T21:12:58.502153+00:00",
       "kind": "trinity_heartbeat_emit",
       "detail": {
         "sender": "kibot"

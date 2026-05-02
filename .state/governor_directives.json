@@ -1,7 +1,7 @@
 {
-  "plan_id": "fallback-1777755437",
-  "plan_generated_at": "2026-05-02T20:57:17.555282Z",
-  "expires_at": "2026-05-02T21:12:17.555282Z",
+  "plan_id": "fallback-1777756359",
+  "plan_generated_at": "2026-05-02T21:12:39.075598Z",
+  "expires_at": "2026-05-02T21:27:39.075598Z",
   "plan_ttl_sec": 900,
   "plan_state": "ACTIVE",
   "strategy_mode": "DEFENSIVE",
@@ -12,7 +12,7 @@
   "why": [
     "capital or gate health requires defensive fallback"
   ],
-  "updated_at": "2026-05-02T20:57:17.555554Z",
+  "updated_at": "2026-05-02T21:12:39.075720Z",
   "provider": "heuristic",
   "model": "local-fallback",
   "confidence": 0.42,

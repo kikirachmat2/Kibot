@@ -1,10 +1,18 @@
-#!/usr/bin/env python3
-import time, subprocess, json, os, requests, threading, re, shutil
+import time, subprocess, json, os, requests, threading, re, shutil, sys
 from pathlib import Path
 from datetime import datetime
 
 # --- CONFIGURATION ---
 REPO_PATH = '/home/ubuntu/KiBot'
+# Add Learning System to path
+sys.path.append(os.path.join(REPO_PATH, 'Batam/Learning System'))
+try:
+    from kibot_learning_engine import get_engine
+except ImportError:
+    get_engine = None
+
+OLLAMA_URL = 'http://127.0.0.1:11435/api/chat'
+# ... (rest of config)
 OLLAMA_URL = 'http://127.0.0.1:11435/api/chat'
 TELEGRAM_BOT_TOKEN = 'REDACTED_TELEGRAM_TOKEN'
 TELEGRAM_CHAT_ID = '1346696386'
@@ -73,9 +81,14 @@ def trinity_pipeline(name, error_line):
     send_telegram(f'❌ *TRINITY FAILED*\n🔍 {name}\n⚠️ Error: {error_line}\nStatus: *Gagal setelah 3 kali percobaan.*')
 
 def health_check_loop():
+    engine = get_engine() if get_engine else None
     while True:
         try:
-            # RAM Check using python psutil-like logic (cleaner)
+            # 1. Learning Patrol (New Agentic Memory)
+            if engine:
+                engine.patrol_and_audit()
+                
+            # 2. RAM Check using python psutil-like logic (cleaner)
             with open('/proc/meminfo', 'r') as f:
                 lines = f.readlines()
                 total = int(lines[0].split()[1])
@@ -107,14 +120,42 @@ def midnight_evolution():
             time.sleep(60)
         time.sleep(30)
 
+def perform_trade_autopsy(name, line):
+    engine = get_engine() if get_engine else None
+    if not engine: return
+    
+    # Extract pair and loss from log line
+    # Format: [TRADELOG] EXIT btc_idr pnl=Rp-1000 (-2.00%) hold=10m reason=stop_loss
+    match = re.search(r'EXIT\s+(\w+)\s+pnl=Rp(-\d+)\s+\(([-\d.]+)%\)', line)
+    if match:
+        pair = match.group(1)
+        pnl_pct = match.group(3)
+        reason = "Unknown"
+        if "reason=" in line: reason = line.split("reason=")[1].split()[0]
+        
+        prompt = f"Analyze this trading loss for {pair}. PnL: {pnl_pct}%. Reason: {reason}. Context: {line}. Why did it lose and what is the lesson? Answer in 1 short sentence."
+        lesson = ask_ollama(prompt)
+        if lesson:
+            send_telegram(f"🔬 *AI AUTOPSY ({pair})*:\n{lesson}")
+            # Save lesson to Redis/Learning Engine
+            stats = engine.get_stats(pair)
+            stats.lessons.append(f"{datetime.now().strftime('%Y-%m-%d')}: {lesson}")
+            engine.save_stats(stats)
+
 def tail_thread(name, path):
     print(f'[TRINITY] Watching {name}: {path}')
     proc = subprocess.Popen(['tail', '-n', '0', '-F', path], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     while True:
         line = proc.stdout.readline().decode('utf-8')
         if not line: break
+        
+        # Detect Errors
         if any(x in line for x in ['ERROR', 'CRITICAL', 'Exception', 'Traceback']):
             threading.Thread(target=trinity_pipeline, args=(name, line.strip())).start()
+        
+        # Detect Losses for Autopsy
+        if 'EXIT' in line and 'pnl=Rp-' in line:
+            threading.Thread(target=perform_trade_autopsy, args=(name, line.strip())).start()
 
 if __name__ == '__main__':
     # Give it some time to ensure network is up

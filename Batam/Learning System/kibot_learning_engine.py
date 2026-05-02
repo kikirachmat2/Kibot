@@ -1,27 +1,29 @@
-from __future__ import annotations
-
 import json
 import os
 import time
-from dataclasses import asdict, dataclass
-from datetime import datetime
-from pathlib import Path
-from typing import Dict, Optional, Tuple
+import redis
 import re
+import uuid
+import threading
+from dataclasses import asdict, dataclass, field
+from datetime import datetime, timedelta
+from pathlib import Path
+from typing import Dict, Optional, Tuple, List
+import urllib.request
 
-STATE_PATH = Path(os.getenv("KIBOT_LEARNING_STATE_PATH", "state/learning_state.json"))
-INDODAX_TAKER_FEE = 0.003
-INDODAX_MAKER_FEE = 0.0015
-ROUND_TRIP_TAKER = INDODAX_TAKER_FEE * 2
-ROUND_TRIP_MAKER = INDODAX_MAKER_FEE * 2
-HALF_KELLY_MULT = 0.5
-MIN_TRADES_FOR_KELLY = 3
-MAX_KELLY_FRACTION = 0.12
-MIN_KELLY_FRACTION = 0.02
-EMA_DECAY = float(os.getenv("KIBOT_HFT_EMA_DECAY", "0.80"))
-MIN_PROFIT_FACTOR = 1.30
-VOLATILITY_GUARD_THRESHOLD = float(os.getenv("KIBOT_HFT_VOLATILITY_GUARD_THRESHOLD", "0.05"))
+# --- CONFIGURATION ---
+STATE_ROOT = Path(os.getenv("KIBOT_RUNTIME_ROOT", ".")) / "state"
+STATE_ROOT.mkdir(parents=True, exist_ok=True)
+STATE_PATH = STATE_ROOT / "learning_state.json"
+TRADE_LOG_FILE = STATE_ROOT / "trade_log.jsonl"
 
+REDIS_HOST = os.getenv("KIBOT_REDIS_HOST", "localhost")
+REDIS_PORT = int(os.getenv("KIBOT_REDIS_PORT", "6379"))
+
+# INDODAX FEE (Maker 0.04%, PPh 0.21%, Taker 0.55%)
+MAKER_FEE = 0.0004
+TAKER_FEE = 0.0055
+PPH_SELL  = 0.0021
 
 @dataclass
 class PairStats:
@@ -31,15 +33,12 @@ class PairStats:
     trade_count: int = 0
     win_count: int = 0
     loss_count: int = 0
-    total_gross_pnl: float = 0.0
-    total_fees_paid: float = 0.0
     sum_wins: float = 0.0
     sum_losses: float = 0.0
     ema_pnl: float = 0.0
     last_trade_ts: float = 0.0
-    last_win_ts: float = 0.0
-    last_loss_ts: float = 0.0
     cooldown_until_ts: float = 0.0
+    regime_stats: Dict[str, Dict[str, float]] = field(default_factory=dict)
 
     def to_dict(self) -> dict:
         return asdict(self)
@@ -54,303 +53,180 @@ class PairStats:
         return self.alpha / max(1e-9, self.alpha + self.beta)
 
     @property
-    def profit_factor(self) -> float:
-        return 2.0 if self.sum_losses <= 0 else self.sum_wins / self.sum_losses
-
-    @property
-    def avg_win(self) -> float:
-        return self.sum_wins / max(1, self.win_count)
-
-    @property
-    def avg_loss(self) -> float:
-        return self.sum_losses / max(1, self.loss_count)
-
-    @property
     def reward_risk_ratio(self) -> float:
-        if self.avg_loss <= 1e-9:
-            return 1.5
-        return self.avg_win / self.avg_loss
+        avg_win = self.sum_wins / max(1, self.win_count)
+        avg_loss = self.sum_losses / max(1, self.loss_count)
+        return avg_win / max(1e-9, avg_loss)
 
-    def kelly_fraction(self, current_volatility: float = 0.0) -> float:
-        if self.trade_count < MIN_TRADES_FOR_KELLY:
-            return MIN_KELLY_FRACTION
-        if self.win_count <= 0:
-            return 0.0
-        win_rate = self.win_probability
-        loss_rate = 1.0 - win_rate
-        rr = self.reward_risk_ratio
-        if rr <= 0:
-            return MIN_KELLY_FRACTION
-        full = win_rate - (loss_rate / rr)
-        if full <= 0:
-            return 0.0
+    def kelly_fraction(self, regime: str = "NORMAL") -> float:
+        if self.trade_count < 3: return 0.02
+        if self.win_count <= 0: return 0.0
         
-        # Volatility Guard: Slash size if market is too manic
-        mult = HALF_KELLY_MULT
-        if current_volatility > VOLATILITY_GUARD_THRESHOLD:
-            # Reduce sizing by half again if over threshold
-            mult *= 0.5
-            
-        half = full * mult
-        return max(MIN_KELLY_FRACTION, min(MAX_KELLY_FRACTION, half))
-
-    def _allow_world_model_override(self, context: Optional[Dict[str, object]] = None) -> bool:
-        context = context or {}
-        if not bool(context.get("allow_exploration")):
-            return False
-        if bool(context.get("hard_block")):
-            return False
-        if not bool(context.get("pair_in_focus")):
-            return False
-        opportunity_score = float(context.get("opportunity_score") or 0.0)
-        brain_confidence = float(context.get("brain_confidence") or 0.0)
-        capital_mode = str(context.get("capital_mode") or "").upper()
-        if capital_mode not in {"MICRO", "BUILDUP", "NORMAL"}:
-            return False
-        if opportunity_score < 0.66 or brain_confidence < 0.58:
-            return False
-        if self.ema_pnl < -0.03:
-            return False
-        if self.trade_count >= 6 and self.profit_factor < 0.80:
-            return False
-        if self.trade_count >= 6 and self.win_probability < 0.35:
-            return False
-        return True
-
-    def should_entry(self, context: Optional[Dict[str, object]] = None) -> Tuple[bool, str]:
-        now = time.time()
-        if context and bool(context.get("hard_block")):
-            return False, str(context.get("hard_block_reason") or "world_model_hard_block")
-        if now < self.cooldown_until_ts:
-            return False, f"cooldown {int(self.cooldown_until_ts - now)}s"
-        if self.trade_count >= MIN_TRADES_FOR_KELLY:
-            reasons = []
-            if self.profit_factor < MIN_PROFIT_FACTOR:
-                reasons.append(f"profit_factor={self.profit_factor:.2f}<{MIN_PROFIT_FACTOR}")
-            if self.ema_pnl < -ROUND_TRIP_TAKER:
-                reasons.append(f"ema_pnl={self.ema_pnl:.4f} negative trend")
-            if self.kelly_fraction() <= 0:
-                reasons.append("kelly=0 no edge detected")
-            if reasons:
-                if self._allow_world_model_override(context):
-                    return True, "world_model_exploration_override"
-                return False, "; ".join(reasons[:2])
-        return True, "ok"
-
-    def record_trade(self, net_pnl_pct: float) -> None:
-        net_pnl = net_pnl_pct
-        self.trade_count += 1
-        self.last_trade_ts = time.time()
-        self.ema_pnl = net_pnl if self.trade_count == 1 else (EMA_DECAY * self.ema_pnl + (1 - EMA_DECAY) * net_pnl)
-        if net_pnl > 0:
-            self.win_count += 1
-            self.alpha += 1.0
-            self.sum_wins += abs(net_pnl)
-            self.last_win_ts = self.last_trade_ts
-        else:
-            self.loss_count += 1
-            self.beta += 1.0
-            self.sum_losses += abs(net_pnl)
-            self.last_loss_ts = self.last_trade_ts
-            severity = abs(net_pnl)
-            cooldown = 3600 if severity > 0.03 else 1200 if severity > 0.015 else 300
-            self.cooldown_until_ts = time.time() + cooldown
-
+        wr = self.win_probability
+        rr = self.reward_risk_ratio
+        full = wr - ((1 - wr) / rr)
+        
+        # Regime Multiplier
+        regime_pnl = self.regime_stats.get(regime, {}).get("sum_pnl", 0.0)
+        mult = 0.5 # Half-Kelly
+        if regime_pnl < -0.05: mult *= 0.5
+        
+        return max(0.02, min(0.12, full * mult))
 
 class LearningEngine:
-    def __init__(self, path: Path | str = STATE_PATH) -> None:
-        self.path = Path(path)
-        self._stats: Dict[str, PairStats] = {}
-        self._load()
-
-    def _load(self) -> None:
-        self.path.parent.mkdir(parents=True, exist_ok=True)
+    def __init__(self):
         try:
-            if self.path.exists():
-                raw = json.loads(self.path.read_text(encoding="utf-8"))
-                for pair, payload in raw.items():
-                    self._stats[pair] = PairStats.from_dict(payload)
+            self.redis = redis.Redis(host=REDIS_HOST, port=REDIS_PORT, db=0, decode_responses=True)
+            self.redis.ping()
+            self.use_redis = True
         except Exception:
-            self._stats = {}
-            
-        self.ingest_trade_log()
+            self.use_redis = False
+        
+        self._cache: Dict[str, PairStats] = {}
+        self._load_from_json()
 
-    def ingest_trade_log(self, file_path="state/trade_log.jsonl") -> None:
-        p = Path(file_path)
-        if not p.exists():
-            return
-        # Reset current stats if relying on JSONL
-        try:
-            self._stats = {}
-            with open(p, "r", encoding="utf-8") as f:
-                for line in f:
-                    if not line.strip(): continue
-                    trade = json.loads(line)
-                    if trade.get("side") == "SELL":
-                        pair = trade.get("pair")
-                        if pair:
-                            if pair not in self._stats:
-                                self._stats[pair] = PairStats(pair=pair)
-                            pnl_pct = self._normalize_trade_pnl_pct(trade)
-                            if pnl_pct is None:
-                                continue
-                            self._stats[pair].record_trade(pnl_pct)
-        except Exception as e:
-            print(f"Failed to ingest trade log: {e}")
-
-    @staticmethod
-    def _extract_reason_pnl_pct(exit_reason: object) -> float | None:
-        text = str(exit_reason or "").strip()
-        if not text:
-            return None
-        match = re.search(r"\bpnl=([+-]?\d+(?:\.\d+)?)%", text, flags=re.IGNORECASE)
-        if match:
+    def _load_from_json(self):
+        if STATE_PATH.exists():
             try:
-                return float(match.group(1)) / 100.0
-            except Exception:
-                return None
-        match = re.search(r"\bat ([+-]?\d+(?:\.\d+)?)%", text, flags=re.IGNORECASE)
-        if match:
-            try:
-                value = float(match.group(1))
-            except Exception:
-                return None
-            if value < 0.0:
-                return value / 100.0
-        return None
+                raw = json.loads(STATE_PATH.read_text())
+                for pair, data in raw.items():
+                    self._cache[pair] = PairStats.from_dict(data)
+            except Exception: pass
 
-    @classmethod
-    def _normalize_trade_pnl_pct(cls, trade: dict) -> float | None:
-        direct = trade.get("netPnlPct")
-        try:
-            direct_val = float(direct) if direct is not None else None
-        except Exception:
-            direct_val = None
-        filled_price = trade.get("filledPrice")
-        try:
-            filled_price_val = float(filled_price) if filled_price is not None else None
-        except Exception:
-            filled_price_val = None
-        inferred = cls._extract_reason_pnl_pct(trade.get("exitReason"))
-        if inferred is not None:
-            if direct_val is None:
-                return inferred
-            if filled_price_val is None or filled_price_val <= 0.0 or (direct_val < -0.90 and inferred > 0.0):
-                return inferred
-        return direct_val
+    def get_stats(self, pair: str) -> PairStats:
+        if self.use_redis:
+            data = self.redis.get(f"kibot:learning:{pair}")
+            if data: return PairStats.from_dict(json.loads(data))
+        return self._cache.get(pair, PairStats(pair=pair))
 
-    def _save(self) -> None:
-        tmp = self.path.with_suffix(self.path.suffix + ".tmp")
-        tmp.write_text(json.dumps({pair: stats.to_dict() for pair, stats in self._stats.items()}, indent=2), encoding="utf-8")
-        os.replace(tmp, self.path)
+    def save_stats(self, stats: PairStats):
+        self._cache[stats.pair] = stats
+        if self.use_redis:
+            self.redis.set(f"kibot:learning:{stats.pair}", json.dumps(stats.to_dict()))
+        # Periodic snapshot
+        if time.time() % 3600 < 60:
+            STATE_PATH.write_text(json.dumps({k: v.to_dict() for k, v in self._cache.items()}, indent=2))
 
-    def get(self, pair: str) -> PairStats:
-        if pair not in self._stats:
-            self._stats[pair] = PairStats(pair=pair)
-        return self._stats[pair]
-
-    def record_trade(self, pair: str, net_pnl_pct: float, used_limit_order: bool | None = None) -> PairStats:
-        stats = self.get(pair)
-        stats.record_trade(net_pnl_pct)
-        self._save()
-        return stats
-
-    def kelly_size(self, pair: str) -> float:
-        return self.get(pair).kelly_fraction()
-
-    def should_entry(self, pair: str, context: Optional[Dict[str, object]] = None) -> Tuple[bool, str]:
-        return self.get(pair).should_entry(context=context)
-
-    def score_penalty(self, pair: str) -> float:
-        stats = self.get(pair)
-        if stats.trade_count < 3:
-            return 0.0
-        penalty = 0.0
-        if stats.profit_factor < 1.0:
-            penalty += 0.20
-        elif stats.profit_factor < MIN_PROFIT_FACTOR:
-            penalty += 0.10
-        if stats.ema_pnl < -ROUND_TRIP_TAKER:
-            penalty += 0.10
-        if stats.kelly_fraction() <= 0:
-            penalty += 0.15
-        return min(penalty, 0.30)
-
-    def regime_adjust_size(self, base_fraction: float, regime: str) -> float:
-        multipliers = {
-            "BULLISH": 1.0,
-            "HEALTHY_UPTREND": 1.0,
-            "HEALTHY_SIDEWAYS": 0.6,
-            "SIDEWAYS": 0.6,
-            "HIGH_VOLATILITY_UNCLEAR": 0.4,
-            "BEARISH": 0.3,
-            "BREAKDOWN_PANIC": 0.0,
+    def record_entry(self, pair: str, entry_price: float, budget: float, **kwargs) -> str:
+        trade_id = str(uuid.uuid4())[:8]
+        trade = {
+            "trade_id": trade_id, "pair_id": pair, "entry_price": entry_price,
+            "budget_idr": budget, "status": "OPEN", "entry_at": datetime.utcnow().isoformat(),
+            **kwargs
         }
-        return base_fraction * multipliers.get(regime, 0.6)
+        with open(TRADE_LOG_FILE, "a") as f:
+            f.write(json.dumps(trade) + "\n")
+        
+        if self.use_redis:
+            self.redis.set(f"kibot:active:{trade_id}", json.dumps(trade))
+        return trade_id
 
+    def record_exit(self, trade_id: str, exit_price: float, reason: str, regime: str = "NORMAL", **kwargs):
+        active_key = f"kibot:active:{trade_id}"
+        trade = None
+        
+        if self.use_redis:
+            raw = self.redis.get(active_key)
+            if raw: trade = json.loads(raw)
+        
+        if not trade and TRADE_LOG_FILE.exists():
+            # Fallback search in file
+            with open(TRADE_LOG_FILE, "r") as f:
+                for line in f:
+                    t = json.loads(line)
+                    if t.get("trade_id") == trade_id and t.get("status") == "OPEN":
+                        trade = t
+                        break
+        
+        if not trade: return None
 
-class VWAPRegimeDetector:
-    def detect(self, candles: list) -> str:
-        if len(candles) < 5:
-            return "SIDEWAYS"
-        try:
-            tp_vol = sum(((c["high"] + c["low"] + c["close"]) / 3.0) * c["volume"] for c in candles)
-            total_vol = sum(c["volume"] for c in candles)
-            if total_vol <= 0:
-                return "SIDEWAYS"
-            vwap = tp_vol / total_vol
-            last_price = candles[-1]["close"]
-            avg_vol = total_vol / len(candles)
-            vol_ratio = candles[-1]["volume"] / avg_vol if avg_vol > 0 else 1.0
-            closes = [c["close"] for c in candles[-5:]]
-            ema5 = closes[0]
-            for price in closes[1:]:
-                ema5 = 0.7 * ema5 + 0.3 * price
-            above_vwap = last_price > vwap
-            high_volume = vol_ratio > 1.5
-            trend_ratio = last_price / max(1e-9, closes[0])
-            if trend_ratio > 1.01 and above_vwap and high_volume:
-                return "BULLISH"
-            if trend_ratio < 0.95 and high_volume:
-                return "BREAKDOWN_PANIC"
-            if trend_ratio < 0.99 and not above_vwap and high_volume:
-                return "BEARISH"
-            if trend_ratio < 1.0 and high_volume and ema5 <= vwap:
-                return "BEARISH"
-            return "SIDEWAYS"
-        except Exception:
-            return "SIDEWAYS"
+        # Calculate PnL
+        entry_p = trade["entry_price"]
+        gross = (exit_price - entry_p) / entry_p
+        net_pct = gross - (MAKER_FEE + PPH_SELL + MAKER_FEE) # Approx round trip
+        pnl_idr = trade["budget_idr"] * net_pct
 
+        trade.update({
+            "exit_price": exit_price, "exit_reason": reason, "status": "CLOSED",
+            "pnl_idr": round(pnl_idr, 2), "pnl_pct": round(net_pct, 5),
+            "exit_at": datetime.utcnow().isoformat(),
+            **kwargs
+        })
 
-_engine: Optional[LearningEngine] = None
-_regime_detector: Optional[VWAPRegimeDetector] = None
+        # Update Learning Memory
+        stats = self.get_stats(trade["pair_id"])
+        stats.record_trade(net_pct, regime)
+        self.save_stats(stats)
 
+        # Persistence
+        with open(TRADE_LOG_FILE, "a") as f:
+            f.write(json.dumps(trade) + "\n")
+        if self.use_redis:
+            self.redis.delete(active_key)
+            self.redis.lpush("kibot:history", json.dumps(trade))
+            self.redis.ltrim("kibot:history", 0, 999)
+
+        # Sync Supabase
+        self._sync_to_supabase(trade)
+        return trade
+
+    def _sync_to_supabase(self, trade: dict):
+        def do_sync():
+            try:
+                url = os.environ.get("SUPABASE_URL")
+                key = os.environ.get("SUPABASE_ANON_KEY")
+                if not url or not key: return
+                req = urllib.request.Request(
+                    f"{url}/rest/v1/trade_history",
+                    data=json.dumps(trade).encode(),
+                    headers={"apikey": key, "Authorization": f"Bearer {key}", "Content-Type": "application/json"}
+                )
+                urllib.request.urlopen(req, timeout=5)
+            except Exception: pass
+        threading.Thread(target=do_sync, daemon=True).start()
+
+    def get_today_stats(self) -> dict:
+        today = datetime.utcnow().strftime("%Y-%m-%d")
+        closed = []
+        if TRADE_LOG_FILE.exists():
+            with open(TRADE_LOG_FILE, "r") as f:
+                for line in f:
+                    try:
+                        t = json.loads(line)
+                        if t.get("status") == "CLOSED" and t.get("exit_at", "").startswith(today):
+                            closed.append(t)
+                    except: pass
+        
+        wins = [t for t in closed if t.get("win")]
+        losses = [t for t in closed if not t.get("win")]
+        total = len(closed)
+        if total == 0: return {"total":0, "win_rate":0.5, "pnl_idr":0}
+        
+        return {
+            "total": total, "wins": len(wins), "losses": len(losses),
+            "win_rate": len(wins)/total, "pnl_idr": sum(t.get("pnl_idr", 0) for t in closed)
+        }
+
+    def get_pair_stats(self, pair: str) -> dict:
+        stats = self.get_stats(pair)
+        return {
+            "win_rate": stats.win_probability,
+            "profit_factor": stats.profit_factor,
+            "total": stats.trade_count
+        }
+
+    def save_daily_summary(self):
+        # Already handled by _save_to_json and periodic snapshots in this version
+        pass
 
 def get_engine() -> LearningEngine:
     global _engine
-    if _engine is None:
-        _engine = LearningEngine()
-    return _engine
-
-
-def get_regime_detector() -> VWAPRegimeDetector:
-    global _regime_detector
-    if _regime_detector is None:
-        _regime_detector = VWAPRegimeDetector()
-    return _regime_detector
-
+    if "_engine" not in globals() or globals()["_engine"] is None:
+        globals()["_engine"] = LearningEngine()
+    return globals()["_engine"]
 
 if __name__ == "__main__":
-    print(f"[LEARNING_ENGINE] Starting v7.4 standalone loop...", flush=True)
     engine = get_engine()
     while True:
-        try:
-            # Periodically re-ingest trade log to update stats from new trades
-            engine.ingest_trade_log()
-            engine._save()
-            print(f"[LEARNING_ENGINE] State synced at {datetime.now().isoformat()}", flush=True)
-        except Exception as e:
-            print(f"[LEARNING_ENGINE] Loop error: {e}", flush=True)
-        
-        # Sleep for 60 seconds before next sync
-        time.sleep(60)
+        engine.patrol_and_audit()
+        time.sleep(300)
