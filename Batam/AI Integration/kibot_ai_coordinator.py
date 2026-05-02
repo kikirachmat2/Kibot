@@ -699,6 +699,7 @@ def _call_provider(provider: str, prompt: str, prompt_type: str = "") -> Optiona
             _clear_provider_cooldown(provider)
             return data["choices"][0]["message"]["content"]
     except urllib.error.HTTPError as error:
+        print(f"[DEBUG] AI HTTPError ({provider}): {error.code} - {error.read().decode()}", flush=True)
         if error.code in {401, 403, 404}:
             _set_provider_cooldown(provider, AI_AUTH_COOLDOWN_SEC, f"http_{error.code}")
         elif error.code == 429:
@@ -709,6 +710,7 @@ def _call_provider(provider: str, prompt: str, prompt_type: str = "") -> Optiona
             _set_provider_cooldown(provider, AI_NETWORK_COOLDOWN_SEC, f"http_{error.code}")
         return None
     except Exception as error:
+        print(f"[DEBUG] AI Generic Error ({provider}): {error}", flush=True)
         if provider == "ollama":
             _set_provider_cooldown(provider, AI_OLLAMA_COOLDOWN_SEC, type(error).__name__)
         else:
