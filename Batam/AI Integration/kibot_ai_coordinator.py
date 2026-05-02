@@ -42,7 +42,6 @@ def _load_dotenv_early() -> None:
     for path in candidates:
         if not path.exists():
             continue
-        print(f"[DEBUG] Loading .env from: {path.absolute()}", flush=True)
         for line in path.read_text(encoding="utf-8").splitlines():
             raw = line.strip()
             if not raw or raw.startswith("#") or "=" not in raw:
@@ -52,7 +51,6 @@ def _load_dotenv_early() -> None:
             value = value.strip().strip("'").strip('"')
             if key and key not in os.environ:
                 os.environ[key] = value
-    print(f"[DEBUG] GEMINI_API_KEY present: {bool(os.getenv('GEMINI_API_KEY'))}", flush=True)
 
 
 def _env_first(*keys: str) -> str:
@@ -699,7 +697,6 @@ def _call_provider(provider: str, prompt: str, prompt_type: str = "") -> Optiona
             _clear_provider_cooldown(provider)
             return data["choices"][0]["message"]["content"]
     except urllib.error.HTTPError as error:
-        print(f"[DEBUG] AI HTTPError ({provider}): {error.code} - {error.read().decode()}", flush=True)
         if error.code in {401, 403, 404}:
             _set_provider_cooldown(provider, AI_AUTH_COOLDOWN_SEC, f"http_{error.code}")
         elif error.code == 429:
@@ -710,7 +707,6 @@ def _call_provider(provider: str, prompt: str, prompt_type: str = "") -> Optiona
             _set_provider_cooldown(provider, AI_NETWORK_COOLDOWN_SEC, f"http_{error.code}")
         return None
     except Exception as error:
-        print(f"[DEBUG] AI Generic Error ({provider}): {error}", flush=True)
         if provider == "ollama":
             _set_provider_cooldown(provider, AI_OLLAMA_COOLDOWN_SEC, type(error).__name__)
         else:
