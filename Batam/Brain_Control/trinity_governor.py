@@ -3,13 +3,18 @@ from pathlib import Path
 from datetime import datetime
 
 # --- CONFIGURATION ---
-REPO_PATH = '/home/ubuntu/KiBot'
-# Add Learning System to path
-sys.path.append(os.path.join(REPO_PATH, 'Batam/Learning System'))
+_base_path = Path(__file__).parent.parent
+sys.path.append(str(_base_path / "Learning System"))
+sys.path.append(str(_base_path / "Market Analysis"))
+sys.path.append(str(_base_path / "Security & Watchdog"))
+sys.path.append(str(_base_path / "Telegram Notification"))
+
 try:
     from kibot_learning_engine import get_engine
 except ImportError:
     get_engine = None
+
+REPO_PATH = str(Path(__file__).parent.parent.parent)
 
 OLLAMA_URL = 'http://127.0.0.1:11435/api/chat'
 # ... (rest of config)

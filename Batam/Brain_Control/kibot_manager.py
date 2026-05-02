@@ -18,6 +18,15 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple, Union
 from concurrent.futures import ThreadPoolExecutor
 
+# Modular Path Injection
+_base_path = Path(__file__).parent.parent
+sys.path.append(str(_base_path / "Learning System"))
+sys.path.append(str(_base_path / "Market Analysis"))
+sys.path.append(str(_base_path / "Security & Watchdog"))
+sys.path.append(str(_base_path / "Telegram Notification"))
+sys.path.append(str(_base_path / "AI Integration"))
+
+
 def _load_dotenv_early():
     import os
     candidates = [Path(".env"), Path("scripts/.env"), Path("../.env")]
@@ -8800,8 +8809,8 @@ def _http_state_payload() -> Dict[str, Any]:
             "api_fail_streak": _api_fail_streak,
             "control_plane_healthy": _control_plane_healthy,
             "pair_memory_count": len(_pair_memory),
-            "pairs_on_cooldown": [pair for pair in _pair_memory.keys() if _is_pair_on_cooldown(pair)],
-            "remote_scanner_feed": dict(_remote_scanner_feed_state),
+            "pairs_on_cooldown": [pair for pair in list(_pair_memory.keys()) if _is_pair_on_cooldown(pair)],
+            "remote_scanner_feed": dict(_remote_scanner_feed_state.copy()),
             "capital_health": {
                 "total_equity_est_idr": equity_estimate,
                 "minimum_viable_idr": MINIMUM_VIABLE_CAPITAL_IDR,
@@ -8838,7 +8847,7 @@ def _http_state_payload() -> Dict[str, Any]:
                 "indodax": governor_directives.get("indodax"),
                 "polymarket": governor_directives.get("polymarket"),
                 "risk": governor_directives.get("risk"),
-                "refresh": dict(_governor_state),
+                "refresh": dict(_governor_state.copy()),
             },
             "metrics": {
                 "market_orders_today": _metrics.get("market_orders_today", 0),

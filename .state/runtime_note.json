@@ -1,5 +1,5 @@
 {
-  "updated_at": "2026-05-02T21:12:58.718892+00:00",
+  "updated_at": "2026-05-02T21:23:52.239476+00:00",
   "service": "kibot_manager",
   "operational_wib_date": "2026-05-03",
   "actual_wib_date": "2026-05-03",
@@ -19,7 +19,7 @@
   "kinance_target": "152.69.218.198:9999",
   "system_state": "SUSPENDED",
   "trading_mode": "CONSERVATIVE",
-  "api_fail_streak": 1444,
+  "api_fail_streak": 1487,
   "control_plane_healthy": false,
   "daily_hard_stop": false,
   "daily_pnl_pct": 0.0,
@@ -86,9 +86,9 @@
   },
   "strategy_governor": {
     "directives": {
-      "plan_id": "fallback-1777756359",
-      "plan_generated_at": "2026-05-02T21:12:39.075598Z",
-      "expires_at": "2026-05-02T21:27:39.075598Z",
+      "plan_id": "fallback-1777756973",
+      "plan_generated_at": "2026-05-02T21:22:53.115593Z",
+      "expires_at": "2026-05-02T21:37:53.115593Z",
       "plan_ttl_sec": 900,
       "plan_state": "ACTIVE",
       "strategy_mode": "DEFENSIVE",
@@ -99,11 +99,11 @@
       "why": [
         "capital or gate health requires defensive fallback"
       ],
-      "updated_at": "2026-05-02T21:12:39.075720Z",
+      "updated_at": "2026-05-02T21:22:53.115676Z",
       "provider": "heuristic",
       "model": "local-fallback",
       "confidence": 0.42,
-      "effective_confidence": 0.4197,
+      "effective_confidence": 0.419,
       "confidence_decay_per_hour": 0.06,
       "fallback_if_expired": "SURVIVAL_MODE",
       "what_could_make_this_wrong": [
@@ -173,19 +173,19 @@
         "max_risk_pct": 0.5,
         "focus_markets": []
       },
-      "plan_age_sec": 19.64,
+      "plan_age_sec": 59.12,
       "plan_is_expired": false
     },
     "state": {
-      "last_refresh_at": "2026-05-02T21:12:39.075720Z",
+      "last_refresh_at": "2026-05-02T21:22:53.115676Z",
       "last_reason": "medium_cycle",
       "last_profile": "MEDIUM",
       "last_provider": "heuristic",
-      "last_plan_id": "fallback-1777756359",
+      "last_plan_id": "fallback-1777756973",
       "last_plan_state": "ACTIVE",
-      "last_fingerprint": "5efea48f6020aacbac06ce1606b81b48",
+      "last_fingerprint": "3d1f65a60c437043794496af5ab041b5",
       "last_event_fingerprint": "5eb98304f699fe3e61425d5420b4cefb",
-      "refresh_count": 153,
+      "refresh_count": 157,
       "last_error": ""
     },
     "loop_targets": {
@@ -263,7 +263,7 @@
     ]
   },
   "brain_assist": {
-    "checked_at": "2026-05-02T21:00:10Z",
+    "checked_at": "2026-05-02T21:15:15Z",
     "mode": "sovereign_support",
     "provider_status": {
       "tavily": {
@@ -590,19 +590,19 @@
         "BTCUSDT": {
           "funding_rate": -2.5e-05,
           "funding_rate_pct_8h": -0.0025,
-          "open_interest": 102028.64,
+          "open_interest": 102025.97,
           "leverage_bias": "NEUTRAL"
         },
         "ETHUSDT": {
           "funding_rate": -4e-06,
           "funding_rate_pct_8h": -0.0004,
-          "open_interest": 1971080.45,
+          "open_interest": 1970959.54,
           "leverage_bias": "NEUTRAL"
         },
         "SOLUSDT": {
           "funding_rate": -1.8e-05,
           "funding_rate_pct_8h": -0.0018,
-          "open_interest": 9464366.91,
+          "open_interest": 9463845.08,
           "leverage_bias": "NEUTRAL"
         }
       },
@@ -619,7 +619,7 @@
     },
     "world_model": {
       "version": 1,
-      "built_at": "2026-05-02T21:00:10Z",
+      "built_at": "2026-05-02T21:15:15Z",
       "market_regime": "MIXED",
       "confidence": 0.5904,
       "summary": "",
@@ -655,19 +655,19 @@
           "BTCUSDT": {
             "funding_rate": -2.5e-05,
             "funding_rate_pct_8h": -0.0025,
-            "open_interest": 102028.64,
+            "open_interest": 102025.97,
             "leverage_bias": "NEUTRAL"
           },
           "ETHUSDT": {
             "funding_rate": -4e-06,
             "funding_rate_pct_8h": -0.0004,
-            "open_interest": 1971080.45,
+            "open_interest": 1970959.54,
             "leverage_bias": "NEUTRAL"
           },
           "SOLUSDT": {
             "funding_rate": -1.8e-05,
             "funding_rate_pct_8h": -0.0018,
-            "open_interest": 9464366.91,
+            "open_interest": 9463845.08,
             "leverage_bias": "NEUTRAL"
           }
         },
@@ -752,105 +752,105 @@
   },
   "recent_events": [
     {
-      "at": "2026-05-02T21:12:44.448607+00:00",
+      "at": "2026-05-02T21:23:37.668563+00:00",
       "kind": "trinity_heartbeat_emit",
       "detail": {
         "sender": "kibot"
       }
     },
     {
-      "at": "2026-05-02T21:12:45.453927+00:00",
+      "at": "2026-05-02T21:23:38.676343+00:00",
       "kind": "trinity_heartbeat_emit",
       "detail": {
         "sender": "kibot"
       }
     },
     {
-      "at": "2026-05-02T21:12:46.459221+00:00",
+      "at": "2026-05-02T21:23:39.684588+00:00",
       "kind": "trinity_heartbeat_emit",
       "detail": {
         "sender": "kibot"
       }
     },
     {
-      "at": "2026-05-02T21:12:47.460126+00:00",
+      "at": "2026-05-02T21:23:40.693481+00:00",
       "kind": "trinity_heartbeat_emit",
       "detail": {
         "sender": "kibot"
       }
     },
     {
-      "at": "2026-05-02T21:12:48.464036+00:00",
+      "at": "2026-05-02T21:23:41.698749+00:00",
       "kind": "trinity_heartbeat_emit",
       "detail": {
         "sender": "kibot"
       }
     },
     {
-      "at": "2026-05-02T21:12:49.468322+00:00",
+      "at": "2026-05-02T21:23:42.705670+00:00",
       "kind": "trinity_heartbeat_emit",
       "detail": {
         "sender": "kibot"
       }
     },
     {
-      "at": "2026-05-02T21:12:50.471188+00:00",
+      "at": "2026-05-02T21:23:43.716135+00:00",
       "kind": "trinity_heartbeat_emit",
       "detail": {
         "sender": "kibot"
       }
     },
     {
-      "at": "2026-05-02T21:12:51.476687+00:00",
+      "at": "2026-05-02T21:23:44.722993+00:00",
       "kind": "trinity_heartbeat_emit",
       "detail": {
         "sender": "kibot"
       }
     },
     {
-      "at": "2026-05-02T21:12:52.482145+00:00",
+      "at": "2026-05-02T21:23:45.730134+00:00",
       "kind": "trinity_heartbeat_emit",
       "detail": {
         "sender": "kibot"
       }
     },
     {
-      "at": "2026-05-02T21:12:53.486859+00:00",
+      "at": "2026-05-02T21:23:46.741338+00:00",
       "kind": "trinity_heartbeat_emit",
       "detail": {
         "sender": "kibot"
       }
     },
     {
-      "at": "2026-05-02T21:12:54.489283+00:00",
+      "at": "2026-05-02T21:23:47.749545+00:00",
       "kind": "trinity_heartbeat_emit",
       "detail": {
         "sender": "kibot"
       }
     },
     {
-      "at": "2026-05-02T21:12:55.490879+00:00",
+      "at": "2026-05-02T21:23:48.752911+00:00",
       "kind": "trinity_heartbeat_emit",
       "detail": {
         "sender": "kibot"
       }
     },
     {
-      "at": "2026-05-02T21:12:56.495595+00:00",
+      "at": "2026-05-02T21:23:49.761061+00:00",
       "kind": "trinity_heartbeat_emit",
       "detail": {
         "sender": "kibot"
       }
     },
     {
-      "at": "2026-05-02T21:12:57.497740+00:00",
+      "at": "2026-05-02T21:23:50.769351+00:00",
       "kind": "trinity_heartbeat_emit",
       "detail": {
         "sender": "kibot"
       }
     },
     {
-      "at": "2026-05-02T21:12:58.502153+00:00",
+      "at": "2026-05-02T21:23:51.774112+00:00",
       "kind": "trinity_heartbeat_emit",
       "detail": {
         "sender": "kibot"
