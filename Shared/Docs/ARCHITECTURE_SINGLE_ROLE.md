@@ -33,7 +33,7 @@ Visual representation of the three-node cluster with strict role separation.
         │  └────────────────────────┘  │    │  │                     │   │
         │                              │    │  └─────────────────────┘   │
         │  ┌────────────────────────┐  │    │                             │
-        │  │ Security & Watchdog:   │  │    │  Tunnels (optional):       │
+        │  │ Security:   │  │    │  Tunnels (optional):       │
         │  │ • kibot-security       │  │    │  • kibot-polymarket-tunnel │
         │  │ • kibot-guardian       │  │    │                             │
         │  │ • kibot-auditor        │  │    └─────────────────────────────┘

@@ -173,10 +173,10 @@ The diagram (`contohdiagram.png`) must be redrawn to show:
 
 1. **Batam box** (green border) containing ONLY these functional groups:
    - Brain Control (kibot-manager, kibot-analyst, kibot-orchestrator)
-   - Security & Watchdog (kibot-security, kibot-guardian)
+   - Security (kibot-security, kibot-guardian)
    - Comms (ki-telegram-monitor, indodax-dashboard-proxy)
    - AI (kibot-ollama-gateway)
-   - Market Analysis (lazarus-ampere)
+   - Indicators_Math (lazarus-ampere)
 
 2. **EXECUTOR box** (blue border) containing ONLY:
    - Indodax Engine (kibot-executor-indodax)

@@ -1,18 +1,18 @@
 {
   "openrouter": {
-    "task": "batch_review",
-    "last_failure_epoch": 1777755282.660723,
-    "cooldown_until_epoch": 1777755882.660723,
+    "task": "correlation_matrix",
+    "last_failure_epoch": 1777762524.629489,
+    "cooldown_until_epoch": 1777763124.629489,
     "reason": "generic_failure",
     "last_error": "openrouter status=401 body={\"error\":{\"message\":\"User not found.\",\"code\":401}}",
-    "failure_count": 120
+    "failure_count": 124
   },
   "gemini": {
     "task": "correlation_matrix",
-    "last_failure_epoch": 1777755317.4097128,
-    "cooldown_until_epoch": 1777758917.4097128,
+    "last_failure_epoch": 1777762524.280118,
+    "cooldown_until_epoch": 1777766124.280118,
     "reason": "rate_limited",
     "last_error": "gemini status=429 body={\n  \"error\": {\n    \"code\": 429,\n    \"message\": \"You exceeded your current quota, please check your plan and billing details. For more information on this error, head to: https://ai.google.dev/gemini-api/docs/rate-limits. To monitor your cur",
-    "failure_count": 65
+    "failure_count": 67
   }
 }

@@ -141,5 +141,44 @@
       "Waspadai whipsaw pada pair momentum pendek dan fee bleed dari exit terlalu cepat."
     ],
     "source": "heuristic_fallback"
+  },
+  {
+    "at": "2026-05-02T21:56:06.219485+00:00",
+    "wib_date": "2026-05-03",
+    "summary": "Data 30 menit terakhir belum kuat; pertahankan filter saat ini dan kumpulkan sample yang lebih bersih.",
+    "strategy": "kejar target hijau dengan gap 0.30% tanpa longgarkan guardrail",
+    "lessons": [
+      "Data 30 menit terakhir belum kuat; pertahankan filter saat ini dan kumpulkan sample yang lebih bersih."
+    ],
+    "risks": [
+      "Waspadai whipsaw pada pair momentum pendek dan fee bleed dari exit terlalu cepat."
+    ],
+    "source": "heuristic_fallback"
+  },
+  {
+    "at": "2026-05-02T22:26:12.110690+00:00",
+    "wib_date": "2026-05-03",
+    "summary": "Data 30 menit terakhir belum kuat; pertahankan filter saat ini dan kumpulkan sample yang lebih bersih.",
+    "strategy": "kejar target hijau dengan gap 0.30% tanpa longgarkan guardrail",
+    "lessons": [
+      "Data 30 menit terakhir belum kuat; pertahankan filter saat ini dan kumpulkan sample yang lebih bersih."
+    ],
+    "risks": [
+      "Waspadai whipsaw pada pair momentum pendek dan fee bleed dari exit terlalu cepat."
+    ],
+    "source": "heuristic_fallback"
+  },
+  {
+    "at": "2026-05-02T22:56:14.313383+00:00",
+    "wib_date": "2026-05-03",
+    "summary": "Data 30 menit terakhir belum kuat; pertahankan filter saat ini dan kumpulkan sample yang lebih bersih.",
+    "strategy": "kejar target hijau dengan gap 0.30% tanpa longgarkan guardrail",
+    "lessons": [
+      "Data 30 menit terakhir belum kuat; pertahankan filter saat ini dan kumpulkan sample yang lebih bersih."
+    ],
+    "risks": [
+      "Waspadai whipsaw pada pair momentum pendek dan fee bleed dari exit terlalu cepat."
+    ],
+    "source": "heuristic_fallback"
   }
 ]

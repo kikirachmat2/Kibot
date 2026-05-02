@@ -1,4 +1,4 @@
-// KiBot Trinity - Enhanced Self-Learning System with Daily Profit Guarantee
+// KiBot Trinity - Enhanced Self-Intelligence with Daily Profit Guarantee
 // This extends SelfLearningSystem.kt with critical hardening features
 
 package com.kibot.core
@@ -7,7 +7,7 @@ import kotlin.math.*
 import java.time.Instant
 
 /**
- * Enhanced Self-Learning System with Daily Profit Hardening
+ * Enhanced Self-Intelligence with Daily Profit Hardening
  * 
  * Critical additions:
  * 1. Volatility regime scaling (ATR-based position sizing)

@@ -8,9 +8,9 @@
 ---
 
 ## 📂 STRUKTUR FOLDER & ATURAN KHUSUS
-### 1. `Batam/Brain_Control/`
+### 1. `Batam/Core_Logic/`
 *   Pusat komando **Trinity Governor**. Jangan sentuh logic loop tanpa simulasi.
-### 2. `Batam/Telegram Notification/`
+### 2. `Batam/Communication/`
 *   Semua notifikasi harus melalui `kibot_notifier`.
 
 ---
