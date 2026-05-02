@@ -28,6 +28,7 @@ def _load_dotenv_early() -> None:
         ROOT_DIR / ".env.server",
         ROOT_DIR / ".env",
         ROOT_DIR.parent / ".env",
+        ROOT_DIR.parent / "Shared" / "Ops" / ".env",
         Path(".env.kibot_manager"),
         Path(".env.kibot"),
         Path(".env.server"),
@@ -121,7 +122,7 @@ PROVIDERS = {
     "groq": {
         "daily_limit": 14400,
         "model": "llama-3.1-8b-instant",
-        "api_key_envs": ["GROQ_API_KEY"],
+        "api_key_envs": ["GROQ_API_KEY", "BINANCE_GROQ_API_KEY"],
         "base_url": "https://api.groq.com/openai/v1/chat/completions",
         "priority": 2,
     },
@@ -224,10 +225,10 @@ PROVIDERS = {
         "priority": 16,
     },
     "jina": {
-        "daily_limit": 50,
-        "model": "jina-3-8b-instruct",
-        "api_key_envs": ["JINA_API_KEY"],
-        "base_url": "https://api.jina.ai/v1/chat/completions",
+        "daily_limit": 100,
+        "model": "jina-embeddings-v3",
+        "api_key_envs": ["JINA_API_KEY", "BINANCE_JINA_API_KEY"],
+        "base_url": "https://api.jina.ai/v1/embeddings",
         "priority": 17,
     },
     "huggingface": {

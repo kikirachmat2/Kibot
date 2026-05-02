@@ -41,9 +41,9 @@ class WorldScout:
         # 1. Gather Raw Data from multiple sources
         scouting_data = {
             "security_threats": self.search_service.ddg_search("crypto protocol exploit hack vulnerability latest", max_results=3),
-            "market_catalysts": self.search_service.tavily_search("top crypto market catalysts today bitcoin eth regulation", search_depth="advanced"),
+            "market_catalysts": self.search_service.tavily_search("top crypto market catalysts today bitcoin eth regulation", search_depth="advanced") or self.search_service.jina_search("top crypto market catalysts today"),
             "trending_narratives": self.search_service.gdelt_news("crypto trending AI meme RWA layer2"),
-            "news_pulse": self.search_service.finnhub_news("crypto")[:5]
+            "news_pulse": (self.search_service.finnhub_news("crypto") or [])[:5]
         }
 
         # 2. Synthesize using Cloud AI (Non-Ollama preferred for global context)
@@ -90,9 +90,9 @@ class WorldScout:
         symbol = pair.split("_")[0]
         scouting_data = {
             "pair": pair,
-            "specific_catalyst": self.search_service.tavily_search(f"latest news catalyst pump reason for {symbol} crypto {pair}", search_depth="advanced"),
-            "social_pulse": self.search_service.serper_search(f"{symbol} crypto price pump news twitter reddit"),
-            "news_pulse": self.search_service.finnhub_news(symbol)[:3]
+            "specific_catalyst": self.search_service.tavily_search(f"latest news catalyst pump reason for {symbol} crypto {pair}", search_depth="advanced") or self.search_service.jina_search(f"latest news catalyst for {symbol}"),
+            "social_pulse": self.search_service.serper_search(f"{symbol} crypto price pump news twitter reddit") or self.search_service.jina_search(f"{symbol} crypto social trending news"),
+            "news_pulse": (self.search_service.finnhub_news(symbol) or [])[:3]
         }
 
         # 2. Validate using AI

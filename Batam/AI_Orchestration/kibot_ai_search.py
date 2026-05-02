@@ -24,6 +24,7 @@ def _load_dotenv() -> None:
     candidates = [
         ROOT_DIR / ".env",
         ROOT_DIR.parent / ".env",
+        ROOT_DIR.parent / "Shared" / "Ops" / ".env",
         Path(".env"),
         Path("../.env"),
     ]
@@ -132,6 +133,37 @@ class AISearchService:
         except ImportError:
             return []
 
+    def jina_search(self, query: str) -> str:
+        api_key = os.getenv("JINA_API_KEY")
+        if not api_key: return ""
+        
+        def loader():
+            # Jina Reader API - using search prefix
+            search_url = f"https://s.jina.ai/{urllib.parse.quote(query)}"
+            req = urllib.request.Request(
+                search_url,
+                headers={
+                    "Authorization": f"Bearer {api_key}",
+                    "Accept": "application/json",
+                    "X-No-Cache": "true",
+                    "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+                }
+            )
+            try:
+                with urllib.request.urlopen(req, timeout=20) as resp:
+                    data = json.loads(resp.read().decode("utf-8"))
+                    # Jina returns a list of results in 'data'
+                    results = data.get("data", [])
+                    content = ""
+                    for res in results[:5]: # Top 5
+                        content += f"Source: {res.get('url')}\nContent: {res.get('content')[:1000]}\n\n"
+                    return content
+            except Exception as e:
+                print(f"[JINA] Error: {e}")
+                return ""
+            
+        return self._cached(f"jina:{hashlib.md5(query.encode()).hexdigest()}", 3600, loader)
+
     def finnhub_news(self, category: str = "crypto") -> List[Dict]:
         api_key = os.getenv("FINNHUB_API_KEY")
         if not api_key: return []
@@ -160,7 +192,13 @@ class AISearchService:
 if __name__ == "__main__":
     service = AISearchService()
     print("--- AI Search Service Test ---")
-    # Small test
+    
+    # Test Jina if key exists
+    if os.getenv("JINA_API_KEY"):
+        print("\nTesting Jina Search...")
+        results = service.jina_search("Crypto market news today")
+        print(f"Jina Results Snippet: {results[:200]}...")
+    
     news = service.finnhub_news()
-    print(f"Finnhub News found: {len(news)}")
+    print(f"\nFinnhub News found: {len(news)}")
     if news: print(f"Top: {news[0].get('headline')}")

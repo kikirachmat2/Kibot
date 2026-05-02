@@ -1,5 +1,5 @@
 {
-  "updated_at": "2026-05-02T23:03:33.722785+00:00",
+  "updated_at": "2026-05-02T23:46:35.357900+00:00",
   "service": "kibot_manager",
   "operational_wib_date": "2026-05-03",
   "actual_wib_date": "2026-05-03",
@@ -19,7 +19,7 @@
   "kinance_target": "152.69.218.198:9999",
   "system_state": "SUSPENDED",
   "trading_mode": "CONSERVATIVE",
-  "api_fail_streak": 1877,
+  "api_fail_streak": 2046,
   "control_plane_healthy": false,
   "daily_hard_stop": false,
   "daily_pnl_pct": 0.0,
@@ -36,17 +36,17 @@
   "ai_provider_last_status": {
     "provider": "",
     "task": "learning_review",
-    "at_epoch_ms": 1777762574316,
+    "at_epoch_ms": 1777764374538,
     "ok": false
   },
   "provider_runtime_state": {
     "openrouter": {
       "task": "correlation_matrix",
-      "last_failure_epoch": 1777762524.629489,
-      "cooldown_until_epoch": 1777763124.629489,
+      "last_failure_epoch": 1777764326.7546182,
+      "cooldown_until_epoch": 1777764926.7546182,
       "reason": "generic_failure",
       "last_error": "openrouter status=401 body={\"error\":{\"message\":\"User not found.\",\"code\":401}}",
-      "failure_count": 124
+      "failure_count": 125
     },
     "gemini": {
       "task": "correlation_matrix",
@@ -86,9 +86,9 @@
   },
   "strategy_governor": {
     "directives": {
-      "plan_id": "fallback-1777762774",
-      "plan_generated_at": "2026-05-02T22:59:34.776497Z",
-      "expires_at": "2026-05-02T23:14:34.776497Z",
+      "plan_id": "fallback-1777765525",
+      "plan_generated_at": "2026-05-02T23:45:25.158312Z",
+      "expires_at": "2026-05-03T00:00:25.158312Z",
       "plan_ttl_sec": 900,
       "plan_state": "ACTIVE",
       "strategy_mode": "DEFENSIVE",
@@ -99,11 +99,11 @@
       "why": [
         "capital or gate health requires defensive fallback"
       ],
-      "updated_at": "2026-05-02T22:59:34.776648Z",
+      "updated_at": "2026-05-02T23:45:25.158432Z",
       "provider": "heuristic",
       "model": "local-fallback",
       "confidence": 0.42,
-      "effective_confidence": 0.416,
+      "effective_confidence": 0.4188,
       "confidence_decay_per_hour": 0.06,
       "fallback_if_expired": "SURVIVAL_MODE",
       "what_could_make_this_wrong": [
@@ -173,19 +173,19 @@
         "max_risk_pct": 0.5,
         "focus_markets": []
       },
-      "plan_age_sec": 238.95,
+      "plan_age_sec": 70.2,
       "plan_is_expired": false
     },
     "state": {
-      "last_refresh_at": "2026-05-02T22:59:34.776648Z",
+      "last_refresh_at": "2026-05-02T23:45:25.158432Z",
       "last_reason": "medium_cycle",
       "last_profile": "MEDIUM",
       "last_provider": "heuristic",
-      "last_plan_id": "fallback-1777762774",
+      "last_plan_id": "fallback-1777765525",
       "last_plan_state": "ACTIVE",
-      "last_fingerprint": "1316c2fe4a03ebe37a299d04f86f77f8",
+      "last_fingerprint": "cf0b2d7f54238110ca2ac3db7a0925f7",
       "last_event_fingerprint": "5eb98304f699fe3e61425d5420b4cefb",
-      "refresh_count": 195,
+      "refresh_count": 213,
       "last_error": ""
     },
     "loop_targets": {
@@ -202,7 +202,7 @@
   "sector_count": 0,
   "sector_preview": {},
   "latest_learning_review": {
-    "at": "2026-05-02T22:56:14.313383+00:00",
+    "at": "2026-05-02T23:26:14.536481+00:00",
     "wib_date": "2026-05-03",
     "summary": "Data 30 menit terakhir belum kuat; pertahankan filter saat ini dan kumpulkan sample yang lebih bersih.",
     "strategy": "kejar target hijau dengan gap 0.30% tanpa longgarkan guardrail",
@@ -263,7 +263,7 @@
     ]
   },
   "brain_assist": {
-    "checked_at": "2026-05-02T23:01:29Z",
+    "checked_at": "2026-05-02T23:31:49Z",
     "mode": "sovereign_support",
     "provider_status": {
       "tavily": {
@@ -285,9 +285,9 @@
         "last_error": ""
       },
       "ddg": {
-        "configured": false,
-        "last_ok": null,
-        "last_checked_at": null,
+        "configured": true,
+        "last_ok": true,
+        "last_checked_at": "2026-05-02T23:31:48Z",
         "last_error": ""
       },
       "ollama": {
@@ -369,8 +369,9 @@
       }
     },
     "ai_legion": {
-      "configured_count": 2,
+      "configured_count": 3,
       "configured_names": [
+        "ddg",
         "gemini",
         "openrouter"
       ],
@@ -473,9 +474,9 @@
           "last_error": ""
         },
         "ddg": {
-          "configured": false,
-          "last_ok": null,
-          "last_checked_at": null,
+          "configured": true,
+          "last_ok": true,
+          "last_checked_at": "2026-05-02T23:31:48Z",
           "last_error": ""
         }
       },
@@ -496,15 +497,15 @@
         "legacy_sdk": true
       },
       "tavily": {
-        "installed": false,
+        "installed": true,
         "api_key_present": false
       },
       "duckduckgo_search": {
-        "installed": false,
+        "installed": true,
         "api_key_present": false
       },
       "finnhub": {
-        "installed": false,
+        "installed": true,
         "api_key_present": false
       },
       "x_api": {
@@ -570,9 +571,14 @@
     "market_pulse": {
       "risk_bias": "MIXED",
       "headline_count": 0,
-      "top_headlines": [],
-      "summary": "",
-      "providers_used": [],
+      "top_headlines": [
+        "Crypto Market News Today - CoinMarketCap",
+        "Cointelegraph Bitcoin & Ethereum Blockchain News"
+      ],
+      "summary": "Crypto Market News Today - CoinMarketCap",
+      "providers_used": [
+        "ddg"
+      ],
       "watch_symbols": [
         "BTC",
         "ETH"
@@ -592,27 +598,43 @@
       "overleveraged_short_count": 0
     },
     "stablecoin_flow": {
-      "total_market_cap_usd": 2697898389478.0,
-      "total_volume_24h_usd": 50290594577.0,
-      "market_cap_change_24h_pct": 0.86,
+      "total_market_cap_usd": 2695535712278.0,
+      "total_volume_24h_usd": 49736826988.0,
+      "market_cap_change_24h_pct": 0.74,
       "flow_signal": "MILD_INFLOW",
       "active_cryptocurrencies": 17486
     },
     "world_model": {
       "version": 1,
-      "built_at": "2026-05-02T23:01:29Z",
+      "built_at": "2026-05-02T23:31:49Z",
       "market_regime": "MIXED",
-      "confidence": 0.5904,
-      "summary": "",
-      "global_narratives": [],
-      "external_events": [],
+      "confidence": 0.644,
+      "summary": "Crypto Market News Today - CoinMarketCap",
+      "global_narratives": [
+        "Crypto Market News Today - CoinMarketCap",
+        "Cointelegraph Bitcoin & Ethereum Blockchain News"
+      ],
+      "external_events": [
+        {
+          "source": "market_pulse",
+          "headline": "Crypto Market News Today - CoinMarketCap",
+          "impact": "MIXED",
+          "assets": []
+        },
+        {
+          "source": "market_pulse",
+          "headline": "Cointelegraph Bitcoin & Ethereum Blockchain News",
+          "impact": "MIXED",
+          "assets": []
+        }
+      ],
       "opportunity_register": [],
       "risk_register": [],
       "internal_state": {
         "capital_mode": "MICRO",
         "trading_allowed": true,
         "free_cash_idr": 0.0,
-        "provider_count": 4,
+        "provider_count": 5,
         "polymarket_ready": false,
         "analysis_ready": false
       },
@@ -638,20 +660,21 @@
         "overleveraged_short_count": 0
       },
       "stablecoin_flow": {
-        "total_market_cap_usd": 2697898389478.0,
-        "total_volume_24h_usd": 50290594577.0,
-        "market_cap_change_24h_pct": 0.86,
+        "total_market_cap_usd": 2695535712278.0,
+        "total_volume_24h_usd": 49736826988.0,
+        "market_cap_change_24h_pct": 0.74,
         "flow_signal": "MILD_INFLOW",
         "active_cryptocurrencies": 17486
       },
       "source_status": {
         "providers_used": [
           "coingecko",
+          "ddg",
           "fear_greed",
           "funding_rate",
           "stablecoin_flow"
         ],
-        "provider_count": 4,
+        "provider_count": 5,
         "x_hits": 0,
         "gdelt_hits": 0,
         "coingecko_trending_hits": 15,
@@ -662,20 +685,22 @@
       "source_weighting": {
         "weights": {
           "coingecko": 0.14,
+          "ddg": 0.03,
           "fear_greed": 0.1,
           "funding_rate": 0.12,
           "stablecoin_flow": 0.06
         },
-        "score": 0.42,
+        "score": 0.45,
         "category_scores": {
           "market_execution": 0.14,
-          "news_research": 0.0
+          "news_research": 0.03
         },
         "priority": [
           "coingecko",
           "funding_rate",
           "fear_greed",
-          "stablecoin_flow"
+          "stablecoin_flow",
+          "ddg"
         ]
       }
     },
@@ -714,105 +739,105 @@
   },
   "recent_events": [
     {
-      "at": "2026-05-02T23:03:18.898527+00:00",
+      "at": "2026-05-02T23:46:20.732113+00:00",
       "kind": "trinity_heartbeat_emit",
       "detail": {
         "sender": "kibot"
       }
     },
     {
-      "at": "2026-05-02T23:03:19.904981+00:00",
+      "at": "2026-05-02T23:46:21.735724+00:00",
       "kind": "trinity_heartbeat_emit",
       "detail": {
         "sender": "kibot"
       }
     },
     {
-      "at": "2026-05-02T23:03:20.911390+00:00",
+      "at": "2026-05-02T23:46:22.740195+00:00",
       "kind": "trinity_heartbeat_emit",
       "detail": {
         "sender": "kibot"
       }
     },
     {
-      "at": "2026-05-02T23:03:21.917142+00:00",
+      "at": "2026-05-02T23:46:23.743788+00:00",
       "kind": "trinity_heartbeat_emit",
       "detail": {
         "sender": "kibot"
       }
     },
     {
-      "at": "2026-05-02T23:03:22.921186+00:00",
+      "at": "2026-05-02T23:46:24.745405+00:00",
       "kind": "trinity_heartbeat_emit",
       "detail": {
         "sender": "kibot"
       }
     },
     {
-      "at": "2026-05-02T23:03:23.925073+00:00",
+      "at": "2026-05-02T23:46:25.750131+00:00",
       "kind": "trinity_heartbeat_emit",
       "detail": {
         "sender": "kibot"
       }
     },
     {
-      "at": "2026-05-02T23:03:24.929685+00:00",
+      "at": "2026-05-02T23:46:26.754441+00:00",
       "kind": "trinity_heartbeat_emit",
       "detail": {
         "sender": "kibot"
       }
     },
     {
-      "at": "2026-05-02T23:03:25.935499+00:00",
+      "at": "2026-05-02T23:46:27.757471+00:00",
       "kind": "trinity_heartbeat_emit",
       "detail": {
         "sender": "kibot"
       }
     },
     {
-      "at": "2026-05-02T23:03:26.940902+00:00",
+      "at": "2026-05-02T23:46:28.759110+00:00",
       "kind": "trinity_heartbeat_emit",
       "detail": {
         "sender": "kibot"
       }
     },
     {
-      "at": "2026-05-02T23:03:27.943498+00:00",
+      "at": "2026-05-02T23:46:29.764512+00:00",
       "kind": "trinity_heartbeat_emit",
       "detail": {
         "sender": "kibot"
       }
     },
     {
-      "at": "2026-05-02T23:03:28.948805+00:00",
+      "at": "2026-05-02T23:46:30.767472+00:00",
       "kind": "trinity_heartbeat_emit",
       "detail": {
         "sender": "kibot"
       }
     },
     {
-      "at": "2026-05-02T23:03:29.950003+00:00",
+      "at": "2026-05-02T23:46:31.772966+00:00",
       "kind": "trinity_heartbeat_emit",
       "detail": {
         "sender": "kibot"
       }
     },
     {
-      "at": "2026-05-02T23:03:30.957093+00:00",
+      "at": "2026-05-02T23:46:32.777279+00:00",
       "kind": "trinity_heartbeat_emit",
       "detail": {
         "sender": "kibot"
       }
     },
     {
-      "at": "2026-05-02T23:03:31.960431+00:00",
+      "at": "2026-05-02T23:46:33.781237+00:00",
       "kind": "trinity_heartbeat_emit",
       "detail": {
         "sender": "kibot"
       }
     },
     {
-      "at": "2026-05-02T23:03:32.963878+00:00",
+      "at": "2026-05-02T23:46:34.786711+00:00",
       "kind": "trinity_heartbeat_emit",
       "detail": {
         "sender": "kibot"

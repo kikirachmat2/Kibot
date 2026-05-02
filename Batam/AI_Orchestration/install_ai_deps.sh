@@ -5,10 +5,10 @@
 echo "--- Installing KiBot AI Dependencies ---"
 
 # AI Search Tools
-pip install --upgrade tavily-python duckduckgo-search finnhub-python
+pip3 install --upgrade tavily-python duckduckgo-search finnhub-python --break-system-packages
 
 # HTTP & Security
-pip install --upgrade requests urllib3 python-dotenv
+pip3 install --upgrade requests urllib3 python-dotenv --break-system-packages
 
 # Market specific (if needed)
 # pip install --upgrade polymarket-python
