@@ -27,6 +27,7 @@ def _load_dotenv_early() -> None:
         ROOT_DIR / ".env.kibot",
         ROOT_DIR / ".env.server",
         ROOT_DIR / ".env",
+        ROOT_DIR.parent / ".env",
         Path(".env.kibot_manager"),
         Path(".env.kibot"),
         Path(".env.server"),
