@@ -32,6 +32,8 @@ def _load_dotenv_early() -> None:
         Path(".env.server"),
         Path(".env"),
         Path("../.env"),
+        Path("../../.env"),
+        Path("../../../.env"),
     ]
     explicit = os.getenv("KIBOT_MANAGER_ENV_FILE")
     if explicit:
