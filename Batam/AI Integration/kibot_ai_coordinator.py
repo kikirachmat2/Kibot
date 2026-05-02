@@ -41,6 +41,7 @@ def _load_dotenv_early() -> None:
     for path in candidates:
         if not path.exists():
             continue
+        print(f"[DEBUG] Loading .env from: {path.absolute()}", flush=True)
         for line in path.read_text(encoding="utf-8").splitlines():
             raw = line.strip()
             if not raw or raw.startswith("#") or "=" not in raw:
@@ -50,6 +51,7 @@ def _load_dotenv_early() -> None:
             value = value.strip().strip("'").strip('"')
             if key and key not in os.environ:
                 os.environ[key] = value
+    print(f"[DEBUG] GEMINI_API_KEY present: {bool(os.getenv('GEMINI_API_KEY'))}", flush=True)
 
 
 def _env_first(*keys: str) -> str:
