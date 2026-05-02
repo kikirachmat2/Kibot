@@ -2,8 +2,8 @@
   "date": "2026-05-03",
   "ai_success": {},
   "ai_failure": {
-    "openrouter": 7,
-    "gemini": 3
+    "openrouter": 8,
+    "gemini": 4
   },
   "veto_metrics": {},
   "loss_blacklist_pairs": [],
@@ -197,6 +197,38 @@
           "Waspadai whipsaw pada pair momentum pendek dan fee bleed dari exit terlalu cepat."
         ]
       }
+    },
+    {
+      "at": "2026-05-02T20:54:42.662611+00:00",
+      "kind": "ai_failure",
+      "detail": {
+        "provider": "openrouter",
+        "task": "batch_review",
+        "reason": "generic_failure"
+      }
+    },
+    {
+      "at": "2026-05-02T20:55:17.410990+00:00",
+      "kind": "ai_failure",
+      "detail": {
+        "provider": "gemini",
+        "task": "correlation_matrix",
+        "reason": "rate_limited"
+      }
+    },
+    {
+      "at": "2026-05-02T20:55:59.845904+00:00",
+      "kind": "learning_review",
+      "detail": {
+        "summary": "Data 30 menit terakhir belum kuat; pertahankan filter saat ini dan kumpulkan sample yang lebih bersih.",
+        "strategy": "kejar target hijau dengan gap 0.30% tanpa longgarkan guardrail",
+        "lessons": [
+          "Data 30 menit terakhir belum kuat; pertahankan filter saat ini dan kumpulkan sample yang lebih bersih."
+        ],
+        "risks": [
+          "Waspadai whipsaw pada pair momentum pendek dan fee bleed dari exit terlalu cepat."
+        ]
+      }
     }
   ],
   "learning_reviews": [
@@ -276,10 +308,21 @@
       "risks": [
         "Waspadai whipsaw pada pair momentum pendek dan fee bleed dari exit terlalu cepat."
       ]
+    },
+    {
+      "at": "2026-05-02T20:55:59.845871+00:00",
+      "summary": "Data 30 menit terakhir belum kuat; pertahankan filter saat ini dan kumpulkan sample yang lebih bersih.",
+      "strategy": "kejar target hijau dengan gap 0.30% tanpa longgarkan guardrail",
+      "lessons": [
+        "Data 30 menit terakhir belum kuat; pertahankan filter saat ini dan kumpulkan sample yang lebih bersih."
+      ],
+      "risks": [
+        "Waspadai whipsaw pada pair momentum pendek dan fee bleed dari exit terlalu cepat."
+      ]
     }
   ],
   "last_learning_review": {
-    "at": "2026-05-02T20:25:57.872872+00:00",
+    "at": "2026-05-02T20:55:59.845871+00:00",
     "summary": "Data 30 menit terakhir belum kuat; pertahankan filter saat ini dan kumpulkan sample yang lebih bersih.",
     "strategy": "kejar target hijau dengan gap 0.30% tanpa longgarkan guardrail",
     "lessons": [
