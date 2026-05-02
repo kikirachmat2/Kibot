@@ -225,7 +225,59 @@ def get_engine() -> LearningEngine:
         globals()["_engine"] = LearningEngine()
     return globals()["_engine"]
 
+class VWAPRegimeDetector:
+    def detect(self, candles: list) -> str:
+        if len(candles) < 5:
+            return "SIDEWAYS"
+        try:
+            tp_vol = sum(((c["high"] + c["low"] + c["close"]) / 3.0) * c["volume"] for c in candles)
+            total_vol = sum(c["volume"] for c in candles)
+            if total_vol <= 0:
+                return "SIDEWAYS"
+            vwap = tp_vol / total_vol
+            last_price = candles[-1]["close"]
+            avg_vol = total_vol / len(candles)
+            vol_ratio = candles[-1]["volume"] / avg_vol if avg_vol > 0 else 1.0
+            closes = [c["close"] for c in candles[-5:]]
+            ema5 = closes[0]
+            for price in closes[1:]:
+                ema5 = 0.7 * ema5 + 0.3 * price
+            above_vwap = last_price > vwap
+            high_volume = vol_ratio > 1.5
+            trend_ratio = last_price / max(1e-9, closes[0])
+            if trend_ratio > 1.01 and above_vwap and high_volume:
+                return "BULLISH"
+            if trend_ratio < 0.95 and high_volume:
+                return "BREAKDOWN_PANIC"
+            if trend_ratio < 0.99 and not above_vwap and high_volume:
+                return "BEARISH"
+            if trend_ratio < 1.0 and high_volume and ema5 <= vwap:
+                return "BEARISH"
+            return "SIDEWAYS"
+        except Exception:
+            return "SIDEWAYS"
+
+
+_engine: Optional[LearningEngine] = None
+_regime_detector: Optional[VWAPRegimeDetector] = None
+
+
+def get_engine() -> LearningEngine:
+    global _engine
+    if _engine is None:
+        _engine = LearningEngine()
+    return _engine
+
+
+def get_regime_detector() -> VWAPRegimeDetector:
+    global _regime_detector
+    if _regime_detector is None:
+        _regime_detector = VWAPRegimeDetector()
+    return _regime_detector
+
+
 if __name__ == "__main__":
+
     engine = get_engine()
     while True:
         engine.patrol_and_audit()
