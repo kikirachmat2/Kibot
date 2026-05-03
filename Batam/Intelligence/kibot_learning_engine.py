@@ -181,6 +181,7 @@ class LearningEngine:
             self.use_redis = False
         
         self._cache: Dict[str, PairStats] = {}
+        self._today_trades: List[dict] = [] # In-memory track for manager compatibility
         self._load_from_json()
 
     def _load_from_json(self):
@@ -242,14 +243,88 @@ class LearningEngine:
         trade = {
             "trade_id": trade_id, "pair_id": pair, "entry_price": entry_price,
             "budget_idr": budget, "status": "OPEN", "entry_at": datetime.utcnow().isoformat(),
+            "timestamp": time.time(),
             **kwargs
         }
+        self._today_trades.append(trade) # Track in memory
+        
         with open(TRADE_LOG_FILE, "a") as f:
             f.write(json.dumps(trade) + "\n")
         
         if self.use_redis:
             self.redis.set(f"kibot:active:{trade_id}", json.dumps(trade))
         return trade_id
+
+    def record_trade(self, pair: str, pnl_pct: float, regime: str = "NORMAL", **kwargs):
+        """Directly record a trade result to pair stats with metadata."""
+        stats = self.get_stats(pair)
+        stats.record_trade(pnl_pct, regime)
+        self.save_stats(stats)
+        
+        # Log it to the file too for audit trail
+        audit_log = {
+            "type": "TRADE_RECORD",
+            "pair": pair,
+            "pnl_pct": pnl_pct,
+            "regime": regime,
+            "timestamp": time.time(),
+            **kwargs
+        }
+        with open(TRADE_LOG_FILE, "a") as f:
+            f.write(json.dumps(audit_log) + "\n")
+
+    def should_entry(self, pair: str) -> Tuple[bool, str]:
+        """
+        Bayesian Gatekeeper: Decide if we should allow entry based on history.
+        """
+        stats = self.get_stats(pair)
+        health = self.get_pair_health(pair)
+        
+        if health < 0.2:
+            return False, f"HEALTH_CRITICAL: {health:.2f}"
+        
+        if stats.consecutive_losses >= 3:
+            return False, f"LOSS_STREAK: {stats.consecutive_losses} losses"
+            
+        if time.time() < stats.cooldown_until_ts:
+            return False, "COOLDOWN_ACTIVE"
+            
+        return True, "OK"
+
+    def get_open_trade_for_pair(self, pair: str) -> Optional[dict]:
+        """Manager compatibility: Find an open trade for a specific pair."""
+        for t in self._today_trades:
+            if t.get("pair_id") == pair and t.get("status") == "OPEN":
+                return t
+        return None
+
+    def get_today_stats(self) -> dict:
+        """Manager compatibility: Calculate summary stats for the current session."""
+        trades = [t for t in self._today_trades if t.get("status") == "CLOSED"]
+        wins = [t for t in trades if t.get("win", False)]
+        losses = [t for t in trades if not t.get("win", False)]
+        
+        wr = len(wins) / max(1, len(trades))
+        sum_wins = sum(t.get("pnl_idr", 0) for t in wins)
+        sum_losses = abs(sum(t.get("pnl_idr", 0) for t in losses))
+        pf = sum_wins / max(1, sum_losses)
+        
+        ev = sum(t.get("pnl_idr", 0) for t in trades) / max(1, len(trades))
+        
+        return {
+            "total": len(trades),
+            "wins": len(wins),
+            "losses": len(losses),
+            "win_rate": wr,
+            "pf": pf,
+            "ev_idr": ev
+        }
+
+    def score_penalty(self, pair: str) -> float:
+        """Manager compatibility: Calculate a penalty score (0.0 to 1.0) based on health."""
+        health = self.get_pair_health(pair)
+        # Low health = High penalty
+        return max(0.0, 1.0 - health)
 
     def record_exit(self, trade_id: str, exit_price: float, reason: str, regime: str = "NORMAL", **kwargs):
         """
@@ -296,6 +371,12 @@ class LearningEngine:
             "win": net_pct > 0,
             **kwargs
         })
+
+        # Update in-memory track
+        for i, t in enumerate(self._today_trades):
+            if t["trade_id"] == trade_id:
+                self._today_trades[i] = trade
+                break
 
         stats = self.get_stats(trade["pair_id"])
         stats.record_trade(net_pct, regime)

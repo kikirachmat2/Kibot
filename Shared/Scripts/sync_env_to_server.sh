@@ -28,32 +28,21 @@ from pathlib import Path
 
 env_path = Path(".env")
 keys = [
-    "BOT_ID",
-    "BOT_PROFILE_KEY",
-    "MAC_ENGINE_BIND_HOST",
-    "MAC_ENGINE_PORT",
-    "MAC_ENGINE_LAN_SYNC_URL",
-    "DEVICE_ID",
-    "DEVICE_DISPLAY_NAME",
-    "INDODAX_API_KEY",
-    "INDODAX_API_SECRET",
-    "BOT_ENABLE_LIVE_EXECUTION",
-    "GEMINI_SUPPORT_API_KEY",
-    "GEMINI_SUPPORT_MODEL",
-    "OPENROUTER_API_KEY",
-    "OPENROUTER_MODEL",
-    "GROQ_API_KEY",
-    "GROQ_MODEL",
-    "COHERE_API_KEY",
-    "COHERE_MODEL",
+    "BOT_ID", "BOT_PROFILE_KEY", "KIBOT_ROLE", "KIBOT_SIGNAL_KEY",
+    "MAC_ENGINE_BIND_HOST", "MAC_ENGINE_PORT", "MAC_ENGINE_LAN_SYNC_URL",
+    "DEVICE_ID", "DEVICE_DISPLAY_NAME", "INDODAX_API_KEY", "INDODAX_API_SECRET",
+    "BOT_ENABLE_LIVE_EXECUTION", "GEMINI_SUPPORT_API_KEY", "GEMINI_SUPPORT_MODEL",
+    "OPENROUTER_API_KEY", "OPENROUTER_MODEL", "GROQ_API_KEY", "GROQ_MODEL",
+    "COHERE_API_KEY", "COHERE_MODEL",
 ]
 vals = {}
 for line in env_path.read_text(encoding="utf-8").splitlines():
     s = line.strip()
     if not s or s.startswith("#") or "=" not in s:
         continue
-    k, v = s.split("=", 1)
-    vals[k.strip()] = v.strip().strip('"').strip("'")
+    parts = s.split("=", 1)
+    k, v = parts[0].strip(), parts[1].strip().strip('"').strip("'")
+    vals[k] = v
 
 for k in keys:
     v = vals.get(k)
@@ -61,6 +50,12 @@ for k in keys:
         safe = v.replace("\\", "\\\\").replace('"', '\\"')
         print(f'{k}="{safe}"')
 PY
+
+# Sync Vault if exists
+if [[ -f "${ROOT_DIR}/.env.kiv" ]]; then
+  echo "Syncing Sovereign Vault..."
+  scp -i "${SSH_KEY}" "${ROOT_DIR}/.env.kiv" "${USER_NAME}@${HOST}:/home/ubuntu/KiBot/.env.kiv"
+fi
 
 scp -i "${SSH_KEY}" "${tmp_file}" "${USER_NAME}@${HOST}:/tmp/kibot-env-sync.tmp" >/dev/null
 

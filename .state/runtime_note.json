@@ -1,5 +1,5 @@
 {
-  "updated_at": "2026-05-03T10:30:09.624769+00:00",
+  "updated_at": "2026-05-03T13:45:56.601142+00:00",
   "service": "kibot_manager",
   "operational_wib_date": "2026-05-03",
   "actual_wib_date": "2026-05-03",
@@ -19,7 +19,7 @@
   "kinance_target": "152.69.218.198:9999",
   "system_state": "SUSPENDED",
   "trading_mode": "CONSERVATIVE",
-  "api_fail_streak": 3722,
+  "api_fail_streak": 4487,
   "control_plane_healthy": false,
   "daily_hard_stop": false,
   "daily_pnl_pct": 0.0,
@@ -36,25 +36,25 @@
   "ai_provider_last_status": {
     "provider": "",
     "task": "learning_review",
-    "at_epoch_ms": 1777802819204,
+    "at_epoch_ms": 1777815443502,
     "ok": false
   },
   "provider_runtime_state": {
     "openrouter": {
       "task": "correlation_matrix",
-      "last_failure_epoch": 1777802436.953721,
-      "cooldown_until_epoch": 1777803036.953721,
+      "last_failure_epoch": 1777815054.943611,
+      "cooldown_until_epoch": 1777815654.943611,
       "reason": "generic_failure",
       "last_error": "openrouter status=401 body={\"error\":{\"message\":\"User not found.\",\"code\":401}}",
-      "failure_count": 141
+      "failure_count": 148
     },
     "gemini": {
       "task": "learning_review",
-      "last_failure_epoch": 1777801017.288707,
-      "cooldown_until_epoch": 1777804617.288707,
+      "last_failure_epoch": 1777815443.49828,
+      "cooldown_until_epoch": 1777819043.49828,
       "reason": "rate_limited",
       "last_error": "gemini status=429 body={\n  \"error\": {\n    \"code\": 429,\n    \"message\": \"You exceeded your current quota, please check your plan and billing details. For more information on this error, head to: https://ai.google.dev/gemini-api/docs/rate-limits. To monitor your cur",
-      "failure_count": 75
+      "failure_count": 79
     }
   },
   "tracked_active_positions": [],
@@ -86,9 +86,9 @@
   },
   "strategy_governor": {
     "directives": {
-      "plan_id": "fallback-1777803937",
-      "plan_generated_at": "2026-05-03T10:25:37.741706Z",
-      "expires_at": "2026-05-03T10:40:37.741706Z",
+      "plan_id": "fallback-1777815864",
+      "plan_generated_at": "2026-05-03T13:44:24.716623Z",
+      "expires_at": "2026-05-03T13:59:24.716623Z",
       "plan_ttl_sec": 900,
       "plan_state": "ACTIVE",
       "strategy_mode": "DEFENSIVE",
@@ -99,11 +99,11 @@
       "why": [
         "capital or gate health requires defensive fallback"
       ],
-      "updated_at": "2026-05-03T10:25:37.741808Z",
+      "updated_at": "2026-05-03T13:44:24.716873Z",
       "provider": "heuristic",
       "model": "local-fallback",
       "confidence": 0.42,
-      "effective_confidence": 0.4155,
+      "effective_confidence": 0.4185,
       "confidence_decay_per_hour": 0.06,
       "fallback_if_expired": "SURVIVAL_MODE",
       "what_could_make_this_wrong": [
@@ -173,19 +173,19 @@
         "max_risk_pct": 0.5,
         "focus_markets": []
       },
-      "plan_age_sec": 271.88,
+      "plan_age_sec": 91.88,
       "plan_is_expired": false
     },
     "state": {
-      "last_refresh_at": "2026-05-03T10:25:37.741808Z",
+      "last_refresh_at": "2026-05-03T13:44:24.716873Z",
       "last_reason": "medium_cycle",
       "last_profile": "MEDIUM",
       "last_provider": "heuristic",
-      "last_plan_id": "fallback-1777803937",
+      "last_plan_id": "fallback-1777815864",
       "last_plan_state": "ACTIVE",
-      "last_fingerprint": "6c69d73ce31c5ac20b5ee2c14b1828e5",
+      "last_fingerprint": "6711ef5d8da39958d0d2db28bf8c25f6",
       "last_event_fingerprint": "5eb98304f699fe3e61425d5420b4cefb",
-      "refresh_count": 388,
+      "refresh_count": 466,
       "last_error": ""
     },
     "loop_targets": {
@@ -202,7 +202,7 @@
   "sector_count": 0,
   "sector_preview": {},
   "latest_learning_review": {
-    "at": "2026-05-03T10:06:57.482717+00:00",
+    "at": "2026-05-03T13:37:21.533867+00:00",
     "wib_date": "2026-05-03",
     "summary": "Data 30 menit terakhir belum kuat; pertahankan filter saat ini dan kumpulkan sample yang lebih bersih.",
     "strategy": "kejar target hijau dengan gap 0.30% tanpa longgarkan guardrail",
@@ -263,7 +263,7 @@
     ]
   },
   "brain_assist": {
-    "checked_at": "2026-05-03T10:25:55Z",
+    "checked_at": "2026-05-03T13:43:04Z",
     "mode": "sovereign_support",
     "provider_status": {
       "tavily": {
@@ -287,7 +287,7 @@
       "ddg": {
         "configured": true,
         "last_ok": true,
-        "last_checked_at": "2026-05-03T10:25:54Z",
+        "last_checked_at": "2026-05-03T13:43:03Z",
         "last_error": ""
       },
       "ollama": {
@@ -476,7 +476,7 @@
         "ddg": {
           "configured": true,
           "last_ok": true,
-          "last_checked_at": "2026-05-03T10:25:54Z",
+          "last_checked_at": "2026-05-03T13:43:03Z",
           "last_error": ""
         }
       },
@@ -535,7 +535,7 @@
       "ai_coordinator_enabled": true
     },
     "internet_checks": {
-      "binance": 200,
+      "binance": 0,
       "bybit": 0,
       "kucoin": 0,
       "mexc": 0,
@@ -589,40 +589,21 @@
       "timestamp": "1777766400"
     },
     "funding_rate": {
-      "symbols": {
-        "BTCUSDT": {
-          "funding_rate": -1.4e-05,
-          "funding_rate_pct_8h": -0.0014,
-          "open_interest": 103164.92,
-          "leverage_bias": "NEUTRAL"
-        },
-        "ETHUSDT": {
-          "funding_rate": -1.6e-05,
-          "funding_rate_pct_8h": -0.0016,
-          "open_interest": 2020309.55,
-          "leverage_bias": "NEUTRAL"
-        },
-        "SOLUSDT": {
-          "funding_rate": -3e-05,
-          "funding_rate_pct_8h": -0.003,
-          "open_interest": 9423135.21,
-          "leverage_bias": "NEUTRAL"
-        }
-      },
+      "symbols": {},
       "aggregate_signal": "BALANCED",
       "overleveraged_long_count": 0,
       "overleveraged_short_count": 0
     },
     "stablecoin_flow": {
-      "total_market_cap_usd": 2688238399848.0,
-      "total_volume_24h_usd": 50112602984.0,
-      "market_cap_change_24h_pct": 0.33,
+      "total_market_cap_usd": 2694336778201.0,
+      "total_volume_24h_usd": 51493842499.0,
+      "market_cap_change_24h_pct": 0.41,
       "flow_signal": "STABLE",
       "active_cryptocurrencies": 17466
     },
     "world_model": {
       "version": 1,
-      "built_at": "2026-05-03T10:25:55Z",
+      "built_at": "2026-05-03T13:43:04Z",
       "market_regime": "MIXED",
       "confidence": 0.644,
       "summary": "",
@@ -654,34 +635,15 @@
         "timestamp": "1777766400"
       },
       "funding_rate": {
-        "symbols": {
-          "BTCUSDT": {
-            "funding_rate": -1.4e-05,
-            "funding_rate_pct_8h": -0.0014,
-            "open_interest": 103164.92,
-            "leverage_bias": "NEUTRAL"
-          },
-          "ETHUSDT": {
-            "funding_rate": -1.6e-05,
-            "funding_rate_pct_8h": -0.0016,
-            "open_interest": 2020309.55,
-            "leverage_bias": "NEUTRAL"
-          },
-          "SOLUSDT": {
-            "funding_rate": -3e-05,
-            "funding_rate_pct_8h": -0.003,
-            "open_interest": 9423135.21,
-            "leverage_bias": "NEUTRAL"
-          }
-        },
+        "symbols": {},
         "aggregate_signal": "BALANCED",
         "overleveraged_long_count": 0,
         "overleveraged_short_count": 0
       },
       "stablecoin_flow": {
-        "total_market_cap_usd": 2688238399848.0,
-        "total_volume_24h_usd": 50112602984.0,
-        "market_cap_change_24h_pct": 0.33,
+        "total_market_cap_usd": 2694336778201.0,
+        "total_volume_24h_usd": 51493842499.0,
+        "market_cap_change_24h_pct": 0.41,
         "flow_signal": "STABLE",
         "active_cryptocurrencies": 17466
       },
@@ -734,7 +696,7 @@
         "approved": false,
         "reason": "symbol_not_listed_on_indodax",
         "listed_on_indodax": false,
-        "quote_volume_usdt": 411742801.75,
+        "quote_volume_usdt": 0.0,
         "risk_bias": "MIXED",
         "research_provider": "finnhub",
         "research_summary": "",
@@ -746,7 +708,7 @@
         "approved": false,
         "reason": "symbol_not_listed_on_indodax",
         "listed_on_indodax": false,
-        "quote_volume_usdt": 229319551.78,
+        "quote_volume_usdt": 0.0,
         "risk_bias": "MIXED",
         "research_provider": "finnhub",
         "research_summary": "",
@@ -758,105 +720,105 @@
   },
   "recent_events": [
     {
-      "at": "2026-05-03T10:29:55.244566+00:00",
+      "at": "2026-05-03T13:45:41.941246+00:00",
       "kind": "trinity_heartbeat_emit",
       "detail": {
         "sender": "kibot"
       }
     },
     {
-      "at": "2026-05-03T10:29:56.248573+00:00",
+      "at": "2026-05-03T13:45:42.945904+00:00",
       "kind": "trinity_heartbeat_emit",
       "detail": {
         "sender": "kibot"
       }
     },
     {
-      "at": "2026-05-03T10:29:57.253654+00:00",
+      "at": "2026-05-03T13:45:43.949028+00:00",
       "kind": "trinity_heartbeat_emit",
       "detail": {
         "sender": "kibot"
       }
     },
     {
-      "at": "2026-05-03T10:29:58.258998+00:00",
+      "at": "2026-05-03T13:45:44.997969+00:00",
       "kind": "trinity_heartbeat_emit",
       "detail": {
         "sender": "kibot"
       }
     },
     {
-      "at": "2026-05-03T10:29:59.263577+00:00",
+      "at": "2026-05-03T13:45:46.004117+00:00",
       "kind": "trinity_heartbeat_emit",
       "detail": {
         "sender": "kibot"
       }
     },
     {
-      "at": "2026-05-03T10:30:00.269173+00:00",
+      "at": "2026-05-03T13:45:47.007419+00:00",
       "kind": "trinity_heartbeat_emit",
       "detail": {
         "sender": "kibot"
       }
     },
     {
-      "at": "2026-05-03T10:30:01.274672+00:00",
+      "at": "2026-05-03T13:45:48.011368+00:00",
       "kind": "trinity_heartbeat_emit",
       "detail": {
         "sender": "kibot"
       }
     },
     {
-      "at": "2026-05-03T10:30:02.279728+00:00",
+      "at": "2026-05-03T13:45:49.018809+00:00",
       "kind": "trinity_heartbeat_emit",
       "detail": {
         "sender": "kibot"
       }
     },
     {
-      "at": "2026-05-03T10:30:03.286640+00:00",
+      "at": "2026-05-03T13:45:50.020758+00:00",
       "kind": "trinity_heartbeat_emit",
       "detail": {
         "sender": "kibot"
       }
     },
     {
-      "at": "2026-05-03T10:30:04.289885+00:00",
+      "at": "2026-05-03T13:45:51.025688+00:00",
       "kind": "trinity_heartbeat_emit",
       "detail": {
         "sender": "kibot"
       }
     },
     {
-      "at": "2026-05-03T10:30:05.295405+00:00",
+      "at": "2026-05-03T13:45:52.031685+00:00",
       "kind": "trinity_heartbeat_emit",
       "detail": {
         "sender": "kibot"
       }
     },
     {
-      "at": "2026-05-03T10:30:06.299556+00:00",
+      "at": "2026-05-03T13:45:53.037235+00:00",
       "kind": "trinity_heartbeat_emit",
       "detail": {
         "sender": "kibot"
       }
     },
     {
-      "at": "2026-05-03T10:30:07.304992+00:00",
+      "at": "2026-05-03T13:45:54.038172+00:00",
       "kind": "trinity_heartbeat_emit",
       "detail": {
         "sender": "kibot"
       }
     },
     {
-      "at": "2026-05-03T10:30:08.309105+00:00",
+      "at": "2026-05-03T13:45:55.042876+00:00",
       "kind": "trinity_heartbeat_emit",
       "detail": {
         "sender": "kibot"
       }
     },
     {
-      "at": "2026-05-03T10:30:09.312290+00:00",
+      "at": "2026-05-03T13:45:56.049421+00:00",
       "kind": "trinity_heartbeat_emit",
       "detail": {
         "sender": "kibot"

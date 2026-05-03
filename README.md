@@ -59,9 +59,23 @@ KiBot is built for **Full Zero-Touch Autonomy**. The system is designed to:
 
 ---
 
-## 📑 Critical Reports
-- **[Autonomous Audit 2026](file:///Users/kiki/Documents/Web%20Develop/KiBot/Audit_Report_Autonomous_2026.md)**: Current system risks and roadmap to wealth.
-- **[KIBOT Rules](file:///Users/kiki/Documents/Web%20Develop/KiBot/KIBOT_RULES.md)**: Ethical and operational constraints for the AI.
+## 🛡 Sovereign Shield (v8.2: Paranoid Reconstruction)
+
+KiBot now operates under a **Paranoid Security Posture**. We assume that the host environment, network, and storage are potentially compromised.
+
+### 1. Hardened Infrastructure
+- **Role-Based Purity**: Services are strictly isolated based on node roles (Batam, Executor, Scanner).
+- **Systemd Sandboxing**: Microservices are sandboxed with `ProtectSystem`, `PrivateTmp`, and strict `MemoryMax` / `CPUQuota` limits.
+- **Service Integrity**: `kibot_guardian.py` monitors for service leakage and unauthorized restarts.
+
+### 2. Cryptographic Security
+- **Sovereign Vault (KiVault)**: All API keys and secrets are stored in hardware-bound, AES-256 encrypted `.env.kiv` containers.
+- **HMAC Signal Trust**: Every inter-node UDP signal is cryptographically signed and verified.
+- **TTL Anti-Replay**: Signals expire after 15 seconds to prevent replay attacks.
+
+### 3. Bayesian Intelligence
+- **Data Sanitization**: PnL results are clipped to prevent "Data Poisoning" of AI risk models.
+- **Signed Memory**: Historical learning states are HMAC-signed to prevent manual performance manipulation.
 
 ---
 

@@ -1876,10 +1876,9 @@ def _check_portfolio_pnl():
                 decision = what_if_rugi(pnl_pct, equity, daily_pnl)
 
             if decision["action"] in ("CUT_LOSS_NOW", "EXIT_NOW", "HARD_STOP_ALL"):
-                # Find matching trade log entry
-                # (Simple mapping for now; real systems use trade_id in Position object)
-                trade_id = next((t["trade_id"] for t in trade_logger._today_trades
-                                 if t["pair_id"] == pair_id and t["status"] == "OPEN"), "unknown")
+                # Find matching trade log entry via Learning Engine
+                open_trade = trade_logger.get_open_trade_for_pair(pair_id)
+                trade_id = open_trade["trade_id"] if open_trade else "unknown"
 
                 trade_logger.record_exit(trade_id, price_now, decision["reason"])
                 portfolio_manager.close_position(pair_id, price_now, decision["reason"])
@@ -2779,7 +2778,7 @@ def _init_config():
     SUPABASE_USER_EMAIL = os.getenv("SUPABASE_USER_EMAIL", "")
     SUPABASE_USER_PASSWORD = os.getenv("SUPABASE_USER_PASSWORD", "")
     TIMEOUT = float(os.getenv("KIBOT_MANAGER_HTTP_TIMEOUT_SEC", "12"))
-    UDP_BIND_HOST = os.getenv("KIBOT_MANAGER_UDP_BIND_HOST", "0.0.0.0")
+    UDP_BIND_HOST = os.getenv("KIBOT_MANAGER_UDP_BIND_HOST", "127.0.0.1")
     UDP_BIND_PORT = int(os.getenv("KIBOT_MANAGER_UDP_BIND_PORT", "9998"))
     KiBot_UDP_HOST = os.getenv("KiBot_UDP_HOST", "")
     KiBot_UDP_PORT = int(os.getenv("KiBot_UDP_PORT", "9999"))
