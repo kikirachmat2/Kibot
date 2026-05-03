@@ -212,6 +212,7 @@ class AISearchService:
         jina = self.jina_search(topic)
         brave = self.brave_search(topic)
         panic = self.cryptopanic_news() if "crypto" in topic.lower() else []
+        finnhub = self.finnhub_news() if "crypto" in topic.lower() else []
         
         # Format Brave results
         brave_snippet = ""
@@ -223,9 +224,15 @@ class AISearchService:
         panic_snippet = ""
         for p in panic[:5]:
             panic_snippet += f"- [{p.get('votes', {}).get('positive', 0)}+] {p.get('title')}\n"
+
+        # Format Finnhub results
+        finnhub_snippet = ""
+        for n in finnhub[:3]:
+            finnhub_snippet += f"- {n.get('headline')} ({n.get('source')})\n"
             
         return (
             f"### Market Consensus for: {topic}\n\n"
+            f"**Institutional (Finnhub):**\n{finnhub_snippet}\n"
             f"**Brave Web Results:**\n{brave_snippet}\n"
             f"**CryptoPanic Hot News:**\n{panic_snippet}\n"
             f"**Deep Jina Context:**\n{jina[:2000]}\n"

@@ -19,6 +19,9 @@ TRADE_LOG_FILE = STATE_ROOT / "trade_log.jsonl"
 
 REDIS_HOST = os.getenv("KIBOT_REDIS_HOST", "localhost")
 REDIS_PORT = int(os.getenv("KIBOT_REDIS_PORT", "6379"))
+ROUND_TRIP_MAKER = float(os.getenv("KIBOT_ROUND_TRIP_MAKER_COST", "0.003"))
+ROUND_TRIP_TAKER = float(os.getenv("KIBOT_ROUND_TRIP_TAKER_COST", "0.005"))
+WIB_UTC_OFFSET_HOURS = int(os.getenv("KIBOT_WIB_UTC_OFFSET_HOURS", "7"))
 
 # INDODAX FEE (Maker 0.04%, PPh 0.21%, Taker 0.55%)
 MAKER_FEE = 0.0004
@@ -39,6 +42,7 @@ class PairStats:
     last_trade_ts: float = 0.0
     cooldown_until_ts: float = 0.0
     regime_stats: Dict[str, Dict[str, float]] = field(default_factory=dict)
+    lessons: List[str] = field(default_factory=list)
 
     def to_dict(self) -> dict:
         return asdict(self)
@@ -53,10 +57,23 @@ class PairStats:
         return self.alpha / max(1e-9, self.alpha + self.beta)
 
     @property
+    def avg_win(self) -> float:
+        return self.sum_wins / max(1, self.win_count)
+
+    @property
+    def avg_loss(self) -> float:
+        return self.sum_losses / max(1, self.loss_count)
+
+    @property
     def reward_risk_ratio(self) -> float:
-        avg_win = self.sum_wins / max(1, self.win_count)
-        avg_loss = self.sum_losses / max(1, self.loss_count)
+        avg_win = self.avg_win
+        avg_loss = self.avg_loss
         return avg_win / max(1e-9, avg_loss)
+
+    @property
+    def profit_factor(self) -> float:
+        if self.sum_losses == 0: return 2.0 if self.sum_wins > 0 else 1.0
+        return self.sum_wins / self.sum_losses
 
     def kelly_fraction(self, regime: str = "NORMAL") -> float:
         if self.trade_count < 3: return 0.02
@@ -72,6 +89,25 @@ class PairStats:
         if regime_pnl < -0.05: mult *= 0.5
         
         return max(0.02, min(0.12, full * mult))
+
+    def record_trade(self, pnl: float, regime: str):
+        self.trade_count += 1
+        if pnl > 0:
+            self.win_count += 1
+            self.sum_wins += pnl
+            self.alpha += 1
+        else:
+            self.loss_count += 1
+            self.sum_losses += abs(pnl)
+            self.beta += 1
+        
+        self.ema_pnl = (0.8 * self.ema_pnl) + (0.2 * pnl)
+        self.last_trade_ts = time.time()
+        
+        if regime not in self.regime_stats:
+            self.regime_stats[regime] = {"count": 0, "sum_pnl": 0.0}
+        self.regime_stats[regime]["count"] += 1
+        self.regime_stats[regime]["sum_pnl"] += pnl
 
 class LearningEngine:
     def __init__(self):
@@ -97,14 +133,20 @@ class LearningEngine:
         if self.use_redis:
             data = self.redis.get(f"kibot:learning:{pair}")
             if data: return PairStats.from_dict(json.loads(data))
-        return self._cache.get(pair, PairStats(pair=pair))
+        if pair not in self._cache:
+            self._cache[pair] = PairStats(pair=pair)
+        return self._cache[pair]
+
+    def get(self, pair: str) -> PairStats:
+        """Alias for get_stats for compatibility."""
+        return self.get_stats(pair)
 
     def save_stats(self, stats: PairStats):
         self._cache[stats.pair] = stats
         if self.use_redis:
             self.redis.set(f"kibot:learning:{stats.pair}", json.dumps(stats.to_dict()))
         # Periodic snapshot
-        if time.time() % 3600 < 60:
+        if time.time() % 3600 < 60 or not STATE_PATH.exists():
             STATE_PATH.write_text(json.dumps({k: v.to_dict() for k, v in self._cache.items()}, indent=2))
 
     def record_entry(self, pair: str, entry_price: float, budget: float, **kwargs) -> str:
@@ -130,35 +172,34 @@ class LearningEngine:
             if raw: trade = json.loads(raw)
         
         if not trade and TRADE_LOG_FILE.exists():
-            # Fallback search in file
             with open(TRADE_LOG_FILE, "r") as f:
                 for line in f:
-                    t = json.loads(line)
-                    if t.get("trade_id") == trade_id and t.get("status") == "OPEN":
-                        trade = t
-                        break
+                    try:
+                        t = json.loads(line)
+                        if t.get("trade_id") == trade_id and t.get("status") == "OPEN":
+                            trade = t
+                            break
+                    except: pass
         
         if not trade: return None
 
-        # Calculate PnL
         entry_p = trade["entry_price"]
         gross = (exit_price - entry_p) / entry_p
-        net_pct = gross - (MAKER_FEE + PPH_SELL + MAKER_FEE) # Approx round trip
+        net_pct = gross - (MAKER_FEE + PPH_SELL + MAKER_FEE)
         pnl_idr = trade["budget_idr"] * net_pct
 
         trade.update({
             "exit_price": exit_price, "exit_reason": reason, "status": "CLOSED",
             "pnl_idr": round(pnl_idr, 2), "pnl_pct": round(net_pct, 5),
             "exit_at": datetime.utcnow().isoformat(),
+            "win": net_pct > 0,
             **kwargs
         })
 
-        # Update Learning Memory
         stats = self.get_stats(trade["pair_id"])
         stats.record_trade(net_pct, regime)
         self.save_stats(stats)
 
-        # Persistence
         with open(TRADE_LOG_FILE, "a") as f:
             f.write(json.dumps(trade) + "\n")
         if self.use_redis:
@@ -166,7 +207,6 @@ class LearningEngine:
             self.redis.lpush("kibot:history", json.dumps(trade))
             self.redis.ltrim("kibot:history", 0, 999)
 
-        # Sync Supabase
         self._sync_to_supabase(trade)
         return trade
 
@@ -216,14 +256,20 @@ class LearningEngine:
         }
 
     def save_daily_summary(self):
-        # Already handled by _save_to_json and periodic snapshots in this version
-        pass
+        # Save current state to JSON
+        try:
+            STATE_PATH.write_text(json.dumps({k: v.to_dict() for k, v in self._cache.items()}, indent=2))
+        except: pass
 
-def get_engine() -> LearningEngine:
-    global _engine
-    if "_engine" not in globals() or globals()["_engine"] is None:
-        globals()["_engine"] = LearningEngine()
-    return globals()["_engine"]
+    def patrol_and_audit(self):
+        """Autonomous patrol for learning opportunities and trade audits."""
+        try:
+            # Sync any unsaved state
+            self.save_daily_summary()
+            # In the future, this will scan trade_log.jsonl for inconsistencies
+            print(f"[LEARNING] Patrol completed at {datetime.now()}")
+        except Exception as e:
+            print(f"[LEARNING] Patrol Error: {e}")
 
 class VWAPRegimeDetector:
     def detect(self, candles: list) -> str:
@@ -257,10 +303,8 @@ class VWAPRegimeDetector:
         except Exception:
             return "SIDEWAYS"
 
-
 _engine: Optional[LearningEngine] = None
 _regime_detector: Optional[VWAPRegimeDetector] = None
-
 
 def get_engine() -> LearningEngine:
     global _engine
@@ -268,16 +312,14 @@ def get_engine() -> LearningEngine:
         _engine = LearningEngine()
     return _engine
 
-
 def get_regime_detector() -> VWAPRegimeDetector:
     global _regime_detector
     if _regime_detector is None:
         _regime_detector = VWAPRegimeDetector()
     return _regime_detector
 
-
 if __name__ == "__main__":
-
+    print("🚀 KiBot Learning Engine Starting...")
     engine = get_engine()
     while True:
         engine.patrol_and_audit()

@@ -19,29 +19,15 @@ from typing import Any, Dict, List, Optional, Tuple, Union
 from concurrent.futures import ThreadPoolExecutor
 
 # Modular Path Injection
-_base_path = Path(__file__).parent.parent
-sys.path.append(str(_base_path / "Intelligence"))
-sys.path.append(str(_base_path / "Indicators_Math"))
-sys.path.append(str(_base_path / "Security"))
-sys.path.append(str(_base_path / "Communication"))
-sys.path.append(str(_base_path / "AI_Orchestration"))
+_root = Path(__file__).resolve().parent.parent
+for d in ["Intelligence", "Indicators_Math", "Security", "Communication", "AI_Orchestration", "Support"]:
+    sys.path.append(str(_root / d))
+sys.path.append(str(_root / "Support/Web"))
+sys.path.append(str(_root / "Support/Audit_Testing"))
 
-
-def _load_dotenv_early():
-    import os
-    candidates = [Path(".env"), Path("scripts/.env"), Path("../.env")]
-    if os.getenv("KIBOT_MANAGER_ENV_FILE"):
-        candidates.insert(0, Path(os.getenv("KIBOT_MANAGER_ENV_FILE")))
-    for p in candidates:
-        if p.exists():
-            for line in p.read_text(encoding="utf-8").splitlines():
-                line = line.strip()
-                if line and not line.startswith("#") and "=" in line:
-                    k, v = line.split("=", 1)
-                    k, v = k.strip(), v.strip().strip("'").strip('"')
-                    if k and k not in os.environ:
-                        os.environ[k] = v
-_load_dotenv_early()
+from ki_config import *
+from ki_utils import telegram_send, load_json, save_json, get_wib_now
+import dynamic_config
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import asyncio
 import requests
@@ -145,6 +131,52 @@ _profit_lock   = ProfitLockManager()
 _trailing_stop = AdaptiveTrailingStop()
 _hard_stop     = HardStopGuard()
 _brain         = BrainManager()
+ 
+# --- AI VETO CACHE (Non-Blocking) ---
+_ai_veto_cache: Dict[str, Dict[str, Any]] = {} # pair -> {verdict: "APPROVED", ts: time}
+_ai_veto_queue: List[Tuple[str, str]] = [] # [(pair, type)]
+_ai_veto_lock = threading.Lock()
+
+def _get_ai_veto_state(pair: str) -> str:
+    with _ai_veto_lock:
+        data = _ai_veto_cache.get(pair)
+        if data and (time.time() - data['ts']) < 3600: # 1 hour TTL
+            return data['verdict']
+    return ""
+
+def _request_ai_veto(pair: str, msg_type: str):
+    with _ai_veto_lock:
+        if pair not in [x[0] for x in _ai_veto_queue]:
+            _ai_veto_queue.append((pair, msg_type))
+
+def _ai_veto_worker():
+    """Background thread to process AI Vetoes non-blockingly."""
+    while not _shutdown_event.is_set():
+        item = None
+        with _ai_veto_lock:
+            if _ai_veto_queue:
+                item = _ai_veto_queue.pop(0)
+        
+        if item:
+            pair, msg_type = item
+            try:
+                verdict, _ = _call_ai_router(
+                    task="signal_veto",
+                    system_prompt="You are KiBot Veto AI. Analyze the signal and market snapshot. Reply ONLY with 'APPROVED' or 'REJECTED: [reason]'. Be strict.",
+                    user_prompt=f"Pair: {pair}\nSignal Type: {msg_type}\nZ-Score: {calculate_z_score(_price_history.get(pair, [])):.2f}\nRecent Price: {_get_last_price(pair)}",
+                    model_hint="qwen3:0.6b",
+                    timeout_sec=8.0
+                )
+                with _ai_veto_lock:
+                    _ai_veto_cache[pair] = {"verdict": verdict.upper(), "ts": time.time()}
+                    print(f"[v7][AI_VETO_WORKER] {pair}: {verdict}", flush=True)
+            except Exception as e:
+                print(f"[v7][AI_VETO_WORKER][ERROR] {pair}: {e}", flush=True)
+        
+        time.sleep(0.5)
+
+# Start the worker
+threading.Thread(target=_ai_veto_worker, daemon=True).start()
 
 # --- TRINITY CRITICAL FIX STATE ---
 KiBot_UDP_HOST = "100.122.1.109"
@@ -262,23 +294,27 @@ def _relay_to_KiBot(msg: dict):
                 # Mark as seen ONLY after all gates passed
                 _mark_signal_seen(msg)
 
-    # Actual Transmission to multiple peers
+    # Actual Transmission (Fixed Redundancy)
     transient_socket = None
     try:
-        payload = json.dumps(msg, ensure_ascii=False).encode("utf-8")
-        peers = []
-        if KiBot_UDP_HOST: peers.append((KiBot_UDP_HOST, KiBot_UDP_PORT))
-        if KiBot_UDP_HOST:    peers.append((KiBot_UDP_HOST, KiBot_UDP_PORT))
+        payload = json.dumps(msg, ensure_ascii=False, separators=(',', ':')).encode("utf-8")
         udp_socket = _main_socket
         if udp_socket is None:
             transient_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
             udp_socket = transient_socket
 
-        for host, port in peers:
-            udp_socket.sendto(payload, (host, port))
-        
-        # Standard relay to the main executor
-        udp_socket.sendto(payload, (KiBot_UDP_HOST, KiBot_UDP_PORT))
+        # Multi-Path Relay (Failover Redundancy)
+        for host_str in KIBOT_EGRESS_HOSTS:
+            try:
+                target_host = host_str
+                target_port = KIBOT_UDP_PORT
+                if ':' in host_str:
+                    target_host, port_part = host_str.split(':')
+                    target_port = int(port_part)
+                
+                udp_socket.sendto(payload, (target_host, target_port))
+            except Exception as e:
+                print(f"[v7][ERROR] Egress failed to {host_str}: {e}", flush=True)
             
         if "POSITION" not in msg_type and "HEARTBEAT" not in msg_type:
             print(f"[v7][EGRESS] {msg_type} {pair or ''}", flush=True)
@@ -313,16 +349,13 @@ def _can_enter(pair: str, msg_type: str) -> Tuple[bool, str]:
     if not _ai_healthy:
         return False, "AI_HEALTH: Sources offline"
 
-    # 3.1 KiBot Health Guard
+    # 3. KiBot Health Guard (Unified Singapore/Batam Check)
     if not _KiBot_healthy:
         if mode == "NORMAL":
             print(f"[v7][FAIL_SOFT] KiBot offline but mode is NORMAL, allowing egress for {pair}", flush=True)
+            # Proceeding anyway
         else:
-            return False, "KiBot_OFFLINE: No heartbeat from source (Tokyo)"
-
-    # 3.2 KiBot Health Guard (New: Singapore Check)
-    if not _KiBot_healthy:
-        return False, "KiBot_OFFLINE: No heartbeat from executor (Singapore)"
+            return False, "KiBot_OFFLINE: No heartbeat from executor (Singapore)"
 
     # 4. Quarantine Guard
     if pair:
@@ -343,7 +376,7 @@ def _can_enter(pair: str, msg_type: str) -> Tuple[bool, str]:
         prices = _price_history.get(pair, [])
         if prices and len(prices) >= 20:
             z_val = calculate_z_score(prices)
-            z_thresh = float(os.environ.get("KIBOT_Z_SCORE_THRESHOLD", "2.2"))
+            z_thresh = dynamic_config.get_param("KIBOT_Z_SCORE_THRESHOLD", 2.2)
             if abs(z_val) > z_thresh:
                 return False, f"STATS_REJECT: Z-Score {z_val:.2f} too extreme (> {z_thresh})"
 
@@ -356,23 +389,17 @@ def _can_enter(pair: str, msg_type: str) -> Tuple[bool, str]:
         if sim.get("verdict") == "MARGINAL":
             print(f"[v7][WHATIF][WARN] {pair} is MARGINAL (EV={sim.get('expectedValue')}), proceeding with caution", flush=True)
 
-    # 7. AI Brain Validation (New v7.5 - THE SATPAM)
+    # 7. AI Brain Validation (Non-Blocking Satpam)
     if AI_ROUTER_ENABLED and pair and msg_type in ("SIGNAL", "ANOMALY", "PUMP"):
-        try:
-            # Quick check to Ollama or preferred provider
-            verdict, _ = _call_ai_router(
-                task="signal_veto",
-                system_prompt="You are KiBot Veto AI. Analyze the signal and market snapshot. Reply ONLY with 'APPROVED' or 'REJECTED: [reason]'. Be strict.",
-                user_prompt=f"Pair: {pair}\nSignal Type: {msg_type}\nZ-Score: {calculate_z_score(_price_history.get(pair, [])):.2f}\nRecent Price: {_get_last_price(pair)}",
-                model_hint="qwen3:0.6b", # Use fast local model for low latency
-                timeout_sec=5.0
-            )
-            if "REJECTED" in verdict.upper():
-                _metric_inc("entries_blocked_ai_veto")
-                return False, f"AI_VETO: {verdict}"
-        except Exception:
-            # Fail-soft: if AI is slow or down, we rely on math gates
-            pass
+        # Check global veto state (updated by background thread)
+        veto_state = _get_ai_veto_state(pair)
+        if "REJECTED" in veto_state:
+            _metric_inc("entries_blocked_ai_veto")
+            return False, f"AI_VETO: {veto_state}"
+        
+        # If no verdict yet, we push to queue but allow if math gates are ok (Fail-Fast)
+        if not veto_state:
+             _request_ai_veto(pair, msg_type)
 
     return True, "ok"
 
@@ -441,8 +468,9 @@ def _is_signal_stale(signal: dict) -> bool:
     ts = signal.get("timestamp_ms") or signal.get("ts") or (signal.get("last_update", 0) * 1000)
     if ts == 0: return False
     age_ms = (time.time() * 1000) - ts
-    if age_ms > STALE_SIGNAL_ABORT_MS:
-        print(f"[v7][STALE_DROP] {signal.get('pair','?')} age={age_ms:.0f}ms > {STALE_SIGNAL_ABORT_MS}ms", flush=True)
+    stale_limit = dynamic_config.get_param("KIBOT_STALE_SIGNAL_MS", STALE_SIGNAL_ABORT_MS)
+    if age_ms > stale_limit:
+        print(f"[v7][STALE_DROP] {signal.get('pair','?')} age={age_ms:.0f}ms > {stale_limit}ms", flush=True)
         return True
     return False
 
@@ -717,8 +745,9 @@ trade_logger = _learning_engine
 # TRINITY HELPERS — Networking & State
 # =============================================
 
+# Consolidated UDP Broadcast
 def _broadcast_udp(msg: dict):
-    """Legacy v6 egress - redirected to Trinity v7 Gate."""
+    """Egress to Trinity Gate (v7)."""
     _relay_to_KiBot(msg)
 
 
@@ -6672,14 +6701,7 @@ def _ensure_env() -> None:
         raise RuntimeError(f"Missing env: {', '.join(missing)}")
 
 
-def _broadcast_udp(payload: Dict[str, Any]) -> None:
-    """Low-level egress redirected to Trinity v7 Gate."""
-    _relay_to_KiBot(payload)
-    if payload.get("msgType") != "HEARTBEAT":
-        print(
-            f"[KIBOT][UDP_BROADCAST] msgType={payload.get('msgType')} pair={payload.get('pairId')} trace={payload.get('traceId')}",
-            flush=True,
-        )
+# Redundant definition removed.
 
 
 def _emit_trinity_heartbeat() -> None:
@@ -6692,7 +6714,7 @@ def _emit_trinity_heartbeat() -> None:
     except:
         pass
     sent_at = int(time.time() * 1000)
-    for sender_bot_id in ("kibot", "KiBot", "KiBot"):
+    for sender_bot_id in ("kibot", "KiBot"):
         payload = {
             "kind": "trinity_state",
             "msgType": "HEARTBEAT",
@@ -7819,6 +7841,7 @@ def _is_KiBot_healthy() -> bool:
 
 
 
+
 def _trigger_urgent_ai_scout(pair: str):
     """Signals the kibot_ai_scout to perform immediate research on a pair."""
     try:
@@ -7829,6 +7852,7 @@ def _trigger_urgent_ai_scout(pair: str):
         print(f"[KIBOT][URGENT_SCOUT] Signal sent for {pair}", flush=True)
     except Exception as e:
         print(f"[KIBOT][ERROR] Failed to send urgent scout signal: {e}", flush=True)
+
 
 def _process_signal(msg: Dict[str, Any]) -> None:
     msg_type = str(msg.get("msgType") or "").upper()
@@ -8146,7 +8170,6 @@ def _process_signal(msg: Dict[str, Any]) -> None:
             if analysis.legitimacy_score >= 70:
                 print(f"[KIBOT][TRINITY] {pair} High legitimacy detected. Triggering urgent AI scouting...", flush=True)
                 _trigger_urgent_ai_scout(pair)
-                
             if analysis.legitimacy_score < 40:
                 print(f"[KIBOT][BLOCK] {pair} REJECTED by Trinity Legitimacy Detector (Score: {analysis.legitimacy_score})", flush=True)
                 return

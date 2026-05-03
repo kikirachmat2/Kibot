@@ -17,52 +17,16 @@ from datetime import date
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional
 from urllib.parse import urlsplit
+import sys
 
-ROOT_DIR = Path(__file__).resolve().parent.parent
+_root = Path(__file__).resolve().parent.parent
+for d in ["Support", "AI_Orchestration"]:
+    sys.path.append(str(_root / d))
 
-
-def _load_dotenv_early() -> None:
-    candidates = [
-        ROOT_DIR / ".env.kibot_manager",
-        ROOT_DIR / ".env.kibot",
-        ROOT_DIR / ".env.server",
-        ROOT_DIR / ".env",
-        ROOT_DIR.parent / ".env",
-        ROOT_DIR.parent / "Shared" / "Ops" / ".env",
-        Path(".env.kibot_manager"),
-        Path(".env.kibot"),
-        Path(".env.server"),
-        Path(".env"),
-        Path("../.env"),
-        Path("../../.env"),
-        Path("../../../.env"),
-    ]
-    explicit = os.getenv("KIBOT_MANAGER_ENV_FILE")
-    if explicit:
-        candidates.insert(0, Path(explicit))
-    for path in candidates:
-        if not path.exists():
-            continue
-        for line in path.read_text(encoding="utf-8").splitlines():
-            raw = line.strip()
-            if not raw or raw.startswith("#") or "=" not in raw:
-                continue
-            key, value = raw.split("=", 1)
-            key = key.strip()
-            value = value.strip().strip("'").strip('"')
-            if key and key not in os.environ:
-                os.environ[key] = value
+from ki_config import *
+from ki_utils import telegram_send, load_json, save_json
 
 
-def _env_first(*keys: str) -> str:
-    for key in keys:
-        value = os.getenv(key, "").strip()
-        if value:
-            return value
-    return ""
-
-
-_load_dotenv_early()
 
 ROOT = Path(os.getenv("KIBOT_RUNTIME_ROOT", Path(__file__).resolve().parent.parent))
 STATE_DIR = ROOT / "state"
@@ -117,7 +81,14 @@ PROVIDERS = {
         "model": OLLAMA_DEFAULT_MODEL,
         "api_key_envs": ["OLLAMA_API_KEY", "KIBOT_OLLAMA_GATEWAY_TOKEN"],
         "base_url": _canonical_ollama_chat_url(os.getenv("KIBOT_OLLAMA_BASE_URL", "")),
-        "priority": 1,
+        "priority": 99,
+    },
+    "finnhub": {
+        "daily_limit": 1000,
+        "model": "finnhub-news",
+        "api_key_envs": ["FINNHUB_API_KEY"],
+        "base_url": "https://finnhub.io/api/v1",
+        "priority": 50,
     },
     "groq": {
         "daily_limit": 14400,
@@ -148,11 +119,11 @@ PROVIDERS = {
         "priority": 5,
     },
     "cerebras": {
-        "daily_limit": 5000,
+        "daily_limit": 50000,
         "model": "llama3.1-8b",
-        "api_key_envs": ["CEREBRAS_API_KEY"],
+        "api_key_envs": ["CEREBRAS_API_KEY", "KIBOT_CEREBRAS_KEY"],
         "base_url": "https://api.cerebras.ai/v1/chat/completions",
-        "priority": 6,
+        "priority": 1,
     },
     "together": {
         "daily_limit": 3000,
@@ -169,11 +140,11 @@ PROVIDERS = {
         "priority": 8,
     },
     "mistral": {
-        "daily_limit": 1000,
+        "daily_limit": 5000,
         "model": "mistral-tiny",
-        "api_key_envs": ["MISTRAL_API_KEY"],
+        "api_key_envs": ["MISTRAL_API_KEY", "KIBOT_MISTRAL_KEY"],
         "base_url": "https://api.mistral.ai/v1/chat/completions",
-        "priority": 9,
+        "priority": 5,
     },
     "nvidia": {
         "daily_limit": 1000,
@@ -286,6 +257,49 @@ PROVIDERS = {
         "api_key_envs": ["GITHUB_TOKEN"],
         "base_url": "https://models.inference.ai.azure.com/chat/completions",
         "priority": 25,
+    },
+    # --- OpenRouter Gateway Bypass (One Key, Multiple Models) ---
+    "or_claude_free": {
+        "daily_limit": 1000,
+        "model": "anthropic/claude-3-haiku:free",
+        "api_key_envs": ["OPENROUTER_API_KEY", "BINANCE_OPENROUTER_API_KEY"],
+        "base_url": "https://openrouter.ai/api/v1/chat/completions",
+        "priority": 30,
+    },
+    "or_gpt4o_mini_free": {
+        "daily_limit": 1000,
+        "model": "openai/gpt-4o-mini:free",
+        "api_key_envs": ["OPENROUTER_API_KEY", "BINANCE_OPENROUTER_API_KEY"],
+        "base_url": "https://openrouter.ai/api/v1/chat/completions",
+        "priority": 31,
+    },
+    "or_llama3_1_70b_free": {
+        "daily_limit": 1000,
+        "model": "meta-llama/llama-3.1-70b-instruct:free",
+        "api_key_envs": ["OPENROUTER_API_KEY", "BINANCE_OPENROUTER_API_KEY"],
+        "base_url": "https://openrouter.ai/api/v1/chat/completions",
+        "priority": 32,
+    },
+    "or_phi3_medium_free": {
+        "daily_limit": 1000,
+        "model": "microsoft/phi-3-medium-128k-instruct:free",
+        "api_key_envs": ["OPENROUTER_API_KEY", "BINANCE_OPENROUTER_API_KEY"],
+        "base_url": "https://openrouter.ai/api/v1/chat/completions",
+        "priority": 33,
+    },
+    "or_qwen2_72b_free": {
+        "daily_limit": 1000,
+        "model": "qwen/qwen-2-72b-instruct:free",
+        "api_key_envs": ["OPENROUTER_API_KEY", "BINANCE_OPENROUTER_API_KEY"],
+        "base_url": "https://openrouter.ai/api/v1/chat/completions",
+        "priority": 34,
+    },
+    "or_gemini_flash_free": {
+        "daily_limit": 1000,
+        "model": "google/gemini-flash-1.5:free",
+        "api_key_envs": ["OPENROUTER_API_KEY", "BINANCE_OPENROUTER_API_KEY"],
+        "base_url": "https://openrouter.ai/api/v1/chat/completions",
+        "priority": 35,
     }
 }
 
@@ -303,9 +317,10 @@ PROMPT_PROVIDER_ORDER = {
     "SOVEREIGN_DAILY_REVIEW": ["ollama", "groq", "gemini", "deepseek", "sambanova", "cerebras", "together", "fireworks", "mistral", "nvidia", "openrouter", "deepinfra", "octoai", "novita", "perplexity", "cohere", "jina", "huggingface", "friendliai", "lepton"],
     "OPS_CHAT": ["ollama", "groq", "gemini", "deepseek", "sambanova", "cerebras", "together", "fireworks", "mistral", "nvidia", "openrouter", "deepinfra", "octoai", "novita", "perplexity", "cohere", "jina", "huggingface", "friendliai", "lepton"],
     "OPS_CHAT_LOCAL": ["ollama", "groq", "gemini", "deepseek", "sambanova", "cerebras", "together", "fireworks", "mistral", "nvidia", "openrouter", "deepinfra", "octoai", "novita", "perplexity", "cohere", "jina", "huggingface", "friendliai", "lepton"],
-    "INTELLIGENCE_SYNTHESIS": ["groq", "gemini", "deepseek", "sambanova", "cerebras", "together_turbo", "mistral_large", "cloudflare_ai", "perplexity_pro", "github_experimental", "fireworks", "nvidia", "openrouter", "deepinfra", "octoai", "novita", "perplexity", "cohere", "jina", "huggingface", "friendliai", "lepton", "ollama"],
-    "TARGETED_VALIDATION": ["groq", "gemini", "deepseek", "sambanova", "cerebras", "together_turbo", "mistral_large", "perplexity_pro", "ollama"],
-    "POSSIBILITY_MINING": ["perplexity_pro", "gemini", "groq", "together_turbo", "mistral_large", "ollama"],
+    "INTELLIGENCE_SYNTHESIS": ["groq", "gemini", "deepseek", "sambanova", "cerebras", "together_turbo", "mistral_large", "cloudflare_ai", "perplexity_pro", "github_experimental", "or_claude_free", "or_gpt4o_mini_free", "or_llama3_1_70b_free", "or_gemini_flash_free", "or_qwen2_72b_free", "fireworks", "nvidia", "openrouter", "deepinfra", "octoai", "novita", "perplexity", "cohere", "jina", "huggingface", "friendliai", "lepton", "ollama"],
+    "TARGETED_VALIDATION": ["groq", "gemini", "deepseek", "sambanova", "cerebras", "together_turbo", "mistral_large", "perplexity_pro", "or_claude_free", "or_gpt4o_mini_free", "ollama"],
+    "BRAIN_CRITIC": ["gemini", "groq", "deepseek", "together_turbo", "mistral_large", "or_claude_free", "ollama"],
+    "POSSIBILITY_MINING": ["perplexity_pro", "gemini", "groq", "together_turbo", "mistral_large", "or_llama3_1_70b_free", "ollama"],
 }
 
 PROMPT_TEMPLATES = {
@@ -654,7 +669,11 @@ def _clear_provider_cooldown(provider: str) -> None:
 def _provider_api_key(provider: str) -> str:
     config = PROVIDERS.get(provider) or {}
     envs = config.get("api_key_envs") or []
-    return _env_first(*[str(item) for item in envs])
+    key = _env_first(*[str(item) for item in envs])
+    # Survival Bypass: Ollama doesn't strictly need a key if allowed
+    if provider == "ollama" and not key and os.getenv("KIBOT_ALLOW_DIRECT_OLLAMA") == "1":
+        return "ollama_public"
+    return key
 
 
 def _candidate_providers(prompt_type: str) -> List[str]:

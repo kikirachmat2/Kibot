@@ -183,7 +183,7 @@ class BrainManager:
         self.ai_search = None
         try:
             # Add to sys.path if needed for @ folder
-            search_dir = str(ROOT_DIR / "@AI_Orchestration")
+            search_dir = str(ROOT_DIR / "@AI Feature Integration")
             import sys
             if os.path.exists(search_dir) and search_dir not in sys.path:
                 sys.path.append(search_dir)
@@ -1960,21 +1960,3 @@ class BrainManager:
         tmp = self.state_file.with_suffix(".tmp")
         tmp.write_text(json.dumps(snapshot, ensure_ascii=False, indent=2), encoding="utf-8")
         tmp.replace(self.state_file)
-
-
-if __name__ == "__main__":
-    print("[KIBRAIN] Starting Brain Service heartbeat loop...", flush=True)
-    brain = BrainManager()
-    while True:
-        try:
-            # We don't perform heavy thinking here, just maintain process presence
-            # and update a basic status file so watchdogs know we are alive.
-            brain._write_snapshot({
-                "status": "ALIVE",
-                "ts": time.time(),
-                "ts_str": time.ctime(),
-                "pid": os.getpid()
-            })
-        except Exception as e:
-            print(f"[KIBRAIN][ERROR] Heartbeat failed: {e}", flush=True)
-        time.sleep(60)
