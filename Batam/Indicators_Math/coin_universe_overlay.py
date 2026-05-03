@@ -135,6 +135,45 @@ def check_binance_pair(base_symbol: str) -> Optional[str]:
         pass
     return None
 
+def validate_tradability(pair_id: str, min_depth_idr: float = 20_000_000, max_spread_pct: float = 2.5) -> Dict[str, Any]:
+    """
+    Performs deep orderbook analysis to see if a coin is actually tradable.
+    Returns {ok: bool, reason: str, spread: float, depth: float}
+    """
+    import urllib.request
+    # Indodax depth API uses no underscore, e.g. btcidr
+    api_pair = pair_id.replace("_", "")
+    url = f"https://indodax.com/api/{api_pair}/depth"
+    headers = {"User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"}
+    try:
+        req = urllib.request.Request(url, headers=headers)
+        with urllib.request.urlopen(req, timeout=5) as r:
+            data = json.loads(r.read().decode("utf-8"))
+            bids = data.get("buy", [])
+            asks = data.get("sell", [])
+            
+            if not bids or not asks:
+                return {"ok": False, "reason": "Empty orderbook"}
+            
+            best_bid = float(bids[0][0])
+            best_ask = float(asks[0][0])
+            spread_pct = ((best_ask - best_bid) / best_ask) * 100
+            
+            if spread_pct > max_spread_pct:
+                return {"ok": False, "reason": f"Spread too wide ({spread_pct:.2f}%)", "spread": spread_pct}
+                
+            # Depth check (top 5 levels)
+            depth_buy = sum(float(b[0]) * float(b[1]) for b in bids[:5])
+            depth_sell = sum(float(a[0]) * float(a[1]) for a in asks[:5])
+            total_depth = depth_buy + depth_sell
+            
+            if total_depth < min_depth_idr:
+                return {"ok": False, "reason": f"Insufficient depth ({total_depth/1e6:.1f}M IDR)", "depth": total_depth}
+                
+            return {"ok": True, "reason": "Liquid", "spread": spread_pct, "depth": total_depth}
+    except Exception as e:
+        return {"ok": False, "reason": f"API Error: {e}"}
+
 def auto_discover_new_coins(min_vol_idr: float = 500_000_000) -> List[str]:
     """
     Fetches all Indodax tickers and adds liquid new coins to probation.
@@ -147,14 +186,15 @@ def auto_discover_new_coins(min_vol_idr: float = 500_000_000) -> List[str]:
     # 1. Fetch Indodax Tickers (Summaries)
     try:
         url_sum = "https://indodax.com/api/summaries"
-        req_sum = urllib.request.Request(url_sum, headers={"User-Agent": "Mozilla/5.0"})
+        headers = {"User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"}
+        req_sum = urllib.request.Request(url_sum, headers=headers)
         with urllib.request.urlopen(req_sum, timeout=10) as r:
             data = json.loads(r.read().decode("utf-8"))
             tickers = data.get("tickers", {})
             
         # 1b. Fetch Pair Metadata (for precision)
         url_meta = "https://indodax.com/api/pairs"
-        req_meta = urllib.request.Request(url_meta, headers={"User-Agent": "Mozilla/5.0"})
+        req_meta = urllib.request.Request(url_meta, headers=headers)
         with urllib.request.urlopen(req_meta, timeout=10) as r:
             meta_list = json.loads(r.read().decode("utf-8"))
             meta_map = {m["id"]: m for m in meta_list if "id" in m}
@@ -169,7 +209,8 @@ def auto_discover_new_coins(min_vol_idr: float = 500_000_000) -> List[str]:
     existing_indodax.update(state["probation"]["lead_lag"].keys())
     existing_indodax.update(state["probation"]["indodax_only"])
 
-    # 3. Discovery Loop
+    # 3. Discovery Loop (Top 10 liquid candidates only to avoid rate limits)
+    candidates = []
     for pair_id, info in tickers.items():
         if not pair_id.endswith("_idr"): continue
         if pair_id in existing_indodax: continue
@@ -177,6 +218,31 @@ def auto_discover_new_coins(min_vol_idr: float = 500_000_000) -> List[str]:
         vol = float(info.get("vol_idr", 0))
         if vol < min_vol_idr: continue
         
+        # SPREAD VETO (From Summary - 0 API Calls)
+        try:
+            buy = float(info.get("buy", 0))
+            sell = float(info.get("sell", 0))
+            if buy > 0 and sell > 0:
+                spread = ((sell - buy) / sell) * 100
+                if spread > 2.5:
+                    print(f"[UNIVERSE] Skipped {pair_id}: Wide spread {spread:.2f}% (from summary)")
+                    continue
+        except: pass
+
+        candidates.append((pair_id, vol))
+        
+    # Sort by volume descending
+    candidates.sort(key=lambda x: x[1], reverse=True)
+    
+    import time
+    for pair_id, vol in candidates[:5]: # Cap to top 5 to be extra safe
+        # Deep depth check (Requires 1 API call per candidate)
+        valid = validate_tradability(pair_id)
+        if not valid["ok"]:
+            print(f"[UNIVERSE] Skipped {pair_id}: {valid['reason']}")
+            time.sleep(1.0)
+            continue
+            
         # New liquid coin found!
         base = pair_id.replace("_idr", "")
         binance_pair = check_binance_pair(base)
@@ -194,6 +260,7 @@ def auto_discover_new_coins(min_vol_idr: float = 500_000_000) -> List[str]:
             print(f"[UNIVERSE] Onboarded {pair_id} as INDODAX_ONLY (Precision: {precision})")
             
         onboarded.append(pair_id)
+        time.sleep(1.0) # Anti-spam
 
     if onboarded:
         save_overlay_state(state)

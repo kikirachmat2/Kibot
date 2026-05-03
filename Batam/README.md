@@ -37,3 +37,10 @@ Non-core tools including Web Dashboard, Android APK assets, and Audit suites.
 
 ### 8. [Infrastructure](file:///Users/kiki/Documents/Web%20Develop/KiBot/Batam/Infrastructure/)
 System logs, SSH keys, and systemd service templates.
+
+### 9. [Sovereign Shield](file:///Users/kiki/Documents/Web%20Develop/KiBot/Batam/Security/) (New Security Layer)
+Advanced defensive infrastructure protecting capital and credentials.
+- `Security/kibot_sentinel.py`: Real-time trade velocity and anomaly protection.
+- `Security/kibot_security.py`: Cryptographic log signing and integrity verification.
+- `Support/ki_vault.py`: AES-256 hardware-bound encryption for API secrets.
+- `Support/ki_config.py`: Integrated secure loading and egress health checks.

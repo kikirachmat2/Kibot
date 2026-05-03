@@ -3,11 +3,20 @@ from pathlib import Path
 import pytz
 
 def _load_dotenv_early():
-    """Load .env files early before constants are assigned."""
+    """Load .env or .env.kiv files early before constants are assigned."""
     import os
-    candidates = [Path(".env"), Path("scripts/.env"), Path("../.env"), Path(__file__).resolve().parent.parent / ".env"]
+    from ki_vault import get_vault
+    vault = get_vault()
+    
+    candidates = [
+        Path(".env.kiv"), Path(".env"), 
+        Path("scripts/.env"), Path("../.env"), 
+        Path(__file__).resolve().parent.parent / ".env",
+        Path(__file__).resolve().parent.parent / ".env.kiv"
+    ]
     if os.getenv("KIBOT_MANAGER_ENV_FILE"):
         candidates.insert(0, Path(os.getenv("KIBOT_MANAGER_ENV_FILE")))
+    
     for p in candidates:
         if p.exists():
             for line in p.read_text(encoding="utf-8").splitlines():
@@ -15,6 +24,15 @@ def _load_dotenv_early():
                 if line and not line.startswith("#") and "=" in line:
                     k, v = line.split("=", 1)
                     k, v = k.strip(), v.strip().strip("'").strip('"')
+                    
+                    # Decrypt if encrypted
+                    if v.startswith("ENC(") and v.endswith(")"):
+                        try:
+                            v = vault.decrypt(v[4:-1])
+                        except Exception as e:
+                            print(f"[KIBOT][VAULT][ERROR] Failed to decrypt {k}: {e}", flush=True)
+                            continue
+                            
                     if k and k not in os.environ:
                         os.environ[k] = v
 
@@ -32,6 +50,18 @@ UTC_OFFSET = int(os.getenv("KIBOT_WIB_UTC_OFFSET_HOURS", "7"))
 KIBOT_UDP_HOST = os.getenv("KIBOT_UDP_HOST", "100.122.1.109")
 KIBOT_UDP_HOST_BACKUP = os.getenv("KIBOT_UDP_HOST_BACKUP", "100.122.1.110") # Singapore/Batam backup
 KIBOT_UDP_PORT = int(os.getenv("KIBOT_UDP_PORT", "9999"))
+
+def verify_egress_health() -> bool:
+    """Hardening check: Verify we can reach the sovereign egress hosts."""
+    import socket
+    for host in [KIBOT_UDP_HOST, KIBOT_UDP_HOST_BACKUP]:
+        if not host: continue
+        try:
+            with socket.create_connection((host, KIBOT_UDP_PORT), timeout=2):
+                return True
+        except:
+            continue
+    return False
 
 # Computed Egress List
 KIBOT_EGRESS_HOSTS = [h for h in [KIBOT_UDP_HOST, KIBOT_UDP_HOST_BACKUP] if h]

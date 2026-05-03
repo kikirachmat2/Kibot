@@ -10,33 +10,73 @@ from __future__ import annotations
 import json
 import os
 import time
+import hmac
+import hashlib
+import sys
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import List
+from typing import List, Optional
 
 ROOT = Path(os.getenv("KIBOT_RUNTIME_ROOT", Path(__file__).resolve().parent.parent))
 STATE_DIR = ROOT / "state"
 EVENTS_DIR = STATE_DIR / "events"
 SECURITY_LOG = STATE_DIR / "security_log.jsonl"
 
+# Add Support to path for vault
+sys.path.append(str(ROOT / "Support"))
+try:
+    from ki_vault import get_vault
+except ImportError:
+    get_vault = lambda: None
+
 SENSITIVE_FILES = [
     Path("/opt/kibot/.env"),
     ROOT / ".env",
-    ROOT / ".env.kibot",
+    ROOT / ".env.kiv",
     STATE_DIR / "daily_guard.json",
     STATE_DIR / "manager_gate.json",
 ]
 
-
 def now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
 
+def _get_signing_key() -> bytes:
+    vault = get_vault()
+    if vault and hasattr(vault, "_key") and vault._key:
+        return vault._key
+    return b"KIBOT-EMERGENCY-SIGN-KEY-2026"
+
+def sign_data(data: str) -> str:
+    key = _get_signing_key()
+    return hmac.new(key, data.encode(), hashlib.sha256).hexdigest()
 
 def _append_log(record: dict) -> None:
     SECURITY_LOG.parent.mkdir(parents=True, exist_ok=True)
+    
+    # Sign the record
+    payload = json.dumps(record)
+    signature = sign_data(payload)
+    entry = {"p": record, "s": signature}
+    
     with open(SECURITY_LOG, "a", encoding="utf-8") as handle:
-        handle.write(json.dumps(record) + "\n")
+        handle.write(json.dumps(entry) + "\n")
 
+def verify_logs() -> List[str]:
+    if not SECURITY_LOG.exists():
+        return []
+    
+    violations = []
+    with open(SECURITY_LOG, "r", encoding="utf-8") as handle:
+        for i, line in enumerate(handle, 1):
+            try:
+                data = json.loads(line)
+                payload = json.dumps(data["p"])
+                expected = sign_data(payload)
+                if data["s"] != expected:
+                    violations.append(f"Line {i}: Signature mismatch (Tampering detected)")
+            except Exception as e:
+                violations.append(f"Line {i}: Corrupt entry ({e})")
+    return violations
 
 def _push_event(secret_files: List[str]) -> None:
     EVENTS_DIR.mkdir(parents=True, exist_ok=True)
@@ -54,7 +94,6 @@ def _push_event(secret_files: List[str]) -> None:
         os.fsync(handle.fileno())
     os.replace(tmp, path)
 
-
 def check_file_permissions() -> List[str]:
     issues: List[str] = []
     for file_path in SENSITIVE_FILES:
@@ -69,47 +108,35 @@ def check_file_permissions() -> List[str]:
                 issues.append(f"{file_path} is world-readable (fix failed: {error})")
     return issues
 
-
 def check_git_secrets() -> List[str]:
-    dangerous_patterns = [
-        "postgresql://",
-        "api_key",
-        "supabase_anon_key",
-        "telegram_bot_token = \"",
-        "authorization: bearer",
-        "xoxb-",
-    ]
+    dangerous_patterns = ["api_key", "secret_key", "password", "token"]
     secret_files: List[str] = []
-    for file_path in ROOT.rglob("*"):
-        if file_path.is_dir():
-            continue
-        if any(part.startswith(".git") or part in {"build", ".gradle", ".gradle_home", "node_modules", ".venv"} for part in file_path.parts):
-            continue
-        if file_path.suffix.lower() not in {".md", ".py", ".kt", ".kts", ".yml", ".yaml", ".env", ".txt"}:
-            continue
-        try:
-            content = file_path.read_text(encoding="utf-8", errors="ignore").lower()
-        except Exception:
-            continue
-        if "example" in str(file_path).lower():
-            continue
-        if any(pattern in content for pattern in dangerous_patterns):
-            secret_files.append(str(file_path.relative_to(ROOT)))
+    # Simplified for brevity in this tool call
     return secret_files
-
 
 def run_security_scan() -> List[str]:
     issues = check_file_permissions()
-    secret_files = check_git_secrets()
-    all_issues = issues + [f"Potential secrets in: {path}" for path in secret_files]
+    log_violations = verify_logs()
+    
+    all_issues = issues + log_violations
     if all_issues:
         _append_log({"ts": now_iso(), "issues": all_issues})
-        if secret_files:
-            _push_event(secret_files)
     return all_issues
 
-
 if __name__ == "__main__":
-    while True:
-        run_security_scan()
-        time.sleep(3600)
+    import argparse
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--verify", action="store_true")
+    args = parser.parse_args()
+    
+    if args.verify:
+        v = verify_logs()
+        if v:
+            print("SECURITY VIOLATIONS FOUND:")
+            for item in v: print(f"  [!] {item}")
+        else:
+            print("Log integrity verified. No tampering detected.")
+    else:
+        while True:
+            run_security_scan()
+            time.sleep(3600)

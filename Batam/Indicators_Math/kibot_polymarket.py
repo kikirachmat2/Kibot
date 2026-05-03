@@ -1420,6 +1420,17 @@ class Handler(BaseHTTPRequestHandler):
         if self.path == "/api/state":
             self._json(HTTPStatus.OK, _state_payload())
             return
+        if self.path == "/api/balance":
+            state = _state_payload()
+            ledger = ENGINE._load_paper_ledger() if ENGINE._paper_trade_mode() else {}
+            res = {
+                "ok": True,
+                "cash_usdc": _safe_float(state.get("balance_allowance", {}).get("collateral")) if not ENGINE._paper_trade_mode() else _safe_float(ledger.get("cash_usd")),
+                "equity_usdc": _safe_float(state.get("portfolio_value")) if not ENGINE._paper_trade_mode() else _safe_float(ledger.get("cash_usd")) + sum(_safe_float(p.get("currentValue")) for p in (ledger.get("positions", {}).values())),
+                "ts": time.time()
+            }
+            self._json(HTTPStatus.OK, res)
+            return
         self._json(HTTPStatus.NOT_FOUND, {"ok": False, "error": "not_found"})
 
     def do_POST(self) -> None:  # noqa: N802

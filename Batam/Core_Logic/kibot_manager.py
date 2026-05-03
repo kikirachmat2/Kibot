@@ -33,11 +33,8 @@ import asyncio
 import requests
 import urllib.request
 from multi_scanner_engine import MultiScannerEngine
-from ki_capital_engine import (
-    CapitalAllocator, PartialTPManager, ProfitLockManager,
-    AdaptiveTrailingStop, HardStopGuard
-)
 import kibot_engine_v2 as engine
+import sovereign_arbitrator
 from dashboard_template import DASHBOARD_HTML
 from ki_brain import BrainManager
 from ki_stats import calculate_z_score, detect_regime, calculate_obi
@@ -125,12 +122,7 @@ LOCAL_SIGNAL_PORT = 9999
 _signal_engine_proc: Optional[threading.Thread] = None
 
 # === v7 Global Engines ===
-_msc_engine    = MultiScannerEngine()
-_capital       = CapitalAllocator(total_capital_idr=0.0)
-_partial_tp    = PartialTPManager()
-_profit_lock   = ProfitLockManager()
-_trailing_stop = AdaptiveTrailingStop()
-_hard_stop     = HardStopGuard()
+_arbitrator    = sovereign_arbitrator.get_arbitrator()
 _brain         = BrainManager()
  
 # --- AI VETO CACHE (Non-Blocking) ---
@@ -166,7 +158,11 @@ def _ai_veto_worker():
             pair, msg_type = item
             try:
                 # [v7.5] Enhanced Veto Context: Regime & OBI
-                prices = _price_history.get(pair, [])
+                regime = _market_regime
+                obi = 0.0
+                depth = engine.fetch_depth(pair)
+                if depth:
+                    bids = [(float(s[0]), float(s[1])) for s in depth.get("buy", [])]
                     asks = [(float(s[0]), float(s[1])) for s in depth.get("sell", [])]
                     obi = calculate_obi(bids, asks)
                 
@@ -243,7 +239,7 @@ def export_full_state():
             },
             "portfolio": {
                 "active_positions": list(position_manager.positions.keys()) if hasattr(position_manager, "positions") else [],
-                "capital_allocation": getattr(_capital, "allocated_idr", 0) if '_capital' in globals() else 0
+                "capital_allocation": 0
             },
             "ai_status": {
                 "healthy": globals().get("_ai_healthy", False),
@@ -291,15 +287,22 @@ def _relay_to_KiBot(msg: dict):
     if any(k in msg_type for k in entries):
         # Kecuali kalau sinyal tersebut mengandung 'REJECTED' atau 'VETO_REJECTED'
         if "REJECTED" not in msg_type:
-            can_enter, reason = _can_enter(pair, msg_type)
+            score = float(msg.get("score") or msg.get("pump_score") or 0.8)
+            if score > 1.0: score /= 100.0 # Normalize 0-1
+            ev = float(msg.get("ev") or 0.15)
+            
+            can_enter, reason, allocated_size = _can_enter(pair, msg_type, score, ev)
             if not can_enter:
                 print(f"[v7][ENTRY_BLOCKED] {pair} ({msg_type}): {reason}", flush=True)
                 return  # STOP — tidak relay ke KiBot
+            
+            # Attach sovereign sizing decision
+            msg["sovereign_size_idr"] = allocated_size
 
             # Catat entry untuk quarantine dan repeat blocker
             if pair:
                 _last_entry[pair] = time.time()
-                print(f"[v7][ENTRY_APPROVED] {pair}: gate passed, relaying to egress", flush=True)
+                print(f"[v7][ENTRY_APPROVED] {pair}: gate passed, size=Rp{allocated_size:,.0f} relaying to egress", flush=True)
 
                 # Mark as seen ONLY after all gates passed
                 _mark_signal_seen(msg)
@@ -337,16 +340,35 @@ def _relay_to_KiBot(msg: dict):
             except Exception:
                 pass
 
-def _can_enter(pair: str, msg_type: str) -> Tuple[bool, str]:
+def _can_enter(pair: str, msg_type: str, score: float = 0.8, ev: float = 0.1) -> Tuple[bool, str, float]:
     """
-    Trinity Gate 0: Centralized discipline gate.
+    Trinity Gate 0: Sovereign Arbitrator gate.
     """
     global _ai_healthy, _entry_loss_count, _last_entry
 
-    # 1. Hard Stop Guard
-    loss_pct = _get_daily_loss_pct()
-    if _hard_stop.hard_stopped:
-        return False, f"HARD_STOP: Daily loss limit reached ({loss_pct:.2f}%)"
+    # 1. Sovereign Allocation Guard
+    # Fetch current market data for Sentinel
+    price = engine.get_price(pair) if hasattr(engine, 'get_price') else 0.0
+    mid_price = engine.get_mid_price(pair) if hasattr(engine, 'get_mid_price') else price
+
+    req = sovereign_arbitrator.AllocationRequest(
+        source="INDODAX",
+        asset=pair,
+        signal_score=score,
+        ev_estimate=ev,
+        metadata={
+            "price": price,
+            "market_mid_price": mid_price,
+            "side": "BUY" if "SIGNAL" in msg_type or "ENTRY" in msg_type else "NEUTRAL"
+        }
+    )
+    ok, size, reason = _arbitrator.request_allocation(req)
+    if not ok:
+        if "DAILY LOSS LIMIT" in reason:
+            print(f"[v7][SOVEREIGN_VETO] {pair}: {reason} — SAFETY GATE TRIGGERED", flush=True)
+        else:
+            print(f"[v7][SOVEREIGN_SKIP] {pair}: {reason}", flush=True)
+        return False, reason, 0.0
 
     # 2. Risk Mode Guard
     mode = _get_effective_mode()
@@ -545,6 +567,11 @@ def _on_position_update_v7(pos: dict):
 def _on_fill_v7(fill: dict):
     """Setelah order fill, update semua tracker."""
     net_profit = fill.get("netProfitIdr", 0.0)
+    
+    # [SOVEREIGN] Handle Polymarket USDC PnL
+    if "netProfitUsdc" in fill:
+        net_profit = fill["netProfitUsdc"] * _arbitrator.usd_idr_rate
+        
     bucket     = fill.get("bucketType", "LOCAL_PUMP")
     pair       = fill.get("pairId", "?").lower()
     entry_idr  = fill.get("entryBudgetIdr", 0.0)
@@ -566,18 +593,16 @@ def _on_fill_v7(fill: dict):
           f"redeploy=Rp{lock_result['redeployable']:.0f}", flush=True)
 
     # 3. Release capital (hanya yang redeployable)
-    _capital.release(bucket, entry_idr + lock_result["redeployable"])
+    # [SOVEREIGN] Capital release handled internally by Arbitrator tracking
+    pass
 
     # 4. Record to Learning Engine (New v7.4)
     if _learning_enabled and _learning_engine:
         _learning_engine.record_trade(pair, net_profit / max(1.0, entry_idr))
         print(f"[v7][LEARN] Trade recorded for {pair}", flush=True)
 
-    # 5. Update hard stop tracker
-    triggered = _hard_stop.update_pnl(net_profit)
-    if triggered:
-        print(f"[v7][HARD_STOP] Daily loss limit reached \u2014 all entries blocked!", flush=True)
-        _telegram_send(f"\ud83d\udea8 HARD STOP TRIGGERED\nLoss PnL: Rp{_hard_stop.daily_pnl:,.0f}\nAll new entries BLOCKED.")
+    # [SOVEREIGN] Arbitrator tracks performance via Balance Sync
+    _arbitrator.report_pnl(net_profit)
 
     # 5. Persist State (Bug #6)
     _save_daily_state()
@@ -769,8 +794,8 @@ def _load_indodax_ticker_snapshot() -> dict:
     return _indodax_ticker_snapshot
 
 def _is_hard_stop_active() -> bool:
-    """Check both manager and daily guard hard stops."""
-    return portfolio_manager.get_pnl_state() == "HARD_STOP" or bool(_daily_guard_state.get("hard_stopped"))
+    """Check both manager and daily guard hard stops via Arbitrator."""
+    return not _arbitrator.is_trading_allowed()
 
 def _maybe_run_30min_math_review():
     """Trigger review setiap 30 menit (math-based)."""
@@ -1668,13 +1693,16 @@ def _process_signal_multipos(msg: dict):
     if not pair_id: return
 
     category = get_pair_category(pair_id)
-    raw_score = float(msg.get("pumpScore", msg.get("pump_score", 0)))
     # === 1.5 SOVEREIGN GATE (Trinity Gate 0) ===
-    can_enter, reason = _can_enter(pair_id, msg_type)
+    score = float(msg.get("pumpScore", msg.get("pump_score", 80))) / 100.0
+    ev = float(msg.get("ev", 0.15))
+    can_enter, reason, allocated_size = _can_enter(pair_id, msg_type, score, ev)
     if not can_enter:
         if "QUARANTINE" not in reason: # Avoid log spam for cooldowns
             print(f"[v7][GATE_REJECT] {pair_id}: {reason}", flush=True)
         return
+    
+    msg["sovereign_size_idr"] = allocated_size
 
     # === 2. VALIDASI KILAT (GLOBAL CONSENSUS - BUCKET A) ===
     if category == "LEAD_LAG":
@@ -4566,7 +4594,8 @@ def _reconcile_daily_guard_day_rollover() -> None:
     _entry_loss_count.clear()
     _last_entry.clear()
     _signal_seen.clear()
-    _hard_stop.daily_reset()
+    # [SOVEREIGN] Legacy Reset
+    pass
     _ai_failure_streak = 0
     _ai_healthy = True
 
@@ -4942,19 +4971,7 @@ def _run_math_review() -> Dict[str, Any]:
     return {"action": action, "reason": reason, "metrics": metrics}
 
 
-def _math_review_loop() -> None:
-    global _last_math_review_at, _math_review_last_action, _math_review_last_reason
-    while not _shutdown_event.is_set():
-        try:
-            now = time.time()
-            if (now - _last_math_review_at) >= 1800.0:
-                _last_math_review_at = now
-                result = _run_math_review()
-                _math_review_last_action = str(result.get("action") or "UNKNOWN")
-                _math_review_last_reason = str(result.get("reason") or "")
-        except Exception as error:
-            print(f"[KIBOT][MATH_REVIEW][ERROR] {error}", flush=True)
-        _shutdown_event.wait(60.0)
+# DELETED Duplicate _math_review_loop
 
 
 def _apply_ai_recommendation(recommendation: Dict[str, Any]) -> None:
@@ -9151,6 +9168,21 @@ def _math_review_loop() -> None:
     print("[KIBOT] Math review loop started.", flush=True)
     while not _shutdown_event.is_set():
         try:
+            # 1. Update Arbitrator Balances
+            indodax_bal = _current_balance_snapshot().get("equity_idr", 0.0)
+            poly_bal_usdc = 0.0
+            try:
+                # Poll Polymarket engine (local port 11600)
+                resp = requests.get(f"http://127.0.0.1:11600/api/balance", timeout=5)
+                if resp.status_code == 200:
+                    poly_data = resp.json()
+                    poly_bal_usdc = poly_data.get("equity_usdc", 0.0)
+            except Exception as e:
+                print(f"[v7][ARBITRATOR] Polymarket balance poll failed: {e}", flush=True)
+            
+            _arbitrator.update_balances(indodax_idr=indodax_bal, polymarket_usdc=poly_bal_usdc)
+
+            # 2. Run Periodic Review
             now = time.time()
             if (now - _last_math_review_at) >= 1800.0:
                 _last_math_review_at = now
@@ -9255,7 +9287,7 @@ def _save_daily_state():
             "initial_capital_idr": _hard_stop.initial_capital,
             "daily_pnl": _hard_stop.daily_pnl,
             "entry_loss_count": _entry_loss_count,
-            "hard_stopped": _hard_stop.hard_stopped
+            "hard_stopped": False
         }
         _write_json_file(path, data)
     except Exception as e:
@@ -9597,7 +9629,7 @@ def _universe_discovery_loop() -> None:
         except Exception as e:
             print(f"[KIBOT][UNIVERSE][ERROR] Discovery error: {e}", flush=True)
         
-        if _shutdown_event.wait(3600): # Check every 1 hour
+        if _shutdown_event.wait(300): # Check every 5 minutes
             break
 
 def _remote_scanner_feed_loop() -> None:
@@ -9718,7 +9750,8 @@ def main() -> None:
     _reconcile_daily_guard_day_rollover()
 
     # Sync state guard to daily state
-    _hard_stop.hard_stopped = bool(_daily_guard_state.get("hard_stopped") or _hard_stop.hard_stopped)
+    # [SOVEREIGN] Hard stop state removed
+    pass
     if _daily_guard_state.get("start_of_day_equity"):
         _hard_stop.initial_capital = float(_daily_guard_state.get("start_of_day_equity"))
     _ensure_hard_stop_consistency()
@@ -9919,7 +9952,7 @@ def _load_daily_state():
         _hard_stop.initial_capital = float(data.get("initial_capital_idr") or 0.0)
         _hard_stop.daily_pnl = float(data.get("daily_pnl") or 0.0)
         _entry_loss_count = data.get("entry_loss_count") or {}
-        _hard_stop.hard_stopped = bool(data.get("hard_stopped"))
+        pass
     except Exception as e:
         print(f"[BOOT][ERROR] Failed to load daily state: {e}", flush=True)
     _daily_reset_state()
