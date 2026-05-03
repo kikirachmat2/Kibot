@@ -43,11 +43,13 @@ class WorldScout:
             "security_threats": self.search_service.ddg_search("crypto protocol exploit hack vulnerability latest", max_results=3),
             "market_catalysts": self.search_service.tavily_search("top crypto market catalysts today bitcoin eth regulation", search_depth="advanced") or self.search_service.jina_search("top crypto market catalysts today"),
             "trending_narratives": self.search_service.gdelt_news("crypto trending AI meme RWA layer2"),
-            "news_pulse": (self.search_service.finnhub_news("crypto") or [])[:5]
+            "news_pulse": (self.search_service.finnhub_news("crypto") or [])[:5],
+            "indodax_intel": self.search_service.get_market_consensus("Indodax latest listing rumors IDR premium"),
+            "polymarket_intel": self.search_service.get_market_consensus("Polymarket trending events crypto prediction odds")
         }
 
         # 2. Synthesize using Cloud AI (Non-Ollama preferred for global context)
-        self._log("Synthesizing intelligence using Cloud AI...")
+        self._log("Synthesizing global intelligence...")
         
         prompt_context = {
             "raw_data": scouting_data,
@@ -59,6 +61,14 @@ class WorldScout:
             prompt_type="INTELLIGENCE_SYNTHESIS",
             context=prompt_context,
             cache_ttl_minutes=4 # Always fresh
+        )
+
+        # 2b. Specialized Possibility Mining (Using Multi-Agent Debate for higher confidence)
+        self._log("Mining for high-performance possibilities (Indodax & Polymarket) using AI Debate...")
+        possibilities = self.coordinator.query_ai_debate(
+            prompt_type="POSSIBILITY_MINING",
+            context=prompt_context,
+            debate_rounds=1
         )
 
         if analysis:
@@ -73,11 +83,12 @@ class WorldScout:
                     "last_updated": time.time(),
                     "last_updated_str": time.ctime(),
                     "intelligence": analysis,
+                    "possibility_matrix": possibilities.get("possibilities", []) if possibilities else [],
                     "raw_summary_length": len(str(scouting_data))
                 })
                 
                 WORLD_MODEL_FILE.write_text(json.dumps(world_model, indent=2), encoding="utf-8")
-                self._log("World Model updated successfully.")
+                self._log("World Model updated successfully with Possibility Matrix.")
             except Exception as e:
                 self._log(f"Failed to save World Model: {e}")
         else:

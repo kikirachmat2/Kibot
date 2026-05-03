@@ -164,6 +164,73 @@ class AISearchService:
             
         return self._cached(f"jina:{hashlib.md5(query.encode()).hexdigest()}", 3600, loader)
 
+    def brave_search(self, query: str) -> Dict:
+        api_key = os.getenv("BRAVE_API_KEY")
+        if not api_key: return {}
+        
+        def loader():
+            req = urllib.request.Request(
+                "https://api.search.brave.com/res/v1/web/search",
+                headers={
+                    "X-Subscription-Token": api_key,
+                    "Accept": "application/json"
+                }
+            )
+            # Add query param
+            url = f"https://api.search.brave.com/res/v1/web/search?q={urllib.parse.quote(query)}"
+            req.full_url = url
+            try:
+                with urllib.request.urlopen(req, timeout=self.timeout) as resp:
+                    return json.loads(resp.read().decode("utf-8"))
+            except Exception as e:
+                print(f"[BRAVE] Error: {e}")
+                return {}
+            
+        return self._cached(f"brave:{hashlib.md5(query.encode()).hexdigest()}", 3600, loader)
+
+    def cryptopanic_news(self, filter: str = "hot") -> List[Dict]:
+        api_key = os.getenv("CRYPTOPANIC_API_KEY")
+        if not api_key: return []
+        
+        def loader():
+            url = "https://cryptopanic.com/api/v1/posts/"
+            params = {
+                "auth_token": api_key,
+                "public": "true",
+                "filter": filter,
+                "kind": "news"
+            }
+            try:
+                res = self._get_json(url, params=params)
+                return res.get("results", [])
+            except: return []
+            
+        return self._cached(f"cryptopanic:{filter}", 600, loader)
+
+    def get_market_consensus(self, topic: str) -> str:
+        """Combines multiple search signals into a single consensus string."""
+        jina = self.jina_search(topic)
+        brave = self.brave_search(topic)
+        panic = self.cryptopanic_news() if "crypto" in topic.lower() else []
+        
+        # Format Brave results
+        brave_snippet = ""
+        if brave.get("web", {}).get("results"):
+            for res in brave["web"]["results"][:3]:
+                brave_snippet += f"- {res.get('title')}: {res.get('description')}\n"
+        
+        # Format CryptoPanic results
+        panic_snippet = ""
+        for p in panic[:5]:
+            panic_snippet += f"- [{p.get('votes', {}).get('positive', 0)}+] {p.get('title')}\n"
+            
+        return (
+            f"### Market Consensus for: {topic}\n\n"
+            f"**Brave Web Results:**\n{brave_snippet}\n"
+            f"**CryptoPanic Hot News:**\n{panic_snippet}\n"
+            f"**Deep Jina Context:**\n{jina[:2000]}\n"
+        )
+
     def finnhub_news(self, category: str = "crypto") -> List[Dict]:
         api_key = os.getenv("FINNHUB_API_KEY")
         if not api_key: return []

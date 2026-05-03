@@ -252,6 +252,41 @@ PROVIDERS = {
         "base_url": "https://llama3.lepton.run/api/v1/chat/completions",
         "priority": 20,
     },
+    "together_turbo": {
+        "daily_limit": 3000,
+        "model": "meta-llama/Llama-3-70b-chat-hf",
+        "api_key_envs": ["TOGETHER_API_KEY"],
+        "base_url": "https://api.together.xyz/v1/chat/completions",
+        "priority": 21,
+    },
+    "mistral_large": {
+        "daily_limit": 500,
+        "model": "mistral-large-latest",
+        "api_key_envs": ["MISTRAL_API_KEY"],
+        "base_url": "https://api.mistral.ai/v1/chat/completions",
+        "priority": 22,
+    },
+    "cloudflare_ai": {
+        "daily_limit": 1000,
+        "model": "@cf/meta/llama-3-8b-instruct",
+        "api_key_envs": ["CLOUDFLARE_API_KEY", "CF_AI_TOKEN"],
+        "base_url": "https://api.cloudflare.com/client/v4/accounts/{account_id}/ai/run/@cf/meta/llama-3-8b-instruct",
+        "priority": 23,
+    },
+    "perplexity_pro": {
+        "daily_limit": 1000,
+        "model": "llama-3.1-sonar-large-128k-online",
+        "api_key_envs": ["PERPLEXITY_API_KEY"],
+        "base_url": "https://api.perplexity.ai/chat/completions",
+        "priority": 24,
+    },
+    "github_experimental": {
+        "daily_limit": 100,
+        "model": "gpt-4o",
+        "api_key_envs": ["GITHUB_TOKEN"],
+        "base_url": "https://models.inference.ai.azure.com/chat/completions",
+        "priority": 25,
+    }
 }
 
 PROMPT_PROVIDER_ORDER = {
@@ -268,8 +303,9 @@ PROMPT_PROVIDER_ORDER = {
     "SOVEREIGN_DAILY_REVIEW": ["ollama", "groq", "gemini", "deepseek", "sambanova", "cerebras", "together", "fireworks", "mistral", "nvidia", "openrouter", "deepinfra", "octoai", "novita", "perplexity", "cohere", "jina", "huggingface", "friendliai", "lepton"],
     "OPS_CHAT": ["ollama", "groq", "gemini", "deepseek", "sambanova", "cerebras", "together", "fireworks", "mistral", "nvidia", "openrouter", "deepinfra", "octoai", "novita", "perplexity", "cohere", "jina", "huggingface", "friendliai", "lepton"],
     "OPS_CHAT_LOCAL": ["ollama", "groq", "gemini", "deepseek", "sambanova", "cerebras", "together", "fireworks", "mistral", "nvidia", "openrouter", "deepinfra", "octoai", "novita", "perplexity", "cohere", "jina", "huggingface", "friendliai", "lepton"],
-    "INTELLIGENCE_SYNTHESIS": ["groq", "gemini", "deepseek", "sambanova", "cerebras", "together", "fireworks", "mistral", "nvidia", "openrouter", "deepinfra", "octoai", "novita", "perplexity", "cohere", "jina", "huggingface", "friendliai", "lepton", "ollama"],
-    "TARGETED_VALIDATION": ["groq", "gemini", "deepseek", "sambanova", "cerebras", "together", "fireworks", "mistral", "nvidia", "openrouter", "deepinfra", "octoai", "novita", "perplexity", "cohere", "jina", "huggingface", "friendliai", "lepton", "ollama"],
+    "INTELLIGENCE_SYNTHESIS": ["groq", "gemini", "deepseek", "sambanova", "cerebras", "together_turbo", "mistral_large", "cloudflare_ai", "perplexity_pro", "github_experimental", "fireworks", "nvidia", "openrouter", "deepinfra", "octoai", "novita", "perplexity", "cohere", "jina", "huggingface", "friendliai", "lepton", "ollama"],
+    "TARGETED_VALIDATION": ["groq", "gemini", "deepseek", "sambanova", "cerebras", "together_turbo", "mistral_large", "perplexity_pro", "ollama"],
+    "POSSIBILITY_MINING": ["perplexity_pro", "gemini", "groq", "together_turbo", "mistral_large", "ollama"],
 }
 
 PROMPT_TEMPLATES = {
@@ -444,6 +480,24 @@ PROMPT_TEMPLATES = {
         "- If real news is found, explain clearly why it justifies a price move.\n"
         "Return strict compact JSON only with keys "
         "{\"verdict\":\"CONFIRMED|SPECULATIVE|DUBIOUS\",\"catalyst\":\"...\",\"confidence\":0.0,\"is_valid\":true,\"reason\":\"...\"}"
+    ),
+    "BRAIN_CRITIC": (
+        "You are KiBot's Strategic Critic.\n"
+        "Review the following thesis and original context. Your goal is to find holes, risks, and potential hallucinations.\n"
+        "Context: {original_context}\n"
+        "Thesis: {thesis_to_critique}\n"
+        "Instruction: {instruction}\n"
+        "Return strict compact JSON only with keys "
+        "{\"critique\":\"...\",\"hallucination_detected\":true|false,\"hallucination_explanation\":\"...\",\"additional_risks\":[...]}"
+    ),
+    "POSSIBILITY_MINING": (
+        "You are KiBot's Opportunity Scout (Specialized in Indodax & Polymarket).\n"
+        "Analyze the raw market data to find cross-market arbitrage or event-driven trade possibilities.\n"
+        "Context: {raw_data}\n"
+        "Indodax context: Focus on IDR premiums and local Indonesian listing rumors.\n"
+        "Polymarket context: Focus on high-volume prediction shifts that correlate with tokens.\n"
+        "Return strict compact JSON only with keys "
+        "{\"possibilities\":[{\"title\":\"...\",\"description\":\"...\",\"probability\":0.0,\"assets\":[...],\"platforms\":[\"INDODAX\",\"POLYMARKET\",\"BINANCE\"],\"urgency\":\"LOW|MED|HIGH\"}]}"
     ),
 }
 
@@ -949,6 +1003,42 @@ def query_ai(prompt_type: str, context: Dict[str, Any], cache_ttl_minutes: int =
     if force_refresh:
         return None
     return _latest_prompt_cache(prompt_type)
+
+
+def query_ai_debate(prompt_type: str, context: Dict[str, Any], debate_rounds: int = 1) -> Optional[Dict[str, Any]]:
+    """
+    Multi-agent debate logic:
+    1. First provider generates a 'Thesis'.
+    2. Second provider generates a 'Critique' of the thesis.
+    3. Final synthesis (by the first successful provider).
+    """
+    # 1. Thesis
+    thesis = query_ai(prompt_type, context, force_refresh=True)
+    if not thesis:
+        return None
+    
+    if debate_rounds <= 0:
+        return thesis
+
+    # 2. Critique
+    critique_context = {
+        "original_context": context,
+        "thesis_to_critique": thesis,
+        "instruction": "Find any flaws, hallucinations, or missing risks in the thesis above."
+    }
+    critique = query_ai("BRAIN_CRITIC", critique_context, force_refresh=True)
+    
+    if not critique:
+        return thesis # Return original if critique fails
+
+    # 3. Refined Synthesis
+    refined_context = {
+        "original_context": context,
+        "thesis": thesis,
+        "critique": critique,
+        "instruction": "Synthesize the final decision by considering both the thesis and the critique. Ensure maximum accuracy and risk control."
+    }
+    return query_ai(prompt_type, refined_context, force_refresh=True)
 
 
 def get_provider_status() -> Dict[str, Dict[str, Any]]:

@@ -69,3 +69,7 @@ KiBot is built for **Full Zero-Touch Autonomy**. The system is designed to:
   <i>Developed for maximum capital efficiency and systematic wealth generation.</i><br>
   <b>"Trust the Math. Distrust the Noise."</b>
 </p>
+
+KiBot
+The Agentic Framework Trading System 
+Kamu sekarang beroperasi sebagai "AUTONOMOUS TRADING SYSTEM dan SMART FREQUENCY TRADING dengan filosofi SEDIKIT DEMI SEDIKIT LAMA LAMA JADI BUKIT dan juga motto TEKAN KERUGIAN, MAKSIMALKAN PROBABILITAS KEUNTUNGAN".
