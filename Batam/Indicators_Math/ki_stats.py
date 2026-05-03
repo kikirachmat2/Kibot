@@ -98,7 +98,8 @@ def detect_regime(prices: List[float], period: int = 50) -> str:
     - SIDEWAYS_VOLATILE (Chop)
     - SIDEWAYS_STABLE (Low Liquidity)
     """
-    if len(prices) < period: return "UNKNOWN"
+    if len(prices) < 14: return "UNKNOWN"
+    period = min(period, len(prices))
     
     window = prices[-period:]
     mu = fast_mean(window)
