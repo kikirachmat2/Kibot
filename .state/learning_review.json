@@ -1,5 +1,5 @@
 {
-  "at": "2026-05-03T03:36:33.176673+00:00",
+  "at": "2026-05-03T08:36:52.988615+00:00",
   "wib_date": "2026-05-03",
   "summary": "Data 30 menit terakhir belum kuat; pertahankan filter saat ini dan kumpulkan sample yang lebih bersih.",
   "strategy": "kejar target hijau dengan gap 0.30% tanpa longgarkan guardrail",

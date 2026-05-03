@@ -40,7 +40,7 @@ from ki_capital_engine import (
 import kibot_engine_v2 as engine
 from dashboard_template import DASHBOARD_HTML
 from ki_brain import BrainManager
-from ki_stats import calculate_z_score
+from ki_stats import calculate_z_score, detect_regime, calculate_obi
 try:
     from kibot_ai_coordinator import query_ai
 except Exception as _coordinator_error:
@@ -141,7 +141,11 @@ def _get_ai_veto_state(pair: str) -> str:
     with _ai_veto_lock:
         data = _ai_veto_cache.get(pair)
         if data and (time.time() - data['ts']) < 3600: # 1 hour TTL
-            return data['verdict']
+            v = data['verdict']
+            r = data.get('reasoning', '')
+            if v == "REJECTED" and r:
+                return f"REJECTED: {r}"
+            return v
     return ""
 
 def _request_ai_veto(pair: str, msg_type: str):
@@ -160,16 +164,21 @@ def _ai_veto_worker():
         if item:
             pair, msg_type = item
             try:
-                verdict, _ = _call_ai_router(
-                    task="signal_veto",
-                    system_prompt="You are KiBot Veto AI. Analyze the signal and market snapshot. Reply ONLY with 'APPROVED' or 'REJECTED: [reason]'. Be strict.",
-                    user_prompt=f"Pair: {pair}\nSignal Type: {msg_type}\nZ-Score: {calculate_z_score(_price_history.get(pair, [])):.2f}\nRecent Price: {_get_last_price(pair)}",
-                    model_hint="qwen3:0.6b",
-                    timeout_sec=8.0
-                )
+                # [v7.5] Enhanced Veto Context: Regime & OBI
+                prices = _price_history.get(pair, [])
+                    asks = [(float(s[0]), float(s[1])) for s in depth.get("sell", [])]
+                    obi = calculate_obi(bids, asks)
+                
+                # [v7.1] Sovereign Shift: Use brain's dedicated veto logic
+                verdict, reasoning = _brain.veto_signal(pair, msg_type, regime=regime, obi=obi)
+                
                 with _ai_veto_lock:
-                    _ai_veto_cache[pair] = {"verdict": verdict.upper(), "ts": time.time()}
-                    print(f"[v7][AI_VETO_WORKER] {pair}: {verdict}", flush=True)
+                    _ai_veto_cache[pair] = {
+                        "verdict": verdict.upper(), 
+                        "reasoning": reasoning,
+                        "ts": time.time()
+                    }
+                    print(f"[v7][AI_VETO_WORKER] {pair}: {verdict} [Regime:{regime} OBI:{obi:.2f}] ({reasoning[:50]}...)", flush=True)
             except Exception as e:
                 print(f"[v7][AI_VETO_WORKER][ERROR] {pair}: {e}", flush=True)
         
@@ -526,9 +535,11 @@ def _on_position_update_v7(pos: dict):
         return
 
     # 3. Trailing stop check
-    if _trailing_stop.should_stop(pos, price):
+    prices = _price_history.get(pair, [])
+    regime = detect_regime(prices) if prices else "UNKNOWN"
+    if _trailing_stop.should_stop(pos, price, regime=regime):
         _relay_to_KiBot({"type": "FORCE_EXIT", "pair": pair, "reason": "trailing_stop"})
-        print(f"[v7][TRAILING_STOP] {pair}: price={price} hit stop", flush=True)
+        print(f"[v7][TRAILING_STOP] {pair}: price={price} hit stop (regime={regime})", flush=True)
 
 def _on_fill_v7(fill: dict):
     """Setelah order fill, update semua tracker."""
@@ -1657,7 +1668,11 @@ def _process_signal_multipos(msg: dict):
 
     category = get_pair_category(pair_id)
     raw_score = float(msg.get("pumpScore", msg.get("pump_score", 0)))
-    if bool(_daily_guard_state.get("hard_stopped")) or bool(_gate_state.get("daily_hard_stop")):
+    # === 1.5 SOVEREIGN GATE (Trinity Gate 0) ===
+    can_enter, reason = _can_enter(pair_id, msg_type)
+    if not can_enter:
+        if "QUARANTINE" not in reason: # Avoid log spam for cooldowns
+            print(f"[v7][GATE_REJECT] {pair_id}: {reason}", flush=True)
         return
 
     # === 2. VALIDASI KILAT (GLOBAL CONSENSUS - BUCKET A) ===
@@ -9650,11 +9665,21 @@ def _maintenance_loop():
                     del _pair_cooldowns[p]
                     
             # 3. Cleanup Old Prices (Only keep active pairs)
-            # We don't want to delete history too aggressively, but if we have 1000s of pairs...
             if len(_price_history) > 500:
-                # Remove pairs with no update in 24h
-                # (Need timestamp in _price_history for this, maybe later)
                 pass
+
+            # 4. Sovereign Intelligence: Sync Dynamic Config based on performance
+            try:
+                metrics = _get_trade_metrics_today()
+                if metrics.get("total_trades", 0) >= 3: # Need some sample size
+                    dynamic_config.sync_from_performance(metrics)
+                    
+                    # 5. Crisis Healing: If performance is poor, force brain refresh
+                    if metrics.get("win_rate", 1.0) < 0.4 or metrics.get("profit_factor", 1.0) < 0.8:
+                        print("[v7][MAINTENANCE][CRISIS] Performance degraded. Forcing AI Brain refresh...", flush=True)
+                        _brain.refresh()
+            except Exception as de:
+                print(f"[v7][MAINTENANCE][INTEL] Performance sync failed: {de}")
 
         except Exception as e:
             print(f"[v7][MAINTENANCE][ERROR] {e}", flush=True)

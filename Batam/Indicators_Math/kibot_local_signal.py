@@ -5,7 +5,15 @@ import socket
 import requests
 import math
 import os
+import sys
 from datetime import datetime
+from typing import Dict, List
+
+# Add current dir to path for imports
+sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+sys.path.append(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "Support"))
+from ki_stats import calculate_ema, calculate_rsi, calculate_z_score
+import dynamic_config
 
 # CONFIGURATION
 INDODAX_TICKER_API = "https://indodax.com/api/tickers"
@@ -21,9 +29,12 @@ CONVICTION_THRESHOLD = float(os.getenv("KIBOT_LOCAL_SIGNAL_CONVICTION_THRESHOLD"
 SIGNAL_SOURCE = os.getenv("KIBOT_LOCAL_SIGNAL_SOURCE", "kibot_local_signal")
 TICKER_CACHE_TTL_SEC = int(os.getenv("KIBOT_LOCAL_SIGNAL_TICKER_CACHE_TTL_SEC", "300"))
 TICKER_COOLDOWN_SEC = int(os.getenv("KIBOT_LOCAL_SIGNAL_TICKER_COOLDOWN_SEC", "900"))
+MAX_HISTORY_LEN = 100
+
 _ticker_cache = {}
 _ticker_cache_at = 0.0
 _ticker_cooldown_until = 0.0
+_price_history: Dict[str, List[float]] = {}
 
 def get_tickers():
     global _ticker_cache, _ticker_cache_at, _ticker_cooldown_until
@@ -53,37 +64,54 @@ def get_tickers():
         print(f"[{datetime.now()}] Error fetching tickers: {e}")
         return {}
 
-def calculate_conviction(symbol, ticker, history):
+def calculate_conviction(symbol, ticker):
     """
-    Gaussian-based ConvictionScore calculation.
-    Factors: 24h Volatility, 1h Momentum, Volume Spike, and Spread.
+    Enhanced ConvictionScore with Technical Indicators.
     """
     last = float(ticker.get('last', 0))
-    high = float(ticker.get('high', 0))
-    low = float(ticker.get('low', 0))
     vol_idr = float(ticker.get('vol_idr', 0))
     
-    if last == 0 or vol_idr < 50_000_000: # Min 50jt volume for local bucket
+    if last == 0 or vol_idr < 50_000_000: 
         return 0.0
 
-    # 1. Momentum (Distance from 24h Low)
-    range_24h = high - low
-    if range_24h == 0: return 0.0
-    dist_from_low = (last - low) / range_24h
+    # Update history
+    history = _price_history.get(symbol, [])
+    history.append(last)
+    if len(history) > MAX_HISTORY_LEN: history.pop(0)
+    _price_history[symbol] = history
+
+    if len(history) < 20: # Need minimum data for indicators
+        return 0.0
+
+    # 1. Trend Factor (Price vs EMA20)
+    ema20 = calculate_ema(history, 20)
+    trend_score = 1.0 if last > ema20 else 0.0
     
-    # 2. Volume Spike (Relative to history if available)
-    # Simplified for v7.0: purely based on 24h intensity
-    vol_score = min(vol_idr / 500_000_000, 1.0) 
+    # 2. Momentum (RSI)
+    rsi = calculate_rsi(history, 14)
+    # RSI between 40 and 70 is ideal for bullish continuation
+    if 40 <= rsi <= 70:
+        rsi_score = 1.0
+    elif rsi > 70:
+        rsi_score = 0.5 # Overbought, risky
+    else:
+        rsi_score = 0.0 # Oversold or weak
 
-    # 3. Spread Factor
-    buy = float(ticker.get('buy', 0))
-    sell = float(ticker.get('sell', 0))
-    spread = (sell - buy) / last if last > 0 else 1.0
-    spread_score = max(0, 1.0 - (spread / 0.02)) # Penalty if spread > 2%
+    # 3. Volatility (Z-Score)
+    z = calculate_z_score(history, 20)
+    z_limit = dynamic_config.get_param("KIBOT_Z_SCORE_THRESHOLD", 2.2)
+    # We want a positive Z-score but not a massive blowout
+    z_score = 1.0 if 0.5 <= z <= z_limit else 0.2
 
-    # Final Gaussian-like smoothing
-    raw_score = (dist_from_low * 0.4) + (vol_score * 0.4) + (spread_score * 0.2)
-    conviction = 1 / (1 + math.exp(-10 * (raw_score - 0.5))) # Sigmoid centered at 0.5
+    # 4. Volume Intensity
+    vol_score = min(vol_idr / 1_000_000_000, 1.0) 
+
+    # Final Weighted Score
+    # Trend (30%) + RSI (25%) + Z-Score (25%) + Volume (20%)
+    raw_score = (trend_score * 0.3) + (rsi_score * 0.25) + (z_score * 0.25) + (vol_score * 0.2)
+    
+    # Sigmoid smoothing
+    conviction = 1 / (1 + math.exp(-12 * (raw_score - 0.55))) 
     
     return round(conviction, 4)
 
@@ -102,25 +130,41 @@ def send_signal(pair, conviction, price):
     try:
         sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         sock.sendto(json.dumps(payload).encode(), (MANAGER_UDP_IP, MANAGER_UDP_PORT))
-        print(f"[{datetime.now()}] SIGNAL SENT: {pair} -> {MANAGER_UDP_IP}:{MANAGER_UDP_PORT} (Conviction: {conviction})")
     except Exception as e:
         print(f"[{datetime.now()}] UDP Send failed: {e}")
 
 def main():
-    print(f"[{datetime.now()}] KiBot Local Signal Engine v7.0 Started target={MANAGER_UDP_IP}:{MANAGER_UDP_PORT}")
-    history = {}
+    print(f"[{datetime.now()}] KiBot Sovereign Signal Engine Started target={MANAGER_UDP_IP}:{MANAGER_UDP_PORT}")
     
     while True:
         tickers = get_tickers()
-        for symbol, data in tickers.items():
-            if not symbol.endswith('_idr'): continue
+        btc_data = tickers.get('btc_idr')
+        btc_trend_ok = True
+        
+        # Trend Filter: If BTC is dumping, we pause all signals
+        if btc_data:
+            btc_last = float(btc_data.get('last', 0))
+            btc_hist = _price_history.get('btc_idr', [])
+            if len(btc_hist) >= 10:
+                btc_ema = calculate_ema(btc_hist, 10)
+                if btc_last < btc_ema * 0.995: # BTC down more than 0.5% below EMA
+                    btc_trend_ok = False
+
+        if btc_trend_ok:
+            # Dynamic threshold
+            min_conviction = dynamic_config.get_param("KIBOT_LOCAL_SIGNAL_CONVICTION_THRESHOLD", CONVICTION_THRESHOLD)
             
-            conviction = calculate_conviction(symbol, data, history)
-            
-            if conviction >= CONVICTION_THRESHOLD:
-                send_signal(symbol, conviction, float(data.get("last", 0) or 0))
+            for symbol, data in tickers.items():
+                if not symbol.endswith('_idr'): continue
                 
-        # Simple history tracking for next cycle volume delta
+                conviction = calculate_conviction(symbol, data)
+                
+                if conviction >= min_conviction:
+                    send_signal(symbol, conviction, float(data.get("last", 0) or 0))
+                    print(f"[{datetime.now()}] HIGH CONVICTION SIGNAL: {symbol} @ {conviction} (threshold={min_conviction})")
+        else:
+            print(f"[{datetime.now()}] BTC Trend Warning - Signal Generation Paused")
+                
         time.sleep(SCAN_INTERVAL)
 
 if __name__ == "__main__":

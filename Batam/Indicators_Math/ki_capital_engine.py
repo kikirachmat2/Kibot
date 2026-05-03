@@ -177,9 +177,17 @@ class AdaptiveTrailingStop:
     - Harga koin (micro-cap lebih lebar untuk avoid noise)
     """
     def get_trail_pct(self, bucket: str, price_idr: float,
-                      current_profit_pct: float) -> float:
+                      current_profit_pct: float, regime: str = "UNKNOWN") -> float:
         # Base per bucket
         base = 1.5 if bucket == "LEAD_LAG" else 3.0
+
+        # [v7.5] Regime Awareness
+        if regime == "TRENDING_BULL":
+            base *= 1.5  # Let it run (looser trail)
+        elif regime == "SIDEWAYS_VOLATILE":
+            base *= 0.5  # Tight trail in chop
+        elif regime == "TRENDING_BEAR":
+            base *= 0.7  # Protect against reversal
 
         # Price tier override (guardrail yang tidak bisa diubah)
         if price_idr < 50:
@@ -192,12 +200,13 @@ class AdaptiveTrailingStop:
             base = base * 0.7  # Tighten saat sudah profit besar
         return base
 
-    def should_stop(self, position: dict, current_price: float) -> bool:
+    def should_stop(self, position: dict, current_price: float, regime: str = "UNKNOWN") -> bool:
         high_water = position.get("highWaterPrice", position.get("entryPrice", current_price))
         trail_pct  = self.get_trail_pct(
             bucket=position.get("bucketType", "LOCAL_PUMP"),
             price_idr=current_price,
-            current_profit_pct=position.get("currentProfitPct", 0)
+            current_profit_pct=position.get("currentProfitPct", 0),
+            regime=regime
         )
         stop_price = high_water * (1 - trail_pct / 100)
         return current_price <= stop_price

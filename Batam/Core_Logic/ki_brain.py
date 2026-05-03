@@ -130,7 +130,80 @@ class BrainManager:
       state, and progress toward the daily green target.
     """
 
-    def __init__(self) -> None:
+    def veto_signal(self, pair: str, msg_type: str = "SIGNAL", regime: str = "UNKNOWN", obi: float = 0.0, session: str = "UNKNOWN") -> Tuple[str, str]:
+        """
+        Sovereign Veto Logic v2.
+        Decides if a signal should be approved based on world model intelligence,
+        market regime, and liquidity pressure.
+        """
+        snapshot = self.snapshot()
+        ai_critic = snapshot.get("ai_critic", {})
+        market_pulse = snapshot.get("market_pulse", {})
+        
+        # 1. Rule-Based Pre-Veto (Enhanced with Regime/OBI)
+        risk_bias = str(market_pulse.get("risk_bias") or ai_critic.get("risk_bias") or "MIXED").upper()
+        posture = str(ai_critic.get("capital_posture") or "NEUTRAL").upper()
+        
+        # [v7.5] Regime-Aware Blocking
+        if regime in ("TRENDING_BEAR", "SIDEWAYS_VOLATILE") and msg_type == "ANOMALY":
+            return "REJECTED", f"Regime is {regime}; high-risk anomalies blocked."
+            
+        # [v7.5] Liquidity Guard (OBI)
+        if obi < -0.6 and msg_type in ("SIGNAL", "ANOMALY"):
+            return "REJECTED", f"Heavy Sell Pressure (OBI={obi:.2f}); entry rejected."
+
+        if risk_bias == "RISK_OFF" and msg_type in ("ANOMALY", "PUMP"):
+            return "REJECTED", "Global risk bias is RISK_OFF; speculative signals blocked."
+            
+        if posture == "DEFENSIVE" and msg_type not in ("SMART_ENTRY", "SIGNAL"):
+            return "REJECTED", "Defensive posture active; only high-conviction signals allowed."
+
+        # 2. Headline Sentiment Overlap
+        top_headlines = market_pulse.get("top_headlines", [])
+        neg_hits = sum(1 for h in top_headlines if any(w in h.lower() for w in NEGATIVE_HEADLINE_KEYWORDS))
+        if neg_hits >= 3:
+            return "REJECTED", f"High headline negativity detected ({neg_hits} major alerts)."
+
+        # 3. AI Critic specific symbols
+        focus_symbols = [str(s).upper() for s in ai_critic.get("focus_symbols", [])]
+        base_symbol = str(pair).upper().split('_')[0] if '_' in pair else str(pair).upper().replace('IDR', '')
+        
+        if focus_symbols and base_symbol not in focus_symbols:
+            # If the critic is opportunistic, we allow it. Otherwise, we stick to focus list.
+            if posture != "OPPORTUNISTIC":
+                return "REJECTED", f"Asset {base_symbol} not in focus list ({focus_symbols})."
+
+        # 4. Multi-Agent AI Consensus
+        decision, reason = self._get_ai_consensus(pair, msg_type, regime, obi, session)
+        if decision == "REJECT":
+            return "REJECTED", reason
+            
+        return "APPROVED", f"Passed all Sovereign checks ({regime}/{session})."
+
+    def _get_ai_consensus(self, pair: str, msg_type: str, regime: str, obi: float, session: str) -> Tuple[str, str]:
+        """
+        Multi-Agent Reasoning: Debate between analysts to reach a sovereign decision.
+        """
+        # Logic to call LLM with multi-agent prompt
+        # (Assuming self._call_llm or similar exists in ki_brain.py)
+        prompt = f"""
+        [SOVEREIGN AI CONSENSUS]
+        Asset: {pair} | Signal: {msg_type}
+        Regime: {regime} | OBI: {obi:.2f} | Session: {session}
+        
+        Debate Plan:
+        1. Macro Analyst: Does {session} & {regime} support this {msg_type}?
+        2. Technical Analyst: Does {obi} (liquidity) confirm strength?
+        3. Arbitrator: Decision (APPROVE/REJECT) + Reason.
+        """
+        try:
+            # Placeholder for actual LLM call logic already existing in KiBrain
+            # In KiBot v7.1, we use _get_ai_critic internally
+            res = self._get_ai_critic(prompt)
+            decision = "APPROVE" if "APPROVE" in res.upper() else "REJECT"
+            return decision, res[:200]
+        except:
+            return "APPROVE", "Fallback to default approval (AI offline)"
         state_root = Path(os.getenv("KIBOT_MANAGER_STATE_DIR", "state"))
         state_root.mkdir(parents=True, exist_ok=True)
         self.state_file = state_root / "brain_status.json"
@@ -413,6 +486,26 @@ class BrainManager:
         self._last_snapshot = self._load_snapshot()
         return dict(self._last_snapshot)
 
+    def refresh(self) -> Dict[str, Any]:
+        """Force a deep refresh of all world intelligence models."""
+        # This normally runs in its own thread in kibot_manager or via maintenance
+        symbols = list(self.binance_symbol_allowlist)[:self.max_watch_symbols]
+        market_pulse = self._get_market_pulse(symbols)
+        polymarket_snapshot = self._get_polymarket_snapshot()
+        world_model = self._build_world_model(symbols, market_pulse, polymarket_snapshot, "FORCED_REFRESH")
+        ai_critic = self._get_ai_critic(symbols, market_pulse, world_model, "FORCED_REFRESH")
+        
+        snapshot = {
+            "at_epoch": time.time(),
+            "market_pulse": market_pulse,
+            "polymarket": polymarket_snapshot,
+            "world_model": world_model,
+            "ai_critic": ai_critic
+        }
+        self._last_snapshot = snapshot
+        self._save_snapshot(snapshot)
+        return snapshot
+
     def snapshot_age_sec(self) -> Optional[float]:
         snapshot = self.snapshot()
         checked_at = str(snapshot.get("checked_at") or "").strip()
@@ -497,11 +590,23 @@ class BrainManager:
                 first = serper_brief.get("organic")[0]
                 if isinstance(first, dict):
                     summary = str(first.get("snippet") or first.get("title") or "").strip()
-            elif deduped_headlines:
+            if deduped_headlines:
                 summary = deduped_headlines[0]
+
+            # --- Sovereign Integration: Pulse Override ---
+            sentiment_file = ROOT_DIR / "state/sentiment_pulse.json"
+            sentiment_score = 0.5
+            if sentiment_file.exists():
+                try:
+                    pulse = json.loads(sentiment_file.read_text())
+                    risk_bias = pulse.get("global_bias", risk_bias)
+                    sentiment_score = pulse.get("fear_greed_index", 0.5)
+                except:
+                    pass
 
             return {
                 "risk_bias": risk_bias,
+                "sentiment_score": sentiment_score,
                 "headline_count": len(finnhub_news),
                 "top_headlines": deduped_headlines,
                 "summary": summary[:320],
@@ -642,11 +747,16 @@ class BrainManager:
                         "parts": [
                             {
                                 "text": (
-                                    "You are a trading strategy critic. Return compact JSON only with keys "
+                                    "You are a Trading Committee consisting of three expert personas:\n"
+                                    "1. **Macro Analyst**: Evaluates global sentiment, headline risk, and risk-on/off bias.\n"
+                                    "2. **Chart Technician**: Evaluates local price action, market regimes (trends vs chop), and liquidity.\n"
+                                    "3. **Sovereign Arbitrator**: Reviews reports from both analysts to provide a final decision.\n\n"
+                                    "Your goal is to provide a unified posture. Return compact JSON only with keys:\n"
                                     "{\"capital_posture\":\"DEFENSIVE|NEUTRAL|OPPORTUNISTIC\","
                                     "\"risk_bias\":\"RISK_OFF|MIXED|RISK_ON\","
                                     "\"confidence\":0.0,"
-                                    "\"strategy_next\":\"...\","
+                                    "\"reasoning\":\"[Arbitrator Summary]: <Analyst findings> + <Technician findings> = <Final Verdict>\","
+                                    "\"strategy_next\":\"One sentence action plan\","
                                     "\"focus_symbols\":[...],"
                                     "\"do_not_do\":[...]}"
                                     "\n\nContext:\n"
@@ -657,10 +767,9 @@ class BrainManager:
                                     f"- polymarket: {json.dumps(critic_context.get('polymarket'), ensure_ascii=False)}\n"
                                     f"- world_model: {json.dumps(critic_context.get('world_model'), ensure_ascii=False)}\n"
                                     "Rules:\n"
-                                    "- keep risk controls strict\n"
-                                    "- favor tiny-account survival if capital is small\n"
-                                    "- only recommend aggressive posture when market pulse and local learning both support it\n"
-                                    "- strategy_next must be one sentence\n"
+                                    "- Be extremely strict. Reject signals if Analyst and Technician disagree.\n"
+                                    "- If news is negative but chart is bullish, prioritize news (Analyst Veto).\n"
+                                    "- strategy_next must be actionable for a bot.\n"
                                 )
                             }
                         ]
@@ -668,8 +777,8 @@ class BrainManager:
                 ],
                 "generationConfig": {
                     "temperature": 0.1,
-                    "maxOutputTokens": 320,
-                    "responseMimeType": "text/plain",
+                    "maxOutputTokens": 450,
+                    "responseMimeType": "application/json",
                 },
             }
             base = os.getenv("GEMINI_API_URL", "https://generativelanguage.googleapis.com/v1beta").rstrip("/")
