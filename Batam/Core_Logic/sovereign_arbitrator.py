@@ -113,26 +113,62 @@ class SovereignArbitrator:
 
     def refresh_usd_rate(self):
         """
-        Fetches the latest USD/IDR rate from Indodax USDT/IDR ticker.
-        Falls back to last saved or default if API fails.
+        Consensus Sovereign Rate (v8.0)
+        Fetches from multiple sources (Forex API + Indodax) to establish a baseline.
         """
+        rates = []
+        
+        # Source 1: ExchangeRate-API (Free Tier)
+        try:
+            url = "https://api.exchangerate-api.com/v4/latest/USD"
+            resp = requests.get(url, timeout=5)
+            if resp.ok:
+                data = resp.json()
+                rate = data.get("rates", {}).get("IDR")
+                if rate and rate > 10000:
+                    rates.append(rate)
+                    logger.info(f"Forex API USD/IDR: {rate:,.0f}")
+        except Exception as e:
+            logger.warning(f"Forex API failed: {e}")
+
+        # Source 2: Indodax USDT/IDR
         try:
             url = "https://indodax.com/api/ticker/usdt_idr"
-            headers = {'User-Agent': 'Mozilla/5.0'}
-            response = requests.get(url, headers=headers, timeout=10)
-            response.raise_for_status()
-            resp_data = response.json()
-            rate = float(resp_data.get("ticker", {}).get("last", 0))
+            resp = requests.get(url, timeout=5)
+            if resp.ok:
+                rate = float(resp.json().get("ticker", {}).get("last", 0))
+                if rate > 10000:
+                    rates.append(rate)
+                    logger.info(f"Indodax USDT/IDR: {rate:,.0f}")
+        except Exception: pass
+        
+        if rates:
+            new_rate = sum(rates) / len(rates)
             
-            if rate > 10000: # Sanity check
-                self.usd_idr_rate = rate
-                self.last_rate_update = time.time()
-                logger.info(f"Updated USD/IDR rate to: Rp {rate:,.0f} (from Indodax)")
-                self.save_state()
-            else:
-                logger.warning(f"Indodax returned suspicious rate: {rate}. Keeping {self.usd_idr_rate}")
-        except Exception as e:
-            logger.error(f"Failed to auto-update USD rate: {e}. Using {self.usd_idr_rate}")
+            # --- ORACLE CIRCUIT BREAKER ---
+            if self.usd_idr_rate > 0:
+                jump_pct = abs(new_rate - self.usd_idr_rate) / self.usd_idr_rate
+                if jump_pct > 0.02: # 2% Jump in one update is suspicious
+                    logger.warning(f"ORACLE VETO: Suspicious rate jump ({jump_pct:.2%}). "
+                                   f"Old: {self.usd_idr_rate}, New: {new_rate}. Ignoring.")
+                    return
+
+            self.usd_idr_rate = new_rate
+            self.last_rate_update = time.time()
+            logger.info(f"Consensus Sovereign Rate: Rp {self.usd_idr_rate:,.0f}")
+            self.save_state()
+        else:
+            logger.error(f"All rate sources failed. Using fallback: {self.usd_idr_rate}")
+
+    def _apply_humility_factor(self, conviction: float) -> float:
+        """
+        Reduces extreme conviction to prevent 'God-Mode' overbetting.
+        Caps effective conviction at 0.95.
+        """
+        if conviction > 0.98:
+            logger.warning("HUMILITY: God-mode conviction detected. Scaling down to 0.95.")
+            return 0.95
+        return conviction
 
     def report_pnl(self, delta_idr: float):
         """Report trade result to arbitrator for global daily limit tracking"""
@@ -175,25 +211,32 @@ class SovereignArbitrator:
         if total_equity <= 0:
             return 0.0
 
+        # Apply Humility Factor to conviction
+        conviction = self._apply_humility_factor(conviction)
+        
         # Base Kelly Size
-        # edge = ev, odds = usually 1:1 or 1:x. For simplicity, we use conviction as a proxy for probability
-        # F * (p - (1-p)/odds) -> simplified for HFT/Scalp as proportional to conviction
-        # Base Kelly Size
-        # edge = ev, odds = usually 1:1 or 1:x. For simplicity, we use conviction as a proxy for probability
-        # F * (p - (1-p)/odds) -> simplified for HFT/Scalp as proportional to conviction
-        base_size = total_equity * self.risk_multiplier * conviction * (ev / (ev + 0.05))
         
         # Bayesian Adjustment: Consult Learning Engine
         learn = get_learning_engine()
         if learn:
-            health = learn.get_pair_health(kwargs.get("asset", "UNKNOWN"))
-            # Health < 0.5 (Bad): Scale down significantly
-            # Health > 0.8 (Excellent): Scale up slightly
+            asset = kwargs.get("asset", "UNKNOWN")
+            stats = learn.get_stats(asset)
+            health = learn.get_pair_health(asset)
+            
+            # Use the engine's calculated Kelly Fraction as the baseline risk multiplier
+            # but still allow for a global risk_multiplier as a 'Safety Cap'
+            kelly_f = stats.kelly_fraction(kwargs.get("regime", "NORMAL"))
+            base_size = total_equity * min(self.risk_multiplier, kelly_f)
+            
+            # Health-based scaling
             health_mult = 1.0
             if health < 0.4: health_mult = 0.2
             elif health < 0.6: health_mult = 0.7
             elif health > 0.85: health_mult = 1.2
             base_size *= health_mult
+        else:
+            # Fallback to simple conviction-based sizing
+            base_size = total_equity * self.risk_multiplier * conviction * (ev / (ev + 0.05))
             
         # Apply stochastic noise
         noise = random.gauss(1.0, self.stochastic_noise / 2.0)

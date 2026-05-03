@@ -28,3 +28,14 @@ The portfolio optimizer.
 3. `SovereignArbitrator` validates price with `TradeSentinel`.
 4. `SovereignArbitrator` checks `whatif_results.json` for simulation sanity.
 5. Final allocation is calculated and passed back to the manager for execution.
+
+## Intelligence v8.1 - "Red Team Edition" (Hardened)
+
+The Intelligence layer has been audited and hardened against adversarial market conditions and data manipulation.
+
+### Key Security Features (v8.1)
+- **Immutable Learning State**: `learning_state.json` is now signed with HMAC-SHA256 using the hardware-bound Sovereign Vault key. Any tampering with historical performance data will be detected and neutralized.
+- **Oracle Circuit Breaker**: The `SovereignArbitrator` now rejects exchange rate updates with >2% sudden jumps, preventing 'Flash Oracle' exploits.
+- **Humility-Weighted Sizing**: A 'Humility Factor' caps effective conviction at 0.95, preventing over-leveraged 'God-Mode' bets during outliers.
+- **Strict Correlation Vetoes**: The `RotationEngine` now enforces total sector isolation during `PANIC` regimes, even if sector data for a pair is missing.
+- **Exit Price Anomaly Detection**: All trade exits are cross-verified against market mid-prices; deviations >5% are flagged for manual audit.

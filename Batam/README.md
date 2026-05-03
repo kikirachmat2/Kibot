@@ -17,8 +17,8 @@ Integrates Large Language Models and web search tools for market validation.
 
 ### 3. [Intelligence](file:///Users/kiki/Documents/Web%20Develop/KiBot/Batam/Intelligence/) (v8.0 Bayesian Evolution)
 Implements simulation, learning, and regime-aware rotation logic.
-- `kibot_learning_engine.py`: Bayesian memory and Pair Health scoring.
-- `kibot_rotation_engine.py`: (v8.0) Regime-aware sensitivity and sector correlation vetoes.
+- **Intelligence v8.1 (Red Team Edition)**: Bayesian Kelly sizing, Oracle Circuit Breakers, and HMAC-signed learning states.
+- **Sovereign Shield**: HMAC-signed logging, Hardware-bound Vault, and Trade Sentinel price vetoes.
 - `sovereign_arbitrator.py`: The master capital allocator with "What-If" validation.
 
 ### 4. [Indicators_Math](file:///Users/kiki/Documents/Web%20Develop/KiBot/Batam/Indicators_Math/)

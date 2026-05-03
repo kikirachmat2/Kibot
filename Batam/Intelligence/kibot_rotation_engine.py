@@ -61,13 +61,20 @@ class RotationEngine:
         is_distressed = active_pnl < 0
         
         # --- 0. SECTOR CORRELATION VETO ---
+        # Refresh universe periodically
+        if time.time() % 300 < 30: # Check refresh every 5 mins
+            self.universe = get_active_universe()
+
         sectors = self.universe.get("sectors", {})
         old_sector = sectors.get(symbol, "unknown")
         new_sector = sectors.get(new_symbol, "unknown")
         
-        if old_sector == new_sector and old_sector != "unknown":
-            if is_distressed and "PANIC" in regime:
-                return self._result(False, f"CORRELATION_VETO: Both in {old_sector} during {regime} regime", 0)
+        # PARANOID VETO: If in PANIC, we assume correlation if sector is unknown or identical
+        if "PANIC" in regime:
+            if old_sector == new_sector:
+                return self._result(False, f"CORRELATION_VETO: Both in {old_sector} during {regime}", 0)
+            if old_sector == "unknown" or new_sector == "unknown":
+                return self._result(False, f"CORRELATION_VETO: Missing sector data during {regime}. Veto for safety.", 0)
 
         # --- 1. GATES ---
         

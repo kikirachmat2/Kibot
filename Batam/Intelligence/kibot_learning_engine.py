@@ -5,6 +5,8 @@ import redis
 import re
 import uuid
 import threading
+import hashlib
+import hmac
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -22,6 +24,9 @@ REDIS_PORT = int(os.getenv("KIBOT_REDIS_PORT", "6379"))
 ROUND_TRIP_MAKER = float(os.getenv("KIBOT_ROUND_TRIP_MAKER_COST", "0.003"))
 ROUND_TRIP_TAKER = float(os.getenv("KIBOT_ROUND_TRIP_TAKER_COST", "0.005"))
 WIB_UTC_OFFSET_HOURS = int(os.getenv("KIBOT_WIB_UTC_OFFSET_HOURS", "7"))
+
+# Security Secret (Same as kibot_security)
+KIBOT_SECRET = os.getenv("KIBOT_SECRET", "SOVEREIGN_DEFAULT_SECRET").encode()
 
 # INDODAX FEE (Maker 0.04%, PPh 0.21%, Taker 0.55%)
 MAKER_FEE = 0.0004
@@ -41,6 +46,9 @@ class PairStats:
     ema_pnl: float = 0.0
     last_trade_ts: float = 0.0
     cooldown_until_ts: float = 0.0
+    max_drawdown: float = 0.0
+    pnl_variance: float = 0.0
+    consecutive_losses: int = 0
     regime_stats: Dict[str, Dict[str, float]] = field(default_factory=dict)
     lessons: List[str] = field(default_factory=list)
 
@@ -118,13 +126,38 @@ class PairStats:
             self.sum_losses += abs(pnl)
             self.beta += 1
         
+        # Variance calculation (Running variance)
+        prev_ema = self.ema_pnl
         self.ema_pnl = (0.8 * self.ema_pnl) + (0.2 * pnl)
+        self.pnl_variance = (0.8 * self.pnl_variance) + 0.2 * (pnl - prev_ema)**2
+        
+        # Max Drawdown (simplified)
+        if pnl < 0:
+            self.consecutive_losses += 1
+            # Very basic drawdown tracker: if consecutive losses exceed a threshold, we peak-to-trough it
+            if self.consecutive_losses > 1:
+                self.max_drawdown = max(self.max_drawdown, abs(pnl * self.consecutive_losses))
+        else:
+            self.consecutive_losses = 0
+
         self.last_trade_ts = time.time()
         
         if regime not in self.regime_stats:
             self.regime_stats[regime] = {"count": 0, "sum_pnl": 0.0}
         self.regime_stats[regime]["count"] += 1
         self.regime_stats[regime]["sum_pnl"] += pnl
+
+def _get_signing_key() -> bytes:
+    # Use the same root of trust as kibot_security
+    secret = os.getenv("KIBOT_SECRET", "SOVEREIGN_DEFAULT_SECRET").encode()
+    try:
+        from ki_vault import get_vault
+        vault = get_vault()
+        if vault and hasattr(vault, "_key") and vault._key:
+            return vault._key
+    except Exception:
+        pass
+    return secret
 
 class LearningEngine:
     def __init__(self):
@@ -141,10 +174,24 @@ class LearningEngine:
     def _load_from_json(self):
         if STATE_PATH.exists():
             try:
-                raw = json.loads(STATE_PATH.read_text())
+                content = STATE_PATH.read_text()
+                if "|" not in content:
+                    raise ValueError("State file missing HMAC signature")
+                
+                payload, signature = content.rsplit("|", 1)
+                key = _get_signing_key()
+                expected = hmac.new(key, payload.encode(), hashlib.sha256).hexdigest()
+                
+                if not hmac.compare_digest(signature, expected):
+                    print("[SECURITY] LEARNING STATE CORRUPTED: HMAC mismatch. Deleting for safety.")
+                    STATE_PATH.unlink()
+                    return
+
+                raw = json.loads(payload)
                 for pair, data in raw.items():
                     self._cache[pair] = PairStats.from_dict(data)
-            except Exception: pass
+            except Exception as e:
+                print(f"[SECURITY] Learning state load failed: {e}")
 
     def get_stats(self, pair: str) -> PairStats:
         if self.use_redis:
@@ -162,9 +209,13 @@ class LearningEngine:
         self._cache[stats.pair] = stats
         if self.use_redis:
             self.redis.set(f"kibot:learning:{stats.pair}", json.dumps(stats.to_dict()))
-        # Periodic snapshot
+        
+        # Periodic signed snapshot
         if time.time() % 3600 < 60 or not STATE_PATH.exists():
-            STATE_PATH.write_text(json.dumps({k: v.to_dict() for k, v in self._cache.items()}, indent=2))
+            payload = json.dumps({k: v.to_dict() for k, v in self._cache.items()}, indent=2)
+            key = _get_signing_key()
+            signature = hmac.new(key, payload.encode(), hashlib.sha256).hexdigest()
+            STATE_PATH.write_text(f"{payload}|{signature}")
 
     def record_entry(self, pair: str, entry_price: float, budget: float, **kwargs) -> str:
         trade_id = str(uuid.uuid4())[:8]
@@ -181,6 +232,19 @@ class LearningEngine:
         return trade_id
 
     def record_exit(self, trade_id: str, exit_price: float, reason: str, regime: str = "NORMAL", **kwargs):
+        """
+        Records trade exit with PARANOID price validation.
+        """
+        # --- PARANOID PRICE VERIFICATION ---
+        mid_price = kwargs.get("market_mid_price", 0.0)
+        if mid_price > 0:
+            deviation = abs(exit_price - mid_price) / mid_price
+            if deviation > 0.05: # 5% deviation on exit is suspicious for an audit
+                print(f"[SECURITY] EXIT PRICE ANOMALY: Trade {trade_id} exit {exit_price} deviates {deviation:.2%} from mid {mid_price}")
+                # We still record but flag it
+                kwargs["anomaly_flag"] = True
+                kwargs["anomaly_reason"] = "Price Deviation > 5%"
+
         active_key = f"kibot:active:{trade_id}"
         trade = None
         
@@ -289,11 +353,22 @@ class LearningEngine:
         pf = stats.profit_factor
         pf_score = min(1.0, pf / 2.0)
         
-        # 3. Recency Score (EMA PnL)
-        ema_score = 0.5 + (stats.ema_pnl * 10)
+        # 3. Recency Score (EMA PnL + Variance)
+        # We penalize high variance (unpredictability)
+        vol_penalty = min(0.3, stats.pnl_variance * 5)
+        ema_score = 0.5 + (stats.ema_pnl * 10) - vol_penalty
         ema_score = max(0.0, min(1.0, ema_score))
         
-        final_health = (wr_score * 0.4) + (pf_score * 0.4) + (ema_score * 0.2)
+        # 4. Drawdown Penalty
+        dd_penalty = min(0.4, stats.max_drawdown * 2)
+        
+        # 5. Consecutive Loss Panic
+        panic_penalty = 0.0
+        if stats.consecutive_losses >= 3:
+            panic_penalty = 0.3 # Sharp drop in health for losing streaks
+            
+        final_health = (wr_score * 0.35) + (pf_score * 0.35) + (ema_score * 0.3)
+        final_health = max(0.0, final_health - dd_penalty - panic_penalty)
         
         # Cool-down penalty
         if time.time() < stats.cooldown_until_ts:
