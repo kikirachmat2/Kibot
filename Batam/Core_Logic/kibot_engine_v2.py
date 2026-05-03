@@ -28,7 +28,7 @@ import urllib.request
 import urllib.error
 import logging
 
-from coin_universe_overlay import apply_overlay_to_runtime
+from coin_universe_overlay import get_active_universe
 
 logger = logging.getLogger("kibot_v2")
 
@@ -171,7 +171,30 @@ INDODAX_ONLY_PAIRS = [
     "mrs_idr","islm_idr","vanry_idr",
 ]
 
-_coin_universe_overlay_state = apply_overlay_to_runtime(LEAD_LAG_PAIRS, INDODAX_ONLY_PAIRS)
+def refresh_universe():
+    """Dynamically updates pair lists and specs from overlay state."""
+    global LEAD_LAG_PAIRS, INDODAX_ONLY_PAIRS, INDODAX_PAIR_SPECS
+    universe = get_active_universe()
+    
+    # 1. Update Lead-Lag
+    for p, b in universe["lead_lag"].items():
+        LEAD_LAG_PAIRS[p] = b
+        
+    # 2. Update Indodax-Only
+    for p in universe["indodax_only"]:
+        if p not in INDODAX_ONLY_PAIRS:
+            INDODAX_ONLY_PAIRS.append(p)
+            
+    # 3. Update Metadata (Precision)
+    for p, meta in universe["metadata"].items():
+        if p not in INDODAX_PAIR_SPECS:
+            INDODAX_PAIR_SPECS[p] = {"min_idr": 10000}
+        INDODAX_PAIR_SPECS[p].update(meta)
+        
+    return universe
+
+# Initial load
+refresh_universe()
 
 # ============================================================
 # CASCADE LOSS INTELLIGENCE

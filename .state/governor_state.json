@@ -1,12 +1,12 @@
 {
-  "last_refresh_at": "2026-05-03T08:53:47.394483Z",
+  "last_refresh_at": "2026-05-03T08:58:49.255857Z",
   "last_reason": "medium_cycle",
   "last_profile": "MEDIUM",
   "last_provider": "heuristic",
-  "last_plan_id": "fallback-1777798427",
+  "last_plan_id": "fallback-1777798729",
   "last_plan_state": "ACTIVE",
-  "last_fingerprint": "ab544c8f1a07b81994fbc9aa1a0c2c48",
+  "last_fingerprint": "8b643f3e3eb933eaa2af101bd58544c2",
   "last_event_fingerprint": "5eb98304f699fe3e61425d5420b4cefb",
-  "refresh_count": 352,
+  "refresh_count": 354,
   "last_error": ""
 }

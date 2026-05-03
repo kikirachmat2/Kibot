@@ -58,6 +58,7 @@ except Exception as _whatif_error:
     print(f"[KIBOT][WHATIF][WARN] simulation engine unavailable: {_whatif_error}", flush=True)
 
 import kibot_engine_v2
+from coin_universe_overlay import auto_discover_new_coins
 from kibot_engine_v2 import (
     trade_logger, cascade_state, position_manager,
     screen_bucket_b, dual_scanner_agree, fetch_kicom,
@@ -9582,6 +9583,23 @@ def _rotation_governor_loop() -> None:
         
         if _shutdown_event.wait(300): # Check every 5 minutes
             break
+def _universe_discovery_loop() -> None:
+    """Periodically discovers new high-liquidity coins."""
+    print("[KIBOT][UNIVERSE] discovery loop started", flush=True)
+    while not _shutdown_event.is_set():
+        try:
+            new_coins = auto_discover_new_coins(min_vol_idr=500_000_000)
+            if new_coins:
+                print(f"[KIBOT][UNIVERSE] NEW COINS DISCOVERED: {new_coins}", flush=True)
+                telegram_send(f"🚀 **Sovereign Discovery**: New coins onboarded to Universe: {', '.join(new_coins)}")
+                # Refresh engine universe immediately
+                engine.refresh_universe()
+        except Exception as e:
+            print(f"[KIBOT][UNIVERSE][ERROR] Discovery error: {e}", flush=True)
+        
+        if _shutdown_event.wait(3600): # Check every 1 hour
+            break
+
 def _remote_scanner_feed_loop() -> None:
     if not REMOTE_SCANNER_FEED_ENABLED:
         print("[KIBOT][REMOTE_SCANNER_FEED] disabled", flush=True)
@@ -9755,7 +9773,9 @@ def main() -> None:
 
     # v6.0 Background Threads
     discovery_thread = threading.Thread(target=run_discovery_loop, name="kibot-discovery", daemon=True)
+    universe_thread = threading.Thread(target=_universe_discovery_loop, name="kibot-universe-discovery", daemon=True)
     discovery_thread.start()
+    universe_thread.start()
     portfolio_thread = threading.Thread(target=run_portfolio_monitor_loop, name="kibot-portfolio", daemon=True)
     portfolio_thread.start()
 

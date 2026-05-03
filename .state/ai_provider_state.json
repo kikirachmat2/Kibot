@@ -1,11 +1,11 @@
 {
   "openrouter": {
     "task": "correlation_matrix",
-    "last_failure_epoch": 1777797030.5477278,
-    "cooldown_until_epoch": 1777797630.5477278,
+    "last_failure_epoch": 1777798832.967999,
+    "cooldown_until_epoch": 1777799432.967999,
     "reason": "generic_failure",
     "last_error": "openrouter status=401 body={\"error\":{\"message\":\"User not found.\",\"code\":401}}",
-    "failure_count": 138
+    "failure_count": 139
   },
   "gemini": {
     "task": "learning_review",

@@ -1,5 +1,5 @@
 {
-  "updated_at": "2026-05-03T08:55:21.235152+00:00",
+  "updated_at": "2026-05-03T09:02:20.412050+00:00",
   "service": "kibot_manager",
   "operational_wib_date": "2026-05-03",
   "actual_wib_date": "2026-05-03",
@@ -19,7 +19,7 @@
   "kinance_target": "152.69.218.198:9999",
   "system_state": "SUSPENDED",
   "trading_mode": "CONSERVATIVE",
-  "api_fail_streak": 3351,
+  "api_fail_streak": 3378,
   "control_plane_healthy": false,
   "daily_hard_stop": false,
   "daily_pnl_pct": 0.0,
@@ -35,18 +35,18 @@
   ],
   "ai_provider_last_status": {
     "provider": "",
-    "task": "learning_review",
-    "at_epoch_ms": 1777797414874,
+    "task": "correlation_matrix",
+    "at_epoch_ms": 1777798832972,
     "ok": false
   },
   "provider_runtime_state": {
     "openrouter": {
       "task": "correlation_matrix",
-      "last_failure_epoch": 1777797030.5477278,
-      "cooldown_until_epoch": 1777797630.5477278,
+      "last_failure_epoch": 1777798832.967999,
+      "cooldown_until_epoch": 1777799432.967999,
       "reason": "generic_failure",
       "last_error": "openrouter status=401 body={\"error\":{\"message\":\"User not found.\",\"code\":401}}",
-      "failure_count": 138
+      "failure_count": 139
     },
     "gemini": {
       "task": "learning_review",
@@ -86,9 +86,9 @@
   },
   "strategy_governor": {
     "directives": {
-      "plan_id": "fallback-1777798427",
-      "plan_generated_at": "2026-05-03T08:53:47.394370Z",
-      "expires_at": "2026-05-03T09:08:47.394370Z",
+      "plan_id": "fallback-1777798729",
+      "plan_generated_at": "2026-05-03T08:58:49.255777Z",
+      "expires_at": "2026-05-03T09:13:49.255777Z",
       "plan_ttl_sec": 900,
       "plan_state": "ACTIVE",
       "strategy_mode": "DEFENSIVE",
@@ -99,11 +99,11 @@
       "why": [
         "capital or gate health requires defensive fallback"
       ],
-      "updated_at": "2026-05-03T08:53:47.394483Z",
+      "updated_at": "2026-05-03T08:58:49.255857Z",
       "provider": "heuristic",
       "model": "local-fallback",
       "confidence": 0.42,
-      "effective_confidence": 0.4184,
+      "effective_confidence": 0.4165,
       "confidence_decay_per_hour": 0.06,
       "fallback_if_expired": "SURVIVAL_MODE",
       "what_could_make_this_wrong": [
@@ -173,19 +173,19 @@
         "max_risk_pct": 0.5,
         "focus_markets": []
       },
-      "plan_age_sec": 93.84,
+      "plan_age_sec": 211.16,
       "plan_is_expired": false
     },
     "state": {
-      "last_refresh_at": "2026-05-03T08:53:47.394483Z",
+      "last_refresh_at": "2026-05-03T08:58:49.255857Z",
       "last_reason": "medium_cycle",
       "last_profile": "MEDIUM",
       "last_provider": "heuristic",
-      "last_plan_id": "fallback-1777798427",
+      "last_plan_id": "fallback-1777798729",
       "last_plan_state": "ACTIVE",
-      "last_fingerprint": "ab544c8f1a07b81994fbc9aa1a0c2c48",
+      "last_fingerprint": "8b643f3e3eb933eaa2af101bd58544c2",
       "last_event_fingerprint": "5eb98304f699fe3e61425d5420b4cefb",
-      "refresh_count": 352,
+      "refresh_count": 354,
       "last_error": ""
     },
     "loop_targets": {
@@ -761,105 +761,105 @@
   },
   "recent_events": [
     {
-      "at": "2026-05-03T08:55:07.058464+00:00",
+      "at": "2026-05-03T09:02:05.346067+00:00",
       "kind": "trinity_heartbeat_emit",
       "detail": {
         "sender": "kibot"
       }
     },
     {
-      "at": "2026-05-03T08:55:08.064200+00:00",
+      "at": "2026-05-03T09:02:06.351481+00:00",
       "kind": "trinity_heartbeat_emit",
       "detail": {
         "sender": "kibot"
       }
     },
     {
-      "at": "2026-05-03T08:55:09.068448+00:00",
+      "at": "2026-05-03T09:02:07.356336+00:00",
       "kind": "trinity_heartbeat_emit",
       "detail": {
         "sender": "kibot"
       }
     },
     {
-      "at": "2026-05-03T08:55:10.073185+00:00",
+      "at": "2026-05-03T09:02:08.361776+00:00",
       "kind": "trinity_heartbeat_emit",
       "detail": {
         "sender": "kibot"
       }
     },
     {
-      "at": "2026-05-03T08:55:11.078138+00:00",
+      "at": "2026-05-03T09:02:09.363537+00:00",
       "kind": "trinity_heartbeat_emit",
       "detail": {
         "sender": "kibot"
       }
     },
     {
-      "at": "2026-05-03T08:55:12.083248+00:00",
+      "at": "2026-05-03T09:02:10.367305+00:00",
       "kind": "trinity_heartbeat_emit",
       "detail": {
         "sender": "kibot"
       }
     },
     {
-      "at": "2026-05-03T08:55:13.085900+00:00",
+      "at": "2026-05-03T09:02:11.373155+00:00",
       "kind": "trinity_heartbeat_emit",
       "detail": {
         "sender": "kibot"
       }
     },
     {
-      "at": "2026-05-03T08:55:14.091580+00:00",
+      "at": "2026-05-03T09:02:12.377347+00:00",
       "kind": "trinity_heartbeat_emit",
       "detail": {
         "sender": "kibot"
       }
     },
     {
-      "at": "2026-05-03T08:55:15.098191+00:00",
+      "at": "2026-05-03T09:02:13.382698+00:00",
       "kind": "trinity_heartbeat_emit",
       "detail": {
         "sender": "kibot"
       }
     },
     {
-      "at": "2026-05-03T08:55:16.099049+00:00",
+      "at": "2026-05-03T09:02:14.387881+00:00",
       "kind": "trinity_heartbeat_emit",
       "detail": {
         "sender": "kibot"
       }
     },
     {
-      "at": "2026-05-03T08:55:17.099726+00:00",
+      "at": "2026-05-03T09:02:15.390273+00:00",
       "kind": "trinity_heartbeat_emit",
       "detail": {
         "sender": "kibot"
       }
     },
     {
-      "at": "2026-05-03T08:55:18.101312+00:00",
+      "at": "2026-05-03T09:02:16.395543+00:00",
       "kind": "trinity_heartbeat_emit",
       "detail": {
         "sender": "kibot"
       }
     },
     {
-      "at": "2026-05-03T08:55:19.107027+00:00",
+      "at": "2026-05-03T09:02:17.402499+00:00",
       "kind": "trinity_heartbeat_emit",
       "detail": {
         "sender": "kibot"
       }
     },
     {
-      "at": "2026-05-03T08:55:20.110508+00:00",
+      "at": "2026-05-03T09:02:18.405634+00:00",
       "kind": "trinity_heartbeat_emit",
       "detail": {
         "sender": "kibot"
       }
     },
     {
-      "at": "2026-05-03T08:55:21.114196+00:00",
+      "at": "2026-05-03T09:02:19.410102+00:00",
       "kind": "trinity_heartbeat_emit",
       "detail": {
         "sender": "kibot"

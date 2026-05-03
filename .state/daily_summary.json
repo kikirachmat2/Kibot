@@ -2,7 +2,7 @@
   "date": "2026-05-03",
   "ai_success": {},
   "ai_failure": {
-    "openrouter": 25,
+    "openrouter": 26,
     "gemini": 13
   },
   "veto_metrics": {},
@@ -10,15 +10,6 @@
   "coins_bought_today": [],
   "coins_sold_today": [],
   "recent_notes": [
-    {
-      "at": "2026-05-03T04:00:12.950672+00:00",
-      "kind": "ai_failure",
-      "detail": {
-        "provider": "openrouter",
-        "task": "correlation_matrix",
-        "reason": "generic_failure"
-      }
-    },
     {
       "at": "2026-05-03T04:06:35.675944+00:00",
       "kind": "learning_review",
@@ -283,6 +274,15 @@
         "risks": [
           "Waspadai whipsaw pada pair momentum pendek dan fee bleed dari exit terlalu cepat."
         ]
+      }
+    },
+    {
+      "at": "2026-05-03T09:00:32.969019+00:00",
+      "kind": "ai_failure",
+      "detail": {
+        "provider": "openrouter",
+        "task": "correlation_matrix",
+        "reason": "generic_failure"
       }
     }
   ],
