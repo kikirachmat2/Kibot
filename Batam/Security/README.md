@@ -1,15 +1,35 @@
-# KiBot Sovereign Shield (Security)
-================================
+# KiBot Security (Sovereign Shield)
 
-This directory contains the autonomous security infrastructure of KiBot, designed to protect capital, ensure trade integrity, and safeguard credentials.
+Repository-wide security infrastructure for the sovereign trading cluster.
 
-## Components
+## Paranoid Security Posture (v8.2)
 
-### 1. Trade Sentinel (`kibot_sentinel.py`)
-The **Trade Sentinel** is the real-time guardian of the order flow. It acts as a mandatory VETO gate for every trade request.
-- **Velocity Control**: Monitors transaction frequency and cumulative losses per minute.
-- **Anomaly Detection**: Vetoes orders with significant price deviations (>5%) from the market mid-price (fat-finger protection).
-- **Killswitch Logic**: Automatically halts trading if safety thresholds are breached.
+The system operates under a "Paranoid Reconstruction" model, assuming the network environment and persistent storage are potentially compromised.
+
+### 1. Inter-Node HMAC Trust
+All signals transmitted over UDP (breakout detections, lead-lag signals) are cryptographically signed using **HMAC-SHA256**.
+- **Emitter**: `SignalUdpEmitter.kt` signs the JSON payload before transmission.
+- **Receiver**: `kibot_manager.py` verifies the signature using a hardware-bound key (`KIBOT_SIGNAL_KEY`).
+- **Bi-directional ACK**: The receiver sends a verified ACK back to the emitter to confirm receipt of a trusted signal.
+
+### 2. Sovereign Vault (KiVault)
+We have migrated from plaintext `.env` files to encrypted `.env.kiv` containers.
+- **Root of Trust**: Encryption keys are derived from hardware-unique identifiers (MAC + CPU Node).
+- **In-Memory Decryption**: Secrets are decrypted directly into `os.environ` at runtime, ensuring no plaintext API keys are ever written to disk in a readable format.
+- **CLI Usage**: `python3 ki_vault.py setup` to encrypt local `.env` and `python3 ki_vault.py load` to verify.
+
+### 3. Intelligence Sanitization
+To prevent "Adversarial Data Poisoning", the intelligence layer implements strict input validation:
+- **PnL Clipping**: Bayesian updates are capped at `[-20%, +50%]` to prevent extreme outlier data from corrupting the AI's risk models.
+- **Signal TTL**: Signals older than 10-15 seconds are automatically rejected to prevent replay attacks or execution on stale market conditions.
+
+## Hardening Checklist
+- [x] Oracle Circuit Breaker (Veto price jumps > 2%)
+- [x] HMAC State Integrity (Sign `learning_state.json`)
+- [x] Inter-Node HMAC (Sign UDP signals)
+- [x] Hardware-bound KiVault (AES-256)
+- [x] Humility-weighted Sizing (Cap Kelly at 0.95)
+- [ ] Final Secret Purge (Remove legacy .env files)
 
 ### 2. Immutable Logging (`kibot_security.py`)
 Provides a cryptographically verifiable audit trail of all security events.

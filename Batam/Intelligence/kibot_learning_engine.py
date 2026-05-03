@@ -28,6 +28,11 @@ WIB_UTC_OFFSET_HOURS = int(os.getenv("KIBOT_WIB_UTC_OFFSET_HOURS", "7"))
 # Security Secret (Same as kibot_security)
 KIBOT_SECRET = os.getenv("KIBOT_SECRET", "SOVEREIGN_DEFAULT_SECRET").encode()
 
+# --- INTELLIGENCE HARDENING ---
+PNL_UPPER_BOUND = 0.50 # +50% max per trade for learning (prevents outlier manipulation)
+PNL_LOWER_BOUND = -0.20 # -20% max per trade for learning
+STALE_SIGNAL_TTL_SEC = 15 # Signals older than 15s are rejected for entry
+
 # INDODAX FEE (Maker 0.04%, PPh 0.21%, Taker 0.55%)
 MAKER_FEE = 0.0004
 TAKER_FEE = 0.0055
@@ -126,6 +131,13 @@ class PairStats:
             self.sum_losses += abs(pnl)
             self.beta += 1
         
+        # --- PNL CLIPPING (Anti-Poisoning) ---
+        clipped_pnl = max(PNL_LOWER_BOUND, min(PNL_UPPER_BOUND, pnl))
+        if clipped_pnl != pnl:
+            print(f"[INTEL][CLIPPING] PnL {pnl:.2%} clipped to {clipped_pnl:.2%} for pair {self.pair}")
+        
+        pnl = clipped_pnl
+
         # Variance calculation (Running variance)
         prev_ema = self.ema_pnl
         self.ema_pnl = (0.8 * self.ema_pnl) + (0.2 * pnl)
@@ -218,6 +230,14 @@ class LearningEngine:
             STATE_PATH.write_text(f"{payload}|{signature}")
 
     def record_entry(self, pair: str, entry_price: float, budget: float, **kwargs) -> str:
+        # --- REPLAY PROTECTION (TTL Check) ---
+        sent_at = kwargs.get("sentAtEpochMs") or (kwargs.get("timestamp", 0) * 1000)
+        if sent_at > 0:
+            age_sec = (time.time() * 1000 - sent_at) / 1000
+            if age_sec > STALE_SIGNAL_TTL_SEC:
+                print(f"[INTEL][REJECT] Stale signal for {pair}: age={age_sec:.1f}s > {STALE_SIGNAL_TTL_SEC}s")
+                return "REJECTED_STALE"
+
         trade_id = str(uuid.uuid4())[:8]
         trade = {
             "trade_id": trade_id, "pair_id": pair, "entry_price": entry_price,

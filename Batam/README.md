@@ -17,8 +17,14 @@ Integrates Large Language Models and web search tools for market validation.
 
 ### 3. [Intelligence](file:///Users/kiki/Documents/Web%20Develop/KiBot/Batam/Intelligence/) (v8.0 Bayesian Evolution)
 Implements simulation, learning, and regime-aware rotation logic.
-- **Intelligence v8.1 (Red Team Edition)**: Bayesian Kelly sizing, Oracle Circuit Breakers, and HMAC-signed learning states.
-- **Sovereign Shield**: HMAC-signed logging, Hardware-bound Vault, and Trade Sentinel price vetoes.
+
+### Current Version: v8.2 (Paranoid Reconstruction)
+
+**Recent Hardening (v8.2)**:
+- **Inter-Node Trust**: Implemented HMAC-SHA256 signing for all UDP signals between cluster nodes.
+- **Bi-directional ACKs**: Verified bi-directional handshake for mission-critical breakout signals.
+- **Full Vault Integration**: Migrated to `os.environ` injection via KiVault, neutralizing plaintext `.env` risks.
+- **Adversarial Defenses**: Implemented Bayesian PnL clipping and Signal TTL validation to prevent data poisoning.
 - `sovereign_arbitrator.py`: The master capital allocator with "What-If" validation.
 
 ### 4. [Indicators_Math](file:///Users/kiki/Documents/Web%20Develop/KiBot/Batam/Indicators_Math/)

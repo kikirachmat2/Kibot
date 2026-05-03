@@ -9745,6 +9745,12 @@ def main() -> None:
     signal.signal(signal.SIGTERM, _signal_handler)
 
     _ensure_env()
+    try:
+        from Support.ki_vault import load_sovereign_env
+        load_sovereign_env()
+    except Exception as ve:
+        print(f"[BOOT][VAULT][WARN] Could not load vaulted env: {ve}")
+    
     STATE_ROOT.mkdir(parents=True, exist_ok=True)
     _load_daily_state()
     _reconcile_daily_guard_day_rollover()
@@ -9896,7 +9902,42 @@ def main() -> None:
                 # 1. Incoming Signals
                 try:
                     raw, addr = sock.recvfrom(65535)
-                    msg = json.loads(raw.decode("utf-8"))
+                    payload_raw = raw.decode("utf-8")
+                    msg = json.loads(payload_raw)
+                    
+                    # --- HMAC VERIFICATION ---
+                    signature = msg.get("signature")
+                    if not signature:
+                        print(f"[SECURITY][UDP][REJECT] No signature from {addr}", flush=True)
+                        continue
+                    
+                    # Reconstruct payload without signature to verify
+                    msg_copy = msg.copy()
+                    del msg_copy["signature"]
+                    
+                    # Note: We must ensure JSON serialization is identical to Kotlin's
+                    # For simple flat maps, this is usually fine.
+                    canonical_payload = json.dumps(msg_copy, separators=(',', ':'), sort_keys=False)
+                    key = os.getenv("KIBOT_SIGNAL_KEY", "SOVEREIGN_DEFAULT_SIGNAL_SECRET").encode()
+                    expected_sig = hmac.new(key, canonical_payload.encode(), hashlib.sha256).digest()
+                    expected_sig_b64 = base64.b64encode(expected_sig).decode()
+                    
+                    if not hmac.compare_digest(signature, expected_sig_b64):
+                        print(f"[SECURITY][UDP][REJECT] Invalid signature from {addr}", flush=True)
+                        continue
+                    
+                    # --- TTL VERIFICATION ---
+                    sent_at = msg.get("sentAtEpochMs") or msg.get("timestamp", 0) * 1000
+                    if sent_at > 0:
+                        age_ms = (time.time() * 1000) - sent_at
+                        if age_ms > 10000: # 10s TTL
+                            print(f"[SECURITY][UDP][REJECT] Stale signal (age={age_ms/1000:.1f}s) from {addr}", flush=True)
+                            continue
+
+                    # --- SEND ACK ---
+                    trace_id = msg.get("traceId", "unknown")
+                    ack = json.dumps({"ok": True, "traceId": trace_id}).encode()
+                    sock.sendto(ack, addr)
                     
                     # DEDUP CHECK
                     if _is_duplicate_signal(msg):

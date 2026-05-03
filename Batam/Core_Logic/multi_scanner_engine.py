@@ -61,6 +61,15 @@ class MultiScannerEngine:
         exchange = msg.get("exchange", "").upper()
         pair     = msg.get("pair_indodax", "")
         if not exchange or not pair: return
+
+        # --- LATENCY VALIDATION ---
+        sent_at = msg.get("sentAtEpochMs") or (msg.get("timestamp", 0) * 1000)
+        if sent_at > 0:
+            age_sec = (time.time() * 1000 - sent_at) / 1000
+            if age_sec > 10.0: # 10s max age for signal ingestion
+                print(f"[MSC][REJECT] Stale signal from {exchange}: age={age_sec:.1f}s")
+                return
+
         self._cache[pair][exchange] = {**msg, "received_at": time.time()}
         self._log(f"[MSC_RECV] {exchange} → {pair} "
                   f"score={msg.get('detection_score',0):.2f} "

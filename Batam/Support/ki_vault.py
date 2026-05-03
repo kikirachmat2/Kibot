@@ -94,11 +94,43 @@ class SovereignVault:
         out_path.chmod(0o600)
         print(f"[VAULT] Successfully encrypted {env_path.name} -> {out_path.name}")
 
+    def load_sovereign_env(self, path: Optional[Path] = None):
+        """Decrypt a .env.kiv file and inject into os.environ."""
+        target = path or (self.root / ".env.kiv")
+        if not target.exists():
+            print(f"[VAULT][WARN] Vaulted env not found: {target}")
+            return
+
+        print(f"[VAULT] Loading sovereign environment from {target.name}")
+        content = target.read_text(encoding="utf-8")
+        for line in content.splitlines():
+            line = line.strip()
+            if not line or line.startswith("#") or "=" not in line:
+                continue
+            
+            k, v = line.split("=", 1)
+            k = k.strip()
+            v = v.strip().strip("'").strip('"')
+            
+            if v.startswith("ENC(") and v.endswith(")"):
+                enc_val = v[4:-1]
+                try:
+                    dec_val = self.decrypt(enc_val)
+                    os.environ[k] = dec_val
+                except Exception as e:
+                    print(f"[VAULT][ERROR] Failed to decrypt {k}: {e}")
+            else:
+                os.environ[k] = v
+
 # Singleton instance
 _vault = SovereignVault()
 
 def get_vault():
     return _vault
+
+def load_sovereign_env(path: Optional[Path] = None):
+    """Utility to load env from the global vault instance."""
+    _vault.load_sovereign_env(path)
 
 if __name__ == "__main__":
     # CLI for quick encryption
@@ -111,4 +143,17 @@ if __name__ == "__main__":
             print(_vault.decrypt(sys.argv[2]))
         elif cmd == "setup":
             root = Path(__file__).resolve().parent.parent
-            _vault.vaultify_env(root / ".env", root / ".env.kiv")
+            env_file = root / ".env"
+            if not env_file.exists():
+                # Try one level up if in Support/
+                env_file = root.parent / ".env"
+            
+            kiv_file = env_file.with_suffix(".kiv")
+            _vault.vaultify_env(env_file, kiv_file)
+        elif cmd == "load":
+            _vault.load_sovereign_env()
+            # Print a few to verify (masked)
+            for k in ["SUPABASE_URL", "BINANCE_API_KEY", "KIBOT_SECRET"]:
+                val = os.environ.get(k, "NOT_FOUND")
+                masked = val[:6] + "..." if len(val) > 6 else val
+                print(f"{k}={masked}")
