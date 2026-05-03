@@ -26,7 +26,7 @@ sys.path.append(str(_root / "Support/Web"))
 sys.path.append(str(_root / "Support/Audit_Testing"))
 
 from ki_config import *
-from ki_utils import telegram_send, load_json, save_json, get_wib_now
+from ki_utils import telegram_send, load_json, save_json, get_wib_now, bounded_append, safe_float
 import dynamic_config
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import asyncio
@@ -1643,6 +1643,13 @@ def _process_signal_multipos(msg: dict):
         else:
             wb_entry["binance"] = msg.get("price")
         wb_entry["ts"] = time.time()
+        
+        # === UPDATE PRICE HISTORY (FIFO) ===
+        price = safe_float(msg.get("price"))
+        if price > 0:
+            hist = _price_history.setdefault(symbol, [])
+            bounded_append(hist, price, max_size=200)
+            
         return # Update papan tulis saja, jangan lanjut eksekusi
 
     pair_id = msg.get("pairId", msg.get("pair_id", ""))
@@ -2080,7 +2087,32 @@ def _fetch_candles_indodax(pair_id: str, tf: int = 15, count: int = 20) -> list[
         print(f"[CANDLE] {pair_id}: {e}", flush=True)
         return []
 
-def calculate_bollinger_bands(pair_id: str, period: int = 20, std_dev: float = 2.0) -> dict | None:
+def calculate_bollinger_bands(data_in: str | list, period: int = 20, std_dev: float = 2.0, window: int = None) -> Any:
+    """
+    Calculates Bollinger Bands. 
+    Supports:
+    1. data_in as string (pair_id) -> fetches candles (cached/network).
+    2. data_in as list (prices) -> calculates from list.
+    """
+    if window is not None: period = window # Support legacy 'window' arg
+    
+    if isinstance(data_in, list):
+        if len(data_in) < period:
+            return (0.0, 0.0, 0.0) if window else None
+        closes = data_in[-period:]
+        sma = sum(closes) / period
+        variance = sum((c - sma) ** 2 for c in closes) / period
+        std = math.sqrt(variance)
+        if window: # Match line 8153 expectation: return tuple
+             return sma + (std_dev * std), sma, sma - (std_dev * std)
+        return {
+            "upper": sma + (std_dev * std),
+            "middle": sma,
+            "lower": sma - (std_dev * std),
+            "std": std
+        }
+
+    pair_id = data_in
     candles = _fetch_candles_indodax(pair_id, tf=15, count=period + 5)
     if len(candles) < period:
         return None
@@ -9600,6 +9632,35 @@ def _remote_scanner_feed_loop() -> None:
         if _shutdown_event.wait(timeout=max(5, REMOTE_SCANNER_FEED_POLL_SEC)):
             break
 
+def _maintenance_loop():
+    """Periodic cleanup of internal caches to prevent memory growth."""
+    while not _shutdown_event.is_set():
+        try:
+            now = time.time()
+            # 1. Cleanup AI Veto Cache (TTL: 1 hour)
+            with _ai_veto_lock:
+                expired_vetoes = [p for p, d in _ai_veto_cache.items() if now - d.get("ts", 0) > 3600]
+                for p in expired_vetoes:
+                    del _ai_veto_cache[p]
+            
+            # 2. Cleanup Pair Cooldowns
+            with _state_lock:
+                expired_cooldowns = [p for p, d in _pair_cooldowns.items() if now > d.get("until", 0)]
+                for p in expired_cooldowns:
+                    del _pair_cooldowns[p]
+                    
+            # 3. Cleanup Old Prices (Only keep active pairs)
+            # We don't want to delete history too aggressively, but if we have 1000s of pairs...
+            if len(_price_history) > 500:
+                # Remove pairs with no update in 24h
+                # (Need timestamp in _price_history for this, maybe later)
+                pass
+
+        except Exception as e:
+            print(f"[v7][MAINTENANCE][ERROR] {e}", flush=True)
+            
+        time.sleep(600) # Every 10 minutes
+
 def main() -> None:
     global _main_socket, _last_dashboard_export, _last_btc_upd, _last_screen, _last_review
     print("[BOOT] KiBot Manager Starting...", flush=True)
@@ -9647,17 +9708,18 @@ def main() -> None:
     screen_thread.start()
     heartbeat_thread = threading.Thread(target=_heartbeat_loop, name="kibot-heartbeat-loop", daemon=True)
     heartbeat_thread.start()
+    threading.Thread(target=_maintenance_loop, daemon=True).start()
     health_gate_thread = threading.Thread(target=_health_gate_loop, name="kibot-health-gate-loop", daemon=True)
     health_gate_thread.start()
     ai_review_thread = threading.Thread(target=_ai_batch_review_loop, name="kibot-ai-review-loop", daemon=True)
     ai_review_thread.start()
     math_review_thread = threading.Thread(target=_math_review_loop, name="kibot-math-review-loop", daemon=True)
+    math_review_thread.start()
     learning_review_thread = threading.Thread(target=_strategy_learning_loop, name="kibot-learning-review-loop", daemon=True)
     learning_review_thread.start()
     daily_cycle_thread = threading.Thread(target=_daily_cycle_loop, name="kibot-daily-cycle-loop", daemon=True)
     daily_cycle_thread.start()
     sim_thread = threading.Thread(target=_simulation_loop, name="kibot-simulation-loop", daemon=True)
-    math_review_thread.start()
     sim_thread.start()
     state_server_thread = threading.Thread(target=_state_server_loop, name="kibot-state-server", daemon=True)
     state_server_thread.start()
@@ -9672,10 +9734,6 @@ def main() -> None:
     portfolio_thread = threading.Thread(target=run_portfolio_monitor_loop, name="kibot-portfolio", daemon=True)
     portfolio_thread.start()
 
-    threading.Thread(target=_strategy_governor_loop, daemon=True).start()
-    threading.Thread(target=_rotation_governor_loop, daemon=True).start()
-    threading.Thread(target=_remote_scanner_feed_loop, daemon=True).start()
-
     signal_mgr_thread = threading.Thread(target=run_local_signal_engine_manager, name="kibot-signal-mgr", daemon=True)
     signal_mgr_thread.start()
 
@@ -9683,6 +9741,8 @@ def main() -> None:
     brain_thread.start()
     governor_thread = threading.Thread(target=_strategy_governor_loop, name="kibot-strategy-governor", daemon=True)
     governor_thread.start()
+    rotation_thread = threading.Thread(target=_rotation_governor_loop, name="kibot-rotation-governor", daemon=True)
+    rotation_thread.start()
     remote_scanner_feed_thread = threading.Thread(
         target=_remote_scanner_feed_loop,
         name="kibot-remote-scanner-feed",

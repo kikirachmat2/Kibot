@@ -42,3 +42,9 @@ def safe_float(val: Any, default: float = 0.0) -> float:
         return float(val)
     except (ValueError, TypeError):
         return default
+
+def bounded_append(target_list: list, item: Any, max_size: int = 200):
+    """Appends to a list and ensures it does not exceed max_size (FIFO)."""
+    target_list.append(item)
+    if len(target_list) > max_size:
+        del target_list[0]

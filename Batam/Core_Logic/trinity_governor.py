@@ -17,16 +17,27 @@ REPO_PATH = str(BASE_PATH)
 HEAL_HISTORY_FILE = Path(REPO_PATH) / 'state/trinity_heal_history.jsonl'
 
 def report_to_github(action_type, details):
-    """Autonomously report actions to GitHub repository."""
+    """Autonomously report actions to GitHub repository with premium audit trail."""
     try:
         os.chdir(REPO_PATH)
-        # 1. Sync file
-        subprocess.run(["git", "add", "."], check=False)
-        # 2. Commit with AI context
-        commit_msg = f"[TRINITY-AUTO][{action_type}] {details}"
-        subprocess.run(["git", "commit", "-m", commit_msg], check=False)
-        # 3. Push to origin
-        subprocess.run(["git", "push", "origin", "main"], check=False)
+        # 1. Ensure we are up to date
+        subprocess.run(["git", "fetch", "origin"], check=False, capture_output=True)
+        
+        # 2. Add changes
+        subprocess.run(["git", "add", "."], check=False, capture_output=True)
+        
+        # 3. Commit with rich metadata
+        timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        commit_msg = f"🚀 [TRINITY-SOVEREIGN][{action_type}] {details}\n\nTimestamp: {timestamp}\nNode: Batam-Ampere-1"
+        subprocess.run(["git", "commit", "-m", commit_msg], check=False, capture_output=True)
+        
+        # 4. Push (Retry once if failed)
+        res = subprocess.run(["git", "push", "origin", "main"], check=False, capture_output=True)
+        if res.returncode != 0:
+            print("[TRINITY][GITHUB] Push failed, attempting rebase...", flush=True)
+            subprocess.run(["git", "pull", "--rebase", "origin", "main"], check=False, capture_output=True)
+            subprocess.run(["git", "push", "origin", "main"], check=False, capture_output=True)
+            
         print(f"[TRINITY][GITHUB] Action reported: {action_type}", flush=True)
     except Exception as e:
         print(f"[TRINITY][GITHUB][ERROR] {e}", flush=True)
