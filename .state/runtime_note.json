@@ -1,5 +1,5 @@
 {
-  "updated_at": "2026-05-03T09:02:20.412050+00:00",
+  "updated_at": "2026-05-03T10:30:09.624769+00:00",
   "service": "kibot_manager",
   "operational_wib_date": "2026-05-03",
   "actual_wib_date": "2026-05-03",
@@ -19,7 +19,7 @@
   "kinance_target": "152.69.218.198:9999",
   "system_state": "SUSPENDED",
   "trading_mode": "CONSERVATIVE",
-  "api_fail_streak": 3378,
+  "api_fail_streak": 3722,
   "control_plane_healthy": false,
   "daily_hard_stop": false,
   "daily_pnl_pct": 0.0,
@@ -35,26 +35,26 @@
   ],
   "ai_provider_last_status": {
     "provider": "",
-    "task": "correlation_matrix",
-    "at_epoch_ms": 1777798832972,
+    "task": "learning_review",
+    "at_epoch_ms": 1777802819204,
     "ok": false
   },
   "provider_runtime_state": {
     "openrouter": {
       "task": "correlation_matrix",
-      "last_failure_epoch": 1777798832.967999,
-      "cooldown_until_epoch": 1777799432.967999,
+      "last_failure_epoch": 1777802436.953721,
+      "cooldown_until_epoch": 1777803036.953721,
       "reason": "generic_failure",
       "last_error": "openrouter status=401 body={\"error\":{\"message\":\"User not found.\",\"code\":401}}",
-      "failure_count": 139
+      "failure_count": 141
     },
     "gemini": {
       "task": "learning_review",
-      "last_failure_epoch": 1777797414.868222,
-      "cooldown_until_epoch": 1777801014.868222,
+      "last_failure_epoch": 1777801017.288707,
+      "cooldown_until_epoch": 1777804617.288707,
       "reason": "rate_limited",
       "last_error": "gemini status=429 body={\n  \"error\": {\n    \"code\": 429,\n    \"message\": \"You exceeded your current quota, please check your plan and billing details. For more information on this error, head to: https://ai.google.dev/gemini-api/docs/rate-limits. To monitor your cur",
-      "failure_count": 74
+      "failure_count": 75
     }
   },
   "tracked_active_positions": [],
@@ -86,9 +86,9 @@
   },
   "strategy_governor": {
     "directives": {
-      "plan_id": "fallback-1777798729",
-      "plan_generated_at": "2026-05-03T08:58:49.255777Z",
-      "expires_at": "2026-05-03T09:13:49.255777Z",
+      "plan_id": "fallback-1777803937",
+      "plan_generated_at": "2026-05-03T10:25:37.741706Z",
+      "expires_at": "2026-05-03T10:40:37.741706Z",
       "plan_ttl_sec": 900,
       "plan_state": "ACTIVE",
       "strategy_mode": "DEFENSIVE",
@@ -99,11 +99,11 @@
       "why": [
         "capital or gate health requires defensive fallback"
       ],
-      "updated_at": "2026-05-03T08:58:49.255857Z",
+      "updated_at": "2026-05-03T10:25:37.741808Z",
       "provider": "heuristic",
       "model": "local-fallback",
       "confidence": 0.42,
-      "effective_confidence": 0.4165,
+      "effective_confidence": 0.4155,
       "confidence_decay_per_hour": 0.06,
       "fallback_if_expired": "SURVIVAL_MODE",
       "what_could_make_this_wrong": [
@@ -173,19 +173,19 @@
         "max_risk_pct": 0.5,
         "focus_markets": []
       },
-      "plan_age_sec": 211.16,
+      "plan_age_sec": 271.88,
       "plan_is_expired": false
     },
     "state": {
-      "last_refresh_at": "2026-05-03T08:58:49.255857Z",
+      "last_refresh_at": "2026-05-03T10:25:37.741808Z",
       "last_reason": "medium_cycle",
       "last_profile": "MEDIUM",
       "last_provider": "heuristic",
-      "last_plan_id": "fallback-1777798729",
+      "last_plan_id": "fallback-1777803937",
       "last_plan_state": "ACTIVE",
-      "last_fingerprint": "8b643f3e3eb933eaa2af101bd58544c2",
+      "last_fingerprint": "6c69d73ce31c5ac20b5ee2c14b1828e5",
       "last_event_fingerprint": "5eb98304f699fe3e61425d5420b4cefb",
-      "refresh_count": 354,
+      "refresh_count": 388,
       "last_error": ""
     },
     "loop_targets": {
@@ -202,7 +202,7 @@
   "sector_count": 0,
   "sector_preview": {},
   "latest_learning_review": {
-    "at": "2026-05-03T08:36:52.988615+00:00",
+    "at": "2026-05-03T10:06:57.482717+00:00",
     "wib_date": "2026-05-03",
     "summary": "Data 30 menit terakhir belum kuat; pertahankan filter saat ini dan kumpulkan sample yang lebih bersih.",
     "strategy": "kejar target hijau dengan gap 0.30% tanpa longgarkan guardrail",
@@ -263,7 +263,7 @@
     ]
   },
   "brain_assist": {
-    "checked_at": "2026-05-03T08:54:53Z",
+    "checked_at": "2026-05-03T10:25:55Z",
     "mode": "sovereign_support",
     "provider_status": {
       "tavily": {
@@ -287,7 +287,7 @@
       "ddg": {
         "configured": true,
         "last_ok": true,
-        "last_checked_at": "2026-05-03T08:54:52Z",
+        "last_checked_at": "2026-05-03T10:25:54Z",
         "last_error": ""
       },
       "ollama": {
@@ -476,7 +476,7 @@
         "ddg": {
           "configured": true,
           "last_ok": true,
-          "last_checked_at": "2026-05-03T08:54:52Z",
+          "last_checked_at": "2026-05-03T10:25:54Z",
           "last_error": ""
         }
       },
@@ -535,10 +535,10 @@
       "ai_coordinator_enabled": true
     },
     "internet_checks": {
-      "binance": 0,
+      "binance": 200,
       "bybit": 0,
       "kucoin": 0,
-      "mexc": 200,
+      "mexc": 0,
       "indodax": 200
     },
     "daily_target": {
@@ -593,19 +593,19 @@
         "BTCUSDT": {
           "funding_rate": -1.4e-05,
           "funding_rate_pct_8h": -0.0014,
-          "open_interest": 103060.64,
+          "open_interest": 103164.92,
           "leverage_bias": "NEUTRAL"
         },
         "ETHUSDT": {
           "funding_rate": -1.6e-05,
           "funding_rate_pct_8h": -0.0016,
-          "open_interest": 1988685.83,
+          "open_interest": 2020309.55,
           "leverage_bias": "NEUTRAL"
         },
         "SOLUSDT": {
           "funding_rate": -3e-05,
           "funding_rate_pct_8h": -0.003,
-          "open_interest": 9433556.98,
+          "open_interest": 9423135.21,
           "leverage_bias": "NEUTRAL"
         }
       },
@@ -614,15 +614,15 @@
       "overleveraged_short_count": 0
     },
     "stablecoin_flow": {
-      "total_market_cap_usd": 2684813311361.0,
-      "total_volume_24h_usd": 49579518348.0,
-      "market_cap_change_24h_pct": 0.2,
+      "total_market_cap_usd": 2688238399848.0,
+      "total_volume_24h_usd": 50112602984.0,
+      "market_cap_change_24h_pct": 0.33,
       "flow_signal": "STABLE",
-      "active_cryptocurrencies": 17490
+      "active_cryptocurrencies": 17466
     },
     "world_model": {
       "version": 1,
-      "built_at": "2026-05-03T08:54:53Z",
+      "built_at": "2026-05-03T10:25:55Z",
       "market_regime": "MIXED",
       "confidence": 0.644,
       "summary": "",
@@ -658,19 +658,19 @@
           "BTCUSDT": {
             "funding_rate": -1.4e-05,
             "funding_rate_pct_8h": -0.0014,
-            "open_interest": 103060.64,
+            "open_interest": 103164.92,
             "leverage_bias": "NEUTRAL"
           },
           "ETHUSDT": {
             "funding_rate": -1.6e-05,
             "funding_rate_pct_8h": -0.0016,
-            "open_interest": 1988685.83,
+            "open_interest": 2020309.55,
             "leverage_bias": "NEUTRAL"
           },
           "SOLUSDT": {
             "funding_rate": -3e-05,
             "funding_rate_pct_8h": -0.003,
-            "open_interest": 9433556.98,
+            "open_interest": 9423135.21,
             "leverage_bias": "NEUTRAL"
           }
         },
@@ -679,11 +679,11 @@
         "overleveraged_short_count": 0
       },
       "stablecoin_flow": {
-        "total_market_cap_usd": 2684813311361.0,
-        "total_volume_24h_usd": 49579518348.0,
-        "market_cap_change_24h_pct": 0.2,
+        "total_market_cap_usd": 2688238399848.0,
+        "total_volume_24h_usd": 50112602984.0,
+        "market_cap_change_24h_pct": 0.33,
         "flow_signal": "STABLE",
-        "active_cryptocurrencies": 17490
+        "active_cryptocurrencies": 17466
       },
       "source_status": {
         "providers_used": [
@@ -734,22 +734,19 @@
         "approved": false,
         "reason": "symbol_not_listed_on_indodax",
         "listed_on_indodax": false,
-        "quote_volume_usdt": 0.0,
+        "quote_volume_usdt": 411742801.75,
         "risk_bias": "MIXED",
-        "research_provider": "ddg",
-        "research_summary": "Read the latest crypto market news stories for major cryptocurrency coins, tokens and companies. 24h coverage with new content added throughout the day.",
-        "headline_count": 2,
-        "top_headlines": [
-          "Crypto Market News Today - CoinMarketCap",
-          "Bitcoin.com News: Latest Crypto News Across All Key Markets"
-        ]
+        "research_provider": "finnhub",
+        "research_summary": "",
+        "headline_count": 0,
+        "top_headlines": []
       },
       {
         "symbol": "ETH",
         "approved": false,
         "reason": "symbol_not_listed_on_indodax",
         "listed_on_indodax": false,
-        "quote_volume_usdt": 0.0,
+        "quote_volume_usdt": 229319551.78,
         "risk_bias": "MIXED",
         "research_provider": "finnhub",
         "research_summary": "",
@@ -761,105 +758,105 @@
   },
   "recent_events": [
     {
-      "at": "2026-05-03T09:02:05.346067+00:00",
+      "at": "2026-05-03T10:29:55.244566+00:00",
       "kind": "trinity_heartbeat_emit",
       "detail": {
         "sender": "kibot"
       }
     },
     {
-      "at": "2026-05-03T09:02:06.351481+00:00",
+      "at": "2026-05-03T10:29:56.248573+00:00",
       "kind": "trinity_heartbeat_emit",
       "detail": {
         "sender": "kibot"
       }
     },
     {
-      "at": "2026-05-03T09:02:07.356336+00:00",
+      "at": "2026-05-03T10:29:57.253654+00:00",
       "kind": "trinity_heartbeat_emit",
       "detail": {
         "sender": "kibot"
       }
     },
     {
-      "at": "2026-05-03T09:02:08.361776+00:00",
+      "at": "2026-05-03T10:29:58.258998+00:00",
       "kind": "trinity_heartbeat_emit",
       "detail": {
         "sender": "kibot"
       }
     },
     {
-      "at": "2026-05-03T09:02:09.363537+00:00",
+      "at": "2026-05-03T10:29:59.263577+00:00",
       "kind": "trinity_heartbeat_emit",
       "detail": {
         "sender": "kibot"
       }
     },
     {
-      "at": "2026-05-03T09:02:10.367305+00:00",
+      "at": "2026-05-03T10:30:00.269173+00:00",
       "kind": "trinity_heartbeat_emit",
       "detail": {
         "sender": "kibot"
       }
     },
     {
-      "at": "2026-05-03T09:02:11.373155+00:00",
+      "at": "2026-05-03T10:30:01.274672+00:00",
       "kind": "trinity_heartbeat_emit",
       "detail": {
         "sender": "kibot"
       }
     },
     {
-      "at": "2026-05-03T09:02:12.377347+00:00",
+      "at": "2026-05-03T10:30:02.279728+00:00",
       "kind": "trinity_heartbeat_emit",
       "detail": {
         "sender": "kibot"
       }
     },
     {
-      "at": "2026-05-03T09:02:13.382698+00:00",
+      "at": "2026-05-03T10:30:03.286640+00:00",
       "kind": "trinity_heartbeat_emit",
       "detail": {
         "sender": "kibot"
       }
     },
     {
-      "at": "2026-05-03T09:02:14.387881+00:00",
+      "at": "2026-05-03T10:30:04.289885+00:00",
       "kind": "trinity_heartbeat_emit",
       "detail": {
         "sender": "kibot"
       }
     },
     {
-      "at": "2026-05-03T09:02:15.390273+00:00",
+      "at": "2026-05-03T10:30:05.295405+00:00",
       "kind": "trinity_heartbeat_emit",
       "detail": {
         "sender": "kibot"
       }
     },
     {
-      "at": "2026-05-03T09:02:16.395543+00:00",
+      "at": "2026-05-03T10:30:06.299556+00:00",
       "kind": "trinity_heartbeat_emit",
       "detail": {
         "sender": "kibot"
       }
     },
     {
-      "at": "2026-05-03T09:02:17.402499+00:00",
+      "at": "2026-05-03T10:30:07.304992+00:00",
       "kind": "trinity_heartbeat_emit",
       "detail": {
         "sender": "kibot"
       }
     },
     {
-      "at": "2026-05-03T09:02:18.405634+00:00",
+      "at": "2026-05-03T10:30:08.309105+00:00",
       "kind": "trinity_heartbeat_emit",
       "detail": {
         "sender": "kibot"
       }
     },
     {
-      "at": "2026-05-03T09:02:19.410102+00:00",
+      "at": "2026-05-03T10:30:09.312290+00:00",
       "kind": "trinity_heartbeat_emit",
       "detail": {
         "sender": "kibot"

@@ -81,14 +81,31 @@ class PairStats:
         
         wr = self.win_probability
         rr = self.reward_risk_ratio
-        full = wr - ((1 - wr) / rr)
+        
+        # Kelly Formula: f = (p*r - q) / r
+        # We use a conservative half-kelly or less
+        edge = wr * rr - (1 - wr)
+        full_kelly = edge / max(1e-9, rr)
         
         # Regime Multiplier
-        regime_pnl = self.regime_stats.get(regime, {}).get("sum_pnl", 0.0)
-        mult = 0.5 # Half-Kelly
-        if regime_pnl < -0.05: mult *= 0.5
+        regime_data = self.regime_stats.get(regime, {})
+        regime_pnl = regime_data.get("sum_pnl", 0.0)
+        regime_count = regime_data.get("count", 0)
         
-        return max(0.02, min(0.12, full * mult))
+        mult = 0.5 # Default Half-Kelly
+        
+        # If we have data for this regime and it sucks, scale down
+        if regime_count >= 2:
+            avg_regime_pnl = regime_pnl / regime_count
+            if avg_regime_pnl < -0.01: mult *= 0.5
+            if avg_regime_pnl < -0.03: mult *= 0.2
+            
+        # Global Profit Factor adjustment
+        pf = self.profit_factor
+        if pf > 2.0: mult *= 1.2
+        elif pf < 1.0: mult *= 0.5
+
+        return max(0.01, min(0.15, full_kelly * mult))
 
     def record_trade(self, pnl: float, regime: str):
         self.trade_count += 1
@@ -252,8 +269,37 @@ class LearningEngine:
         return {
             "win_rate": stats.win_probability,
             "profit_factor": stats.profit_factor,
-            "total": stats.trade_count
+            "total": stats.trade_count,
+            "health": self.get_pair_health(pair)
         }
+
+    def get_pair_health(self, pair: str) -> float:
+        """
+        Returns a score from 0.0 (Dead/High Risk) to 1.0 (Very Healthy).
+        Based on Win Rate, Profit Factor, and EMA PnL.
+        """
+        stats = self.get_stats(pair)
+        if stats.trade_count < 3:
+            return 0.7  # Default for new pairs
+        
+        # 1. Win Rate Score (0-1)
+        wr_score = stats.win_probability
+        
+        # 2. Profit Factor Score (0-1, normalized)
+        pf = stats.profit_factor
+        pf_score = min(1.0, pf / 2.0)
+        
+        # 3. Recency Score (EMA PnL)
+        ema_score = 0.5 + (stats.ema_pnl * 10)
+        ema_score = max(0.0, min(1.0, ema_score))
+        
+        final_health = (wr_score * 0.4) + (pf_score * 0.4) + (ema_score * 0.2)
+        
+        # Cool-down penalty
+        if time.time() < stats.cooldown_until_ts:
+            final_health *= 0.5
+            
+        return round(final_health, 2)
 
     def save_daily_summary(self):
         # Save current state to JSON

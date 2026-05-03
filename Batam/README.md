@@ -15,10 +15,11 @@ Integrates Large Language Models and web search tools for market validation.
 - `kibot_ai_scout.py`: Autonomous world scout for real-time news validation.
 - `kibot_ai_search.py`: Search utility wrapper (Tavily, Serper, etc.).
 
-### 3. [Intelligence](file:///Users/kiki/Documents/Web%20Develop/KiBot/Batam/Intelligence/)
-Implements simulation and rotation logic to optimize capital efficiency.
-- `kibot_learning_engine.py`: Processes trade outcomes to improve future performance.
-- `kibot_rotation_engine.py`: Manages capital rotation between underperforming and high-potential pairs.
+### 3. [Intelligence](file:///Users/kiki/Documents/Web%20Develop/KiBot/Batam/Intelligence/) (v8.0 Bayesian Evolution)
+Implements simulation, learning, and regime-aware rotation logic.
+- `kibot_learning_engine.py`: Bayesian memory and Pair Health scoring.
+- `kibot_rotation_engine.py`: (v8.0) Regime-aware sensitivity and sector correlation vetoes.
+- `sovereign_arbitrator.py`: The master capital allocator with "What-If" validation.
 
 ### 4. [Indicators_Math](file:///Users/kiki/Documents/Web%20Develop/KiBot/Batam/Indicators_Math/)
 Mathematical foundations for anomaly detection.

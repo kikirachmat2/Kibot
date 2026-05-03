@@ -11,7 +11,16 @@ import time
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
+import sys
 from kibot_sentinel import get_sentinel
+
+# Intelligence Imports
+_root = Path(__file__).resolve().parent.parent
+sys.path.append(str(_root / "Intelligence"))
+try:
+    from kibot_learning_engine import get_engine as get_learning_engine
+except ImportError:
+    get_learning_engine = lambda: None
 
 logger = logging.getLogger("SovereignArbitrator")
 
@@ -139,12 +148,21 @@ class SovereignArbitrator:
             sentinel.register_trade(success=True, loss_pct=loss_pct)
             
             self.save_state()
+            
+            # Record outcome to Learning Engine
+            learn = get_learning_engine()
+            if learn:
+                # We need a trade_id to close. Since arbitrator doesn't track specific order IDs,
+                # we just inform the engine to update pair stats directly if needed,
+                # though usually the manager calls record_exit.
+                pass
+
             logger.info(f"ARBITRATOR: PnL Reported: Rp{delta_idr:,.0f} | Today: Rp{self.daily_pnl_idr:,.0f}")
 
     def get_total_equity_idr(self) -> float:
         return self.balance.indodax_idr + (self.balance.polymarket_usdc * self.usd_idr_rate)
 
-    def calculate_stochastic_kelly(self, ev: float, conviction: float) -> float:
+    def calculate_stochastic_kelly(self, ev: float, conviction: float, **kwargs) -> float:
         """
         Calculates optimal size using Fractional Kelly + Stochastic Noise.
         Formula: Size = Equity * Fractional_Kelly * (EV/Conviction)
@@ -160,8 +178,23 @@ class SovereignArbitrator:
         # Base Kelly Size
         # edge = ev, odds = usually 1:1 or 1:x. For simplicity, we use conviction as a proxy for probability
         # F * (p - (1-p)/odds) -> simplified for HFT/Scalp as proportional to conviction
-        base_size = total_equity * self.risk_multiplier * conviction * (ev / (ev + 1))
+        # Base Kelly Size
+        # edge = ev, odds = usually 1:1 or 1:x. For simplicity, we use conviction as a proxy for probability
+        # F * (p - (1-p)/odds) -> simplified for HFT/Scalp as proportional to conviction
+        base_size = total_equity * self.risk_multiplier * conviction * (ev / (ev + 0.05))
         
+        # Bayesian Adjustment: Consult Learning Engine
+        learn = get_learning_engine()
+        if learn:
+            health = learn.get_pair_health(kwargs.get("asset", "UNKNOWN"))
+            # Health < 0.5 (Bad): Scale down significantly
+            # Health > 0.8 (Excellent): Scale up slightly
+            health_mult = 1.0
+            if health < 0.4: health_mult = 0.2
+            elif health < 0.6: health_mult = 0.7
+            elif health > 0.85: health_mult = 1.2
+            base_size *= health_mult
+            
         # Apply stochastic noise
         noise = random.gauss(1.0, self.stochastic_noise / 2.0)
         final_size = base_size * noise
@@ -223,8 +256,26 @@ class SovereignArbitrator:
             if req.signal_score < threshold:
                 return False, 0.0, f"ARBITRATOR: Conviction {req.signal_score:.2f} < Threshold {threshold:.2f} (Budget: {budget_utilization:.2%})"
 
-            # 3. Calculate Size
-            size_idr = self.calculate_stochastic_kelly(req.ev_estimate, req.signal_score)
+            # 3.5 What-If Engine Cross-Validation
+            whatif_file = self.state_root / "whatif_results.json"
+            if whatif_file.exists():
+                try:
+                    with open(whatif_file, "r") as f:
+                        wf = json.load(f)
+                        res = wf.get("results", {}).get(req.asset)
+                        if res:
+                            verdict = res.get("verdict", "OK")
+                            ev_sim = res.get("expectedValue", 0.0)
+                            if verdict == "SKIP" or ev_sim < -0.005:
+                                return False, 0.0, f"ARBITRATOR: What-If VETO (Verdict: {verdict}, EV: {ev_sim})"
+                            # Override EV if simulation is more conservative
+                            if ev_sim < req.ev_estimate:
+                                req.ev_estimate = ev_sim
+                except Exception as e:
+                    logger.warning(f"Failed to read What-If results: {e}")
+
+            # 4. Calculate Size
+            size_idr = self.calculate_stochastic_kelly(req.ev_estimate, req.signal_score, asset=req.asset)
             
             if size_idr <= 0:
                 return False, 0.0, f"ARBITRATOR: Kelly size below minimum ({self.min_allocation_idr})"

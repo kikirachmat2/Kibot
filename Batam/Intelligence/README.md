@@ -1,31 +1,30 @@
-# [Module] Intelligence (Learning & Optimization)
+# KiBot Intelligence Layer (v8.0)
 
-This module is responsible for the system's "Self-Evolution." It analyzes past trades to optimize future performance and manages capital rotation to maximize yield.
+This directory contains the brain of KiBot, responsible for data-driven capital allocation and position optimization.
 
-## Key Files
+## Components
 
-### 1. `kibot_learning_engine.py` (The Experience)
-- **Role**: Statistical trade analyzer.
-- **Responsibilities**:
-    - Records every trade outcome (Win/Loss/PnL).
-    - Detects underperforming pairs or market regimes (e.g., "Market is choppy, tighten stops").
-    - Provides a "Learn Gate" that can block trades on pairs that have consistently failed recently.
-- **Usage**: Automatically updated by the Manager after every trade fill.
+### 1. Sovereign Arbitrator (`Core_Logic/sovereign_arbitrator.py`)
+The central decision engine that gates all trade entries.
+- **Bayesian Allocation**: Uses historical performance (Win Rate, Profit Factor) to scale trade sizes.
+- **Security Gating**: Directly integrated with `TradeSentinel` for anomaly protection.
+- **Simulation Cross-Check**: Vetoes trades that fail "What-If" historical backtests.
 
-### 2. `kibot_rotation_engine.py` (The Strategist)
-- **Role**: Capital allocator and opportunity seeker.
-- **Responsibilities**:
-    - Monitors which asset categories (Buckets) are performing best.
-    - Moves capital from slow-moving or underperforming pairs to high-velocity opportunities.
-    - Implements "Round Trip" limits to prevent over-trading.
-- **Usage**: Runs as a background logic loop within the Manager.
+### 2. Learning Engine (`kibot_learning_engine.py`)
+The persistent memory of the system.
+- **Pair Health**: Calculates a real-time health score (0.0 to 1.0) for every traded pair.
+- **Kelly Sizing**: Provides optimal fractional Kelly fractions based on pair-specific volatility and performance.
 
-### 3. `kibot_whatif_engine.py` (The Simulator)
-- **Role**: Risk/Reward validator.
-- **Responsibilities**:
-    - Runs "What-If" simulations on potential entries.
-    - Calculates "Expected Value" (EV) based on current volatility and historical z-scores.
-- **Usage**: Used as a gatekeeper in the entry pipeline.
+### 3. Rotation Engine (`kibot_rotation_engine.py`)
+The portfolio optimizer.
+- **v8.0 Upgrades**:
+    - **Regime Awareness**: Adjusts sensitivity based on BULL/BEAR/PANIC market states.
+    - **Sector Correlation**: Prevents rotating capital between assets in the same sector during market distress.
+    - **Distress Recovery**: Prioritizes swapping losing positions for "Elite" (Confidence > 85/92) signals.
 
-## How to use
-You don't usually run these manually. They are "internal services" that make the Brain smarter. To see the "lessons" learned, check the `state/learning_memory.json` (moved to Global_State).
+## Data Flow
+1. `kibot_manager` identifies a signal.
+2. `SovereignArbitrator` requests stats from `LearningEngine`.
+3. `SovereignArbitrator` validates price with `TradeSentinel`.
+4. `SovereignArbitrator` checks `whatif_results.json` for simulation sanity.
+5. Final allocation is calculated and passed back to the manager for execution.
