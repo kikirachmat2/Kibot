@@ -40,8 +40,9 @@ class GlobalBalance:
 
 class SovereignArbitrator:
     """
-    Sovereign Arbitrator (v7.5)
+    Sovereign Arbitrator (v8.2)
     The ultimate decision maker for capital allocation across platforms.
+    Integrated with Bayesian learning for loss-streak protection.
     """
     def __init__(self, state_root: Path):
         self.state_root = state_root
@@ -113,7 +114,7 @@ class SovereignArbitrator:
 
     def refresh_usd_rate(self):
         """
-        Consensus Sovereign Rate (v8.0)
+        Consensus Sovereign Rate (v8.2)
         Fetches from multiple sources (Forex API + Indodax) to establish a baseline.
         """
         rates = []
@@ -188,9 +189,7 @@ class SovereignArbitrator:
             # Record outcome to Learning Engine
             learn = get_learning_engine()
             if learn:
-                # We need a trade_id to close. Since arbitrator doesn't track specific order IDs,
-                # we just inform the engine to update pair stats directly if needed,
-                # though usually the manager calls record_exit.
+                # Usually the manager calls record_exit, but we log here for visibility
                 pass
 
             logger.info(f"ARBITRATOR: PnL Reported: Rp{delta_idr:,.0f} | Today: Rp{self.daily_pnl_idr:,.0f}")
@@ -202,7 +201,6 @@ class SovereignArbitrator:
         """
         Calculates optimal size using Fractional Kelly + Stochastic Noise.
         Formula: Size = Equity * Fractional_Kelly * (EV/Conviction)
-        Then applies Gaussian noise to make it unpredictable.
         """
         if ev <= 0:
             return 0.0
@@ -214,8 +212,6 @@ class SovereignArbitrator:
         # Apply Humility Factor to conviction
         conviction = self._apply_humility_factor(conviction)
         
-        # Base Kelly Size
-        
         # Bayesian Adjustment: Consult Learning Engine
         learn = get_learning_engine()
         if learn:
@@ -224,7 +220,6 @@ class SovereignArbitrator:
             health = learn.get_pair_health(asset)
             
             # Use the engine's calculated Kelly Fraction as the baseline risk multiplier
-            # but still allow for a global risk_multiplier as a 'Safety Cap'
             kelly_f = stats.kelly_fraction(kwargs.get("regime", "NORMAL"))
             base_size = total_equity * min(self.risk_multiplier, kelly_f)
             
@@ -251,7 +246,7 @@ class SovereignArbitrator:
 
     def request_allocation(self, req: AllocationRequest) -> Tuple[bool, float, str]:
         """
-        The master entry gate.
+        The master entry gate (v8.2).
         Returns: (Approved, Size_IDR, Reason)
         """
         with self._lock:
@@ -269,7 +264,7 @@ class SovereignArbitrator:
                 side=req.metadata.get("side", "BUY"),
                 price=price,
                 market_mid_price=mid_price,
-                estimated_loss_pct=0.0 # Will be updated after execution
+                estimated_loss_pct=0.0
             )
             
             if not is_safe:
@@ -288,11 +283,16 @@ class SovereignArbitrator:
             if self.daily_pnl_idr < -loss_threshold:
                 return False, 0.0, f"ARBITRATOR: DAILY LOSS LIMIT REACHED (Rp{self.daily_pnl_idr:,.0f} < -Rp{loss_threshold:,.0f})"
 
+            # 2.5 BAYESIAN ENTRY GATE (v8.2 Upgrade)
+            learn = get_learning_engine()
+            if learn:
+                should_entry, learn_reason = learn.should_entry(req.asset)
+                if not should_entry:
+                    return False, 0.0, f"BAYESIAN VETO: {learn_reason}"
+
             # 3. Opportunity Cost Check
-            # If we are low on funds, compare this request with potential alternatives
             available_funds = self.balance.indodax_idr if req.source == "INDODAX" else self.balance.polymarket_usdc * self.usd_idr_rate
             
-            # If req.signal_score is too low for the current budget regime
             budget_utilization = (self.get_total_equity_idr() - available_funds) / max(self.get_total_equity_idr(), 1)
             threshold = 0.75 + (budget_utilization * 0.15) # Dynamic threshold
             
@@ -311,7 +311,6 @@ class SovereignArbitrator:
                             ev_sim = res.get("expectedValue", 0.0)
                             if verdict == "SKIP" or ev_sim < -0.005:
                                 return False, 0.0, f"ARBITRATOR: What-If VETO (Verdict: {verdict}, EV: {ev_sim})"
-                            # Override EV if simulation is more conservative
                             if ev_sim < req.ev_estimate:
                                 req.ev_estimate = ev_sim
                 except Exception as e:
@@ -324,7 +323,6 @@ class SovereignArbitrator:
                 return False, 0.0, f"ARBITRATOR: Kelly size below minimum ({self.min_allocation_idr})"
 
             # 4. Final Verdict
-            # Convert size back to source currency if needed
             final_size = size_idr if req.source == "INDODAX" else size_idr / self.usd_idr_rate
             
             return True, final_size, "ARBITRATOR: Optimal allocation approved"

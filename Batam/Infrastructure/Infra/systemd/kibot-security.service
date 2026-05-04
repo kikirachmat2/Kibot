@@ -14,8 +14,9 @@ Environment=PYTHONUNBUFFERED=1
 ExecStart=/usr/bin/python3 scripts/kibot_security.py
 Restart=on-failure
 RestartSec=60
-MemoryMax=30M
-CPUQuota=5%
+MemoryMax=128M
+CPUQuota=10%
+OOMPolicy=kill
 ProtectSystem=full
 PrivateTmp=yes
 NoNewPrivileges=yes

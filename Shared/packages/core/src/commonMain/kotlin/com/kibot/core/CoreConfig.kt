@@ -69,12 +69,6 @@ data class PairSelectionContext(
     val leadSectorHotnessScore: Double = 0.0,
     val leadVolumeVelocityScore: Double = 0.0,
     val urgentEntryMode: Boolean = false,
-    val leadLagEnabled: Boolean = false,
-    // DUAL ENGINE: Bypass flags for Barbarian Anomaly Engine
-    val bypassSpreadCheck: Boolean = false,
-    val bypassVetoService: Boolean = false,
-    val bypassRankingFloor: Boolean = false,
-    val engineId: String? = null,  // "macro_follower" or "barbarian_anomaly"
     val pairHistoricalWinRate: Map<String, Double> = emptyMap(),
     val pairHistoricalLossCount: Map<String, Int> = emptyMap(),
 )
@@ -207,47 +201,6 @@ data class StrategyExecutionConfig(
     val breakoutAggressiveEntryMinShortTermReturnPct: Double = 1.5,
     val breakoutAggressiveEntryMinMediumTermReturnPct: Double = 0.35,
     val executionAllowedQuoteAssets: Set<String> = setOf("idr"),
-)
-
-// DUAL ENGINE CONFIG: Capital Allocation & Engine-Specific Parameters
-data class DualEngineConfig(
-    // Capital Allocation (70% Macro / 30% Barbarian)
-    val macroFollowerAllocationPct: Double = 0.70,
-    val barbarianAnomalyAllocationPct: Double = 0.30,
-    
-    // MACRO FOLLOWER ENGINE (70%) - Disciplined BTC/ETH lead-lag follower
-    val macroCorrelatedPairs: Set<String> = setOf(
-        // Meme coins yang follow BTC
-        "doge_idr", "pepe_idr", "shib_idr", "floki_idr", "bonk_idr", "wif_idr",
-        // L1/L2 yang follow ETH
-        "sol_idr", "avax_idr", "near_idr", "ada_idr", "matic_idr", 
-        "arb_idr", "op_idr", "trx_idr", "xlm_idr", "ont_idr", "plpa_idr"
-    ),
-    val macroMaxVwapExtensionForEntry: Double = 0.5,  // Don't buy above VWAP
-    val macroPreferLimitOrders: Boolean = true,  // Use Maker for low fees
-    val macroTrailingStopInitialPct: Double = 2.5,  // Wider initial stop
-    val macroTrailingDistancePct: Double = 1.5,  // More room to breathe
-    val macroMinRankingScore: Double = 0.55,  // Still selective but not paranoid
-    
-    // BARBARIAN ANOMALY ENGINE (30%) - Ultra-aggressive pump chaser
-    val barbarianMaxSpreadPct: Double = 4.0,  // Allow up to 4% spread (bypass normal 1.8% limit)
-    val barbarianMaxSlippagePct: Double = 3.5,  // High slippage tolerance for instant entry
-    val barbarianMinTickVelocity: Double = 3.0,  // HARD BLOCK: Min 3 ticks/minute (anti-stagnant)
-    val barbarianMinPriceVelocityPct1m: Double = 0.8,  // Must have >0.8% price move in 1 minute
-    val barbarianMinVolumeAnomalyMultiplier: Double = 2.5,  // Volume must be 2.5x average
-    val barbarianMinPriceBreakoutPct5m: Double = 2.0,  // Or 2%+ price move in 5 minutes
-    val barbarianForceMarketOrders: Boolean = true,  // Always use Taker for speed
-    val barbarianTrailingStopInitialPct: Double = 1.5,  // Tight stop for quick exit
-    val barbarianTrailingDistancePct: Double = 0.8,  // FIX: Longgarkan dari 0.5 → 0.8 (anti-premature exit)
-    val barbarianTrailingActivationProfitPct: Double = 0.5,  // FIX: Naikkan dari 0.3 → 0.5 (wait for real profit)
-    val barbarianMaxHoldSeconds: Int = 180,  // Force exit after 3 minutes max
-    val barbarianDecayVelocityMinTicks: Double = 2.0,  // FIX: Min 2 ticks/min to consider "active"
-    val barbarianMinRankingScore: Double = 0.30,  // Very low floor - let the pump speak
-    val barbarianBypassAllGuardrails: Boolean = true,  // Master switch to skip spread/veto/ranking checks
-    
-    // Engine Selection Criteria
-    val preferBarbarianOnHighVolatility: Boolean = true,
-    val volatilityThresholdForBarbarian: Double = 3.5,  // Switch to Barbarian if volatility >3.5%
 )
 
 /**

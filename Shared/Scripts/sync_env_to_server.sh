@@ -51,10 +51,16 @@ for k in keys:
         print(f'{k}="{safe}"')
 PY
 
-# Sync Vault if exists
+# Sync Vault & Salt if exists
 if [[ -f "${ROOT_DIR}/.env.kiv" ]]; then
   echo "Syncing Sovereign Vault..."
   scp -i "${SSH_KEY}" "${ROOT_DIR}/.env.kiv" "${USER_NAME}@${HOST}:/home/ubuntu/KiBot/.env.kiv"
+fi
+
+if [[ -f "${ROOT_DIR}/state/.vault_salt" ]]; then
+  echo "Syncing Vault Salt..."
+  ssh -i "${SSH_KEY}" "${USER_NAME}@${HOST}" "mkdir -p /home/ubuntu/KiBot/state"
+  scp -i "${SSH_KEY}" "${ROOT_DIR}/state/.vault_salt" "${USER_NAME}@${HOST}:/home/ubuntu/KiBot/state/.vault_salt"
 fi
 
 scp -i "${SSH_KEY}" "${tmp_file}" "${USER_NAME}@${HOST}:/tmp/kibot-env-sync.tmp" >/dev/null

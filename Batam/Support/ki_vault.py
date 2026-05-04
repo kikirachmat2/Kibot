@@ -44,7 +44,14 @@ class SovereignVault:
         if self._fernet:
             return
 
-        hw_id = self._get_hardware_id().encode()
+        # Priority: KIBOT_SECRET > Hardware ID
+        # This allows cluster-wide sync if KIBOT_SECRET is shared.
+        secret_base = os.environ.get("KIBOT_SECRET")
+        if secret_base:
+            base_id = secret_base.encode()
+        else:
+            base_id = self._get_hardware_id().encode()
+            
         salt = self._get_or_create_salt()
         
         kdf = PBKDF2HMAC(
@@ -53,7 +60,7 @@ class SovereignVault:
             salt=salt,
             iterations=100_000,
         )
-        key = base64.urlsafe_b64encode(kdf.derive(hw_id))
+        key = base64.urlsafe_b64encode(kdf.derive(base_id))
         self._key = key
         self._fernet = Fernet(key)
 

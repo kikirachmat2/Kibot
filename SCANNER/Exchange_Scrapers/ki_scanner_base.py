@@ -3,13 +3,14 @@ KiBot Trinity — Base Scanner Class
 Semua scanner global extend class ini.
 Filosofi: scan SEMUA koin, filter berdasarkan kualitas signal, bukan whitelist static.
 """
-import json, time, socket, os, requests
+import json, time, socket, os, requests, asyncio, aiohttp
+from typing import Optional, Any
 from abc import ABC, abstractmethod
 from datetime import datetime, timezone
 from pathlib import Path
 
 MANAGER_HOST = os.environ.get("KIBOT_MANAGER_HOST", "168.110.201.228")
-MANAGER_UDP_PORT = int(os.environ.get("KIBOT_MANAGER_UDP_PORT", "9998"))
+MANAGER_UDP_PORT = int(os.environ.get("KIBOT_UDP_PORT", "9999"))
 SCAN_INTERVAL_S = int(os.environ.get("SCAN_INTERVAL_S", "30"))
 RUNTIME_ROOT = Path(os.environ.get("KIBOT_RUNTIME_ROOT", str(Path(__file__).resolve().parent.parent)))
 SCANNER_STATE_ROOT = Path(
@@ -192,12 +193,41 @@ class KiScannerBase(ABC):
 
     # ── UDP send ──────────────────────────────────────────────
     def send_signal(self, signal: dict):
+        """
+        Sends a cryptographically signed signal to the Manager.
+        v8.2: Includes HMAC-SHA256 and TTL timestamp.
+        """
         try:
-            payload = json.dumps({"type": "MULTI_SCANNER_SIGNAL", **signal}).encode()
+            # 1. Prepare base payload
+            if not hasattr(self, "_seq_num"): self._seq_num = 0
+            self._seq_num += 1
+            msg = {
+                "type": "MULTI_SCANNER_SIGNAL", 
+                "sequence_num": self._seq_num,
+                **signal
+            }
+            
+            # 2. Add TTL (Time-To-Live) timestamp
+            msg["sentAtEpochMs"] = int(time.time() * 1000)
+            
+            # 3. HMAC Signing (Paranoid v8.2)
+            key = os.environ.get("KIBOT_SIGNAL_KEY", "SOVEREIGN_DEFAULT_SIGNAL_SECRET").encode()
+            
+            # Reconstruct canonical payload for signing (excluding signature itself)
+            # v8.2: Use sort_keys=True to ensure consistency with the Manager's verification logic.
+            canonical_payload = json.dumps(msg, separators=(',', ':'), sort_keys=True)
+            import hmac, hashlib, base64
+            signature = hmac.new(key, canonical_payload.encode(), hashlib.sha256).digest()
+            msg["signature"] = base64.b64encode(signature).decode()
+            
+            payload = json.dumps(msg).encode()
+            
             with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
+                s.settimeout(2.0)
                 s.sendto(payload, (MANAGER_HOST, MANAGER_UDP_PORT))
+                
         except Exception as e:
-            print(f"[{self.exchange}] UDP err: {e}")
+            print(f"[{self.exchange}] UDP sign/send err: {e}")
 
     # ── State persistence ─────────────────────────────────────
     def _load_state(self):
@@ -250,3 +280,57 @@ class KiScannerBase(ABC):
                 wait = min(120, 15 * errors)
                 print(f"[{self.exchange}] Error #{errors}: {e} — retry in {wait}s")
                 time.sleep(wait)
+
+class KiScannerBaseAsync(KiScannerBase):
+    """
+    v9.0 Sovereign Perfection Upgrade:
+    Asynchronous version of the base scanner for high-frequency WebSockets.
+    """
+    def __init__(self, exchange_name: str, port: int):
+        super().__init__(exchange_name, port)
+        self._session: Optional[aiohttp.ClientSession] = None
+
+    async def _get_session(self) -> aiohttp.ClientSession:
+        if self._session is None or self._session.closed:
+            self._session = aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=10))
+        return self._session
+
+    async def send_signal_async(self, signal: dict):
+        """Async version of UDP signal transmission."""
+        try:
+            msg = {"type": "MULTI_SCANNER_SIGNAL", **signal}
+            msg["sentAtEpochMs"] = int(time.time() * 1000)
+            
+            key = os.environ.get("KIBOT_SIGNAL_KEY", "SOVEREIGN_DEFAULT_SIGNAL_SECRET").encode()
+            canonical_payload = json.dumps(msg, separators=(',', ':'), sort_keys=True)
+            import hmac, hashlib, base64
+            signature = hmac.new(key, canonical_payload.encode(), hashlib.sha256).digest()
+            msg["signature"] = base64.b64encode(signature).decode()
+            
+            payload = json.dumps(msg).encode()
+            
+            # Non-blocking UDP send
+            sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            sock.setblocking(False)
+            try:
+                sock.sendto(payload, (MANAGER_HOST, MANAGER_UDP_PORT))
+            finally:
+                sock.close()
+                
+        except Exception as e:
+            print(f"[{self.exchange}] UDP async send err: {e}")
+
+    async def run_async(self):
+        """Main async loop for WebSocket or High-Frequency Polling."""
+        print(f"[{self.exchange}] Async Scanner v9.0 active.")
+        while True:
+            try:
+                # Subclasses should implement their own infinite loop or WS handler here
+                await self.handle_async_logic()
+            except Exception as e:
+                print(f"[{self.exchange}] Async Runtime Err: {e}")
+                await asyncio.sleep(10)
+
+    @abstractmethod
+    async def handle_async_logic(self):
+        pass

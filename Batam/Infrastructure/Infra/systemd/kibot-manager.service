@@ -22,8 +22,8 @@ Environment=KIBOT_AI_PROVIDER_ORDER=openrouter,groq,gemini,nvidia,cohere,jina
 ExecStart=/usr/bin/python3 -u /home/ubuntu/KiBot/Batam/Brain Control/kibot_manager.py
 Restart=always
 RestartSec=5
-MemoryMax=256M
-CPUQuota=20%
+MemoryMax=800M
+CPUQuota=50%
 OOMPolicy=kill
 OOMScoreAdjust=-500
 ProtectSystem=full

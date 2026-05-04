@@ -1,24 +1,32 @@
-# [EXECUTOR] The Tactical Hands
+# KiBot Executor (Lobotomized Version)
 
-This directory contains the high-performance execution layer. While the Brain (Batam) decides "what" to trade, the EXECUTOR handles the "how" and "when" at the micro-level.
+## Overview
+This is a **Reactive Execution Service** designed to operate under the absolute control of the **Batam Control Plane**. All autonomous decision-making logic, strategy orchestrators, and local AI modules have been removed to prevent strategy conflicts and ensure centralized intelligence.
 
-## Sub-components
+## Core Principles
+1. **No Local Strategy**: This service does not analyze markets or decide when to buy/sell. It only executes commands received from Batam.
+2. **Idempotent Execution**: Every command uses a unique `ClientOrderId` derived from the Batam Command ID to prevent accidental double-execution.
+3. **Multi-Exchange Support**: Native support for **Indodax** (CEX) and **Polymarket** (DEX/CLOB) via unified `ExecutionPlan`.
+4. **Fast Reaction**: Command polling interval is set to 1 second for high-responsiveness.
 
-### 1. [Kotlin_Engine](file:///Users/kiki/Documents/Web%20Develop/KiBot/EXECUTOR/Kotlin_Engine/)
-A Kotlin-based daemon optimized for low-latency execution on macOS.
-- **Runtime**: Core execution loops, circuit breakers, and autonomous trade reviews.
-- **Config**: Tuning parameters for "Barbarian" vs "Passive" modes.
-- **State**: Persistent local storage for trade history and learning snapshots.
+## Command Protocol (JSON Payload)
+The Batam Control Plane sends commands with the following JSON structure:
+```json
+{
+  "exchange": "INDODAX | POLYMARKET",
+  "pair": "btc_idr | market_slug",
+  "side": "BUY | SELL",
+  "amount": 1.5,
+  "price": 500000.0,
+  "type": "MARKET | LIMIT",
+  "slippage": 0.01,
+  "marketId": "optional_token_id_for_polymarket"
+}
+```
 
-### 2. [Local_State](file:///Users/kiki/Documents/Web%20Develop/KiBot/EXECUTOR/Local_State/)
-Execution-specific logs and snapshots.
-- `trade_log.jsonl`: Real-time record of all fills and order submissions.
+## Infrastructure
+- **MacEngineDaemon.kt**: The main entry point that polls for commands and routes them to the Exchange Gateway.
+- **Shared Library**: Provides the underlying connectivity to Supabase (Control Plane) and Exchanges.
 
-### 3. [Binaries](file:///Users/kiki/Documents/Web%20Develop/KiBot/EXECUTOR/Binaries/)
-Compiled artifacts (JARs) for the execution engine.
-
-### 4. [Infrastructure](file:///Users/kiki/Documents/Web%20Develop/KiBot/EXECUTOR/Infrastructure/)
-Deployment scripts and SSH credentials for execution nodes.
-
-## Audit Observation: Monolithic Risk
-The `MacEngineDaemon.kt` file is extremely large (15k lines). This presents a critical stability risk; a failure in any sub-component (e.g., notification) could theoretically stall the entire execution thread. Future refactoring should decouple the notification and state-management layers from the core execution loop.
+## Health Monitoring
+The service reports a heartbeat every 15 seconds. If the heartbeat stops, Batam will consider this node offline and stop sending commands.

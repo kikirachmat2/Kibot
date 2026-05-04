@@ -50,6 +50,9 @@ UTC_OFFSET = int(os.getenv("KIBOT_WIB_UTC_OFFSET_HOURS", "7"))
 KIBOT_UDP_HOST = os.getenv("KIBOT_UDP_HOST", "100.122.1.109")
 KIBOT_UDP_HOST_BACKUP = os.getenv("KIBOT_UDP_HOST_BACKUP", "100.122.1.110") # Singapore/Batam backup
 KIBOT_UDP_PORT = int(os.getenv("KIBOT_UDP_PORT", "9999"))
+KIBOT_SIGNAL_KEY = os.getenv("KIBOT_SIGNAL_KEY", "SOVEREIGN_DEFAULT_SIGNAL_SECRET")
+# comma-separated list of allowed scanner IPs. If empty, all are allowed (not recommended for production)
+KIBOT_ALLOWED_SCANNER_IPS = [ip.strip() for ip in os.getenv("KIBOT_ALLOWED_SCANNER_IPS", "").split(",") if ip.strip()]
 
 def verify_egress_health() -> bool:
     """Hardening check: Verify we can reach the sovereign egress hosts."""

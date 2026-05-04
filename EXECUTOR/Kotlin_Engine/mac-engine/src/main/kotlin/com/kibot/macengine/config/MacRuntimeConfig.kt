@@ -102,6 +102,7 @@ data class MacRuntimeConfig(
     val leadLagUdpSequenceWindowSize: Int = 64,
     val leadLagUdpDedupTtlMillis: Long = 4_000L,
     val leadLagUdpPrewarmTtlMillis: Long = 1_500L,
+    val leadLagUdpHmacSecret: String?,
     val leadLagUdpHeartbeatEnabled: Boolean,
     val leadLagUdpHeartbeatIntervalMillis: Long,
     val leadLagUdpHeartbeatTimeoutMillis: Long,
@@ -414,6 +415,8 @@ object MacRuntimeConfigLoader {
                 ?.toLongOrNull()
                 ?.coerceAtLeast(250L)
                 ?: 1_500L,
+            leadLagUdpHmacSecret = optional("KICRYP_LEAD_LAG_UDP_HMAC_SECRET")
+                ?: optional("KIBOT_UDP_HMAC_SECRET"),
             leadLagUdpHeartbeatEnabled = optional("KICRYP_LEAD_LAG_UDP_HEARTBEAT_ENABLED")
                 ?.equals("true", ignoreCase = true)
                 ?: true,

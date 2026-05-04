@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-KiBot Trinity - Sovereign Recovery & Rotation Engine (v8.0)
+KiBot Trinity - Sovereign Recovery & Rotation Engine (v8.2)
 ==========================================================
 Advanced position optimization, distress recovery, and regime-aware rotation.
 """
@@ -15,7 +15,10 @@ from typing import Dict, Any, Optional
 
 # Intelligence Path Injection
 _root = Path(__file__).resolve().parent.parent
+# Ensure we can find sibling modules in Intelligence and Indicators_Math
 sys.path.append(str(_root / "Indicators_Math"))
+sys.path.append(str(_root / "Intelligence"))
+
 try:
     from kibot_learning_engine import get_engine as get_learning_engine
     from coin_universe_overlay import get_active_universe
@@ -43,7 +46,7 @@ class RotationEngine:
                           new_signal: Dict[str, Any], 
                           market_context: Dict[str, Any]) -> Dict[str, Any]:
         """
-        Rotation Engine v8.0 (Sovereign Intelligence)
+        Rotation Engine v8.2 (Sovereign Intelligence)
         - Regime Aware: Sensitivity adjusts to BULL/BEAR/PANIC.
         - Sector Correlation Check: Avoids rotating within the same failing sector.
         - Bayesian Health Integration: Weights decisions by historical pair health.
@@ -134,7 +137,7 @@ class RotationEngine:
         
         mode = "DISTRESS_RECOVERY" if is_distressed else "PROFIT_OPTIMIZATION"
         rationale = (
-            f"[{mode}][v8] {symbol}({old_sector}) -> {new_symbol}({new_sector})? "
+            f"[{mode}][v8.2] {symbol}({old_sector}) -> {new_symbol}({new_sector})? "
             f"Score: {final_score:.1f}/{target_threshold}. [Regime: {regime}]"
         )
         
@@ -145,5 +148,5 @@ class RotationEngine:
             "approved": approved,
             "reason": reason,
             "rotation_score": score,
-            "engine_version": "8.0"
+            "engine_version": "8.2"
         }

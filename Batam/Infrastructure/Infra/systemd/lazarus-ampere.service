@@ -18,6 +18,12 @@ Environment=KIBOT_TELEGRAM_CHAT_ID=1346696386
 ExecStart=/bin/bash -lc 'cd /home/ubuntu/ampere-hunt && ./lazarus_ampere.sh >> /home/ubuntu/logs/lazarus_ampere.log 2>&1'
 Restart=always
 RestartSec=20
+MemoryMax=100M
+CPUQuota=10%
+OOMPolicy=kill
+ProtectSystem=full
+PrivateTmp=yes
+NoNewPrivileges=yes
 
 [Install]
 WantedBy=multi-user.target

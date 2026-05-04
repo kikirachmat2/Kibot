@@ -8,14 +8,14 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 SCANNER_WEIGHTS = {
-    "BINANCE": 0.15, "BYBIT": 0.10, "KUCOIN": 0.10, "OKX": 0.10,
+    "BINANCE": 0.35, "BYBIT": 0.25, "KUCOIN": 0.10, "OKX": 0.10,
+    "LISTING_HUNTER": 0.50, # v9.0 Exclusive
     "BITHUMB": 0.08, "UPBIT": 0.08, "MEXC": 0.07, "GATE": 0.06,
-    "BITBANK": 0.05, "BITGET": 0.04, "PHEMEX": 0.04, "BITMART": 0.04,
-    "CRYPTOCOM": 0.04, "HTX": 0.03, "LBANK": 0.02
 }
-ALL_WEIGHT_SUM = sum(SCANNER_WEIGHTS.values())  # = 1.00
+ALL_WEIGHT_SUM = sum(SCANNER_WEIGHTS.values())
 
 SIGNAL_WINDOW_S  = float(os.environ.get("KIBOT_MSC_SIGNAL_WINDOW_S",  "5.0"))
+FLASH_WINDOW_S   = 1.0  # v9.0: Consensus within 1s is a Flash Pump
 MSC_MIN          = float(os.environ.get("KIBOT_MSC_MIN_THRESHOLD",     "0.60"))
 MSC_MEDIUM       = 0.70
 MSC_HIGH         = 0.80
@@ -32,12 +32,13 @@ class MultiScannerEngine:
     Relay ke KiDax untuk eksekusi nyata.
     """
 
-    def __init__(self):
+    def __init__(self, registry=None):
         self._cache: dict[str, dict] = defaultdict(dict)
         # {pair_indodax: {exchange: {signal_data, received_at}}}
         self.weights = SCANNER_WEIGHTS.copy()
         self.msc_min = MSC_MIN
         self._last_directive_check = 0.0
+        self.registry = registry # ScannerRegistry instance
 
     def _refresh_directives(self):
         """Load dynamic overrides from the Governor."""
@@ -101,19 +102,29 @@ class MultiScannerEngine:
                     "reason": "mexc_only_blocked", "position_multiplier": 0.0,
                     "is_mexc_only": True}
 
-        # Hitung weighted MSC
+        # Hitung weighted MSC with health-based adjustments
         self._refresh_directives()
         
-        weight_sum = sum(self.weights.get(exc, 0.10) for exc in scanners)
+        def get_adj_weight(exc):
+            base_w = self.weights.get(exc, 0.10)
+            if self.registry and hasattr(self.registry, "get_latency_multiplier_by_exchange"):
+                return base_w * self.registry.get_latency_multiplier_by_exchange(exc)
+            return base_w
+
+        weight_sum = sum(get_adj_weight(exc) for exc in scanners)
         if weight_sum <= 0: return {"msc": 0.0, "action": "IGNORE", "reason": "no_weight"}
 
         weighted = sum(
-            self.weights.get(exc, 0.10) * active[exc].get("detection_score", 0.5)
+            get_adj_weight(exc) * active[exc].get("detection_score", 0.5)
             for exc in scanners
         )
         msc = weighted / weight_sum  # normalize
         msc_min = self.msc_min
 
+        # Flash Pump detection (v9.0)
+        recent_count = sum(1 for s in active.values() if (time.time() - s["received_at"]) <= FLASH_WINDOW_S)
+        is_flash_pump = recent_count >= 3
+        
         # Tentukan action + position multiplier
         if msc < 0.40:
             action, mult, reason = "IGNORE",     0.0, f"msc_weak:{msc:.3f}"
@@ -128,9 +139,13 @@ class MultiScannerEngine:
         else:
             action, mult, reason = "ENTRY", 1.20, f"entry_high_conviction:msc={msc:.3f}"
 
+        if is_flash_pump and action == "ENTRY":
+            mult *= 1.25 # 25% boost for flash pump consensus
+            reason += "+FLASH_PUMP_DETECTION"
+
         # Bonus confirmation flag
-        if "BYBIT" in scanners and "KUCOIN" in scanners:
-            reason += "+bybit_kucoin_confirmed"
+        if "BINANCE" in scanners and "BYBIT" in scanners:
+            reason += "+top_tier_consensus"
 
         # Ambil metadata terbaik dari signal (untuk pass ke KiDax)
         best_sig = max(active.values(), key=lambda s: s.get("detection_score", 0))
@@ -150,6 +165,7 @@ class MultiScannerEngine:
             "vol_usdt_total":     sum(
                 active[e].get("vol_usdt_24h", 0) for e in scanners
             ),
+            "entry_price":        best_sig.get("price_usdt", 0.0),
             "is_mexc_only":       False,
         }
 
@@ -176,8 +192,10 @@ class MultiScannerEngine:
             "type":               "LEAD_LAG_SIGNAL",
             "pair":               pair,
             "source":             "MULTI_SCANNER",
-            "bucket":             "LEAD_LAG",          # Global scanner = Bucket A
+            "bucket":             "LEAD_LAG",
             "msc":                analysis["msc"],
+            "entry_price":        analysis.get("entry_price", 0.0),
+            "score":              analysis["msc"], # Map MSC to score for manager compatibility
             "scanners":           analysis["scanners"],
             "scanner_count":      analysis["scanner_count"],
             "position_multiplier":analysis["position_multiplier"],

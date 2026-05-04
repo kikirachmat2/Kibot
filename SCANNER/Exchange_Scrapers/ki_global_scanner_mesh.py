@@ -8,6 +8,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Sequence
 from urllib.request import Request, urlopen
+from concurrent.futures import ThreadPoolExecutor
 
 
 def _enabled(flag_name: str, default: bool = True) -> bool:
@@ -54,6 +55,8 @@ class GlobalScannerMesh:
         self.feed_category = os.getenv("KIBOT_SCANNER_FEED_CATEGORY", "scanner_feed_cycle")
         self.max_signals_per_cycle = int(os.getenv("KIBOT_SCANNER_FEED_MAX_SIGNALS", "24"))
         self.supabase_enabled = _enabled("KIBOT_SCANNER_SUPABASE_MIRROR_ENABLED", True)
+        self.parallel_enabled = _enabled("KIBOT_SCANNER_MESH_PARALLEL", True)
+        self.max_workers = int(os.getenv("KIBOT_SCANNER_MESH_WORKERS", "10"))
 
     def _build_scanners(self) -> List[Any]:
         from ki_bitbank_scanner import KiBitScanner as KiBitbankScanner
@@ -219,61 +222,6 @@ class GlobalScannerMesh:
         except Exception as error:
             print(f"[GLOBAL_SCANNER_MESH][WARN] supabase mirror error reason={error}", flush=True)
 
-    def run_once(self) -> Dict[str, Any]:
-        started_at = time.time()
-        total_scanned = 0
-        total_sent = 0
-        exchange_summaries: List[Dict[str, Any]] = []
-        collected_signals: List[Dict[str, Any]] = []
-
-        for scanner in self.scanners:
-            exchange = str(getattr(scanner, "exchange", "UNKNOWN")).upper()
-            scan_started = time.time()
-            scanned = 0
-            sent = 0
-            error_text = ""
-            try:
-                if hasattr(scanner, "collect_signals"):
-                    scan_result = scanner.collect_signals()
-                    if isinstance(scan_result, dict):
-                        signals = scan_result.get("signals") or []
-                        scanned = int(scan_result.get("scanned") or len(signals))
-                    else:
-                        signals = list(scan_result or [])
-                        scanned = len(signals)
-                    for signal in signals:
-                        if not isinstance(signal, dict):
-                            continue
-                        signal["signal_uid"] = self._signal_uid(signal)
-                        if hasattr(scanner, "send_signal"):
-                            scanner.send_signal(signal)
-                        collected_signals.append(dict(signal))
-                        sent += 1
-                else:
-                    tickers = scanner.fetch_tickers() or {}
-                    scanned = len(tickers)
-                    for base_sym, data in tickers.items():
-                        signal = scanner.detect_signal(
-                            base_symbol=base_sym,
-                            price=data.get("price", 0),
-                            vol_usdt=data.get("vol_usdt_24h", 0),
-                            change_24h=data.get("change_24h", 0),
-                            change_1h=data.get("change_1h", 0),
-                        )
-                        if signal:
-                            signal["signal_uid"] = self._signal_uid(signal)
-                            scanner.send_signal(signal)
-                            collected_signals.append(dict(signal))
-                            sent += 1
-                    if hasattr(scanner, "_save_state"):
-                        scanner._save_state()
-            except Exception as error:
-                error_text = str(error)
-                print(f"[GLOBAL_SCANNER_MESH][WARN] {exchange} failed reason={error}", flush=True)
-
-            elapsed = time.time() - scan_started
-            total_scanned += scanned
-            total_sent += sent
             exchange_summaries.append(
                 {
                     "exchange": exchange,
@@ -283,6 +231,81 @@ class GlobalScannerMesh:
                     "error": error_text,
                 }
             )
+
+    def _scan_one(self, scanner: Any) -> Dict[str, Any]:
+        """Worker function for parallel scanning."""
+        exchange = str(getattr(scanner, "exchange", "UNKNOWN")).upper()
+        scan_started = time.time()
+        scanned = 0
+        sent = 0
+        error_text = ""
+        signals = []
+        try:
+            if hasattr(scanner, "collect_signals"):
+                scan_result = scanner.collect_signals()
+                if isinstance(scan_result, dict):
+                    raw_signals = scan_result.get("signals") or []
+                    scanned = int(scan_result.get("scanned") or len(raw_signals))
+                else:
+                    raw_signals = list(scan_result or [])
+                    scanned = len(raw_signals)
+                for signal in raw_signals:
+                    if not isinstance(signal, dict): continue
+                    signal["signal_uid"] = self._signal_uid(signal)
+                    if hasattr(scanner, "send_signal"):
+                        scanner.send_signal(signal)
+                    signals.append(dict(signal))
+                    sent += 1
+            else:
+                tickers = scanner.fetch_tickers() or {}
+                scanned = len(tickers)
+                for base_sym, data in tickers.items():
+                    signal = scanner.detect_signal(
+                        base_symbol=base_sym,
+                        price=data.get("price", 0),
+                        vol_usdt=data.get("vol_usdt_24h", 0),
+                        change_24h=data.get("change_24h", 0),
+                        change_1h=data.get("change_1h", 0),
+                    )
+                    if signal:
+                        signal["signal_uid"] = self._signal_uid(signal)
+                        scanner.send_signal(signal)
+                        signals.append(dict(signal))
+                        sent += 1
+                if hasattr(scanner, "_save_state"):
+                    scanner._save_state()
+        except Exception as error:
+            error_text = str(error)
+            print(f"[GLOBAL_SCANNER_MESH][WARN] {exchange} failed reason={error}", flush=True)
+
+        return {
+            "exchange": exchange,
+            "scanned": scanned,
+            "sent": sent,
+            "elapsed_sec": round(time.time() - scan_started, 2),
+            "error": error_text,
+            "signals": signals
+        }
+
+    def run_once(self) -> Dict[str, Any]:
+        started_at = time.time()
+        exchange_summaries: List[Dict[str, Any]] = []
+        collected_signals: List[Dict[str, Any]] = []
+
+        if self.parallel_enabled:
+            with ThreadPoolExecutor(max_workers=self.max_workers) as executor:
+                results = list(executor.map(self._scan_one, self.scanners))
+            for res in results:
+                collected_signals.extend(res.pop("signals"))
+                exchange_summaries.append(res)
+        else:
+            for scanner in self.scanners:
+                res = self._scan_one(scanner)
+                collected_signals.extend(res.pop("signals"))
+                exchange_summaries.append(res)
+
+        total_scanned = sum(s["scanned"] for s in exchange_summaries)
+        total_sent = sum(s["sent"] for s in exchange_summaries)
 
         ranked_by_exchange: Dict[str, List[Dict[str, Any]]] = {}
         for signal in sorted(

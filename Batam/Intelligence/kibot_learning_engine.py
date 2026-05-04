@@ -298,27 +298,7 @@ class LearningEngine:
                 return t
         return None
 
-    def get_today_stats(self) -> dict:
-        """Manager compatibility: Calculate summary stats for the current session."""
-        trades = [t for t in self._today_trades if t.get("status") == "CLOSED"]
-        wins = [t for t in trades if t.get("win", False)]
-        losses = [t for t in trades if not t.get("win", False)]
-        
-        wr = len(wins) / max(1, len(trades))
-        sum_wins = sum(t.get("pnl_idr", 0) for t in wins)
-        sum_losses = abs(sum(t.get("pnl_idr", 0) for t in losses))
-        pf = sum_wins / max(1, sum_losses)
-        
-        ev = sum(t.get("pnl_idr", 0) for t in trades) / max(1, len(trades))
-        
-        return {
-            "total": len(trades),
-            "wins": len(wins),
-            "losses": len(losses),
-            "win_rate": wr,
-            "pf": pf,
-            "ev_idr": ev
-        }
+    # [REMOVED DUPLICATE get_today_stats]
 
     def score_penalty(self, pair: str) -> float:
         """Manager compatibility: Calculate a penalty score (0.0 to 1.0) based on health."""
@@ -542,6 +522,18 @@ def get_regime_detector() -> VWAPRegimeDetector:
 
 if __name__ == "__main__":
     print("🚀 KiBot Learning Engine Starting...")
+    
+    # [VAULT] Load Sovereign Secrets
+    try:
+        import sys
+        import os
+        # Ensure Support is in path
+        sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
+        from Support.ki_vault import load_sovereign_env
+        load_sovereign_env()
+    except Exception as ve:
+        print(f"[BOOT][VAULT][WARN] Could not load vaulted env: {ve}")
+
     engine = get_engine()
     while True:
         engine.patrol_and_audit()

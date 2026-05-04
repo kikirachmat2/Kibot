@@ -58,9 +58,24 @@ class IndodaxGateway internal constructor(
 ) : ExchangeGateway {
     private val privateRequestFactory = IndodaxPrivateRequestFactory(credentials)
     private val privateCallMutex = Mutex()
+    private val lastPrivateCallAt = atomic(0L)
+
+    private val userAgents = listOf(
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36",
+        "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+        "Mozilla/5.0 (iPhone; CPU iPhone OS 17_2_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.2 Mobile/15E148 Safari/604.1",
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:122.0) Gecko/20100101 Firefox/122.0"
+    )
+    private val currentUserAgentIndex = atomic(0)
+
+    private fun nextUserAgent(): String {
+        val index = currentUserAgentIndex.getAndIncrement() % userAgents.size
+        return userAgents[kotlin.math.abs(index)]
+    }
 
     private fun HttpRequestBuilder.applyBrowserLikePublicHeaders() {
-        header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
+        header("User-Agent", nextUserAgent())
         header("Accept", "application/json,text/plain,*/*")
         header("Accept-Language", "en-US,en;q=0.9")
         header("Sec-Fetch-Dest", "document")
@@ -466,7 +481,14 @@ class IndodaxGateway internal constructor(
         method: String,
         params: Map<String, String> = emptyMap(),
     ): T {
+        // [HARDENING] Proactive Rate Limiting (Minimum 250ms between private calls)
+        val now = Clock.System.now().toEpochMilliseconds()
+        val last = lastPrivateCallAt.value
+        val waitMs = 250L - (now - last)
+        if (waitMs > 0) delay(waitMs)
+        
         return privateCallMutex.withLock {
+            lastPrivateCallAt.value = Clock.System.now().toEpochMilliseconds()
             var backoffMs = 1_000L
             repeat(3) { attempt ->
                 val nonce = nextNonce()

@@ -233,3 +233,19 @@ enum class DistrustLabel {
     EDGE_CONFIDENCE_LOW,
     RISK_LADDER_BLOCKED,
 }
+
+@Serializable
+enum class HyperTargetKind {
+    ALL_IN,
+    BARBARIAN,
+    LOCAL_AUTONOMY,
+    LEAD_LAG,
+    WALL_SMASH,
+}
+
+@Serializable
+enum class CoinClass {
+    NAGA,
+    MID,
+    MICIN,
+}

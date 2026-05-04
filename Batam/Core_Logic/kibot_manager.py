@@ -39,6 +39,11 @@ from dashboard_template import DASHBOARD_HTML
 from ki_brain import BrainManager
 from ki_stats import calculate_z_score, detect_regime, calculate_obi
 try:
+    from kibot_learning_engine import get_engine, get_regime_detector
+except ImportError:
+    def get_engine(): return None
+    def get_regime_detector(): return None
+try:
     from kibot_ai_coordinator import query_ai
 except Exception as _coordinator_error:
     def query_ai(*args: Any, **kwargs: Any) -> Optional[Dict[str, Any]]:
@@ -90,9 +95,6 @@ _supabase_auth_state: Dict[str, Any] = {
     "last_ok_at": "",
 }
 _last_daily_guard_check_at = 0.0
-_learning_engine = None
-_regime_detector = None
-_learning_enabled = False
 _metrics: Dict[str, Union[float, int]] = {
     "market_orders_today": 0,
     "limit_orders_today": 0,
@@ -118,12 +120,186 @@ _last_screener_run_at = 0.0
 _active_trails: Dict[str, Dict[str, Any]] = {}  # pair_id -> {entry_price, max_price, trailing_pct, ...}
 _global_whiteboard: Dict[str, Dict[str, Any]] = {}  # symbol -> {binance: price, cryptocom: price, ts: time}
 _market_regime: str = "SIDEWAYS" # Updated by KiBot Radar
-LOCAL_SIGNAL_PORT = 9999
+LOCAL_SIGNAL_PORT = KIBOT_UDP_PORT
 _signal_engine_proc: Optional[threading.Thread] = None
 
 # === v7 Global Engines ===
 _arbitrator    = sovereign_arbitrator.get_arbitrator()
 _brain         = BrainManager()
+_msc_engine    = MultiScannerEngine()
+_learning_engine = get_engine()
+_regime_detector = get_regime_detector()
+_learning_enabled = _learning_engine is not None
+
+# --- v9.0 SOVEREIGN MESH REGISTRY ---
+class ScannerRegistry:
+    """Tracks health and integrity of all 20+1 global scanner nodes."""
+    def __init__(self):
+        self.nodes: Dict[str, Dict[str, Any]] = {} # host_ip -> metadata
+        self._lock = threading.Lock()
+        self.persistence_path = _root / "state" / "scanner_registry.json"
+        self.load_from_disk()
+
+    def save_to_disk(self):
+        """Persist node health data to disk."""
+        try:
+            with self._lock:
+                data = {"timestamp": time.time(), "nodes": self.nodes}
+            save_json(self.persistence_path, data)
+        except Exception as e:
+            print(f"[REGISTRY][ERROR] Save failed: {e}", flush=True)
+
+    def load_from_disk(self):
+        """Load node health data from disk."""
+        try:
+            if self.persistence_path.exists():
+                data = load_json(self.persistence_path)
+                if data and "nodes" in data:
+                    self.nodes = data["nodes"]
+                    print(f"[REGISTRY] Loaded {len(self.nodes)} nodes from persistence", flush=True)
+        except Exception as e:
+            print(f"[REGISTRY][ERROR] Load failed: {e}", flush=True)
+
+    def get_latency_multiplier_by_exchange(self, exchange: str) -> float:
+        """Find the best node for this exchange and return its health multiplier."""
+        best_mult = 0.0
+        with self._lock:
+            for node_key, node in self.nodes.items():
+                if node.get("exchange") == exchange:
+                    mult = self.get_latency_multiplier_node(node_key)
+                    if mult > best_mult:
+                        best_mult = mult
+        return best_mult if best_mult > 0 else 0.5 # Default 0.5 if unknown
+
+    def get_latency_multiplier_node(self, node_key: str) -> float:
+        """Return a multiplier based on node health (0.0 to 1.0)."""
+        node = self.nodes.get(node_key)
+        if not node: return 0.0
+        
+        # Penalize if latency > 500ms
+        lat = node.get("latency_ms", 0)
+        if lat > 2000: return 0.1 # Severe lag
+        if lat > 1000: return 0.5 # Moderate lag
+        if lat > 500: return 0.8  # Slight lag
+        return 1.0
+
+    def update(self, host: str, msg: dict):
+        with self._lock:
+            exchange = msg.get("exchange", "UNKNOWN")
+            node_key = f"{host}:{exchange}"
+            
+            now = time.time()
+            seq = msg.get("sequence_num", 0)
+            
+            if node_key not in self.nodes:
+                self.nodes[node_key] = {
+                    "exchange": exchange,
+                    "ip": host,
+                    "last_seen": now,
+                    "last_seq": seq,
+                    "packets_received": 1,
+                    "packets_lost": 0,
+                    "latency_ms": 0.0
+                }
+                print(f"[REGISTRY][NEW_NODE] Detected {node_key}", flush=True)
+                return
+
+            node = self.nodes[node_key]
+            node["last_seen"] = now
+            node["packets_received"] += 1
+            
+            # Detect packet loss via sequence gap
+            if seq > 0 and node["last_seq"] > 0:
+                gap = seq - node["last_seq"] - 1
+                if gap > 0:
+                    node["packets_lost"] += gap
+                    print(f"[REGISTRY][LOSS] {node_key} lost {gap} packets (seq {node['last_seq']} -> {seq})", flush=True)
+            
+            node["last_seq"] = seq
+            
+            # Calculate latency if possible
+            sent_at = msg.get("sentAtEpochMs", 0)
+            if sent_at > 0:
+                node["latency_ms"] = (now * 1000) - sent_at
+
+    def get_summary(self) -> List[Dict[str, Any]]:
+        with self._lock:
+            return [dict(v) for v in self.nodes.values()]
+
+    async def monitor_health(self):
+        """Background task to alert if scanners go silent."""
+        while not _shutdown_event.is_set():
+            now = time.time()
+            with self._lock:
+                for key, node in self.nodes.items():
+                    silence = now - node["last_seen"]
+                    if silence > 120: # 2m timeout for critical alert
+                        if not node.get("alerted", False):
+                            msg = f"⚠️ [KIBOT][MESH] Node {key} ({node['exchange']}) SILENT for {silence:.0f}s!"
+                            telegram_send(msg)
+                            node["alerted"] = True
+                            print(f"[REGISTRY][CRITICAL] Alert sent for {key}", flush=True)
+                    elif silence < 30:
+                        node["alerted"] = False # Reset if back online
+                self.save_to_disk() # Persist health stats every cycle
+            await asyncio.sleep(60)
+
+_scanner_registry = ScannerRegistry()
+_msc_engine.registry = _scanner_registry
+
+class AsyncUDPProtocol(asyncio.DatagramProtocol):
+    """Sub-millisecond signal ingestion with HMAC validation."""
+    def connection_made(self, transport):
+        self.transport = transport
+        print(f"[UDP_SERVER] Listening on {LOCAL_SIGNAL_PORT}", flush=True)
+
+    def datagram_received(self, data, addr):
+        try:
+            host = addr[0]
+            
+            # 0. IP Allowlist (Trinity Gate v9.1)
+            if KIBOT_ALLOWED_SCANNER_IPS and host not in KIBOT_ALLOWED_SCANNER_IPS:
+                # Silently drop unauthorized packets to prevent port scanning noise
+                return
+
+            payload_str = data.decode('utf-8')
+            msg = json.loads(payload_str)
+            
+            # 1. HMAC Integrity Verification (v9.1: Constant-time comparison)
+            signature = msg.get("signature")
+            if not signature:
+                return # Drop silent unsigned packets
+            
+            # Reconstruct canonical payload for verification
+            msg_copy = dict(msg)
+            if "signature" in msg_copy:
+                del msg_copy["signature"]
+            canonical = json.dumps(msg_copy, separators=(',', ':'), sort_keys=True)
+            
+            import hmac, hashlib, base64
+            key = KIBOT_SIGNAL_KEY.encode()
+            expected = base64.b64encode(
+                hmac.new(key, canonical.encode(), hashlib.sha256).digest()
+            ).decode()
+            
+            if not hmac.compare_digest(signature, expected):
+                print(f"[UDP_SERVER][AUTH_FAIL] Invalid signature from {host}", flush=True)
+                return
+
+            # 2. Update Registry
+            _scanner_registry.update(host, msg)
+
+            # 3. Process Signal
+            if msg.get("type") == "MULTI_SCANNER_SIGNAL":
+                # Route through MSC engine for consensus/voting
+                _msc_engine.process_and_relay(msg, _process_signal)
+            else:
+                # Direct processing for other types (Heartbeats, etc)
+                _process_signal(msg)
+
+        except Exception as e:
+            pass # Suppress noise for invalid packets
+
  
 # --- AI VETO CACHE (Non-Blocking) ---
 _ai_veto_cache: Dict[str, Dict[str, Any]] = {} # pair -> {verdict: "APPROVED", ts: time}
@@ -3094,7 +3270,7 @@ MIDNIGHT_RESET_RETRY_SEC = int(os.getenv("KIBOT_MIDNIGHT_RESET_RETRY_SEC", "60")
 MIDNIGHT_RESET_ALERT_AFTER_SEC = int(os.getenv("KIBOT_MIDNIGHT_RESET_ALERT_AFTER_SEC", "600"))
 EXTERNAL_CASHFLOW_AUTO_DETECT_IDR = float(os.getenv("KIBOT_EXTERNAL_CASHFLOW_AUTO_DETECT_IDR", "10000"))
 EXTERNAL_CASHFLOW_AUTO_DETECT_PCT = float(os.getenv("KIBOT_EXTERNAL_CASHFLOW_AUTO_DETECT_PCT", "0.12"))
-SAFE_ENTRY_MSG_TYPES = {"DETECTOR_HIT", "INSTANT_BUY_ANOMALY"}
+SAFE_ENTRY_MSG_TYPES = {"DETECTOR_HIT", "INSTANT_BUY_ANOMALY", "LEAD_LAG_SIGNAL"}
 EXIT_MSG_TYPES = {"SELL_WALL_SURGE", "MOMENTUM_LOSS", "TRAILING_STOP_HIT", "THESIS_INVALID_EXIT"}
 # Maximum size for unbounded caches
 _SEEN_NEWS_IDS_MAX_SIZE = int(os.getenv("KIBOT_SEEN_NEWS_IDS_MAX_SIZE", "5000"))
@@ -7919,7 +8095,7 @@ def _trigger_urgent_ai_scout(pair: str):
 
 
 def _process_signal(msg: Dict[str, Any]) -> None:
-    msg_type = str(msg.get("msgType") or "").upper()
+    msg_type = str(msg.get("msgType") or msg.get("type") or "").upper()
 
     # === HANDLE KiBot HEARTBEAT ===
     if msg_type == "HEARTBEAT" and msg.get("source") == "KiBot":
@@ -9795,204 +9971,48 @@ def main() -> None:
     ai_review_thread = threading.Thread(target=_ai_batch_review_loop, name="kibot-ai-review-loop", daemon=True)
     ai_review_thread.start()
     math_review_thread = threading.Thread(target=_math_review_loop, name="kibot-math-review-loop", daemon=True)
-    math_review_thread.start()
-    learning_review_thread = threading.Thread(target=_strategy_learning_loop, name="kibot-learning-review-loop", daemon=True)
-    learning_review_thread.start()
-    daily_cycle_thread = threading.Thread(target=_daily_cycle_loop, name="kibot-daily-cycle-loop", daemon=True)
-    daily_cycle_thread.start()
-    sim_thread = threading.Thread(target=_simulation_loop, name="kibot-simulation-loop", daemon=True)
-    sim_thread.start()
-    state_server_thread = threading.Thread(target=_state_server_loop, name="kibot-state-server", daemon=True)
-    state_server_thread.start()
     
-    # Start HTTP state cache refresh background thread
-    cache_refresh_thread = threading.Thread(target=_http_state_cache_refresh_loop, name="kibot-http-cache", daemon=True)
-    cache_refresh_thread.start()
-
-    # v6.0 Background Threads
-    discovery_thread = threading.Thread(target=run_discovery_loop, name="kibot-discovery", daemon=True)
-    universe_thread = threading.Thread(target=_universe_discovery_loop, name="kibot-universe-discovery", daemon=True)
-    discovery_thread.start()
-    universe_thread.start()
-    portfolio_thread = threading.Thread(target=run_portfolio_monitor_loop, name="kibot-portfolio", daemon=True)
-    portfolio_thread.start()
-
-    signal_mgr_thread = threading.Thread(target=run_local_signal_engine_manager, name="kibot-signal-mgr", daemon=True)
-    signal_mgr_thread.start()
-
-    brain_thread = threading.Thread(target=_brain_thinking_loop, name="kibot-brain-thinking", daemon=True)
-    brain_thread.start()
-    governor_thread = threading.Thread(target=_strategy_governor_loop, name="kibot-strategy-governor", daemon=True)
-    governor_thread.start()
-    rotation_thread = threading.Thread(target=_rotation_governor_loop, name="kibot-rotation-governor", daemon=True)
-    rotation_thread.start()
-    remote_scanner_feed_thread = threading.Thread(
-        target=_remote_scanner_feed_loop,
-        name="kibot-remote-scanner-feed",
-        daemon=True,
-    )
-    remote_scanner_feed_thread.start()
-
-    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    # Allow socket reuse for quick restarts
-    sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-    _main_socket = sock
     try:
-        sock.bind((UDP_BIND_HOST, UDP_BIND_PORT))
-        # Set socket timeout to allow periodic shutdown checks
-        sock.settimeout(5.0)
-        print(
-            json.dumps(
-                {
-                    "ok": True,
-                    "service": "kibot_manager_udp_veto",
-                    "bind": f"{UDP_BIND_HOST}:{UDP_BIND_PORT}",
-                },
-                ensure_ascii=False,
-            )
-        )
+        asyncio.run(main_async())
+    except KeyboardInterrupt:
+        _shutdown_event.set()
+        print("[KIBOT] Shutdown signal received.")
 
-        global _last_dashboard_export, _last_btc_upd, _last_screen, _last_review
-        _last_screen  = 0.0
-        _last_btc_upd = 0.0
-        _last_review  = 0.0
-        _last_dashboard_export = 0.0
+async def main_async():
+    """Restored v9.0 Async Event Loop."""
+    loop = asyncio.get_running_loop()
+    
+    # 1. Start high-performance UDP listener
+    print(f"[BOOT][ASYNC] Initializing Sovereign UDP Pipeline on port {LOCAL_SIGNAL_PORT}...", flush=True)
+    transport, protocol = await loop.create_datagram_endpoint(
+        lambda: AsyncUDPProtocol(),
+        local_addr=('0.0.0.0', LOCAL_SIGNAL_PORT)
+    )
+    
+    # 2. Start maintenance and health tasks
+    asyncio.create_task(_scanner_registry.monitor_health())
+    
+    # 3. Handle signal handler (async version if needed)
+    # Already handled in main() via signal.signal
 
-        while not _shutdown_event.is_set():
-            try:
-                # 0. Maintenance Tasks (Always Run First)
-                now = time.time()
-
-                # Dashboard Export (5s)
-                if now - _last_dashboard_export > DASHBOARD_EXPORT_INTERVAL:
-                    print(f"[DEBUG] Triggering dashboard export (last={_last_dashboard_export}, now={now})", flush=True)
-                    _last_dashboard_export = now
-                    export_full_state()
-                    _msc_engine.save_state_to_disk()
-
-                # BTC Price Update (1m)
-                if now - _last_btc_upd > BTC_UPDATE_S:
-                    _last_btc_upd = now
-                    try:
-                        req = urllib.request.Request("https://indodax.com/api/ticker/btcidr", headers={"User-Agent": "Mozilla"})
-                        with urllib.request.urlopen(req, timeout=5) as r:
-                            btc_data = json.loads(r.read())
-                        update_btc(float(btc_data.get("ticker",{}).get("last",0)))
-                    except Exception:
-                        pass
-
-                # Screen Bucket B (2m)
-                if now - _last_screen > SCREEN_INTERVAL_S:
-                    _last_screen = now
-                    if not _shutting_down:
-                        try:
-                            req = urllib.request.Request("https://indodax.com/api/tickers", headers={"User-Agent": "Mozilla"})
-                            with urllib.request.urlopen(req, timeout=10) as r:
-                                tickers_raw = json.loads(r.read())
-                            all_tickers = tickers_raw.get("tickers", tickers_raw)
-                            equity = float(_metrics.get("total_equity_idr", 60000.0))
-                            candidates = screen_bucket_b(all_tickers, btc_change_1h(), cascade_state.cfg(), equity)
-                            if candidates:
-                                top = candidates[0]
-                                print(f"[SCREEN-B] {top['pair_id']} score={top['conv']['score']:.3f} phase={top['conv']['phase']} ev=Rp{top['sim']['ev_idr']:.0f}", flush=True)
-                        except Exception as e:
-                            print(f"[SCREEN] {e}", flush=True)
-
-                # 1. Incoming Signals
-                try:
-                    raw, addr = sock.recvfrom(65535)
-                    payload_raw = raw.decode("utf-8")
-                    msg = json.loads(payload_raw)
-                    
-                    # --- HMAC VERIFICATION ---
-                    signature = msg.get("signature")
-                    if not signature:
-                        print(f"[SECURITY][UDP][REJECT] No signature from {addr}", flush=True)
-                        continue
-                    
-                    # Reconstruct payload without signature to verify
-                    msg_copy = msg.copy()
-                    del msg_copy["signature"]
-                    
-                    # Note: We must ensure JSON serialization is identical to Kotlin's
-                    # For simple flat maps, this is usually fine.
-                    canonical_payload = json.dumps(msg_copy, separators=(',', ':'), sort_keys=False)
-                    key = os.getenv("KIBOT_SIGNAL_KEY", "SOVEREIGN_DEFAULT_SIGNAL_SECRET").encode()
-                    expected_sig = hmac.new(key, canonical_payload.encode(), hashlib.sha256).digest()
-                    expected_sig_b64 = base64.b64encode(expected_sig).decode()
-                    
-                    if not hmac.compare_digest(signature, expected_sig_b64):
-                        print(f"[SECURITY][UDP][REJECT] Invalid signature from {addr}", flush=True)
-                        continue
-                    
-                    # --- TTL VERIFICATION ---
-                    sent_at = msg.get("sentAtEpochMs") or msg.get("timestamp", 0) * 1000
-                    if sent_at > 0:
-                        age_ms = (time.time() * 1000) - sent_at
-                        if age_ms > 10000: # 10s TTL
-                            print(f"[SECURITY][UDP][REJECT] Stale signal (age={age_ms/1000:.1f}s) from {addr}", flush=True)
-                            continue
-
-                    # --- SEND ACK ---
-                    trace_id = msg.get("traceId", "unknown")
-                    ack = json.dumps({"ok": True, "traceId": trace_id}).encode()
-                    sock.sendto(ack, addr)
-                    
-                    # DEDUP CHECK
-                    if _is_duplicate_signal(msg):
-                        continue
-
-                    mtype = msg.get("type", msg.get("msgType", ""))
-                    
-                    if mtype == "MULTI_SCANNER_SIGNAL":
-                        _msc_engine.process_and_relay(msg, _relay_to_KiBot)
-                    elif mtype == "POSITION_UPDATE":
-                        _on_position_update_v7(msg)
-                    elif mtype == "EXECUTION_FILLED":
-                        _on_fill_v7(msg)
-                    elif msg.get("source") == "KIBOT_LOCAL_ENGINE":
-                        _process_local_signal(msg)
-                    else:
-                        _process_signal_multipos(msg)
-
-                except (socket.timeout, BlockingIOError):
-                    pass
-                except Exception as e:
-                    if not _shutdown_event.is_set():
-                        print(f"[KIBOT][UDP][WARN] Signal processing error: {e}", flush=True)
-            except OSError as e:
-                if _shutdown_event.is_set():
-                    break
-                print(f"[KIBOT][UDP][ERROR] socket error: {e}", flush=True)
-            except json.JSONDecodeError as e:
-                print(f"[KIBOT][UDP][ERROR] JSON parse failed: {e}", flush=True)
-            except Exception as error:
-                print(f"[KIBOT][UDP][ERROR] process failed reason={error}", flush=True)
-    finally:
-        print("[KIBOT][SHUTDOWN] Closing UDP socket...", flush=True)
-        try:
-            sock.close()
-        except Exception:
-            pass
-        _main_socket = None
-
-    print("[KIBOT][SHUTDOWN] KiBot Manager stopped gracefully.", flush=True)
-    sys.exit(0)
-
+    # Keep loop alive until shutdown
+    while not _shutdown_event.is_set():
+        await asyncio.sleep(1)
+    
+    transport.close()
+    print("[BOOT][ASYNC] UDP Pipeline closed.", flush=True)
 
 def _load_daily_state():
-    """Restores daily capital metrics with WIB context (Fix #5)."""
+    """Restores daily capital metrics with WIB context."""
     global _initial_capital_idr, _entry_loss_count
     try:
         path = STATE_ROOT / "daily_state.json"
         if not path.exists():
             return
         data = json.loads(path.read_text(encoding="utf-8"))
-        _operational_date = data.get("date")
         _hard_stop.initial_capital = float(data.get("initial_capital_idr") or 0.0)
         _hard_stop.daily_pnl = float(data.get("daily_pnl") or 0.0)
         _entry_loss_count = data.get("entry_loss_count") or {}
-        pass
     except Exception as e:
         print(f"[BOOT][ERROR] Failed to load daily state: {e}", flush=True)
     _daily_reset_state()
@@ -10001,7 +10021,7 @@ def _daily_reset_state():
     """Daily reset at midnight WIB."""
     global _initial_capital_idr
     balance = _get_total_equity_estimate()
-    today = datetime.now(WIB).date().isoformat()
+    today = datetime.now(timezone.utc).date().isoformat() # Minimal fallback
     state = {
         "date": today,
         "initial_capital_idr": balance,
@@ -10012,7 +10032,6 @@ def _daily_reset_state():
     _initial_capital_idr = balance
     _hard_stop.initial_capital = balance
     _entry_loss_count.clear()
-    print(f"[DAILY_RESET] Initial capital: Rp{balance:,.0f}", flush=True)
 
 def _get_daily_loss_pct() -> float:
     if _initial_capital_idr <= 0: return 0.0

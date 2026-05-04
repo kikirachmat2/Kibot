@@ -1,17 +1,17 @@
 {
-  "updated_at": "2026-05-03T13:45:56.601142+00:00",
+  "updated_at": "2026-05-03T19:39:45.379975+00:00",
   "service": "kibot_manager",
-  "operational_wib_date": "2026-05-03",
-  "actual_wib_date": "2026-05-03",
+  "operational_wib_date": "2026-05-04",
+  "actual_wib_date": "2026-05-04",
   "midnight_reset_pending": false,
   "daily_cycle_state": {
-    "active_wib_date": "2026-05-03",
+    "active_wib_date": "2026-05-04",
     "pending_new_date": "",
     "pending_previous_date": "",
     "pending_started_at": "",
     "last_liquidation_emit_at": "",
-    "last_daily_report_date": "2026-05-02",
-    "last_reset_completed_date": "2026-05-03",
+    "last_daily_report_date": "2026-05-03",
+    "last_reset_completed_date": "2026-05-04",
     "alert_sent_for_pending_cycle": false
   },
   "host_bind": "0.0.0.0:9998",
@@ -19,7 +19,7 @@
   "kinance_target": "152.69.218.198:9999",
   "system_state": "SUSPENDED",
   "trading_mode": "CONSERVATIVE",
-  "api_fail_streak": 4487,
+  "api_fail_streak": 5873,
   "control_plane_healthy": false,
   "daily_hard_stop": false,
   "daily_pnl_pct": 0.0,
@@ -36,25 +36,25 @@
   "ai_provider_last_status": {
     "provider": "",
     "task": "learning_review",
-    "at_epoch_ms": 1777815443502,
+    "at_epoch_ms": 1777837065099,
     "ok": false
   },
   "provider_runtime_state": {
     "openrouter": {
       "task": "correlation_matrix",
-      "last_failure_epoch": 1777815054.943611,
-      "cooldown_until_epoch": 1777815654.943611,
+      "last_failure_epoch": 1777836674.5564759,
+      "cooldown_until_epoch": 1777837274.5564759,
       "reason": "generic_failure",
       "last_error": "openrouter status=401 body={\"error\":{\"message\":\"User not found.\",\"code\":401}}",
-      "failure_count": 148
+      "failure_count": 160
     },
     "gemini": {
       "task": "learning_review",
-      "last_failure_epoch": 1777815443.49828,
-      "cooldown_until_epoch": 1777819043.49828,
+      "last_failure_epoch": 1777837065.095743,
+      "cooldown_until_epoch": 1777840665.095743,
       "reason": "rate_limited",
       "last_error": "gemini status=429 body={\n  \"error\": {\n    \"code\": 429,\n    \"message\": \"You exceeded your current quota, please check your plan and billing details. For more information on this error, head to: https://ai.google.dev/gemini-api/docs/rate-limits. To monitor your cur",
-      "failure_count": 79
+      "failure_count": 85
     }
   },
   "tracked_active_positions": [],
@@ -86,9 +86,9 @@
   },
   "strategy_governor": {
     "directives": {
-      "plan_id": "fallback-1777815864",
-      "plan_generated_at": "2026-05-03T13:44:24.716623Z",
-      "expires_at": "2026-05-03T13:59:24.716623Z",
+      "plan_id": "fallback-1777836994",
+      "plan_generated_at": "2026-05-03T19:36:34.210693Z",
+      "expires_at": "2026-05-03T19:51:34.210693Z",
       "plan_ttl_sec": 900,
       "plan_state": "ACTIVE",
       "strategy_mode": "DEFENSIVE",
@@ -99,11 +99,11 @@
       "why": [
         "capital or gate health requires defensive fallback"
       ],
-      "updated_at": "2026-05-03T13:44:24.716873Z",
+      "updated_at": "2026-05-03T19:36:34.210869Z",
       "provider": "heuristic",
       "model": "local-fallback",
       "confidence": 0.42,
-      "effective_confidence": 0.4185,
+      "effective_confidence": 0.4168,
       "confidence_decay_per_hour": 0.06,
       "fallback_if_expired": "SURVIVAL_MODE",
       "what_could_make_this_wrong": [
@@ -173,19 +173,19 @@
         "max_risk_pct": 0.5,
         "focus_markets": []
       },
-      "plan_age_sec": 91.88,
+      "plan_age_sec": 192.91,
       "plan_is_expired": false
     },
     "state": {
-      "last_refresh_at": "2026-05-03T13:44:24.716873Z",
+      "last_refresh_at": "2026-05-03T19:36:34.210869Z",
       "last_reason": "medium_cycle",
       "last_profile": "MEDIUM",
       "last_provider": "heuristic",
-      "last_plan_id": "fallback-1777815864",
+      "last_plan_id": "fallback-1777836994",
       "last_plan_state": "ACTIVE",
-      "last_fingerprint": "6711ef5d8da39958d0d2db28bf8c25f6",
+      "last_fingerprint": "3b32329123a069dd8f9b732158a4bc6e",
       "last_event_fingerprint": "5eb98304f699fe3e61425d5420b4cefb",
-      "refresh_count": 466,
+      "refresh_count": 604,
       "last_error": ""
     },
     "loop_targets": {
@@ -202,8 +202,8 @@
   "sector_count": 0,
   "sector_preview": {},
   "latest_learning_review": {
-    "at": "2026-05-03T13:37:21.533867+00:00",
-    "wib_date": "2026-05-03",
+    "at": "2026-05-03T19:37:44.907686+00:00",
+    "wib_date": "2026-05-04",
     "summary": "Data 30 menit terakhir belum kuat; pertahankan filter saat ini dan kumpulkan sample yang lebih bersih.",
     "strategy": "kejar target hijau dengan gap 0.30% tanpa longgarkan guardrail",
     "lessons": [
@@ -215,17 +215,22 @@
     "source": "heuristic_fallback"
   },
   "pattern_library": {
-    "updated_at": "2026-05-02T17:00:14.494826+00:00",
+    "updated_at": "2026-05-03T17:00:08.131796+00:00",
     "weekly_patterns": [
       {
         "at": "2026-05-02T17:00:14.494826+00:00",
         "summary": "Hari ini hampir tidak ada trade tutup, sehingga stagnasi perlu dijelaskan dari sisi gate, modal, atau kualitas sinyal.",
         "report_date": "2026-05-02"
+      },
+      {
+        "at": "2026-05-03T17:00:08.131796+00:00",
+        "summary": "Hari ini hampir tidak ada trade tutup, sehingga stagnasi perlu dijelaskan dari sisi gate, modal, atau kualitas sinyal.",
+        "report_date": "2026-05-03"
       }
     ],
     "pair_bias": {
       "btc_idr": {
-        "last_focus_at": "2026-05-02T17:00:14.494826+00:00",
+        "last_focus_at": "2026-05-03T17:00:08.131796+00:00",
         "last_mode": "CONTROLLED"
       }
     },
@@ -234,6 +239,11 @@
         "at": "2026-05-02T17:00:14.494826+00:00",
         "risk": "Waspadai whipsaw pada pair momentum pendek dan fee bleed dari exit terlalu cepat.",
         "report_date": "2026-05-02"
+      },
+      {
+        "at": "2026-05-03T17:00:08.131796+00:00",
+        "risk": "Waspadai whipsaw pada pair momentum pendek dan fee bleed dari exit terlalu cepat.",
+        "report_date": "2026-05-03"
       }
     ],
     "daily_reviews": [
@@ -259,11 +269,34 @@
         "source": "heuristic_fallback",
         "at": "2026-05-02T17:00:14.494826+00:00",
         "report_date": "2026-05-02"
+      },
+      {
+        "summary": "Hari ini hampir tidak ada trade tutup, sehingga stagnasi perlu dijelaskan dari sisi gate, modal, atau kualitas sinyal.",
+        "root_causes": [
+          "Hari ini hampir tidak ada trade tutup, sehingga stagnasi perlu dijelaskan dari sisi gate, modal, atau kualitas sinyal."
+        ],
+        "missed_opportunities": [
+          "Periksa peluang yang lolos scan tetapi tertahan gate terlalu lama."
+        ],
+        "lessons": [
+          "Gunakan fokus pair dari brain plan sebagai shortlist utama, bukan menebar entry ke pair abu-abu."
+        ],
+        "risks": [
+          "Waspadai whipsaw pada pair momentum pendek dan fee bleed dari exit terlalu cepat."
+        ],
+        "parameter_recommendations": [],
+        "tomorrow_mode": "CONTROLLED",
+        "tomorrow_focus": [
+          "btc_idr"
+        ],
+        "source": "heuristic_fallback",
+        "at": "2026-05-03T17:00:08.131796+00:00",
+        "report_date": "2026-05-03"
       }
     ]
   },
   "brain_assist": {
-    "checked_at": "2026-05-03T13:43:04Z",
+    "checked_at": "2026-05-03T19:32:03Z",
     "mode": "sovereign_support",
     "provider_status": {
       "tavily": {
@@ -287,7 +320,7 @@
       "ddg": {
         "configured": true,
         "last_ok": true,
-        "last_checked_at": "2026-05-03T13:43:03Z",
+        "last_checked_at": "2026-05-03T19:32:03Z",
         "last_error": ""
       },
       "ollama": {
@@ -476,7 +509,7 @@
         "ddg": {
           "configured": true,
           "last_ok": true,
-          "last_checked_at": "2026-05-03T13:43:03Z",
+          "last_checked_at": "2026-05-03T19:32:03Z",
           "last_error": ""
         }
       },
@@ -571,8 +604,11 @@
     "market_pulse": {
       "risk_bias": "MIXED",
       "headline_count": 0,
-      "top_headlines": [],
-      "summary": "",
+      "top_headlines": [
+        "Crypto Market News Today - CoinMarketCap",
+        "Crypto Markets Today: Fear Dominates as Altcoins Lag, Bitcoin Tests …"
+      ],
+      "summary": "Crypto Market News Today - CoinMarketCap",
       "providers_used": [
         "ddg"
       ],
@@ -595,20 +631,36 @@
       "overleveraged_short_count": 0
     },
     "stablecoin_flow": {
-      "total_market_cap_usd": 2694336778201.0,
-      "total_volume_24h_usd": 51493842499.0,
-      "market_cap_change_24h_pct": 0.41,
+      "total_market_cap_usd": 2697251974215.0,
+      "total_volume_24h_usd": 52178978043.0,
+      "market_cap_change_24h_pct": 0.35,
       "flow_signal": "STABLE",
-      "active_cryptocurrencies": 17466
+      "active_cryptocurrencies": 17470
     },
     "world_model": {
       "version": 1,
-      "built_at": "2026-05-03T13:43:04Z",
+      "built_at": "2026-05-03T19:32:03Z",
       "market_regime": "MIXED",
       "confidence": 0.644,
-      "summary": "",
-      "global_narratives": [],
-      "external_events": [],
+      "summary": "Crypto Market News Today - CoinMarketCap",
+      "global_narratives": [
+        "Crypto Market News Today - CoinMarketCap",
+        "Crypto Markets Today: Fear Dominates as Altcoins Lag, Bitcoin Tests …"
+      ],
+      "external_events": [
+        {
+          "source": "market_pulse",
+          "headline": "Crypto Market News Today - CoinMarketCap",
+          "impact": "MIXED",
+          "assets": []
+        },
+        {
+          "source": "market_pulse",
+          "headline": "Crypto Markets Today: Fear Dominates as Altcoins Lag, Bitcoin Tests …",
+          "impact": "MIXED",
+          "assets": []
+        }
+      ],
       "opportunity_register": [],
       "risk_register": [],
       "internal_state": {
@@ -641,11 +693,11 @@
         "overleveraged_short_count": 0
       },
       "stablecoin_flow": {
-        "total_market_cap_usd": 2694336778201.0,
-        "total_volume_24h_usd": 51493842499.0,
-        "market_cap_change_24h_pct": 0.41,
+        "total_market_cap_usd": 2697251974215.0,
+        "total_volume_24h_usd": 52178978043.0,
+        "market_cap_change_24h_pct": 0.35,
         "flow_signal": "STABLE",
-        "active_cryptocurrencies": 17466
+        "active_cryptocurrencies": 17470
       },
       "source_status": {
         "providers_used": [
@@ -710,118 +762,121 @@
         "listed_on_indodax": false,
         "quote_volume_usdt": 0.0,
         "risk_bias": "MIXED",
-        "research_provider": "finnhub",
-        "research_summary": "",
-        "headline_count": 0,
-        "top_headlines": []
+        "research_provider": "ddg",
+        "research_summary": "1 day ago · Latest Ethereum News - Discover Market Trends, Price Updates, and Insights on the Future of Ethereum for Traders and Investors.",
+        "headline_count": 2,
+        "top_headlines": [
+          "Latest Ethereum (ETH) News Update - CoinMarketCap",
+          "Ethereum News Today (ETH) – Latest Updates & Trends"
+        ]
       }
     ],
     "ai_critic": {}
   },
   "recent_events": [
     {
-      "at": "2026-05-03T13:45:41.941246+00:00",
+      "at": "2026-05-03T19:39:31.951897+00:00",
       "kind": "trinity_heartbeat_emit",
       "detail": {
         "sender": "kibot"
       }
     },
     {
-      "at": "2026-05-03T13:45:42.945904+00:00",
+      "at": "2026-05-03T19:39:32.957251+00:00",
       "kind": "trinity_heartbeat_emit",
       "detail": {
         "sender": "kibot"
       }
     },
     {
-      "at": "2026-05-03T13:45:43.949028+00:00",
+      "at": "2026-05-03T19:39:33.961733+00:00",
       "kind": "trinity_heartbeat_emit",
       "detail": {
         "sender": "kibot"
       }
     },
     {
-      "at": "2026-05-03T13:45:44.997969+00:00",
+      "at": "2026-05-03T19:39:34.965904+00:00",
       "kind": "trinity_heartbeat_emit",
       "detail": {
         "sender": "kibot"
       }
     },
     {
-      "at": "2026-05-03T13:45:46.004117+00:00",
+      "at": "2026-05-03T19:39:35.968750+00:00",
       "kind": "trinity_heartbeat_emit",
       "detail": {
         "sender": "kibot"
       }
     },
     {
-      "at": "2026-05-03T13:45:47.007419+00:00",
+      "at": "2026-05-03T19:39:36.975675+00:00",
       "kind": "trinity_heartbeat_emit",
       "detail": {
         "sender": "kibot"
       }
     },
     {
-      "at": "2026-05-03T13:45:48.011368+00:00",
+      "at": "2026-05-03T19:39:37.980015+00:00",
       "kind": "trinity_heartbeat_emit",
       "detail": {
         "sender": "kibot"
       }
     },
     {
-      "at": "2026-05-03T13:45:49.018809+00:00",
+      "at": "2026-05-03T19:39:38.984721+00:00",
       "kind": "trinity_heartbeat_emit",
       "detail": {
         "sender": "kibot"
       }
     },
     {
-      "at": "2026-05-03T13:45:50.020758+00:00",
+      "at": "2026-05-03T19:39:39.986220+00:00",
       "kind": "trinity_heartbeat_emit",
       "detail": {
         "sender": "kibot"
       }
     },
     {
-      "at": "2026-05-03T13:45:51.025688+00:00",
+      "at": "2026-05-03T19:39:40.992473+00:00",
       "kind": "trinity_heartbeat_emit",
       "detail": {
         "sender": "kibot"
       }
     },
     {
-      "at": "2026-05-03T13:45:52.031685+00:00",
+      "at": "2026-05-03T19:39:41.994964+00:00",
       "kind": "trinity_heartbeat_emit",
       "detail": {
         "sender": "kibot"
       }
     },
     {
-      "at": "2026-05-03T13:45:53.037235+00:00",
+      "at": "2026-05-03T19:39:43.001712+00:00",
       "kind": "trinity_heartbeat_emit",
       "detail": {
         "sender": "kibot"
       }
     },
     {
-      "at": "2026-05-03T13:45:54.038172+00:00",
+      "at": "2026-05-03T19:39:44.005137+00:00",
       "kind": "trinity_heartbeat_emit",
       "detail": {
         "sender": "kibot"
       }
     },
     {
-      "at": "2026-05-03T13:45:55.042876+00:00",
+      "at": "2026-05-03T19:39:45.007971+00:00",
       "kind": "trinity_heartbeat_emit",
       "detail": {
         "sender": "kibot"
       }
     },
     {
-      "at": "2026-05-03T13:45:56.049421+00:00",
-      "kind": "trinity_heartbeat_emit",
+      "at": "2026-05-03T19:39:45.379954+00:00",
+      "kind": "manager_shutdown",
       "detail": {
-        "sender": "kibot"
+        "signal": "SIGTERM"
       }
     }
   ]
