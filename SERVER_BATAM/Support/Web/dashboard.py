@@ -1,4 +1,5 @@
 import os, asyncio, json, time
+from datetime import datetime
 from aiohttp import web, ClientSession, ClientTimeout
 
 # Configuration - TRINITY V9.1 CLUSTER
@@ -15,42 +16,52 @@ NETDATA_PORT = 19999
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 DASHBOARD_HTML = os.path.join(SCRIPT_DIR, "kibot_dashboard.html")
 
-async def fetch_json(session, url, timeout_sec=0.8):
+async def fetch_json(session, url, timeout_sec=1.5):
     try:
         timeout = ClientTimeout(total=timeout_sec)
         async with session.get(url, timeout=timeout) as resp:
             if resp.status == 200: return await resp.json()
-    except: pass
+    except Exception as e:
+        print(f"[ERROR] Fetch {url}: {e}")
     return {}
 
 async def get_node_stats(session, host):
     url = f"http://{host}:{NETDATA_PORT}/api/v1/allmetrics?format=json"
-    data = await fetch_json(session, url, timeout_sec=0.5)
-    stats = {"cpu": 0, "ram": 0.1, "online": False} # Default RAM 0.1 to avoid 0% look
+    data = await fetch_json(session, url, timeout_sec=0.8)
+    stats = {"cpu": 0, "ram": 0, "online": False}
     if data:
         try:
             stats["cpu"] = round(data.get("system.cpu", {}).get("dimensions", {}).get("user", {}).get("value", 0), 1)
             mem = data.get("system.ram", {}).get("dimensions", {})
             used = mem.get("used", 0)
             total = used + mem.get("cached", 0) + mem.get("free", 0)
-            if total > 0:
-                calc_ram = (used / total) * 100
-                stats["ram"] = round(max(0.1, calc_ram), 1)
+            stats["ram"] = round((used / total) * 100, 1) if total > 0 else 0
             stats["online"] = True
         except: stats["online"] = True
     return stats
 
 async def handle_full_state(request):
     session = request.app["client"]
-    now_ms = int(time.time() * 1000)
+    now = datetime.now()
+    now_ms = int(now.timestamp() * 1000)
+    time_str = now.strftime("%H:%M:%S")
     
     # Parallel Fetch
     node_results = await asyncio.gather(*[get_node_stats(session, ip) for ip in NODES.values()])
-    engine_data = await fetch_json(session, f"http://{NODES['EXECUTOR']}:8787/api/state", timeout_sec=1.2)
+    engine_data = await fetch_json(session, f"http://{NODES['EXECUTOR']}:8787/api/state", timeout_sec=1.5)
     
-    last_act_text = engine_data.get("last_action", "TRINITY V9.1 ACTIVE")
+    last_act = engine_data.get("last_action", "TRINITY V9.1 ACTIVE - Monitoring")
     
-    # ABSOLUTE COMPATIBILITY MAPPING
+    # THE RECENT ACTIONS - Multi-Key for JS Compatibility
+    recent_item = {
+        "time": now_ms,
+        "timestamp": now_ms,
+        "time_str": time_str,
+        "action": last_act,
+        "text": last_act,
+        "type": "info"
+    }
+
     master_state = {
         "nodes": {
             "BATAM": node_results[0],
@@ -64,19 +75,22 @@ async def handle_full_state(request):
             "total_rp": engine_data.get("total_rp", 0),
             "portfolioValueIdr": engine_data.get("total_rp", 0),
             "holdings": engine_data.get("holdings", []),
-            "recent_actions": [
-                {"time": now_ms, "text": last_act_text, "action": last_act_text, "type": "info"}
-            ]
+            "recent_actions": [recent_item]
         },
         "manager": {
-            "recent_actions": [
-                {"time": now_ms, "text": last_act_text, "action": last_act_text, "type": "info"}
-            ]
+            "recent_actions": [recent_item]
         },
         "timestamp": now_ms,
+        "time_str": time_str,
         "status": "connected"
     }
     return web.json_response(master_state, headers={"Access-Control-Allow-Origin": "*"})
+
+async def on_startup(app):
+    app["client"] = ClientSession()
+
+async def on_cleanup(app):
+    await app["client"].close()
 
 def main():
     app = web.Application()
@@ -89,9 +103,8 @@ def main():
         app.router.add_static("/static/", SCRIPT_DIR)
     app.on_startup.append(on_startup)
     app.on_cleanup.append(on_cleanup)
+    print(f"🚀 TRINITY DASHBOARD RELOADED on {LISTEN_PORT}")
     web.run_app(app, host=LISTEN_HOST, port=LISTEN_PORT, access_log=None)
 
-async def on_startup(app): app["client"] = ClientSession()
-async def on_cleanup(app): await app["client"].close()
-
-if __name__ == "__main__": main()
+if __name__ == "__main__":
+    main()
