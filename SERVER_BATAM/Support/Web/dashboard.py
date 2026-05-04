@@ -16,39 +16,62 @@ STATE_DIR = os.path.join(ROOT_DIR, "SERVER_BATAM", "state")
 SECURITY_LOG = os.path.join(STATE_DIR, "security_ledger.jsonl")
 
 cache = {
+    "indodax": {"data": None, "expiry": 0},
     "security": {"data": [], "expiry": 0}
 }
+
+async def fetch_json(session, url, timeout=3.0):
+    try:
+        async with session.get(url, timeout=timeout) as resp:
+            if resp.status == 200:
+                return await resp.json()
+    except: pass
+    return {}
 
 async def handle_index(request):
     if os.path.exists(DASHBOARD_HTML):
         return web.FileResponse(DASHBOARD_HTML)
-    return web.Response(text=f"Dashboard not found at: {DASHBOARD_HTML}", status=404)
+    return web.Response(text="Dashboard HTML missing", status=404)
+
+async def handle_favicon(request):
+    icon_path = os.path.join(SCRIPT_DIR, "kibot.png")
+    if os.path.exists(icon_path):
+        return web.FileResponse(icon_path)
+    return web.Response(status=404)
 
 async def handle_security_logs(request):
-    now = time.time()
-    if cache["security"]["data"] and now < cache["security"]["expiry"]:
-        return web.json_response(cache["security"]["data"], headers={"Access-Control-Allow-Origin": "*"})
     logs = []
     if os.path.exists(SECURITY_LOG):
         try:
             with open(SECURITY_LOG, "r") as f:
-                lines = f.readlines()[-20:]
+                lines = f.readlines()[-30:]
                 for line in lines: logs.append(json.loads(line))
         except: pass
-    cache["security"] = {"data": logs, "expiry": now + 5}
     return web.json_response(logs, headers={"Access-Control-Allow-Origin": "*"})
 
 async def handle_full_state(request):
-    # Simplified state for initial recovery
-    return web.json_response({
-        "status": "Trinity v9.1 Active",
+    session = request.app["client"]
+    
+    # Fetch all data in parallel
+    engine_task = fetch_json(session, f"{ENGINE_UPSTREAM}/api/state")
+    scanner_task = fetch_json(session, f"{SCANNER_UPSTREAM}/api/state")
+    
+    engine_raw, scanner_raw = await asyncio.gather(engine_task, scanner_task)
+    
+    # Extract states or use raw
+    engine_state = engine_raw.get("engine", engine_raw)
+    scanner_state = scanner_raw.get("scanner", scanner_raw)
+    
+    # Standardize data for UI (Ensuring fields exist)
+    master_state = {
+        "engine": engine_state,
+        "scanner": scanner_state,
+        "system": {"cpu": 0, "ram": 0, "online": True}, # Fallback for now
         "timestamp": time.time(),
-        "nodes": {
-            "batam": "ONLINE",
-            "executor": "CONNECTED",
-            "scanner": "STREAMING"
-        }
-    }, headers={"Access-Control-Allow-Origin": "*"})
+        "status": "Trinity Active"
+    }
+    
+    return web.json_response(master_state, headers={"Access-Control-Allow-Origin": "*"})
 
 async def on_startup(app):
     app["client"] = ClientSession()
@@ -59,15 +82,18 @@ async def on_cleanup(app):
 def main():
     app = web.Application()
     app.router.add_get("/", handle_index)
+    app.router.add_get("/favicon.ico", handle_favicon)
+    app.router.add_get("/kibot.png", handle_favicon)
     app.router.add_get("/api/state", handle_full_state)
     app.router.add_get("/api/security", handle_security_logs)
+    app.router.add_get("/full_state", handle_full_state) # Alias
+    
     app.on_startup.append(on_startup)
     app.on_cleanup.append(on_cleanup)
     
-    if os.path.exists(SCRIPT_DIR):
-        app.router.add_static("/static/", SCRIPT_DIR)
+    # Serve static assets from current folder
+    app.router.add_static("/static/", SCRIPT_DIR)
     
-    print(f"🚀 TRINITY DASHBOARD RUNNING on {LISTEN_HOST}:{LISTEN_PORT}")
     web.run_app(app, host=LISTEN_HOST, port=LISTEN_PORT, access_log=None)
 
 if __name__ == "__main__":
