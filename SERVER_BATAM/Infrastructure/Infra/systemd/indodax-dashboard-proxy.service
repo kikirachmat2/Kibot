@@ -6,11 +6,11 @@ Wants=network-online.target
 [Service]
 Type=simple
 User=ubuntu
-# Cara paling standar: backslash tunggal sebelum spasi
-WorkingDirectory=/home/ubuntu/KiBot/SERVER\ BATAM/Support/Web
+# NO SPACES, NO PROBLEMS
+WorkingDirectory=/home/ubuntu/KiBot/SERVER_BATAM/Support/Web
 EnvironmentFile=-/home/ubuntu/KiBot/.env.indodax
 EnvironmentFile=-/home/ubuntu/KiBot/.env.server
-ExecStart=/usr/bin/python3 /home/ubuntu/KiBot/SERVER\ BATAM/Support/Web/dashboard.py
+ExecStart=/usr/bin/python3 /home/ubuntu/KiBot/SERVER_BATAM/Support/Web/dashboard.py
 Restart=always
 RestartSec=5
 StandardOutput=journal
