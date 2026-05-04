@@ -1,20 +1,27 @@
-# Batam Control Plane (The Brain)
+# 🧠 SERVER_BATAM (The Brain) - Trinity v9.1
 
 ## Overview
-Batam is the **Single Source of Truth** and the sole decision-maker in the KiBot ecosystem. It follows a centralized intelligence architecture where all scanners report raw data here, and all executors wait for commands from here.
+Batam is the **Single Source of Truth** and the central command center of the KiBot ecosystem. It aggregates sensory data from globally distributed Scanners and issues execution orders to reactive Executor nodes.
 
-## Responsibilities
-1. **Intelligence & Analysis**: Processes raw sensory data from global scanners.
-2. **Strategy Orchestration**: Decides when to enter/exit markets based on consolidated signals, news, and risk management.
-3. **Command Issuance**: Sends cryptographically signed execution payloads to Executor nodes via the `pending_commands` table.
-4. **Risk Management**: Monitors global exposure, PnL, and balance across all exchanges.
+## Core Components
+- **Core_Logic/**: Contains `kibot_manager.py` (Main entry) and `ki_brain.py` (Decision engine).
+- **AI_Orchestration/**: Integrates local LLMs (DeepSeek-Coder-V2) via Ollama for autonomous code healing and sentiment validation.
+- **Indicators_Math/**: Handles Z-Score, technical analysis, and Polymarket probability math.
+- **Security/**: Enforces the "Sovereign Shield" and monitors for unauthorized system changes.
 
-## Architecture
-- **Control Plane**: The central logic hub.
-- **Command Dispatcher**: Manages the lifecycle of commands (Pending -> Executed/Failed).
-- **Audit Logger**: Collects and centralizes execution logs from all remote nodes.
+## Deployment & Management
+Batam operates via systemd:
+- `kibot-orchestrator.service`: Starts Manager and Brain.
+- `kibot-healer.service`: Autonomous maintenance via DeepSeek AI.
+- `indodax-dashboard-proxy.service`: Real-time visual monitoring (Port 8080).
 
-## Connection Points
+## Connection Points (Trinity Mesh)
+- **Primary Link**: Tailscale Private Network (100.x.x.x) for inter-node control.
 - **Inbound**: UDP Sensory Stream (Port 9999) from Scanners.
-- **Outbound**: Command Polling API/Supabase for Executors.
-- **Management**: Dashboard for human monitoring and manual overrides.
+- **Outbound**: Command Polling via Supabase & Direct Reactive SSH for Executors.
+- **Reporting**: Telegram Monitor for real-time PnL and alerts.
+
+## Current System Status (v9.1 Stable)
+- **Uptime**: Verified >9 days.
+- **Node Health**: 3/3 Nodes Online.
+- **Networking**: Mesh standard enforced via `authorized_keys` & Tailscale.
