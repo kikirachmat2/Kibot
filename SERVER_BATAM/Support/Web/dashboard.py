@@ -1,5 +1,5 @@
 import os, asyncio, json, time
-from aiohttp import web, ClientSession
+from aiohttp import web, ClientSession, ClientTimeout
 
 # Configuration - TRINITY V9.1 CLUSTER
 NODES = {
@@ -8,67 +8,65 @@ NODES = {
     "SCANNER": "152.69.218.198"
 }
 
-# Port definitions
-DASHBOARD_PORT = 8787
 NETDATA_PORT = 19999
-ENGINE_API_PORT = 8787 # Executor API
-SCANNER_API_PORT = 8787 # Scanner API
+ENGINE_API_PORT = 8787
+SCANNER_API_PORT = 8787
+LISTEN_PORT = 8787
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 DASHBOARD_HTML = os.path.join(SCRIPT_DIR, "kibot_dashboard.html")
-ROOT_DIR = os.path.dirname(os.path.dirname(os.path.dirname(SCRIPT_DIR)))
-STATE_DIR = os.path.join(ROOT_DIR, "SERVER_BATAM", "state")
-SECURITY_LOG = os.path.join(STATE_DIR, "security_ledger.jsonl")
 
-async def fetch_json(session, url, timeout=1.0):
+async def safe_fetch_json(session, url, timeout_sec=0.5):
     try:
+        # Strict timeout to prevent dashboard hanging
+        timeout = ClientTimeout(total=timeout_sec)
         async with session.get(url, timeout=timeout) as resp:
-            if resp.status == 200: return await resp.json()
+            if resp.status == 200:
+                return await resp.json()
     except: pass
     return {}
 
-async def get_netdata_stats(session, host):
-    # Pulling basic system stats from Netdata API
+async def get_node_metrics(session, name, host):
+    # Netdata metrics polling
     url = f"http://{host}:{NETDATA_PORT}/api/v1/allmetrics?format=json"
-    data = await fetch_json(session, url, timeout=0.8)
-    if not data: return {"cpu": 0, "ram": 0, "online": False}
+    data = await safe_fetch_json(session, url, timeout_sec=0.4)
     
-    # Netdata metric extraction (Simplified)
+    # Defaults
+    metrics = {"cpu": 0, "ram": 0, "online": False}
+    if not data: return metrics
+    
     try:
-        cpu = data.get("system.cpu", {}).get("dimensions", {}).get("user", {}).get("value", 0)
-        ram = data.get("system.ram", {}).get("dimensions", {}).get("used", {}).get("value", 0)
-        return {"cpu": round(cpu, 1), "ram": round(ram, 1), "online": True}
+        # Extract basic metrics from Netdata structure
+        metrics["cpu"] = round(data.get("system.cpu", {}).get("dimensions", {}).get("user", {}).get("value", 0), 1)
+        metrics["ram"] = round(data.get("system.ram", {}).get("dimensions", {}).get("used", {}).get("value", 0), 1)
+        metrics["online"] = True
     except:
-        return {"cpu": 0, "ram": 0, "online": True}
+        metrics["online"] = True
+    return metrics
 
 async def handle_full_state(request):
     session = request.app["client"]
     
-    # 1. Fetch Node Health (Netdata)
-    health_tasks = [get_netdata_stats(session, ip) for ip in NODES.values()]
-    health_results = await asyncio.gather(*health_tasks)
-    health_map = dict(zip(NODES.keys(), health_results))
+    # Parallel fetching with strict timeouts
+    health_tasks = [get_node_metrics(session, name, ip) for name, ip in NODES.items()]
+    engine_task = safe_fetch_json(session, f"http://{NODES['EXECUTOR']}:{ENGINE_API_PORT}/api/state", timeout_sec=0.8)
     
-    # 2. Fetch Bot Activity (Executor)
-    engine_url = f"http://{NODES['EXECUTOR']}:{ENGINE_API_PORT}/api/state"
-    engine_data = await fetch_json(session, engine_url)
+    results = await asyncio.gather(*health_tasks, engine_task)
     
-    # 3. Fetch Scanner Status
-    scanner_url = f"http://{NODES['SCANNER']}:{SCANNER_API_PORT}/api/state"
-    scanner_data = await fetch_json(session, scanner_url)
+    health_map = {
+        "BATAM": results[0],
+        "EXECUTOR": results[1],
+        "SCANNER": results[2]
+    }
+    engine_data = results[3]
     
-    # Structure for kibot_dashboard.html
+    # Final JSON assembly
     full_state = {
         "nodes": health_map,
-        "engine": engine_data.get("engine", engine_data), # Bot Status & Activity
-        "scanner": scanner_data.get("scanner", scanner_data),
-        "system": {
-            "online": True,
-            "master": "BATAM",
-            "timestamp": time.time()
-        },
-        "bot_activity": engine_data.get("last_action", "IDLE - Waiting for Signal"),
-        "timestamp": time.time()
+        "engine": engine_data.get("engine", engine_data),
+        "bot_activity": engine_data.get("last_action", "READY - Monitoring Market"),
+        "timestamp": time.time(),
+        "system": {"master": "BATAM", "online": True}
     }
     return web.json_response(full_state, headers={"Access-Control-Allow-Origin": "*"})
 
@@ -83,17 +81,8 @@ async def handle_favicon(request):
         return web.FileResponse(icon_path)
     return web.Response(status=404)
 
-async def handle_security_logs(request):
-    logs = []
-    if os.path.exists(SECURITY_LOG):
-        try:
-            with open(SECURITY_LOG, "r") as f:
-                lines = f.readlines()[-20:]
-                for line in lines: logs.append(json.loads(line))
-        except: pass
-    return web.json_response(logs, headers={"Access-Control-Allow-Origin": "*"})
-
 async def on_startup(app):
+    # Use a shared session for efficiency
     app["client"] = ClientSession()
 
 async def on_cleanup(app):
@@ -101,24 +90,22 @@ async def on_cleanup(app):
 
 def main():
     app = web.Application()
+    
+    # Routes
+    app.router.add_get("/", handle_index)
     app.router.add_get("/full_state", handle_full_state)
     app.router.add_get("/api/state", handle_full_state)
-    app.router.add_get("/api/security", handle_security_logs)
     app.router.add_get("/favicon.ico", handle_favicon)
     app.router.add_get("/kibot.png", handle_favicon)
-    app.router.add_get("/", handle_index)
     
     if os.path.exists(SCRIPT_DIR):
         app.router.add_static("/static/", SCRIPT_DIR)
-        async def static_fallback(request):
-            file_path = os.path.join(SCRIPT_DIR, request.match_info['filename'])
-            if os.path.isfile(file_path): return web.FileResponse(file_path)
-            raise web.HTTPNotFound()
-        app.router.add_get("/{filename:.+\\..+}", static_fallback)
-
+        
     app.on_startup.append(on_startup)
     app.on_cleanup.append(on_cleanup)
-    web.run_app(app, host=LISTEN_HOST, port=LISTEN_PORT, access_log=None)
+    
+    print(f"🚀 RESILIENT DASHBOARD V9.1 (NETDATA + BOT STATUS) on {LISTEN_PORT}")
+    web.run_app(app, host="0.0.0.0", port=LISTEN_PORT, access_log=None)
 
 if __name__ == "__main__":
     main()
