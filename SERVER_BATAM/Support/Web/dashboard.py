@@ -29,18 +29,10 @@ async def get_node_stats(session, host):
     stats = {"cpu": 0, "ram": 0, "online": False}
     if data:
         try:
-            # CPU calculation
             stats["cpu"] = round(data.get("system.cpu", {}).get("dimensions", {}).get("user", {}).get("value", 0), 1)
-            
-            # RAM calculation (Fixing the 1539% bug)
             used = data.get("system.ram", {}).get("dimensions", {}).get("used", {}).get("value", 0)
-            cached = data.get("system.ram", {}).get("dimensions", {}).get("cached", {}).get("value", 0)
-            free = data.get("system.ram", {}).get("dimensions", {}).get("free", {}).get("value", 0)
-            total = used + cached + free
-            if total > 0:
-                stats["ram"] = round((used / total) * 100, 1)
-            else:
-                stats["ram"] = 0
+            total = used + data.get("system.ram", {}).get("dimensions", {}).get("cached", {}).get("value", 0) + data.get("system.ram", {}).get("dimensions", {}).get("free", {}).get("value", 0)
+            stats["ram"] = round((used / total) * 100, 1) if total > 0 else 0
             stats["online"] = True
         except: stats["online"] = True
     return stats
@@ -49,6 +41,9 @@ async def handle_full_state(request):
     session = request.app["client"]
     node_results = await asyncio.gather(*[get_node_stats(session, ip) for ip in NODES.values()])
     engine_data = await fetch_json(session, f"http://{NODES['EXECUTOR']}:8787/api/state", timeout_sec=1.2)
+    
+    # FIX TIMESTAMP FOR JS (Seconds to Milliseconds)
+    js_now = int(time.time() * 1000)
     
     master_state = {
         "nodes": {
@@ -66,14 +61,18 @@ async def handle_full_state(request):
             "pnl_24h": engine_data.get("pnl_24h", 0),
             "pnl_percent": engine_data.get("pnl_percent", 0),
             "holdings": engine_data.get("holdings", []),
-            "recent_actions": engine_data.get("recent_actions", [])
+            "recent_actions": []
         },
         "manager": {
             "recent_actions": [
-                {"time": time.strftime("%H:%M:%S"), "action": engine_data.get("last_action", "Monitoring..."), "type": "info"}
+                {
+                    "time": js_now, # Milliseconds for JS
+                    "action": engine_data.get("last_action", "TRINITY V9.1 ACTIVE - Monitoring Market"),
+                    "type": "info"
+                }
             ]
         },
-        "timestamp": time.time(),
+        "timestamp": js_now,
         "status": "connected"
     }
     return web.json_response(master_state, headers={"Access-Control-Allow-Origin": "*"})
@@ -88,7 +87,6 @@ def main():
     app = web.Application()
     app.router.add_get("/", lambda r: web.FileResponse(DASHBOARD_HTML))
     app.router.add_get("/full_state", handle_full_state)
-    app.router.add_get("/api/state", handle_full_state)
     app.router.add_get("/favicon.ico", lambda r: web.FileResponse(os.path.join(SCRIPT_DIR, "kibot.png")))
     app.router.add_get("/kibot.png", lambda r: web.FileResponse(os.path.join(SCRIPT_DIR, "kibot.png")))
     if os.path.exists(SCRIPT_DIR):
