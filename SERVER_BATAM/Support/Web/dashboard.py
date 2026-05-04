@@ -1,6 +1,5 @@
-import os, asyncio, json, time, hmac, hashlib, urllib.parse
-from aiohttp import web, ClientSession, WSMsgType, ClientConnectorError
-from pathlib import Path
+import os, asyncio, json, time
+from aiohttp import web, ClientSession
 
 # Configuration - TRINITY V9.1
 MANAGER_UPSTREAM = "http://127.0.0.1:11600"
@@ -15,12 +14,7 @@ ROOT_DIR = os.path.dirname(os.path.dirname(os.path.dirname(SCRIPT_DIR)))
 STATE_DIR = os.path.join(ROOT_DIR, "SERVER_BATAM", "state")
 SECURITY_LOG = os.path.join(STATE_DIR, "security_ledger.jsonl")
 
-cache = {
-    "indodax": {"data": None, "expiry": 0},
-    "security": {"data": [], "expiry": 0}
-}
-
-async def fetch_json(session, url, timeout=3.0):
+async def fetch_json(session, url, timeout=2.0):
     try:
         async with session.get(url, timeout=timeout) as resp:
             if resp.status == 200:
@@ -39,6 +33,25 @@ async def handle_favicon(request):
         return web.FileResponse(icon_path)
     return web.Response(status=404)
 
+async def handle_full_state(request):
+    session = request.app["client"]
+    # Fetch from nodes
+    engine_raw = await fetch_json(session, f"{ENGINE_UPSTREAM}/api/state")
+    scanner_raw = await fetch_json(session, f"{SCANNER_UPSTREAM}/api/state")
+    
+    # Standard Trinity Data Structure for kibot_dashboard.html
+    full_state = {
+        "engine": engine_raw.get("engine", engine_raw),
+        "scanner": scanner_raw.get("scanner", scanner_raw),
+        "system": {
+            "online": True,
+            "node": "BATAM_MASTER",
+            "uptime": time.time() # Placeholder for real uptime
+        },
+        "timestamp": time.time()
+    }
+    return web.json_response(full_state, headers={"Access-Control-Allow-Origin": "*"})
+
 async def handle_security_logs(request):
     logs = []
     if os.path.exists(SECURITY_LOG):
@@ -49,30 +62,6 @@ async def handle_security_logs(request):
         except: pass
     return web.json_response(logs, headers={"Access-Control-Allow-Origin": "*"})
 
-async def handle_full_state(request):
-    session = request.app["client"]
-    
-    # Fetch all data in parallel
-    engine_task = fetch_json(session, f"{ENGINE_UPSTREAM}/api/state")
-    scanner_task = fetch_json(session, f"{SCANNER_UPSTREAM}/api/state")
-    
-    engine_raw, scanner_raw = await asyncio.gather(engine_task, scanner_task)
-    
-    # Extract states or use raw
-    engine_state = engine_raw.get("engine", engine_raw)
-    scanner_state = scanner_raw.get("scanner", scanner_raw)
-    
-    # Standardize data for UI (Ensuring fields exist)
-    master_state = {
-        "engine": engine_state,
-        "scanner": scanner_state,
-        "system": {"cpu": 0, "ram": 0, "online": True}, # Fallback for now
-        "timestamp": time.time(),
-        "status": "Trinity Active"
-    }
-    
-    return web.json_response(master_state, headers={"Access-Control-Allow-Origin": "*"})
-
 async def on_startup(app):
     app["client"] = ClientSession()
 
@@ -81,19 +70,24 @@ async def on_cleanup(app):
 
 def main():
     app = web.Application()
+    
+    # Register routes BEFORE static files to avoid shadowing
     app.router.add_get("/", handle_index)
     app.router.add_get("/favicon.ico", handle_favicon)
     app.router.add_get("/kibot.png", handle_favicon)
+    app.router.add_get("/full_state", handle_full_state) # IMPORTANT: Matching frontend call
     app.router.add_get("/api/state", handle_full_state)
     app.router.add_get("/api/security", handle_security_logs)
-    app.router.add_get("/full_state", handle_full_state) # Alias
+    
+    # Static files as fallback
+    if os.path.exists(SCRIPT_DIR):
+        app.router.add_static("/static/", SCRIPT_DIR)
+        app.router.add_static("/", SCRIPT_DIR) # For local assets like .js/.css
     
     app.on_startup.append(on_startup)
     app.on_cleanup.append(on_cleanup)
     
-    # Serve static assets from current folder
-    app.router.add_static("/static/", SCRIPT_DIR)
-    
+    print(f"🚀 TRINITY DASHBOARD (FIXED ROUTING) on {LISTEN_PORT}")
     web.run_app(app, host=LISTEN_HOST, port=LISTEN_PORT, access_log=None)
 
 if __name__ == "__main__":
