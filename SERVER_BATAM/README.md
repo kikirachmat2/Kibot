@@ -15,13 +15,9 @@ Batam operates via systemd:
 - `kibot-healer.service`: Autonomous maintenance via DeepSeek AI.
 - `indodax-dashboard-proxy.service`: Real-time visual monitoring (Port 8080).
 
-## Connection Points (Trinity Mesh)
-- **Primary Link**: Tailscale Private Network (100.x.x.x) for inter-node control.
-- **Inbound**: UDP Sensory Stream (Port 9999) from Scanners.
-- **Outbound**: Command Polling via Supabase & Direct Reactive SSH for Executors.
-- **Reporting**: Telegram Monitor for real-time PnL and alerts.
-
-## Current System Status (v9.1 Stable)
-- **Uptime**: Verified >9 days.
-- **Node Health**: 3/3 Nodes Online.
-- **Networking**: Mesh standard enforced via `authorized_keys` & Tailscale.
+## Current System Status (v9.1.1 Sovereign)
+- **Mode**: 100% LOCAL-FIRST (Supabase Disabled to prevent quota breach).
+- **Resource Management**: Autonomous Governor active (Self-cleaning logs).
+- **Node Health**: 3/3 Nodes Online (Batam, Scanner, Executor).
+- **Stability**: High (Uptime verified).
+- **Safety**: "Sovereign Shield" active (Zero-trust SSH mesh).

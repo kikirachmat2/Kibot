@@ -1729,8 +1729,21 @@ def run_30min_math_review():
     # Simpan ke Supabase
     _sync_snapshot_to_supabase(pnl_pct, equity, stats, action)
 
+_last_supabase_sync_time = 0.0
+_last_supabase_pnl = 0.0
+
 def _sync_snapshot_to_supabase(pnl_pct, equity, stats, action):
-    """Sync performance snapshot ke Supabase non-blocking."""
+    """Sync performance snapshot ke Supabase dengan logika Throttling Otonom."""
+    global _last_supabase_sync_time, _last_supabase_pnl
+    
+    # Otak Penghemat: Jangan kirim kalau baru saja kirim (< 1 jam) 
+    # KECUALI ada perubahan PnL signifikan (> 0.5%)
+    time_since_sync = time.time() - _last_supabase_sync_time
+    pnl_diff = abs(pnl_pct - _last_supabase_pnl)
+    
+    if time_since_sync < 3600 and pnl_diff < 0.005 and action != "MANUAL_TRIGGER":
+        return
+
     if LOCAL_FIRST_STORAGE and not SUPABASE_BACKUP_ENABLED:
         return
     import threading
@@ -1762,9 +1775,36 @@ def _sync_snapshot_to_supabase(pnl_pct, equity, stats, action):
                 method="POST"
             )
             urllib.request.urlopen(req, timeout=5)
+            _last_supabase_sync_time = time.time()
+            _last_supabase_pnl = pnl_pct
         except Exception as e:
             print(f"[SNAPSHOT] Supabase sync error: {e}", flush=True)
     threading.Thread(target=do_sync, daemon=True).start()
+
+def run_resource_governor():
+    """Otak Penghemat Disk: Hapus log lama secara otonom."""
+    print("[GOVERNOR] Autonomous Resource Governor Active.", flush=True)
+    while not _shutdown_event.is_set():
+        try:
+            import shutil
+            # 1. Cek Disk Space
+            total, used, free = shutil.disk_usage("/")
+            free_gb = free // (2**30)
+            
+            if free_gb < 5:
+                print(f"[GOVERNOR] Disk Low ({free_gb}GB). Purging old logs...", flush=True)
+                # Sesuaikan dengan screenshot: Infrastructure/logs
+                log_dir = Path(__file__).parent.parent / "Infrastructure" / "logs"
+                if log_dir.exists():
+                    now = time.time()
+                    for f in log_dir.glob("*.log*"):
+                        if f.stat().st_mtime < (now - 3 * 86400): # 3 hari
+                            f.unlink()
+                            print(f"[GOVERNOR] Deleted old log: {f.name}", flush=True)
+            
+        except Exception as e:
+            print(f"[GOVERNOR] Error: {e}", flush=True)
+        if _shutdown_event.wait(timeout=21600): break # Tiap 6 jam
 
 _screen_cache_local: list = []
 _last_screen_time = 0.0
@@ -3008,7 +3048,9 @@ INDODAX_ALL_IN_MAKER_FEE_PCT = float(os.getenv("KIBOT_INDODAX_ALL_IN_MAKER_FEE_P
 INDODAX_LIMIT_FILL_RATE = float(os.getenv("KIBOT_INDODAX_LIMIT_FILL_RATE", "0.70"))
 ADAPTIVE_CAPITAL_ENABLED = os.getenv("KIBOT_ADAPTIVE_CAPITAL_ENABLED", "true").lower() in {"1", "true", "yes", "on"}
 LOCAL_FIRST_STORAGE = os.getenv("KIBOT_LOCAL_FIRST_STORAGE", "true").lower() in {"1", "true", "yes", "on"}
-SUPABASE_BACKUP_ENABLED = os.getenv("KIBOT_SUPABASE_BACKUP_ENABLED", "false").lower() in {"1", "true", "yes", "on"}
+# EMERGENCY SHUTDOWN - Supabase Quota Breach (249% Egress)
+SUPABASE_BACKUP_ENABLED = False
+LOCAL_FIRST_STORAGE = True
 ABSOLUTE_MIN_POSITION_SIZE_IDR = float(os.getenv("KIBOT_ABSOLUTE_MIN_POSITION_SIZE_IDR", str(MINIMUM_POSITION_SIZE_IDR)))
 ADAPTIVE_MICRO_MAX_POSITION_PCT = float(os.getenv("KIBOT_ADAPTIVE_MICRO_MAX_POSITION_PCT", "0.18"))
 ADAPTIVE_BUILDUP_MAX_POSITION_PCT = float(os.getenv("KIBOT_ADAPTIVE_BUILDUP_MAX_POSITION_PCT", "0.15"))
@@ -9971,6 +10013,11 @@ def main() -> None:
     ai_review_thread = threading.Thread(target=_ai_batch_review_loop, name="kibot-ai-review-loop", daemon=True)
     ai_review_thread.start()
     math_review_thread = threading.Thread(target=_math_review_loop, name="kibot-math-review-loop", daemon=True)
+    math_review_thread.start()
+    
+    # === START RESOURCE GOVERNOR (THE BRAIN) ===
+    governor_thread = threading.Thread(target=run_resource_governor, name="kibot-resource-governor", daemon=True)
+    governor_thread.start()
     
     try:
         asyncio.run(main_async())
