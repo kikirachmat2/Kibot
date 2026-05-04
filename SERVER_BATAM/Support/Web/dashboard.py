@@ -10,14 +10,14 @@ LISTEN_HOST = "0.0.0.0"
 LISTEN_PORT = int(os.environ.get("PORT", 8787))
 
 # FIX PATH RESOLUTION:
-# SCRIPT_DIR is KiBot/SERVER BATAM/Support/Web
+# SCRIPT_DIR is KiBot/SERVER_BATAM/Support/Web
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 # Kita cari file html di folder yang sama dengan script ini
 DASHBOARD_HTML = os.path.join(SCRIPT_DIR, "kibot_dashboard.html")
 
 # Root KiBot dir
 ROOT_DIR = os.path.dirname(os.path.dirname(os.path.dirname(SCRIPT_DIR)))
-STATE_DIR = os.path.join(ROOT_DIR, "SERVER BATAM", "state")
+STATE_DIR = os.path.join(ROOT_DIR, "SERVER_BATAM", "state")
 SECURITY_LOG = os.path.join(STATE_DIR, "security_ledger.jsonl")
 
 # ... (rest of the logic) ...

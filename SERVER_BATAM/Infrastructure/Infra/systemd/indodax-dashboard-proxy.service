@@ -6,7 +6,7 @@ Wants=network-online.target
 [Service]
 Type=simple
 User=ubuntu
-# NO SPACES, NO PROBLEMS
+# Folder sudah kita rename ke SERVER_BATAM
 WorkingDirectory=/home/ubuntu/KiBot/SERVER_BATAM/Support/Web
 EnvironmentFile=-/home/ubuntu/KiBot/.env.indodax
 EnvironmentFile=-/home/ubuntu/KiBot/.env.server
