@@ -30,30 +30,32 @@ async def get_node_stats(session, host):
     if data:
         try:
             stats["cpu"] = round(data.get("system.cpu", {}).get("dimensions", {}).get("user", {}).get("value", 0), 1)
-            used = data.get("system.ram", {}).get("dimensions", {}).get("used", {}).get("value", 0)
-            total = used + data.get("system.ram", {}).get("dimensions", {}).get("cached", {}).get("value", 0) + data.get("system.ram", {}).get("dimensions", {}).get("free", {}).get("value", 0)
-            stats["ram"] = round((used / total) * 100, 1) if total > 0 else 0
+            mem = data.get("system.ram", {}).get("dimensions", {})
+            total = mem.get("used", 0) + mem.get("cached", 0) + mem.get("free", 0)
+            stats["ram"] = round((mem.get("used", 0) / total) * 100, 1) if total > 0 else 0
             stats["online"] = True
         except: stats["online"] = True
     return stats
 
 async def handle_full_state(request):
     session = request.app["client"]
-    node_results = await asyncio.gather(*[get_node_stats(session, ip) for ip in NODES.values()])
+    now_ms = int(time.time() * 1000) # JS Compatibility
+    
+    results = await asyncio.gather(*[get_node_stats(session, ip) for ip in NODES.values()])
     engine_data = await fetch_json(session, f"http://{NODES['EXECUTOR']}:8787/api/state", timeout_sec=1.2)
     
-    # FIX TIMESTAMP FOR JS (Seconds to Milliseconds)
-    js_now = int(time.time() * 1000)
+    # Ensuring Bot Activity has a timestamp
+    last_act = engine_data.get("last_action", "TRINITY V9.1 ACTIVE - Monitoring Market")
     
     master_state = {
         "nodes": {
-            "BATAM": node_results[0],
-            "EXECUTOR": node_results[1],
-            "SCANNER": node_results[2],
-            "SG-Executor": node_results[1],
-            "SG-Scanner": node_results[2]
+            "BATAM": results[0],
+            "EXECUTOR": results[1],
+            "SCANNER": results[2],
+            "SG-Executor": results[1],
+            "SG-Scanner": results[2]
         },
-        "system": node_results[0],
+        "system": results[0],
         "engine": {
             "total_rp": engine_data.get("total_rp", 0),
             "portfolioValueIdr": engine_data.get("total_rp", 0),
@@ -65,16 +67,16 @@ async def handle_full_state(request):
         },
         "manager": {
             "recent_actions": [
-                {
-                    "time": js_now, # Milliseconds for JS
-                    "action": engine_data.get("last_action", "TRINITY V9.1 ACTIVE - Monitoring Market"),
-                    "type": "info"
-                }
+                {"time": now_ms, "action": last_act, "type": "info"}
             ]
         },
-        "timestamp": js_now,
+        "timestamp": now_ms,
         "status": "connected"
     }
+    
+    # Mirroring to console for debugging
+    print(f"[{time.strftime('%H:%M:%S')}] Heartbeat: {last_act}")
+    
     return web.json_response(master_state, headers={"Access-Control-Allow-Origin": "*"})
 
 async def on_startup(app):
@@ -87,6 +89,7 @@ def main():
     app = web.Application()
     app.router.add_get("/", lambda r: web.FileResponse(DASHBOARD_HTML))
     app.router.add_get("/full_state", handle_full_state)
+    app.router.add_get("/api/state", handle_full_state)
     app.router.add_get("/favicon.ico", lambda r: web.FileResponse(os.path.join(SCRIPT_DIR, "kibot.png")))
     app.router.add_get("/kibot.png", lambda r: web.FileResponse(os.path.join(SCRIPT_DIR, "kibot.png")))
     if os.path.exists(SCRIPT_DIR):
