@@ -1,53 +1,20 @@
-# [Batam] The Trinity AI Brain
+# Batam Control Plane (The Brain)
 
-This directory serves as the command-and-control center for the KiBot system. It is responsible for decision-making, intelligence gathering, and system self-healing.
+## Overview
+Batam is the **Single Source of Truth** and the sole decision-maker in the KiBot ecosystem. It follows a centralized intelligence architecture where all scanners report raw data here, and all executors wait for commands from here.
 
-## Sub-components
+## Responsibilities
+1. **Intelligence & Analysis**: Processes raw sensory data from global scanners.
+2. **Strategy Orchestration**: Decides when to enter/exit markets based on consolidated signals, news, and risk management.
+3. **Command Issuance**: Sends cryptographically signed execution payloads to Executor nodes via the `pending_commands` table.
+4. **Risk Management**: Monitors global exposure, PnL, and balance across all exchanges.
 
-### 1. [Core_Logic](file:///Users/kiki/Documents/Web%20Develop/KiBot/Batam/Core_Logic/)
-Contains the central manager that orchestrates signals and position gating.
-- `kibot_manager.py`: The monolithic coordinator for all trading logic.
-- `ki_brain.py`: High-level intelligence management.
+## Architecture
+- **Control Plane**: The central logic hub.
+- **Command Dispatcher**: Manages the lifecycle of commands (Pending -> Executed/Failed).
+- **Audit Logger**: Collects and centralizes execution logs from all remote nodes.
 
-### 2. [AI_Orchestration](file:///Users/kiki/Documents/Web%20Develop/KiBot/Batam/AI_Orchestration/)
-Integrates Large Language Models and web search tools for market validation.
-- `kibot_ai_coordinator.py`: Manages prompt templates and multi-provider AI calls.
-- `kibot_ai_scout.py`: Autonomous world scout for real-time news validation.
-- `kibot_ai_search.py`: Search utility wrapper (Tavily, Serper, etc.).
-
-### 3. [Intelligence](file:///Users/kiki/Documents/Web%20Develop/KiBot/Batam/Intelligence/) (v8.0 Bayesian Evolution)
-Implements simulation, learning, and regime-aware rotation logic.
-
-### Current Version: v8.2 (Paranoid Reconstruction)
-
-**Recent Hardening (v8.2)**:
-- **Inter-Node Trust**: Implemented HMAC-SHA256 signing for all UDP signals between cluster nodes.
-- **Bi-directional ACKs**: Verified bi-directional handshake for mission-critical breakout signals.
-- **Full Vault Integration**: Migrated to `os.environ` injection via KiVault, neutralizing plaintext `.env` risks.
-- **Adversarial Defenses**: Implemented Bayesian PnL clipping and Signal TTL validation to prevent data poisoning.
-- `sovereign_arbitrator.py`: The master capital allocator with "What-If" validation.
-
-### 4. [Indicators_Math](file:///Users/kiki/Documents/Web%20Develop/KiBot/Batam/Indicators_Math/)
-Mathematical foundations for anomaly detection.
-- `ki_stats.py`: Z-score and statistical calculations.
-- `ki_capital_engine.py`: Position sizing and risk math.
-
-### 5. [Stability](file:///Users/kiki/Documents/Web%20Develop/KiBot/Batam/Stability/)
-The watchdog layer ensuring 100% uptime.
-- `ki_revival_engine.py`: The "Lazarus Engine" that monitors and restarts failed services.
-
-### 6. [Global_State](file:///Users/kiki/Documents/Web%20Develop/KiBot/Batam/Global_State/)
-Shared JSON files acting as the system's short-term memory.
-
-### 7. [Support](file:///Users/kiki/Documents/Web%20Develop/KiBot/Batam/Support/)
-Non-core tools including Web Dashboard, Android APK assets, and Audit suites.
-
-### 8. [Infrastructure](file:///Users/kiki/Documents/Web%20Develop/KiBot/Batam/Infrastructure/)
-System logs, SSH keys, and systemd service templates.
-
-### 9. [Sovereign Shield](file:///Users/kiki/Documents/Web%20Develop/KiBot/Batam/Security/) (New Security Layer)
-Advanced defensive infrastructure protecting capital and credentials.
-- `Security/kibot_sentinel.py`: Real-time trade velocity and anomaly protection.
-- `Security/kibot_security.py`: Cryptographic log signing and integrity verification.
-- `Support/ki_vault.py`: AES-256 hardware-bound encryption for API secrets.
-- `Support/ki_config.py`: Integrated secure loading and egress health checks.
+## Connection Points
+- **Inbound**: UDP Sensory Stream (Port 9999) from Scanners.
+- **Outbound**: Command Polling API/Supabase for Executors.
+- **Management**: Dashboard for human monitoring and manual overrides.
