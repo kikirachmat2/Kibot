@@ -1,23 +1,22 @@
 [Unit]
-Description=KiBot Indodax Dashboard Reverse Proxy
+Description=KiBot Trinity Dashboard (Support/Web)
 After=network-online.target
 Wants=network-online.target
 
 [Service]
 Type=simple
 User=ubuntu
-WorkingDirectory=/home/ubuntu/KiBot
+# Arahkan ke folder Web yang benar
+WorkingDirectory=/home/ubuntu/KiBot/SERVER BATAM/Support/Web
 EnvironmentFile=-/home/ubuntu/KiBot/.env.indodax
 EnvironmentFile=-/home/ubuntu/KiBot/.env.server
-Environment=KIBOT_PROXY_UPSTREAM=http://127.0.0.1:9998
-Environment=KIBOT_PROXY_LISTEN_HOST=0.0.0.0
-Environment=KIBOT_PROXY_LISTEN_PORT=8787
-ExecStart=/usr/bin/python3 /home/ubuntu/KiBot/infra/scripts/indodax_dashboard_proxy.py
+# Jalankan dashboard.py yang baru kita upgrade
+ExecStart=/usr/bin/python3 /home/ubuntu/KiBot/SERVER\ BATAM/Support/Web/dashboard.py
 Restart=always
-RestartSec=2
+RestartSec=5
 StandardOutput=journal
 StandardError=journal
-SyslogIdentifier=indodax-dashboard-proxy
+SyslogIdentifier=kibot-dashboard
 
 [Install]
 WantedBy=multi-user.target
