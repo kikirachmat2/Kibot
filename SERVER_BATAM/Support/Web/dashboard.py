@@ -12,7 +12,6 @@ LISTEN_HOST = "0.0.0.0"
 LISTEN_PORT = 8787
 NETDATA_PORT = 19999
 ENGINE_API_PORT = 8787
-SCANNER_API_PORT = 8787
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 DASHBOARD_HTML = os.path.join(SCRIPT_DIR, "kibot_dashboard.html")
@@ -20,7 +19,7 @@ ROOT_DIR = os.path.dirname(os.path.dirname(os.path.dirname(SCRIPT_DIR)))
 STATE_DIR = os.path.join(ROOT_DIR, "SERVER_BATAM", "state")
 SECURITY_LOG = os.path.join(STATE_DIR, "security_ledger.jsonl")
 
-async def safe_fetch_json(session, url, timeout_sec=0.5):
+async def fetch_json(session, url, timeout_sec=0.8):
     try:
         timeout = ClientTimeout(total=timeout_sec)
         async with session.get(url, timeout=timeout) as resp:
@@ -28,37 +27,54 @@ async def safe_fetch_json(session, url, timeout_sec=0.5):
     except: pass
     return {}
 
-async def get_node_metrics(session, host):
+async def get_netdata_lite(session, host):
     url = f"http://{host}:{NETDATA_PORT}/api/v1/allmetrics?format=json"
-    data = await safe_fetch_json(session, url, timeout_sec=0.4)
+    data = await fetch_json(session, url, timeout_sec=0.5)
     metrics = {"cpu": 0, "ram": 0, "online": False}
-    if not data: return metrics
-    try:
-        metrics["cpu"] = round(data.get("system.cpu", {}).get("dimensions", {}).get("user", {}).get("value", 0), 1)
-        metrics["ram"] = round(data.get("system.ram", {}).get("dimensions", {}).get("used", {}).get("value", 0), 1)
-        metrics["online"] = True
-    except: metrics["online"] = True
+    if data:
+        try:
+            metrics["cpu"] = round(data.get("system.cpu", {}).get("dimensions", {}).get("user", {}).get("value", 0), 1)
+            metrics["ram"] = round(data.get("system.ram", {}).get("dimensions", {}).get("used", {}).get("value", 0), 1)
+            metrics["online"] = True
+        except: metrics["online"] = True
     return metrics
 
 async def handle_full_state(request):
     session = request.app["client"]
-    # Parallel fetch
-    health_tasks = [get_node_metrics(session, ip) for ip in NODES.values()]
-    engine_task = safe_fetch_json(session, f"http://{NODES['EXECUTOR']}:{ENGINE_API_PORT}/api/state", timeout_sec=0.8)
-    results = await asyncio.gather(*health_tasks, engine_task)
     
-    full_state = {
-        "nodes": {
-            "BATAM": results[0],
-            "EXECUTOR": results[1],
-            "SCANNER": results[2]
-        },
-        "engine": results[3].get("engine", results[3]),
-        "bot_activity": results[3].get("last_action", "READY - Monitoring Market"),
-        "timestamp": time.time(),
-        "system": {"master": "BATAM", "online": True}
+    # 1. Fetch Node Metrics (Netdata)
+    results = await asyncio.gather(*[get_netdata_lite(session, ip) for ip in NODES.values()])
+    nodes_health = {
+        "BATAM": results[0],
+        "EXECUTOR": results[1],
+        "SCANNER": results[2]
     }
-    return web.json_response(full_state, headers={"Access-Control-Allow-Origin": "*"})
+    
+    # 2. Fetch Engine Data (Portfolio & Bot Status)
+    engine_data = await fetch_json(session, f"http://{NODES['EXECUTOR']}:{ENGINE_API_PORT}/api/state", timeout_sec=1.0)
+    
+    # 3. Format EXACTLY for kibot_dashboard.html
+    # UI expects state.engine.total_rp, state.nodes, state.engine.recent_actions
+    master_state = {
+        "nodes": nodes_health,
+        "engine": {
+            "total_rp": engine_data.get("total_rp", 0),
+            "total_usd": engine_data.get("total_usd", 0),
+            "pnl_24h": engine_data.get("pnl_24h", 0),
+            "holdings": engine_data.get("holdings", []),
+            "recent_actions": engine_data.get("recent_actions", [
+                {"time": time.strftime("%H:%M:%S"), "text": engine_data.get("last_action", "Monitoring Market..."), "type": "info"}
+            ])
+        },
+        "scanner": engine_data.get("scanner", {}),
+        "system": {
+            "online": True,
+            "master": "BATAM",
+            "uptime": time.time()
+        },
+        "timestamp": time.time()
+    }
+    return web.json_response(master_state, headers={"Access-Control-Allow-Origin": "*"})
 
 async def handle_index(request):
     if os.path.exists(DASHBOARD_HTML): return web.FileResponse(DASHBOARD_HTML)
@@ -100,7 +116,7 @@ def main():
     app.on_startup.append(on_startup)
     app.on_cleanup.append(on_cleanup)
     
-    print(f"🚀 TRINITY DASHBOARD FIXED on {LISTEN_HOST}:{LISTEN_PORT}")
+    print(f"🚀 TRINITY DASHBOARD AGGREGATOR RUNNING on {LISTEN_PORT}")
     web.run_app(app, host=LISTEN_HOST, port=LISTEN_PORT, access_log=None)
 
 if __name__ == "__main__":
