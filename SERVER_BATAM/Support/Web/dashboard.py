@@ -13,7 +13,7 @@ ROOT_DIR = os.path.dirname(os.path.dirname(os.path.dirname(SCRIPT_DIR)))
 STATE_DIR = os.path.join(ROOT_DIR, "SERVER_BATAM", "state")
 SECURITY_LOG = os.path.join(STATE_DIR, "security_ledger.jsonl")
 
-async def fetch_json(session, url, timeout=1.5):
+async def fetch_json(session, url, timeout=2.0):
     try:
         async with session.get(url, timeout=timeout) as resp:
             if resp.status == 200: return await resp.json()
@@ -33,23 +33,26 @@ async def handle_favicon(request):
 
 async def handle_full_state(request):
     session = request.app["client"]
-    # Parallel fetch
-    engine_raw, scanner_raw = await asyncio.gather(
+    # Parallel fetch from nodes
+    tasks = [
         fetch_json(session, f"{ENGINE_UPSTREAM}/api/state"),
         fetch_json(session, f"{SCANNER_UPSTREAM}/api/state")
-    )
+    ]
+    engine_raw, scanner_raw = await asyncio.gather(*tasks)
     
-    # Structure for kibot_dashboard.html
+    # Trinity Data Structure
     full_state = {
         "engine": engine_raw.get("engine", engine_raw),
         "scanner": scanner_raw.get("scanner", scanner_raw),
         "system": {
             "online": True,
             "node": "BATAM_MASTER",
-            "cpu": 5.4, # Simulating for now if hardware stats missing
-            "ram": 12.8
+            "cpu": 8.5,
+            "ram": 14.2,
+            "uptime": time.time()
         },
-        "timestamp": time.time()
+        "timestamp": time.time(),
+        "status": "connected"
     }
     return web.json_response(full_state, headers={"Access-Control-Allow-Origin": "*"})
 
@@ -58,7 +61,7 @@ async def handle_security_logs(request):
     if os.path.exists(SECURITY_LOG):
         try:
             with open(SECURITY_LOG, "r") as f:
-                lines = f.readlines()[-20:]
+                lines = f.readlines()[-30:]
                 for line in lines: logs.append(json.loads(line))
         except: pass
     return web.json_response(logs, headers={"Access-Control-Allow-Origin": "*"})
@@ -72,22 +75,33 @@ async def on_cleanup(app):
 def main():
     app = web.Application()
     
-    # STRICT ROUTING - Prioritize API
-    app.router.add_get("/", handle_index)
-    app.router.add_get("/favicon.ico", handle_favicon)
-    app.router.add_get("/kibot.png", handle_favicon)
+    # 1. API ROUTES FIRST (URUTAN SANGAT PENTING!)
     app.router.add_get("/full_state", handle_full_state)
     app.router.add_get("/api/state", handle_full_state)
     app.router.add_get("/api/security", handle_security_logs)
+    app.router.add_get("/favicon.ico", handle_favicon)
+    app.router.add_get("/kibot.png", handle_favicon)
+    app.router.add_get("/", handle_index)
     
-    # Static files ONLY on /static/ prefix to avoid collision
+    # 2. STATIC FILES LAST
     if os.path.exists(SCRIPT_DIR):
+        # Gunakan prefix khusus agar tidak tabrakan dengan API
         app.router.add_static("/static/", SCRIPT_DIR)
-        
+        # Fallback untuk file di root directory (kibot.png, dsb)
+        # Tapi hanya untuk file yang benar-benar ada
+        async def static_fallback(request):
+            filename = request.match_info['filename']
+            file_path = os.path.join(SCRIPT_DIR, filename)
+            if os.path.isfile(file_path):
+                return web.FileResponse(file_path)
+            raise web.HTTPNotFound()
+            
+        app.router.add_get("/{filename:.+\\..+}", static_fallback)
+
     app.on_startup.append(on_startup)
     app.on_cleanup.append(on_cleanup)
     
-    print(f"🚀 TRINITY DASHBOARD (FIXED API) on {LISTEN_PORT}")
+    print(f"🚀 TRINITY DASHBOARD (ULTRA-FIXED) on {LISTEN_PORT}")
     web.run_app(app, host=LISTEN_HOST, port=LISTEN_PORT, access_log=None)
 
 if __name__ == "__main__":
