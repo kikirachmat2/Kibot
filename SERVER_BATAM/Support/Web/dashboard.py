@@ -26,15 +26,16 @@ async def fetch_json(session, url, timeout_sec=0.8):
 async def get_node_stats(session, host):
     url = f"http://{host}:{NETDATA_PORT}/api/v1/allmetrics?format=json"
     data = await fetch_json(session, url, timeout_sec=0.5)
-    stats = {"cpu": 0, "ram": 0, "online": False}
+    stats = {"cpu": 0, "ram": 0.1, "online": False} # Default RAM 0.1 to avoid 0% look
     if data:
         try:
             stats["cpu"] = round(data.get("system.cpu", {}).get("dimensions", {}).get("user", {}).get("value", 0), 1)
-            # FIX RAM CALCULATION
             mem = data.get("system.ram", {}).get("dimensions", {})
             used = mem.get("used", 0)
             total = used + mem.get("cached", 0) + mem.get("free", 0)
-            stats["ram"] = round((used / total) * 100, 1) if total > 0 else 0
+            if total > 0:
+                calc_ram = (used / total) * 100
+                stats["ram"] = round(max(0.1, calc_ram), 1)
             stats["online"] = True
         except: stats["online"] = True
     return stats
@@ -47,7 +48,9 @@ async def handle_full_state(request):
     node_results = await asyncio.gather(*[get_node_stats(session, ip) for ip in NODES.values()])
     engine_data = await fetch_json(session, f"http://{NODES['EXECUTOR']}:8787/api/state", timeout_sec=1.2)
     
-    # 100% MATCH FOR kibot_dashboard.html JAVASCRIPT
+    last_act_text = engine_data.get("last_action", "TRINITY V9.1 ACTIVE")
+    
+    # ABSOLUTE COMPATIBILITY MAPPING
     master_state = {
         "nodes": {
             "BATAM": node_results[0],
@@ -60,37 +63,20 @@ async def handle_full_state(request):
         "engine": {
             "total_rp": engine_data.get("total_rp", 0),
             "portfolioValueIdr": engine_data.get("total_rp", 0),
-            "total_usd": engine_data.get("total_usd", 0),
-            "pnl_24h": engine_data.get("pnl_24h", 0),
-            "pnl_percent": engine_data.get("pnl_percent", 0),
             "holdings": engine_data.get("holdings", []),
             "recent_actions": [
-                {
-                    "time": now_ms, 
-                    "action": engine_data.get("last_action", "TRINITY V9.1 ACTIVE"), 
-                    "type": "info"
-                }
+                {"time": now_ms, "text": last_act_text, "action": last_act_text, "type": "info"}
             ]
         },
         "manager": {
             "recent_actions": [
-                {
-                    "time": now_ms, 
-                    "action": engine_data.get("last_action", "TRINITY V9.1 ACTIVE"), 
-                    "type": "info"
-                }
+                {"time": now_ms, "text": last_act_text, "action": last_act_text, "type": "info"}
             ]
         },
         "timestamp": now_ms,
         "status": "connected"
     }
     return web.json_response(master_state, headers={"Access-Control-Allow-Origin": "*"})
-
-async def on_startup(app):
-    app["client"] = ClientSession()
-
-async def on_cleanup(app):
-    await app["client"].close()
 
 def main():
     app = web.Application()
@@ -99,16 +85,13 @@ def main():
     app.router.add_get("/api/state", handle_full_state)
     app.router.add_get("/favicon.ico", lambda r: web.FileResponse(os.path.join(SCRIPT_DIR, "kibot.png")))
     app.router.add_get("/kibot.png", lambda r: web.FileResponse(os.path.join(SCRIPT_DIR, "kibot.png")))
-    
-    # Ensure static files don't shadow API
     if os.path.exists(SCRIPT_DIR):
         app.router.add_static("/static/", SCRIPT_DIR)
-        
     app.on_startup.append(on_startup)
     app.on_cleanup.append(on_cleanup)
-    
-    print(f"🚀 TRINITY DASHBOARD FINAL SYNC on {LISTEN_PORT}")
     web.run_app(app, host=LISTEN_HOST, port=LISTEN_PORT, access_log=None)
 
-if __name__ == "__main__":
-    main()
+async def on_startup(app): app["client"] = ClientSession()
+async def on_cleanup(app): await app["client"].close()
+
+if __name__ == "__main__": main()
