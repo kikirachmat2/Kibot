@@ -1,0 +1,228 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>KiBot Trinity | Command Center</title>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg: #0a0b10;
+            --glass: rgba(255, 255, 255, 0.03);
+            --border: rgba(255, 255, 255, 0.1);
+            --accent: #00ff88;
+            --danger: #ff4757;
+            --text: #ffffff;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: 'Outfit', sans-serif;
+        }
+
+        body {
+            background: var(--bg);
+            color: var(--text);
+            background-image: 
+                radial-gradient(circle at 10% 20%, rgba(0, 255, 136, 0.05) 0%, transparent 40%),
+                radial-gradient(circle at 90% 80%, rgba(0, 102, 255, 0.05) 0%, transparent 40%);
+            min-height: 100vh;
+            padding: 40px;
+        }
+
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 40px;
+        }
+
+        .logo {
+            font-size: 24px;
+            font-weight: 600;
+            letter-spacing: 2px;
+            background: linear-gradient(90deg, var(--accent), #0066ff);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .status-badge {
+            background: var(--glass);
+            padding: 8px 16px;
+            border-radius: 20px;
+            border: 1px solid var(--border);
+            font-size: 14px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .dot {
+            width: 8px;
+            height: 8px;
+            background: var(--accent);
+            border-radius: 50%;
+            box-shadow: 0 0 10px var(--accent);
+            animation: pulse 2s infinite;
+        }
+
+        @keyframes pulse {
+            0% { opacity: 1; }
+            50% { opacity: 0.4; }
+            100% { opacity: 1; }
+        }
+
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 20px;
+            margin-bottom: 40px;
+        }
+
+        .card {
+            background: var(--glass);
+            backdrop-filter: blur(10px);
+            border: 1px solid var(--border);
+            border-radius: 24px;
+            padding: 30px;
+            transition: transform 0.3s ease, border-color 0.3s ease;
+        }
+
+        .card:hover {
+            transform: translateY(-5px);
+            border-color: rgba(255, 255, 255, 0.2);
+        }
+
+        .card-title {
+            color: rgba(255, 255, 255, 0.5);
+            font-size: 14px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            margin-bottom: 15px;
+        }
+
+        .card-value {
+            font-size: 32px;
+            font-weight: 600;
+        }
+
+        .node-info {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            margin-top: 20px;
+        }
+
+        .info-row {
+            display: flex;
+            justify-content: space-between;
+            font-size: 14px;
+            color: rgba(255, 255, 255, 0.7);
+        }
+
+        .security-section {
+            background: var(--glass);
+            border: 1px solid var(--border);
+            border-radius: 24px;
+            padding: 30px;
+        }
+
+        .log-entry {
+            display: flex;
+            gap: 15px;
+            padding: 12px 0;
+            border-bottom: 1px solid var(--border);
+            font-size: 13px;
+        }
+
+        .log-ts { color: rgba(255, 255, 255, 0.3); }
+        .log-type { color: var(--accent); font-weight: 600; min-width: 150px; }
+        .log-msg { color: rgba(255, 255, 255, 0.8); }
+
+        .tag-critical { color: var(--danger); }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <div class="logo">KIBOT TRINITY v9.1</div>
+        <div class="status-badge">
+            <div class="dot"></div>
+            SYSTEM OPERATIONAL
+        </div>
+    </div>
+
+    <div class="grid">
+        <div class="card">
+            <div class="card-title">Batam Brain</div>
+            <div class="card-value" id="batam-status">ONLINE</div>
+            <div class="node-info">
+                <div class="info-row"><span>Region</span><span>Batam, ID</span></div>
+                <div class="info-row"><span>Latency</span><span id="batam-lat">12ms</span></div>
+            </div>
+        </div>
+        <div class="card">
+            <div class="card-title">Executor Node</div>
+            <div class="card-value" id="executor-status">ACTIVE</div>
+            <div class="node-info">
+                <div class="info-row"><span>Region</span><span>Indodax Hub</span></div>
+                <div class="info-row"><span>Mode</span><span>Reactive Slave</span></div>
+            </div>
+        </div>
+        <div class="card">
+            <div class="card-title">Scanner Node</div>
+            <div class="card-value" id="scanner-status">STREAMING</div>
+            <div class="node-info">
+                <div class="info-row"><span>Region</span><span>Binance Cloud</span></div>
+                <div class="info-row"><span>BPS</span><span>124 kbps</span></div>
+            </div>
+        </div>
+    </div>
+
+    <div class="security-section">
+        <div class="card-title">Security Chained Ledger</div>
+        <div id="log-container">
+            <!-- Logs will appear here -->
+            <div class="log-entry">
+                <span class="log-ts">2026-05-04 23:15:00</span>
+                <span class="log-type">SECURITY_DAEMON</span>
+                <span class="log-msg">Shield v9.1 Active - All nodes synchronized.</span>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        async function updateStats() {
+            try {
+                const res = await fetch('/api/status');
+                const data = await res.json();
+                // Update UI logic here
+                document.getElementById('batam-lat').innerText = data.nodes.batam.latency;
+            } catch (e) {}
+        }
+
+        async function updateLogs() {
+            try {
+                const res = await fetch('/api/security');
+                const logs = await res.json();
+                const container = document.getElementById('log-container');
+                container.innerHTML = '';
+                logs.reverse().forEach(log => {
+                    const entry = document.createElement('div');
+                    entry.className = 'log-entry';
+                    entry.innerHTML = `
+                        <span class="log-ts">${log.p.ts.split('T')[1].split('.')[0]}</span>
+                        <span class="log-type ${log.p.sev === 'CRITICAL' ? 'tag-critical' : ''}">${log.p.type}</span>
+                        <span class="log-msg">${log.p.msg}</span>
+                    `;
+                    container.appendChild(entry);
+                });
+            } catch (e) {}
+        }
+
+        setInterval(updateStats, 2000);
+        setInterval(updateLogs, 5000);
+    </script>
+</body>
+</html>
