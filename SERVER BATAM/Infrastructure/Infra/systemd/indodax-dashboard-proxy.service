@@ -6,12 +6,12 @@ Wants=network-online.target
 [Service]
 Type=simple
 User=ubuntu
-# Arahkan ke folder Web yang benar
-WorkingDirectory=/home/ubuntu/KiBot/SERVER BATAM/Support/Web
+# Gunakan kutipan untuk folder berspasi, jangan backslash ganda
+WorkingDirectory="/home/ubuntu/KiBot/SERVER BATAM/Support/Web"
 EnvironmentFile=-/home/ubuntu/KiBot/.env.indodax
 EnvironmentFile=-/home/ubuntu/KiBot/.env.server
-# Jalankan dashboard.py yang baru kita upgrade
-ExecStart=/usr/bin/python3 /home/ubuntu/KiBot/SERVER\ BATAM/Support/Web/dashboard.py
+# Pastikan path ke python script juga dalam kutipan
+ExecStart=/usr/bin/python3 "/home/ubuntu/KiBot/SERVER BATAM/Support/Web/dashboard.py"
 Restart=always
 RestartSec=5
 StandardOutput=journal
