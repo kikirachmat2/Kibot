@@ -880,34 +880,11 @@ def _parse_numeric(value: Any) -> float | None:
 
 
 def _telegram_send(message: str, *, category: str = "general", force: bool = False) -> None:
-    token = (
-        os.getenv("TELEGRAM_BOT_TOKEN")
-        or os.getenv("KIBOT_TELEGRAM_BOT_TOKEN")
-        or os.getenv("KICRYP_TELEGRAM_BOT_TOKEN")
-        or ""
-    ).strip()
-    chat_id = (
-        os.getenv("TELEGRAM_CHAT_ID")
-        or os.getenv("TELEGRAM_USER_ID")
-        or os.getenv("KIBOT_TELEGRAM_CHAT_ID")
-        or os.getenv("KICRYP_TELEGRAM_CHAT_ID")
-        or ""
-    ).strip()
-    if not token or not chat_id:
-        return
-    # [KIBOT][FIX] Allow all categories for better visibility
-    if not force:
-        # We allow everything except if explicitly silenced by ENV
-        if os.getenv("KIBOT_NOTIFICATIONS_SILENT", "").lower() in {"true", "1", "yes"}:
-            return
-    try:
-        requests.post(
-            f"https://api.telegram.org/bot{token}/sendMessage",
-            json={
-                "chat_id": chat_id,
-                "text": message,
-                "disable_web_page_preview": True,
-            },
+    # --- REDIRECTED TO COMM-HUB (v9.1.1) ---
+    # Internal messages now logged only to avoid duplication in Telegram.
+    with open("/home/ubuntu/KiBot/Infrastructure/logs/brain_internal.log", "a") as f:
+        f.write(f"[{time.ctime()}] {message}\n")
+    return
             timeout=10,
         )
     except Exception as error:
@@ -1486,6 +1463,23 @@ class RiskLadder:
 MAKER_FEE = 0.0004   # 0.04% LIMIT order (prioritas)
 TAKER_FEE = 0.0055   # 0.55% MARKET order (mahal)
 PPH_SELL  = 0.0021   # 0.21% PPh sisi jual
+# --- DYNAMIC FEE GOVERNOR (v9.1.1) ---
+INDODAX_BASE_FEE = 0.003  # 0.3%
+INDODAX_TAX_PPH  = 0.001  # 0.1% (PMK 68)
+INDODAX_TAX_PPN  = 0.0011 # 0.11% (Dikenakan pada fee, bukan nilai transaksi)
+
+# Total All-in Taker Fee (Safe Estimate)
+TAKER_FEE = INDODAX_BASE_FEE + INDODAX_TAX_PPH + (INDODAX_BASE_FEE * INDODAX_TAX_PPN)
+MAKER_FEE = 0.000  # Indodax Maker sering 0% atau promo
+
+def get_current_fees():
+    """AI-Integrated Fee Check. Bisa di-update via API di masa depan."""
+    return {"taker": TAKER_FEE, "maker": MAKER_FEE}
+
+def calculate_round_trip(spread_pct, slippage_pct):
+    fees = get_current_fees()
+    # Cost = Spread/2 + Slippage + Entry Fee + Exit Fee
+    return (spread_pct / 2) + slippage_pct + fees['taker'] + fees['taker']
 
 def simulate_what_if(
     pair_id: str,
