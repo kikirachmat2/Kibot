@@ -14,9 +14,6 @@ NETDATA_PORT = 19999
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 DASHBOARD_HTML = os.path.join(SCRIPT_DIR, "kibot_dashboard.html")
-ROOT_DIR = os.path.dirname(os.path.dirname(os.path.dirname(SCRIPT_DIR)))
-STATE_DIR = os.path.join(ROOT_DIR, "SERVER_BATAM", "state")
-SECURITY_LOG = os.path.join(STATE_DIR, "security_ledger.jsonl")
 
 async def fetch_json(session, url, timeout_sec=1.0):
     try:
@@ -32,33 +29,39 @@ async def get_node_stats(session, host):
     stats = {"cpu": 0, "ram": 0, "online": False}
     if data:
         try:
-            # Netdata metric extraction
+            # CPU calculation
             stats["cpu"] = round(data.get("system.cpu", {}).get("dimensions", {}).get("user", {}).get("value", 0), 1)
-            stats["ram"] = round(data.get("system.ram", {}).get("dimensions", {}).get("used", {}).get("value", 0), 1)
+            
+            # RAM calculation (Fixing the 1539% bug)
+            used = data.get("system.ram", {}).get("dimensions", {}).get("used", {}).get("value", 0)
+            cached = data.get("system.ram", {}).get("dimensions", {}).get("cached", {}).get("value", 0)
+            free = data.get("system.ram", {}).get("dimensions", {}).get("free", {}).get("value", 0)
+            total = used + cached + free
+            if total > 0:
+                stats["ram"] = round((used / total) * 100, 1)
+            else:
+                stats["ram"] = 0
             stats["online"] = True
         except: stats["online"] = True
     return stats
 
 async def handle_full_state(request):
     session = request.app["client"]
-    
-    # Parallel Polling
     node_results = await asyncio.gather(*[get_node_stats(session, ip) for ip in NODES.values()])
     engine_data = await fetch_json(session, f"http://{NODES['EXECUTOR']}:8787/api/state", timeout_sec=1.2)
     
-    # REDUNDANT JSON MAPPING (Ensures frontend finds what it needs)
     master_state = {
         "nodes": {
             "BATAM": node_results[0],
             "EXECUTOR": node_results[1],
             "SCANNER": node_results[2],
-            "SG-Executor": node_results[1], # Alias for dashboard matching
-            "SG-Scanner": node_results[2]    # Alias for dashboard matching
+            "SG-Executor": node_results[1],
+            "SG-Scanner": node_results[2]
         },
-        "system": node_results[0], # Default to Batam for global system widget
+        "system": node_results[0],
         "engine": {
             "total_rp": engine_data.get("total_rp", 0),
-            "portfolioValueIdr": engine_data.get("total_rp", 0), # Match frontend key
+            "portfolioValueIdr": engine_data.get("total_rp", 0),
             "total_usd": engine_data.get("total_usd", 0),
             "pnl_24h": engine_data.get("pnl_24h", 0),
             "pnl_percent": engine_data.get("pnl_percent", 0),
@@ -73,11 +76,6 @@ async def handle_full_state(request):
         "timestamp": time.time(),
         "status": "connected"
     }
-    
-    # Fallback bot activity if list empty
-    if not master_state["engine"]["recent_actions"] and "last_action" in engine_data:
-        master_state["engine"]["recent_actions"] = [{"time": "LIVE", "text": engine_data["last_action"], "type": "info"}]
-
     return web.json_response(master_state, headers={"Access-Control-Allow-Origin": "*"})
 
 async def on_startup(app):
@@ -93,10 +91,8 @@ def main():
     app.router.add_get("/api/state", handle_full_state)
     app.router.add_get("/favicon.ico", lambda r: web.FileResponse(os.path.join(SCRIPT_DIR, "kibot.png")))
     app.router.add_get("/kibot.png", lambda r: web.FileResponse(os.path.join(SCRIPT_DIR, "kibot.png")))
-    
     if os.path.exists(SCRIPT_DIR):
         app.router.add_static("/static/", SCRIPT_DIR)
-        
     app.on_startup.append(on_startup)
     app.on_cleanup.append(on_cleanup)
     web.run_app(app, host=LISTEN_HOST, port=LISTEN_PORT, access_log=None)
