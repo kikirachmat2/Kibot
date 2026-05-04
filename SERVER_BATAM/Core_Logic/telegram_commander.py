@@ -59,15 +59,24 @@ async def stop_bot(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("💤 Brain sudah parkir.")
 
 async def status(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not await auth_check(update): return
     state = get_state_data()
+    
+    # Check Docker Status
+    try:
+        docker_res = subprocess.run(["sudo", "docker", "ps", "--format", "{{.Names}}: {{.Status}}"], capture_output=True, text=True)
+        docker_status = docker_res.stdout.strip() if docker_res.stdout else "No Containers Running"
+    except:
+        docker_status = "Docker Error"
+
     bot_status = "🟢 ACTIVE" if psutil.pid_exists(state.get("manager_pid", 0)) else "🔴 STANDBY"
     msg = (
         f"📊 **SYSTEM STATUS**\n"
-        f"• Bot: {bot_status}\n"
-        f"• CPU: {psutil.cpu_percent()}%\n"
-        f"• RAM: {psutil.virtual_memory().percent}%\n"
-        f"• Active Trades: {state.get('active_trades_count', 0)}\n"
-        f"• Equity: Rp{state.get('total_equity_idr', 0):,.0f}"
+        f"• Bot Engine: {bot_status}\n"
+        f"• Equity: Rp{state.get('total_equity_idr', 0):,.0f}\n"
+        f"• CPU/RAM: {psutil.cpu_percent()}% / {psutil.virtual_memory().percent}%\n\n"
+        f"🐳 **DOCKER INFRA**\n`{docker_status}`\n\n"
+        f"🛡️ **GUARDIAN**: ACTIVE"
     )
     await update.message.reply_text(msg, parse_mode='Markdown')
 
