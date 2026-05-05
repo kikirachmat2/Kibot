@@ -54,7 +54,7 @@ def heal_service(service):
     """
     
     env = os.environ.copy()
-    env["OLLAMA_API_BASE"] = "http://localhost:11434"
+    env["OLLAMA_API_BASE"] = os.getenv("KIBOT_OLLAMA_API_BASE", os.getenv("OLLAMA_API_BASE", "http://127.0.0.1:11435"))
     
     aider_args = [
         AIDER_CMD, "--model", OLLAMA_MODEL, "--message", prompt,

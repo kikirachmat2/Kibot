@@ -22,12 +22,13 @@ def get_cluster_status():
     status = {
         "ts": time.time(),
         "nodes": {
-            "Batam (Brain)": {
-                "ip": NODES["BATAM"],
-                "manager": check_port("127.0.0.1", 9998),
-                "proxy": check_port("127.0.0.1", 8787),
-                "ollama": check_port("127.0.0.1", 11434)
-            },
+                "Batam (Brain)": {
+                    "ip": NODES["BATAM"],
+                    "manager": check_port("127.0.0.1", 9998),
+                    "proxy": check_port("127.0.0.1", 8787),
+                    "ollama_gateway": check_port("127.0.0.1", 11435),
+                    "ollama": check_port("127.0.0.1", 11434) or check_port("127.0.0.1", 11435)
+                },
             "EXECUTOR (Executor)": {
                 "ip": NODES["EXECUTOR"],
                 "KiBot": check_port(NODES["EXECUTOR"], 8787),

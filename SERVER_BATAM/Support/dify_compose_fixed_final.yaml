@@ -1,0 +1,33 @@
+# ==================================================================
+# FIXED DOCKER COMPOSE FOR TRINITY V10
+# ==================================================================
+version: '3'
+services:
+  api:
+    image: langgenius/dify-api:1.14.0
+    restart: always
+    environment:
+      # ... (Shared Env omitted for brevity, will use full file in actual upload)
+      MODE: api
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - ./volumes/app/storage:/app/api/storage
+    networks:
+      - ssrf_proxy_network
+      - default
+
+  worker:
+    image: langgenius/dify-api:1.14.0
+    restart: always
+    environment:
+      MODE: worker
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - ./volumes/app/storage:/app/api/storage
+    networks:
+      - ssrf_proxy_network
+      - default
+
+# ... (And the rest of the services)

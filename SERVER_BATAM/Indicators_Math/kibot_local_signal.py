@@ -5,27 +5,27 @@ import socket
 import os
 import sys
 import math
-import hmac
-import hashlib
 from datetime import datetime, timezone
 from typing import Dict, List
 from collections import deque
 
 # Add paths for stats and security
-sys.path.append(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "Support"))
-sys.path.append(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "Security"))
+ROOT_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.path.append(os.path.join(ROOT_DIR, "Support"))
+sys.path.append(os.path.join(ROOT_DIR, "Security"))
+sys.path.append(os.path.join(ROOT_DIR, "Shared"))
 from ki_stats import calculate_ema, calculate_rsi, calculate_z_score
 import kibot_security
+from cluster_bus import resolve_host, resolve_manager_endpoint, sign_udp_payload, verify_udp_payload
 
 # CONFIGURATION
 BIND_IP = "0.0.0.0"
-BIND_PORT = 9999 
-MANAGER_UDP_IP = "127.0.0.1"
-MANAGER_UDP_PORT = 9998
+BIND_PORT = 9999
+MANAGER_UDP_IP, MANAGER_UDP_PORT = resolve_manager_endpoint()
 
 # SECURITY WHITELIST (IP Scanner Kamu)
 # Kita ambil dari config atau hardcode yang sudah kita tahu
-ALLOWED_SCANNER_IPS = ["152.69.218.198"] # Server Scanner
+ALLOWED_SCANNER_IPS = [resolve_host("SCANNER", "152.69.218.198")]
 
 MAX_HISTORY_LEN = 200 
 _price_history: Dict[str, deque] = {}
@@ -42,12 +42,10 @@ def verify_packet(data: bytes, addr: tuple) -> bool:
     # 2. Structure Validation
     try:
         msg = json.loads(data.decode())
-        if "type" not in msg or "signature" not in msg:
+        signature = msg.pop("signature", "")
+        if "type" not in msg or not signature:
             return False
-            
-        # 3. HMAC Signature Validation (Future implementation with Scanners)
-        # Untuk sekarang kita fokus pada IP Whitelist agar tidak memutus koneksi
-        return True
+        return verify_udp_payload(msg, signature)
     except:
         return False
 
@@ -77,17 +75,25 @@ def calculate_advanced_score(symbol: str, raw_data: dict) -> float:
     return round(conviction, 4)
 
 def send_to_manager(pair, conviction, price):
-    payload = {
-        "kind": "batam_intelligence",
+    payload = sign_udp_payload({
+        "type": "LEAD_LAG_SIGNAL",
+        "msgType": "LEAD_LAG_SIGNAL",
+        "exchange": "BATAM",
         "pair": pair,
+        "pairId": pair,
+        "pair_indodax": pair,
         "conviction": conviction,
+        "score": round(conviction * 100.0, 2),
         "price": price,
-        "timestamp": int(time.time()),
-        "source": "batam_brain_v9_secure"
-    }
+        "price_usdt": price,
+        "source": "batam_indicators",
+        "bucket": "LEAD_LAG",
+        "node": "BATAM",
+        "reason": "batam_technical_filter",
+    })
     try:
         with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
-            sock.sendto(json.dumps(payload).encode(), (MANAGER_UDP_IP, MANAGER_UDP_PORT))
+            sock.sendto(json.dumps(payload, ensure_ascii=False, separators=(",", ":")).encode(), (MANAGER_UDP_IP, MANAGER_UDP_PORT))
     except Exception as e:
         print(f"Error reporting to manager: {e}")
 

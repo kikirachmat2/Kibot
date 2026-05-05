@@ -41,14 +41,21 @@ _load_dotenv_early()
 # --- PATHS ---
 BASE_PATH = Path(__file__).resolve().parent.parent
 REPO_PATH = BASE_PATH.parent if (BASE_PATH / ".env").exists() else BASE_PATH
+PROJECT_ROOT = Path(os.getenv("KIBOT_RUNTIME_ROOT", BASE_PATH.parent))
+STATE_DIR = Path(os.getenv("KIBOT_STATE_DIR", PROJECT_ROOT / "state"))
+
+# --- CLUSTER NODES ---
+BATAM_HOST = os.getenv("KIBOT_BATAM_HOST", "168.110.201.228")
+EXECUTOR_HOST = os.getenv("KIBOT_EXECUTOR_HOST", "213.35.118.26")
+SCANNER_HOST = os.getenv("KIBOT_SCANNER_HOST", "152.69.218.198")
 
 # --- TIMEZONE ---
 WIB = pytz.timezone('Asia/Jakarta')
 UTC_OFFSET = int(os.getenv("KIBOT_WIB_UTC_OFFSET_HOURS", "7"))
 
 # --- NETWORKING ---
-KIBOT_UDP_HOST = os.getenv("KIBOT_UDP_HOST", "100.122.1.109")
-KIBOT_UDP_HOST_BACKUP = os.getenv("KIBOT_UDP_HOST_BACKUP", "100.122.1.110") # Singapore/Batam backup
+KIBOT_UDP_HOST = os.getenv("KIBOT_UDP_HOST", EXECUTOR_HOST)
+KIBOT_UDP_HOST_BACKUP = os.getenv("KIBOT_UDP_HOST_BACKUP", SCANNER_HOST)
 KIBOT_UDP_PORT = int(os.getenv("KIBOT_UDP_PORT", "9999"))
 KIBOT_SIGNAL_KEY = os.getenv("KIBOT_SIGNAL_KEY", "SOVEREIGN_DEFAULT_SIGNAL_SECRET")
 # comma-separated list of allowed scanner IPs. If empty, all are allowed (not recommended for production)

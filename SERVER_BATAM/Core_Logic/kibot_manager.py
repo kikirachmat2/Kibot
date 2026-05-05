@@ -885,10 +885,6 @@ def _telegram_send(message: str, *, category: str = "general", force: bool = Fal
     with open("/home/ubuntu/KiBot/Infrastructure/logs/brain_internal.log", "a") as f:
         f.write(f"[{time.ctime()}] {message}\n")
     return
-            timeout=10,
-        )
-    except Exception as error:
-        print(f"[KIBOT][TELEGRAM][WARN] {error}", flush=True)
 
 
 import math, statistics
@@ -3252,7 +3248,7 @@ AI_BATCH_REVIEW_INTERVAL_SEC = int(os.getenv("KIBOT_AI_BATCH_REVIEW_INTERVAL_SEC
 
 OLLAMA_API_KEY = _env_first("OLLAMA_API_KEY", "KIBOT_OLLAMA_GATEWAY_TOKEN")
 OLLAMA_MODEL = os.getenv("KIBOT_OLLAMA_MODEL", "qwen3:4b")
-OLLAMA_API_URL = os.getenv("KIBOT_OLLAMA_BASE_URL", "http://127.0.0.1:11434/api/chat")
+OLLAMA_API_URL = os.getenv("KIBOT_OLLAMA_BASE_URL", "http://127.0.0.1:11435/api/chat")
 
 GROQ_API_KEY = os.getenv("GROQ_API_KEY", "")
 GROQ_MODEL = os.getenv("GROQ_MODEL", "llama-3.1-8b-instant")
@@ -3391,6 +3387,7 @@ _clean_pair_memory()
 
 _provider_runtime_state: Dict[str, Dict[str, Any]] = _load_json_file(PROVIDER_STATE_PATH, {})
 _pair_cooldown_state: Dict[str, Dict[str, Any]] = _load_json_file(STATE_ROOT / "pair_cooldowns.json", {})
+_pair_cooldowns = _pair_cooldown_state
 _remote_scanner_feed_state: Dict[str, Any] = _load_json_file(
     REMOTE_SCANNER_FEED_STATE_PATH,
     {
@@ -9967,10 +9964,6 @@ def main() -> None:
     _reconcile_daily_guard_day_rollover()
 
     # Sync state guard to daily state
-    # [SOVEREIGN] Hard stop state removed
-    pass
-    if _daily_guard_state.get("start_of_day_equity"):
-        _hard_stop.initial_capital = float(_daily_guard_state.get("start_of_day_equity"))
     _ensure_hard_stop_consistency()
     _write_json_file(PROVIDER_STATE_PATH, _provider_runtime_state)
     _save_pair_cooldown_state()

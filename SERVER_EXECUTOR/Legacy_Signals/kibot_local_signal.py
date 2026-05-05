@@ -6,16 +6,16 @@ import requests
 import math
 import os
 from datetime import datetime
+from pathlib import Path
+import sys
+
+ROOT_DIR = Path(__file__).resolve().parents[2]
+sys.path.append(str(ROOT_DIR / "Shared"))
+from cluster_bus import resolve_manager_endpoint, sign_udp_payload
 
 # CONFIGURATION
 INDODAX_TICKER_API = "https://indodax.com/api/tickers"
-MANAGER_UDP_IP = os.getenv("KIBOT_MANAGER_UDP_HOST", "127.0.0.1")
-MANAGER_UDP_PORT = int(
-    os.getenv("KIBOT_MANAGER_UDP_TARGET_PORT")
-    or os.getenv("KIBOT_MANAGER_UDP_BIND_PORT")
-    or os.getenv("KIBOT_MANAGER_PORT")
-    or "9998"
-)
+MANAGER_UDP_IP, MANAGER_UDP_PORT = resolve_manager_endpoint()
 SCAN_INTERVAL = int(os.getenv("KIBOT_LOCAL_SIGNAL_SCAN_INTERVAL_SEC", "30"))
 CONVICTION_THRESHOLD = float(os.getenv("KIBOT_LOCAL_SIGNAL_CONVICTION_THRESHOLD", "0.85"))
 SIGNAL_SOURCE = os.getenv("KIBOT_LOCAL_SIGNAL_SOURCE", "kibot_local_signal")
@@ -88,20 +88,25 @@ def calculate_conviction(symbol, ticker, history):
     return round(conviction, 4)
 
 def send_signal(pair, conviction, price):
-    payload = {
-        "kind": "local_signal",
+    payload = sign_udp_payload({
+        "type": "EXECUTOR_SIGNAL",
+        "msgType": "EXECUTOR_SIGNAL",
+        "exchange": "EXECUTOR",
         "pair": pair,
         "pairId": pair,
+        "pair_indodax": pair,
         "symbol": pair,
         "conviction": conviction,
         "score": round(conviction * 100.0, 2),
         "price": price,
-        "timestamp": int(time.time()),
-        "source": SIGNAL_SOURCE
-    }
+        "price_usdt": price,
+        "source": SIGNAL_SOURCE,
+        "bucket": "LEGACY_SIGNAL",
+        "node": "EXECUTOR",
+    })
     try:
         sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        sock.sendto(json.dumps(payload).encode(), (MANAGER_UDP_IP, MANAGER_UDP_PORT))
+        sock.sendto(json.dumps(payload, ensure_ascii=False, separators=(",", ":")).encode(), (MANAGER_UDP_IP, MANAGER_UDP_PORT))
         print(f"[{datetime.now()}] SIGNAL SENT: {pair} -> {MANAGER_UDP_IP}:{MANAGER_UDP_PORT} (Conviction: {conviction})")
     except Exception as e:
         print(f"[{datetime.now()}] UDP Send failed: {e}")

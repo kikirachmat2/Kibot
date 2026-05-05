@@ -16,7 +16,7 @@ Environment=KIBOT_OLLAMA_MODEL=qwen3:4b
 Environment=KIBOT_OLLAMA_DEEP_MODEL=qwen3:8b
 Environment=KIBOT_OLLAMA_FAST_TIMEOUT_SEC=60
 Environment=KIBOT_OLLAMA_TELEGRAM_TIMEOUT_SEC=45
-ExecStart=/usr/bin/python3 -u /home/ubuntu/KiBot/Batam/Telegram Notification/ki_telegram_monitor.py
+ExecStart=/usr/bin/python3 -u /home/ubuntu/KiBot/SERVER_BATAM/Core_Logic/telegram_commander.py
 Restart=always
 RestartSec=5
 MemoryMax=120M

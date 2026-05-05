@@ -19,6 +19,28 @@ from typing import Any, Dict, Iterable, List, Optional
 from urllib.parse import urlsplit
 import sys
 
+
+def _load_env_file(env_path: str = ".env") -> None:
+    """Load .env file into os.environ if it exists."""
+    env_file = Path(env_path)
+    if not env_file.exists():
+        return
+    
+    with open(env_file) as f:
+        for line in f:
+            line = line.strip()
+            if not line or line.startswith("#"):
+                continue
+            if "=" in line:
+                key, value = line.split("=", 1)
+                if key and key not in os.environ:
+                    os.environ[key] = value
+
+
+# Load .env files
+_load_env_file(".env")
+_load_env_file("/home/ubuntu/KiBot/.env")
+
 _root = Path(__file__).resolve().parent.parent
 for d in ["Support", "AI_Orchestration"]:
     sys.path.append(str(_root / d))
@@ -75,6 +97,20 @@ def _canonical_ollama_chat_url(raw_url: str) -> str:
         return fallback
     return url
 
+
+def _dify_base_url() -> str:
+    return str(os.getenv("DIFY_API_BASE_URL", "http://172.21.0.8:5001/v1")).rstrip("/")
+
+
+def _dify_workflow_url() -> str:
+    raw_url = str(os.getenv("DIFY_WORKFLOW_URL", "")).strip()
+    if raw_url:
+        return raw_url
+    workflow_path = str(os.getenv("DIFY_WORKFLOW_PATH", "/workflows/run")).strip() or "/workflows/run"
+    if not workflow_path.startswith("/"):
+        workflow_path = f"/{workflow_path}"
+    return f"{_dify_base_url()}{workflow_path}"
+
 PROVIDERS = {
     "ollama": {
         "daily_limit": 100000,
@@ -82,6 +118,13 @@ PROVIDERS = {
         "api_key_envs": ["OLLAMA_API_KEY", "KIBOT_OLLAMA_GATEWAY_TOKEN"],
         "base_url": _canonical_ollama_chat_url(os.getenv("KIBOT_OLLAMA_BASE_URL", "")),
         "priority": 99,
+    },
+    "dify": {
+        "daily_limit": int(os.getenv("DIFY_DAILY_LIMIT", "2000")),
+        "model": os.getenv("DIFY_WORKFLOW_ID", os.getenv("DIFY_WORKFLOW_NAME", "batam-strategy")),
+        "api_key_envs": ["DIFY_API_KEY", "DIFY_APP_TOKEN", "KIBOT_DIFY_API_KEY", "DIFY_ACCESS_TOKEN"],
+        "base_url": _dify_base_url(),
+        "priority": 6,
     },
     "finnhub": {
         "daily_limit": 1000,
@@ -308,15 +351,15 @@ PROMPT_PROVIDER_ORDER = {
     "PAIR_DISCOVERY": ["ollama", "groq", "gemini", "deepseek", "sambanova", "cerebras", "together", "fireworks", "mistral", "nvidia", "openrouter", "deepinfra", "octoai", "novita", "perplexity", "cohere", "jina", "huggingface", "friendliai", "lepton"],
     "WHATIF_SIMULATION": ["ollama", "groq", "gemini", "deepseek", "sambanova", "cerebras", "together", "fireworks", "mistral", "nvidia", "openrouter", "deepinfra", "octoai", "novita", "perplexity", "cohere", "jina", "huggingface", "friendliai", "lepton"],
     "TRADE_POSTMORTEM": ["ollama", "groq", "gemini", "deepseek", "sambanova", "cerebras", "together", "fireworks", "mistral", "nvidia", "openrouter", "deepinfra", "octoai", "novita", "perplexity", "cohere", "jina", "huggingface", "friendliai", "lepton"],
-    "VETO_ANALYSIS": ["ollama", "groq", "gemini", "deepseek", "sambanova", "cerebras", "together", "fireworks", "mistral", "nvidia", "openrouter", "deepinfra", "octoai", "novita", "perplexity", "cohere", "jina", "huggingface", "friendliai", "lepton"],
+    "VETO_ANALYSIS": ["dify", "ollama", "groq", "gemini", "deepseek", "sambanova", "cerebras", "together", "fireworks", "mistral", "nvidia", "openrouter", "deepinfra", "octoai", "novita", "perplexity", "cohere", "jina", "huggingface", "friendliai", "lepton"],
     "WEEKLY_SUMMARY": ["ollama", "groq", "gemini", "deepseek", "sambanova", "cerebras", "together", "fireworks", "mistral", "nvidia", "openrouter", "deepinfra", "octoai", "novita", "perplexity", "cohere", "jina", "huggingface", "friendliai", "lepton"],
     "NEWS_ANALYSIS": ["ollama", "groq", "gemini", "deepseek", "sambanova", "cerebras", "together", "fireworks", "mistral", "nvidia", "openrouter", "deepinfra", "octoai", "novita", "perplexity", "cohere", "jina", "huggingface", "friendliai", "lepton"],
-    "STRATEGY_GOVERNOR": ["ollama", "groq", "gemini", "deepseek", "sambanova", "cerebras", "together", "fireworks", "mistral", "nvidia", "openrouter", "deepinfra", "octoai", "novita", "perplexity", "cohere", "jina", "huggingface", "friendliai", "lepton"],
-    "STRATEGY_GOVERNOR_FAST": ["ollama", "groq", "gemini", "deepseek", "sambanova", "cerebras", "together", "fireworks", "mistral", "nvidia", "openrouter", "deepinfra", "octoai", "novita", "perplexity", "cohere", "jina", "huggingface", "friendliai", "lepton"],
-    "STRATEGY_GOVERNOR_MEDIUM": ["ollama", "groq", "gemini", "deepseek", "sambanova", "cerebras", "together", "fireworks", "mistral", "nvidia", "openrouter", "deepinfra", "octoai", "novita", "perplexity", "cohere", "jina", "huggingface", "friendliai", "lepton"],
-    "SOVEREIGN_DAILY_REVIEW": ["ollama", "groq", "gemini", "deepseek", "sambanova", "cerebras", "together", "fireworks", "mistral", "nvidia", "openrouter", "deepinfra", "octoai", "novita", "perplexity", "cohere", "jina", "huggingface", "friendliai", "lepton"],
-    "OPS_CHAT": ["ollama", "groq", "gemini", "deepseek", "sambanova", "cerebras", "together", "fireworks", "mistral", "nvidia", "openrouter", "deepinfra", "octoai", "novita", "perplexity", "cohere", "jina", "huggingface", "friendliai", "lepton"],
-    "OPS_CHAT_LOCAL": ["ollama", "groq", "gemini", "deepseek", "sambanova", "cerebras", "together", "fireworks", "mistral", "nvidia", "openrouter", "deepinfra", "octoai", "novita", "perplexity", "cohere", "jina", "huggingface", "friendliai", "lepton"],
+    "STRATEGY_GOVERNOR": ["dify", "ollama", "groq", "gemini", "deepseek", "sambanova", "cerebras", "together", "fireworks", "mistral", "nvidia", "openrouter", "deepinfra", "octoai", "novita", "perplexity", "cohere", "jina", "huggingface", "friendliai", "lepton"],
+    "STRATEGY_GOVERNOR_FAST": ["dify", "ollama", "groq", "gemini", "deepseek", "sambanova", "cerebras", "together", "fireworks", "mistral", "nvidia", "openrouter", "deepinfra", "octoai", "novita", "perplexity", "cohere", "jina", "huggingface", "friendliai", "lepton"],
+    "STRATEGY_GOVERNOR_MEDIUM": ["dify", "ollama", "groq", "gemini", "deepseek", "sambanova", "cerebras", "together", "fireworks", "mistral", "nvidia", "openrouter", "deepinfra", "octoai", "novita", "perplexity", "cohere", "jina", "huggingface", "friendliai", "lepton"],
+    "SOVEREIGN_DAILY_REVIEW": ["dify", "ollama", "groq", "gemini", "deepseek", "sambanova", "cerebras", "together", "fireworks", "mistral", "nvidia", "openrouter", "deepinfra", "octoai", "novita", "perplexity", "cohere", "jina", "huggingface", "friendliai", "lepton"],
+    "OPS_CHAT": ["dify", "ollama", "groq", "gemini", "deepseek", "sambanova", "cerebras", "together", "fireworks", "mistral", "nvidia", "openrouter", "deepinfra", "octoai", "novita", "perplexity", "cohere", "jina", "huggingface", "friendliai", "lepton"],
+    "OPS_CHAT_LOCAL": ["dify", "ollama", "groq", "gemini", "deepseek", "sambanova", "cerebras", "together", "fireworks", "mistral", "nvidia", "openrouter", "deepinfra", "octoai", "novita", "perplexity", "cohere", "jina", "huggingface", "friendliai", "lepton"],
     "INTELLIGENCE_SYNTHESIS": ["groq", "gemini", "deepseek", "sambanova", "cerebras", "together_turbo", "mistral_large", "cloudflare_ai", "perplexity_pro", "github_experimental", "or_claude_free", "or_gpt4o_mini_free", "or_llama3_1_70b_free", "or_gemini_flash_free", "or_qwen2_72b_free", "fireworks", "nvidia", "openrouter", "deepinfra", "octoai", "novita", "perplexity", "cohere", "jina", "huggingface", "friendliai", "lepton", "ollama"],
     "TARGETED_VALIDATION": ["groq", "gemini", "deepseek", "sambanova", "cerebras", "together_turbo", "mistral_large", "perplexity_pro", "or_claude_free", "or_gpt4o_mini_free", "ollama"],
     "BRAIN_CRITIC": ["gemini", "groq", "deepseek", "together_turbo", "mistral_large", "or_claude_free", "ollama"],
@@ -810,6 +853,8 @@ def _provider_model(provider: str, prompt_type: str) -> str:
 
 def _provider_timeout(provider: str, prompt_type: str) -> float:
     if provider != "ollama":
+        if provider == "dify":
+            return float(os.getenv("DIFY_REQUEST_TIMEOUT_SEC", REQUEST_TIMEOUT_SEC))
         return REQUEST_TIMEOUT_SEC
     return float(PROMPT_OLLAMA_TIMEOUT.get(prompt_type, OLLAMA_DEFAULT_TIMEOUT_SEC))
 
@@ -843,6 +888,23 @@ def _call_provider(provider: str, prompt: str, prompt_type: str = "") -> Optiona
                 "options": _ollama_options(prompt_type),
             }
             payload["think"] = _ollama_think_value()
+            headers = {
+                "Content-Type": "application/json",
+                "Authorization": f"Bearer {api_key}",
+            }
+        elif provider == "dify":
+            url = _dify_workflow_url()
+            payload = {
+                "inputs": {
+                    "prompt": prompt,
+                    "prompt_type": prompt_type,
+                    "provider": provider,
+                },
+                "response_mode": os.getenv("DIFY_RESPONSE_MODE", "blocking"),
+                "user": os.getenv("DIFY_WORKFLOW_USER", "kibot-batam"),
+            }
+            if model:
+                payload["workflow_id"] = model
             headers = {
                 "Content-Type": "application/json",
                 "Authorization": f"Bearer {api_key}",
@@ -881,6 +943,10 @@ def _call_provider(provider: str, prompt: str, prompt_type: str = "") -> Optiona
                 content = data.get("message", {}).get("content")
                 _clear_provider_cooldown(provider)
                 return content
+            if provider == "dify":
+                content = _extract_dify_text(data)
+                _clear_provider_cooldown(provider)
+                return content or json.dumps(data, ensure_ascii=False)
             if provider == "gemini":
                 _clear_provider_cooldown(provider)
                 return data["candidates"][0]["content"]["parts"][0]["text"]
@@ -950,6 +1016,27 @@ def _extract_json_object(response: str) -> Optional[Dict[str, Any]]:
         return parsed if isinstance(parsed, dict) else None
     except Exception:
         return None
+
+
+def _extract_dify_text(payload: Any) -> Optional[str]:
+    if not isinstance(payload, dict):
+        return None
+    for key in ("answer", "result", "output", "text", "message"):
+        value = payload.get(key)
+        if isinstance(value, str) and value.strip():
+            return value.strip()
+    data = payload.get("data") if isinstance(payload.get("data"), dict) else {}
+    if isinstance(data, dict):
+        outputs = data.get("outputs") if isinstance(data.get("outputs"), dict) else {}
+        if isinstance(outputs, dict):
+            for key in ("answer", "result", "output", "text", "message"):
+                value = outputs.get(key)
+                if isinstance(value, str) and value.strip():
+                    return value.strip()
+            for value in outputs.values():
+                if isinstance(value, str) and value.strip():
+                    return value.strip()
+    return None
 
 
 def _response_has_minimum_schema(prompt_type: str, parsed: Dict[str, Any]) -> bool:

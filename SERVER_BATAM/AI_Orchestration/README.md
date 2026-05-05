@@ -18,6 +18,10 @@ This module is the "Brain" of KiBot. It transforms raw data into actionable trad
 ### 4. `kibot_ai_search.py` (The Librarian)
 - **Unified Retrieval**: Integrates Jina AI, Brave Search, and CryptoPanic for a unified market truth.
 
+### 5. `Dify` workflow bridge
+- **Role**: Optional decision-engine layer for Batam strategy and ops prompts.
+- **Setup**: `SERVER_BATAM/Support/dify_bypass_setup.py` can check Dify reachability, configure the local Ollama provider, and invoke a workflow endpoint when `DIFY_API_KEY` and `DIFY_WORKFLOW_ID` are set.
+
 ## Integration: Trinity Healer
 The AI fleet is directly hooked into `trinity_healer.py`. When a crash is detected, the **Admiral** assigns a local LLM to diagnose and patch the source code automatically.
 

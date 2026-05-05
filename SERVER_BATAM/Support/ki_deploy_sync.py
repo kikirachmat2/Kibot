@@ -6,25 +6,27 @@ from pathlib import Path
 # --- CONFIGURATION ---
 BASE_DIR = Path(__file__).resolve().parent.parent
 SSH_DIR = BASE_DIR / "Infrastructure" / "SSH"
+BATAM_HOST = os.getenv("KIBOT_BATAM_HOST", "168.110.201.228")
+BATAM_DEST = os.getenv("KIBOT_BATAM_DEST", "/home/ubuntu/KiBot/Batam/")
 
 NODES = {
     "BATAM_MANAGER": {
-        "host": "100.103.77.10",
+        "host": BATAM_HOST,
         "user": "ubuntu",
         "key": SSH_DIR / "ssh-key-batam-active.pem",
-        "dest": "/home/ubuntu/KiBot/Batam/"
+        "dest": BATAM_DEST
     },
     "SINGAPORE_EXECUTOR": {
         "host": "100.122.1.109",
         "user": "ubuntu",
         "key": SSH_DIR / "ssh-key-executor.pem",
-        "dest": "/home/ubuntu/KiBot/Batam/"
+        "dest": BATAM_DEST
     },
     "SINGAPORE_SCANNER": {
         "host": "100.105.139.21",
         "user": "ubuntu",
         "key": SSH_DIR / "ssh-key-scanner.pem",
-        "dest": "/home/ubuntu/KiBot/Batam/"
+        "dest": BATAM_DEST
     }
 }
 

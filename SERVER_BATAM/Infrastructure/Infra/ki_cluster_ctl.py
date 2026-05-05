@@ -29,7 +29,7 @@ def run_remote(node, cmd):
 
 if __name__ == "__main__":
     if len(sys.argv) < 3:
-        print("Usage: ki_cluster_ctl.py [EXECUTOR|SCANNER] [command]")
+        print("Usage: ki_cluster_ctl.py [BATAM|EXECUTOR|SCANNER] [command]")
         sys.exit(1)
     ok, out = run_remote(sys.argv[1], sys.argv[2])
     print(out)
