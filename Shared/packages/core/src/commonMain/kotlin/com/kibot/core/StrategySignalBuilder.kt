@@ -829,22 +829,6 @@ private data class CandidateSelection(
     val selectionScore: Double,
 )
 
-private data class PairParts(
-    val baseAsset: String,
-    val quoteAsset: String,
-)
-
-private fun PairId.assets(): PairParts {
-    val parts = value.lowercase().split("_")
-    return if (parts.size == 2) {
-        PairParts(parts[0], parts[1])
-    } else {
-        val quote = listOf("idr", "usdt", "btc", "eth").firstOrNull { value.lowercase().endsWith(it) }
-            ?: error("Unsupported pair format: ${value}")
-        PairParts(value.lowercase().removeSuffix(quote), quote)
-    }
-}
-
 private val activeBuyOrderStatuses = setOf(
     OrderStatus.CREATED,
     OrderStatus.SUBMITTING,

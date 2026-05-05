@@ -4,9 +4,9 @@ import subprocess, os, sys
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 ROOT_DIR = os.path.dirname(SCRIPT_DIR)
 KEYS = {
-    "BATAM": os.path.join(ROOT_DIR, "SSH_BATAM/ssh-key-batam-active.pem"),
-    "EXECUTOR": os.path.join(ROOT_DIR, "SSH_SINGAPORE/SSH_EXECUTOR/ssh-key-2026-03-22.key"),
-    "SCANNER": os.path.join(ROOT_DIR, "SSH_SINGAPORE/SSH_SCANNER/ssh-key-2026-03-27.key")
+    "BATAM": os.path.join(ROOT_DIR, "SSH/ssh-key-batam-active.pem"),
+    "EXECUTOR": os.path.join(ROOT_DIR, "SSH/ssh-key-executor.pem"),
+    "SCANNER": os.path.join(ROOT_DIR, "SSH/ssh-key-scanner.pem")
 }
 IPS = {
     "BATAM": "168.110.201.228",

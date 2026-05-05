@@ -44,7 +44,6 @@ data class CommandCenterLiveSnapshot(
     val KiBotPingMs: Long? = null,
     val KiBotNodeStatus: String? = null,
     val kibotNodeStatus: String? = null,
-    val KiBotNodeStatus: String? = null,
     val serverUptime: String,
     val releaseLabel: String,
     val targetPursuitLabel: String,

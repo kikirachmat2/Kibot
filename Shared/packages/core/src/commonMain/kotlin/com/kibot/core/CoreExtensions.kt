@@ -2,12 +2,12 @@ package com.kibot.core
 
 import com.kibot.shared.models.PairId
 
-data class PairParts(
+internal data class PairParts(
     val baseAsset: String,
     val quoteAsset: String,
 )
 
-fun PairId.assets(): PairParts {
+internal fun PairId.assets(): PairParts {
     val parts = value.lowercase().split("_")
     return if (parts.size == 2) {
         PairParts(parts[0], parts[1])

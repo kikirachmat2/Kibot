@@ -69,6 +69,8 @@ data class PairSelectionContext(
     val leadSectorHotnessScore: Double = 0.0,
     val leadVolumeVelocityScore: Double = 0.0,
     val urgentEntryMode: Boolean = false,
+    val bypassVetoService: Boolean = false,
+    val bypassRankingFloor: Boolean = false,
     val pairHistoricalWinRate: Map<String, Double> = emptyMap(),
     val pairHistoricalLossCount: Map<String, Int> = emptyMap(),
 )

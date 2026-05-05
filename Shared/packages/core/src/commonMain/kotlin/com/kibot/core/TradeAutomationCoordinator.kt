@@ -975,24 +975,6 @@ class TradeAutomationCoordinator(
         return null
     }
 
-    private data class PairParts(
-        val baseAsset: String,
-        val quoteAsset: String,
-    )
-
-    private fun PairId.assets(): PairParts {
-        val parts = value.lowercase().split("_")
-        return if (parts.size == 2) {
-            PairParts(parts[0], parts[1])
-        } else {
-            val quoteAsset = listOf(executionConfig.referenceQuoteAsset.lowercase(), "idr", "usdt", "btc", "eth")
-                .distinct()
-                .firstOrNull { value.lowercase().endsWith(it) }
-                ?: executionConfig.referenceQuoteAsset.lowercase()
-            PairParts(value.lowercase().removeSuffix(quoteAsset), quoteAsset)
-        }
-    }
-
     private companion object {
         private val activeOrderStatuses = setOf(
             OrderStatus.CREATED,

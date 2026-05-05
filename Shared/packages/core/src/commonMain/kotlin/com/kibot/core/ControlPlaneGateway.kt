@@ -34,13 +34,9 @@ data class KingDashboardSnapshot(
     val latestManagerLog: String?,
     val udpPingMs: Long? = null,
     val KiBotPingMs: Long? = null,
-    val KiBotPingMs: Long? = null,
     val targetProgressPct: Double? = null,
     val KiBotBalanceIdr: Double? = null,
-    val KiBotBalanceIdr: Double? = null,
     val KiBotPnlTodayPct: Double? = null,
-    val KiBotPnlTodayPct: Double? = null,
-    val KiBotPairActive: String? = null,
     val KiBotPairActive: String? = null,
 )
 

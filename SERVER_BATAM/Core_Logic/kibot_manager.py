@@ -486,7 +486,7 @@ def _relay_to_KiBot(msg: dict):
     # Actual Transmission (Fixed Redundancy)
     transient_socket = None
     try:
-        payload = json.dumps(msg, ensure_ascii=False, separators=(',', ':')).encode("utf-8")
+        payload = json.dumps(msg, ensure_ascii=True, separators=(',', ':')).encode("utf-8")
         udp_socket = _main_socket
         if udp_socket is None:
             transient_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -809,7 +809,7 @@ def _load_json_file(path: Path, default: Any) -> Any:
 
 def _write_json_file(path: Path, payload: Any) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+    path.write_text(json.dumps(payload, ensure_ascii=True, indent=2), encoding="utf-8")
 
 
 def _metric_inc(name: str, amount: int = 1) -> None:
@@ -3156,6 +3156,8 @@ def _check_KiBot_health() -> bool:
     """Checks if KiBot (Tokyo Node) is healthy based on heartbeats."""
     global _KiBot_healthy, _last_KiBot_heartbeat_at
     now = time.time()
+    if _last_KiBot_heartbeat_at == 0.0:
+        return True
     # If we haven't received a heartbeat in 3x timeout, mark as unhealthy
     if now - _last_KiBot_heartbeat_at > (KiBot_HEARTBEAT_TIMEOUT_SEC * 3):
         if _KiBot_healthy:
@@ -5201,7 +5203,7 @@ def _run_ai_batch_review() -> None:
     prompt = (
         "Kamu adalah risk analyst untuk autonomous crypto trading bot.\n"
         "Filosofi: survival first, compounding gradual.\n\n"
-        f"Data performa 6 jam terakhir:\n{json.dumps(summary, ensure_ascii=False, indent=2)}\n\n"
+        f"Data performa 6 jam terakhir:\n{json.dumps(summary, ensure_ascii=True, indent=2)}\n\n"
         "Berikan rekomendasi JSON dengan keys: "
         "\"pairs_to_cooldown\", \"mode_recommendation\", \"reasoning\"."
     )
@@ -5218,7 +5220,7 @@ def _run_ai_batch_review() -> None:
         parsed = _parse_json_candidate(text)
         if isinstance(parsed, dict) and parsed:
             _apply_ai_recommendation(parsed)
-            print(f"[KIBOT][AI_REVIEW] provider={provider} applied={json.dumps(parsed, ensure_ascii=False)[:240]}", flush=True)
+            print(f"[KIBOT][AI_REVIEW] provider={provider} applied={json.dumps(parsed, ensure_ascii=True)[:240]}", flush=True)
     except Exception as error:
         print(f"[KIBOT][AI_REVIEW][WARN] failed reason={error}", flush=True)
 
@@ -5377,7 +5379,7 @@ def _append_jsonl(path: Path, payload: Dict[str, Any]) -> None:
     try:
         path.parent.mkdir(parents=True, exist_ok=True)
         with open(path, "a", encoding="utf-8") as handle:
-            handle.write(json.dumps(payload, ensure_ascii=False) + "\n")
+            handle.write(json.dumps(payload, ensure_ascii=True) + "\n")
     except Exception as error:
         print(f"[KIBOT][JSONL][WARN] append failed path={path.name} reason={error}", flush=True)
 
@@ -6123,7 +6125,7 @@ def _run_strategy_learning_review() -> Dict[str, Any]:
             "PENTING: dilarang memberi instruksi BUY/SELL langsung. Fokusmu hanya evaluasi belajar, guardrail, dan strategi 30 menit berikutnya.\n"
             "Gunakan pendekatan refleksi cepat: ringkas apa yang gagal, apa yang bekerja, kenapa veto/why-not muncul, dan bagaimana menyesuaikan strategi 30 menit berikutnya tanpa memberi instruksi trading langsung.\n"
             "Jawab JSON dengan keys: summary, strategy, lessons, risks.\n\n"
-            f"Data 30 menit terakhir:\n{json.dumps(snapshot, ensure_ascii=False, indent=2)}"
+            f"Data 30 menit terakhir:\n{json.dumps(snapshot, ensure_ascii=True, indent=2)}"
         )
         try:
             routed_text, provider = _call_ai_router(
@@ -6452,6 +6454,7 @@ def _remember_provider_failure(provider: str, task: str, error_message: str) -> 
 
 def _parse_json_candidate(text: str) -> Any:
     raw = (text or "").strip()
+    raw = "".join(c for c in raw if not (0xD800 <= ord(c) <= 0xDFFF))
     if not raw:
         return {}
     try:
@@ -6469,7 +6472,8 @@ def _parse_json_candidate(text: str) -> Any:
 
 def _extract_assistant_text(payload: Any) -> str:
     if isinstance(payload, str):
-        return payload.strip()
+        raw = payload.strip()
+        return "".join(c for c in raw if not (0xD800 <= ord(c) <= 0xDFFF))
     if not isinstance(payload, dict):
         return ""
     choices = payload.get("choices")
@@ -6768,13 +6772,14 @@ def _call_ai_router(
             provider_errors[provider] = f"cooldown:{reason}"
             continue
         try:
-            text = _call_provider(
+            raw_text = _call_provider(
                 provider,
                 system_prompt=system_prompt,
                 user_prompt=user_prompt,
                 model_hint=model_hint,
                 timeout_sec=timeout_sec,
-            ).strip()
+            )
+            text = "".join(c for c in raw_text.strip() if not (0xD800 <= ord(c) <= 0xDFFF))
             if not text:
                 provider_errors[provider] = "empty_response"
                 continue
@@ -7821,7 +7826,7 @@ def _upsert_trade_history(entry: Dict[str, Any]) -> None:
         "term": 0,
         "level": "INFO",
         "category": "BOOK_ENTRY",
-        "message": json.dumps(entry, ensure_ascii=False),
+        "message": json.dumps(entry, ensure_ascii=True),
         "metadata": {"source": "kibot_manager", "fallback_from": "trade_history"},
         "created_at": datetime.now(timezone.utc).isoformat(),
     }
@@ -7883,7 +7888,7 @@ def _book_entry_from_execution(msg: Dict[str, Any]) -> None:
                         "net_pnl_idr": net,
                         "mode": "TRINITY_V3",
                     },
-                    ensure_ascii=False,
+                    ensure_ascii=True,
                 ),
                 "created_at": now_iso,
                 "updated_at": now_iso,
@@ -7934,7 +7939,7 @@ def _book_entry_from_execution(msg: Dict[str, Any]) -> None:
 
 def evaluate_foolish_trade(trade_data: Dict[str, Any]) -> None:
     system_prompt = "Anda evaluator pasca-trade. Jawab JSON singkat: {\"mistake\":\"...\",\"action\":\"...\",\"tighten\":{...}}"
-    user_prompt = json.dumps(trade_data, ensure_ascii=False)
+    user_prompt = json.dumps(trade_data, ensure_ascii=True)
     routed_text, provider = _call_ai_router(
         task="post_mortem",
         system_prompt=system_prompt,
@@ -7951,7 +7956,7 @@ def evaluate_foolish_trade(trade_data: Dict[str, Any]) -> None:
         pair = str(trade_data.get("pair") or "").lower().strip()
         net_pnl = float(trade_data.get("net_pnl_idr") or 0.0)
         pnl_pct = float(trade_data.get("pnl_pct") or 0.0)
-        action_text = json.dumps(parsed, ensure_ascii=False).lower() if parsed else routed_text.lower()
+        action_text = json.dumps(parsed, ensure_ascii=True).lower() if parsed else routed_text.lower()
         if POST_MORTEM_BLACKLIST_ENABLED and pair and (
             "blacklist" in action_text
             or "freeze" in action_text
@@ -7996,7 +8001,7 @@ def evaluate_foolish_trade(trade_data: Dict[str, Any]) -> None:
             return
         result = response.json()
         print(
-            f"[KIBOT][POST_MORTEM] evaluated trace={trade_data.get('trace_id')} result={json.dumps(result, ensure_ascii=False)[:320]}",
+            f"[KIBOT][POST_MORTEM] evaluated trace={trade_data.get('trace_id')} result={json.dumps(result, ensure_ascii=True)[:320]}",
             flush=True,
         )
     except Exception as error:
@@ -8744,7 +8749,7 @@ def _fetch_dynamic_correlation_map() -> Dict[str, list[str]]:
     system_prompt = "Return ONLY JSON object map: {'sector_name':['coin1','coin2','coin3']} without prose."
     user_prompt = (
         "Provide a JSON map of the top 10 most active cryptocurrency sector correlations today. "
-        f"CoinGecko trending snapshot: {json.dumps(trending, ensure_ascii=False)}. "
+        f"CoinGecko trending snapshot: {json.dumps(trending, ensure_ascii=True)}. "
         "Prioritize sectors/coins with strongest momentum now."
     )
     routed_text, provider = _call_ai_router(
@@ -9236,7 +9241,7 @@ class _ManagerStateHandler(BaseHTTPRequestHandler):
             # Always serve cached snapshot (populated by background thread)
             with _http_state_cache_lock:
                 payload = _http_state_cache if _http_state_cache else {"ok": False, "error": "cache_not_ready"}
-            raw = json.dumps(payload, ensure_ascii=False).encode("utf-8")
+            raw = json.dumps(payload, ensure_ascii=True).encode("utf-8")
             self.send_response(200)
             self.send_header("Content-Type", "application/json; charset=utf-8")
             self.send_header("Content-Length", str(len(raw)))
@@ -9245,7 +9250,7 @@ class _ManagerStateHandler(BaseHTTPRequestHandler):
             return
         if self.path.startswith("/api/gate"):
             payload = _manager_gate_payload(include_runtime_state=False)
-            raw = json.dumps(payload, ensure_ascii=False).encode("utf-8")
+            raw = json.dumps(payload, ensure_ascii=True).encode("utf-8")
             self.send_response(200)
             self.send_header("Content-Type", "application/json; charset=utf-8")
             self.send_header("Content-Length", str(len(raw)))
@@ -9254,7 +9259,7 @@ class _ManagerStateHandler(BaseHTTPRequestHandler):
             return
         if self.path.startswith("/api/scanner-feed"):
             payload = _load_local_scanner_feed()
-            raw = json.dumps(payload, ensure_ascii=False).encode("utf-8")
+            raw = json.dumps(payload, ensure_ascii=True).encode("utf-8")
             self.send_response(200)
             self.send_header("Content-Type", "application/json; charset=utf-8")
             self.send_header("Content-Length", str(len(raw)))
@@ -9280,12 +9285,12 @@ class _ManagerStateHandler(BaseHTTPRequestHandler):
             self.send_response(200)
             self.send_header("Content-Type", "application/json; charset=utf-8")
             self.end_headers()
-            self.wfile.write(json.dumps({"ok": True}, ensure_ascii=False).encode("utf-8"))
+            self.wfile.write(json.dumps({"ok": True}, ensure_ascii=True).encode("utf-8"))
         except Exception as error:
             self.send_response(500)
             self.send_header("Content-Type", "application/json; charset=utf-8")
             self.end_headers()
-            self.wfile.write(json.dumps({"ok": False, "error": str(error)}, ensure_ascii=False).encode("utf-8"))
+            self.wfile.write(json.dumps({"ok": False, "error": str(error)}, ensure_ascii=True).encode("utf-8"))
 
     def log_message(self, format: str, *args: Any) -> None:  # noqa: A003
         return
