@@ -14,6 +14,9 @@ The Scanner collection acts as the **"Eyes"** of the KiBot ecosystem. These node
 - **ki_scanner_base.py**: The foundation for all sensory logic.
 - **ki_global_scanner_mesh.py**: Orchestrates the entire scanner cluster.
 
+> [!NOTE]
+> **Optimization Update**: To preserve RAM on the 1GB Scanner node, 10 "Tier-2" scrapers (Mexc, Phemex, Gate.io, Kucoin, etc.) have been disabled. Only Tier-1 scrapers (Binance, Bybit, OKX, Upbit) are active.
+
 ## Deployment & systemd
 - `kibot-scanner-mesh.service`: Global orchestrator for all scrapers.
 - `kibot-scanner@.service`: Template for running individual exchange instances.

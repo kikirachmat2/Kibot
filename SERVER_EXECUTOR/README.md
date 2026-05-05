@@ -18,6 +18,9 @@ This is a **Reactive Execution Service** designed for absolute control by the **
 - `kibot-executor-engine.service`: Manages Indodax spot execution.
 - `kibot-polymarket.service`: Specialized executor for Polymarket positions.
 
+> [!NOTE]
+> **Optimization Update**: Legacy services (`kibot-engine.service` and `kibot-manager.service`) have been removed to prevent port conflicts and optimize memory usage.
+
 ## Command Polling
 - **Interval**: 1 second polling from `pending_commands` table.
 - **Heartbeat**: Nodes report health state every 15s to Batam.
