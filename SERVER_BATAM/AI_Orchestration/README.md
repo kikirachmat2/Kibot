@@ -22,6 +22,13 @@ This module is the "Brain" of KiBot. It transforms raw data into actionable trad
 - **Role**: Optional decision-engine layer for Batam strategy and ops prompts.
 - **Setup**: `SERVER_BATAM/Support/dify_bypass_setup.py` can check Dify reachability, configure the local Ollama provider, and invoke a workflow endpoint when `DIFY_API_KEY` and `DIFY_WORKFLOW_ID` are set.
 
+## Integration: KiBot Manager & Trinity Mesh
+The AI fleet is tightly integrated into the `kibot_manager.py` operational daemon. 
+- **Scout Loop**: `kibot_ai_scout.py` is now run as a persistent background thread within the `kibot_manager.py` daemon, eliminating the need for standalone systemd services for scouting and ensuring tight integration with manager logic.
+- **Search Support**: Added `duckduckgo-search` to expand open-web retrieval capabilities in `kibot_ai_search.py`.
+- **Reasoning Upgrade**: The Local Shield now supports Chain of Thought (CoT) reasoning via Ollama (`KIBOT_OLLAMA_THINK_LEVEL=true`) for deep market and security research.
+- **Trinity Monitor**: The entire fleet's operational health and connectivity to Scanner and Executor nodes are overseen by `trinity_monitor.py` running natively as `kibot-monitor.service`.
+
 ## Integration: Trinity Healer
 The AI fleet is directly hooked into `trinity_healer.py`. When a crash is detected, the **Admiral** assigns a local LLM to diagnose and patch the source code automatically.
 

@@ -38,6 +38,12 @@ import sovereign_arbitrator
 from dashboard_template import DASHBOARD_HTML
 from ki_brain import BrainManager
 from ki_stats import calculate_z_score, detect_regime, calculate_obi
+
+try:
+    from kibot_ai_search import AISearchService
+    import kibot_ai_scout
+except ImportError:
+    pass
 try:
     from kibot_learning_engine import get_engine, get_regime_detector
 except ImportError:
@@ -85,6 +91,20 @@ except ImportError:
 # Global lock for thread-safe access to shared state
 _state_lock = threading.RLock()
 _shutdown_event = threading.Event()
+
+@dataclass
+class HardStopState:
+    initial_capital: float = 0.0
+    daily_pnl: float = 0.0
+
+    def check_position_timeout(self, pos: dict) -> bool:
+        entry_time = float(pos.get("entry_time", 0))
+        if entry_time > 0 and (time.time() - entry_time) > 12 * 3600:
+            return True
+        return False
+
+_hard_stop = HardStopState()
+
 _main_socket: Optional[socket.socket] = None
 _http_server: Optional[ThreadingHTTPServer] = None
 _bot_start_time = time.time()
@@ -9862,6 +9882,14 @@ def main() -> None:
     # === START RESOURCE GOVERNOR (THE BRAIN) ===
     governor_thread = threading.Thread(target=run_resource_governor, name="kibot-resource-governor", daemon=True)
     governor_thread.start()
+
+    # === START AI SCOUT LOOP ===
+    try:
+        if "kibot_ai_scout" in sys.modules:
+            scout_thread = threading.Thread(target=sys.modules["kibot_ai_scout"].run_scout_loop, name="kibot-ai-scout-loop", daemon=True)
+            scout_thread.start()
+    except Exception as e:
+        print(f"[KIBOT][ERROR] Failed to start AI Scout Loop: {e}", flush=True)
     
     try:
         asyncio.run(main_async())

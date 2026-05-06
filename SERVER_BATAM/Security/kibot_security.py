@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import List, Optional
 
 # Constants
-ROOT = Path(os.getenv("KIBOT_RUNTIME_ROOT", Path(__file__).resolve().parent.parent))
+ROOT = Path(__file__).resolve().parent.parent
 STATE_DIR = ROOT / "state"
 SECURITY_LOG = STATE_DIR / "security_ledger.jsonl"
 
@@ -18,13 +18,17 @@ SECURITY_LOG = STATE_DIR / "security_ledger.jsonl"
 sys.path.append(str(ROOT / "Support"))
 try:
     from ki_vault import get_vault
-except ImportError:
+except ImportError as e:
+    print(f"Failed to import vault: {e}", file=sys.stderr)
     get_vault = lambda: None
 
 def _get_signing_key() -> bytes:
     vault = get_vault()
-    if vault and hasattr(vault, "_key") and vault._key:
-        return vault._key
+    if vault:
+        if hasattr(vault, "_initialize"):
+            vault._initialize()
+        if hasattr(vault, "_key") and vault._key:
+            return vault._key
     # CRITICAL: No more hardcoded emergency keys. 
     # System must fail-secure if vault is missing.
     raise RuntimeError("SECURITY_FATAL: Crypto Vault is inaccessible. Unauthorized execution prevented.")

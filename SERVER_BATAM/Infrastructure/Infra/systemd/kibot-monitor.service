@@ -1,5 +1,5 @@
 [Unit]
-Description=KiBot Security Monitor
+Description=KiBot Trinity Monitor
 After=network-online.target
 Wants=network-online.target
 
@@ -11,15 +11,11 @@ EnvironmentFile=-/home/ubuntu/KiBot/.env.server
 EnvironmentFile=-/home/ubuntu/KiBot/.env.kibot
 EnvironmentFile=-/home/ubuntu/KiBot/.env.kibot_manager
 Environment=PYTHONUNBUFFERED=1
-ExecStart=/usr/bin/python3 SERVER_BATAM/Security/kibot_security.py
-Restart=on-failure
-RestartSec=60
+ExecStart=/usr/bin/python3 SERVER_BATAM/Infrastructure/Automation/trinity_monitor.py
+Restart=always
+RestartSec=30
 MemoryMax=128M
 CPUQuota=10%
-OOMPolicy=kill
-ProtectSystem=full
-PrivateTmp=yes
-NoNewPrivileges=yes
 
 [Install]
 WantedBy=multi-user.target

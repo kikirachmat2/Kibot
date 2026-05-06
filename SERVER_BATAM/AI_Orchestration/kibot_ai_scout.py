@@ -147,7 +147,7 @@ class WorldScout:
         else:
             self._log(f"[WARN] Targeted validation for {pair} failed (no AI response).")
 
-if __name__ == "__main__":
+def run_scout_loop():
     print("[SCOUT] Starting World Scout service with Fast-Poll (5s) for urgent requests...", flush=True)
     scout = WorldScout()
     last_global_scout = 0
@@ -176,3 +176,6 @@ if __name__ == "__main__":
                 scout._log(f"[ERROR] Global scouting failed: {e}")
         
         time.sleep(5) # Fast poll interval
+
+if __name__ == "__main__":
+    run_scout_loop()
