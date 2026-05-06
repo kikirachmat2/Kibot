@@ -48,3 +48,11 @@ def bounded_append(target_list: list, item: Any, max_size: int = 200):
     target_list.append(item)
     if len(target_list) > max_size:
         del target_list[0]
+
+def _env_first(*keys: str, default: str = "") -> str:
+    import os
+    for key in keys:
+        value = os.getenv(key, "").strip()
+        if value:
+            return value
+    return default

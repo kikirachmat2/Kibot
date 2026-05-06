@@ -9831,7 +9831,7 @@ def main() -> None:
 
     _ensure_env()
     try:
-        from Support.ki_vault import load_sovereign_env
+        from ki_vault import load_sovereign_env
         load_sovereign_env()
     except Exception as ve:
         print(f"[BOOT][VAULT][WARN] Could not load vaulted env: {ve}")
