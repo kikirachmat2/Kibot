@@ -1,8 +1,8 @@
 {
-  "updated_at": "2026-05-03T19:39:45.379975+00:00",
+  "updated_at": "2026-05-06T18:12:48.489218+00:00",
   "service": "kibot_manager",
   "operational_wib_date": "2026-05-04",
-  "actual_wib_date": "2026-05-04",
+  "actual_wib_date": "2026-05-07",
   "midnight_reset_pending": false,
   "daily_cycle_state": {
     "active_wib_date": "2026-05-04",
@@ -14,13 +14,12 @@
     "last_reset_completed_date": "2026-05-04",
     "alert_sent_for_pending_cycle": false
   },
-  "host_bind": "0.0.0.0:9998",
-  "kidax_target": "213.35.118.26:9999",
-  "kinance_target": "152.69.218.198:9999",
+  "host_bind": "127.0.0.1:9998",
+  "KiBot_target": "127.0.0.1:9999",
   "system_state": "SUSPENDED",
   "trading_mode": "CONSERVATIVE",
-  "api_fail_streak": 5873,
-  "control_plane_healthy": false,
+  "api_fail_streak": 0,
+  "control_plane_healthy": true,
   "daily_hard_stop": false,
   "daily_pnl_pct": 0.0,
   "external_cashflow_idr": 0.0,
@@ -28,16 +27,17 @@
   "ai_router_enabled": true,
   "ai_provider_order": [
     "groq",
-    "ollama",
+    "dify",
     "cohere",
+    "ollama",
     "gemini",
     "openrouter"
   ],
   "ai_provider_last_status": {
-    "provider": "",
-    "task": "learning_review",
-    "at_epoch_ms": 1777837065099,
-    "ok": false
+    "provider": "groq",
+    "task": "batch_review",
+    "at_epoch_ms": 1778091168487,
+    "ok": true
   },
   "provider_runtime_state": {
     "openrouter": {
@@ -55,6 +55,13 @@
       "reason": "rate_limited",
       "last_error": "gemini status=429 body={\n  \"error\": {\n    \"code\": 429,\n    \"message\": \"You exceeded your current quota, please check your plan and billing details. For more information on this error, head to: https://ai.google.dev/gemini-api/docs/rate-limits. To monitor your cur",
       "failure_count": 85
+    },
+    "groq": {
+      "task": "batch_review",
+      "last_success_epoch": 1778091168.4874969,
+      "cooldown_until_epoch": 0,
+      "reason": "",
+      "success_count": 2
     }
   },
   "tracked_active_positions": [],
@@ -90,12 +97,12 @@
       "plan_generated_at": "2026-05-03T19:36:34.210693Z",
       "expires_at": "2026-05-03T19:51:34.210693Z",
       "plan_ttl_sec": 900,
-      "plan_state": "ACTIVE",
+      "plan_state": "EXPIRED_SURVIVAL",
       "strategy_mode": "DEFENSIVE",
       "brain_mode": "SURVIVAL",
       "market_regime": "MIXED",
       "capital_posture": "PRESERVE",
-      "reason": "ai_governor_fallback:medium:empty_governor_response",
+      "reason": "expired_plan_survival:ai_governor_fallback:medium:empty_governor_response",
       "why": [
         "capital or gate health requires defensive fallback"
       ],
@@ -103,7 +110,7 @@
       "provider": "heuristic",
       "model": "local-fallback",
       "confidence": 0.42,
-      "effective_confidence": 0.4168,
+      "effective_confidence": 0.0,
       "confidence_decay_per_hour": 0.06,
       "fallback_if_expired": "SURVIVAL_MODE",
       "what_could_make_this_wrong": [
@@ -112,7 +119,8 @@
         "market correlation shifts abruptly"
       ],
       "ops_alerts": [
-        "ai governor fallback active on node"
+        "ai governor fallback active on node",
+        "governor plan expired -> survival_mode"
       ],
       "scanner": {
         "weights": {
@@ -155,7 +163,7 @@
           "btc_idr"
         ],
         "avoid_pairs": [],
-        "budget_boost": 0.9,
+        "budget_boost": 0.85,
         "focus_boost": 1.0
       },
       "indodax": {
@@ -173,8 +181,8 @@
         "max_risk_pct": 0.5,
         "focus_markets": []
       },
-      "plan_age_sec": 192.91,
-      "plan_is_expired": false
+      "plan_age_sec": 254174.28,
+      "plan_is_expired": true
     },
     "state": {
       "last_refresh_at": "2026-05-03T19:36:34.210869Z",
@@ -199,8 +207,24 @@
     "sell_confirmed": 0,
     "emergency_sell": 0
   },
-  "sector_count": 0,
-  "sector_preview": {},
+  "sector_count": 5,
+  "sector_preview": {
+    "bitcoin": [
+      "btc"
+    ],
+    "terra luna classic": [
+      "lunc"
+    ],
+    "toncoin": [
+      "ton"
+    ],
+    "pudgy penguins": [
+      "pengu"
+    ],
+    "unstable coin": [
+      "usdc"
+    ]
+  },
   "latest_learning_review": {
     "at": "2026-05-03T19:37:44.907686+00:00",
     "wib_date": "2026-05-04",
@@ -606,7 +630,7 @@
       "headline_count": 0,
       "top_headlines": [
         "Crypto Market News Today - CoinMarketCap",
-        "Crypto Markets Today: Fear Dominates as Altcoins Lag, Bitcoin Tests …"
+        "Crypto Markets Today: Fear Dominates as Altcoins Lag, Bitcoin Tests \u2026"
       ],
       "summary": "Crypto Market News Today - CoinMarketCap",
       "providers_used": [
@@ -645,7 +669,7 @@
       "summary": "Crypto Market News Today - CoinMarketCap",
       "global_narratives": [
         "Crypto Market News Today - CoinMarketCap",
-        "Crypto Markets Today: Fear Dominates as Altcoins Lag, Bitcoin Tests …"
+        "Crypto Markets Today: Fear Dominates as Altcoins Lag, Bitcoin Tests \u2026"
       ],
       "external_events": [
         {
@@ -656,7 +680,7 @@
         },
         {
           "source": "market_pulse",
-          "headline": "Crypto Markets Today: Fear Dominates as Altcoins Lag, Bitcoin Tests …",
+          "headline": "Crypto Markets Today: Fear Dominates as Altcoins Lag, Bitcoin Tests \u2026",
           "impact": "MIXED",
           "assets": []
         }
@@ -763,11 +787,11 @@
         "quote_volume_usdt": 0.0,
         "risk_bias": "MIXED",
         "research_provider": "ddg",
-        "research_summary": "1 day ago · Latest Ethereum News - Discover Market Trends, Price Updates, and Insights on the Future of Ethereum for Traders and Investors.",
+        "research_summary": "1 day ago \u00b7 Latest Ethereum News - Discover Market Trends, Price Updates, and Insights on the Future of Ethereum for Traders and Investors.",
         "headline_count": 2,
         "top_headlines": [
           "Latest Ethereum (ETH) News Update - CoinMarketCap",
-          "Ethereum News Today (ETH) – Latest Updates & Trends"
+          "Ethereum News Today (ETH) \u2013 Latest Updates & Trends"
         ]
       }
     ],
@@ -775,108 +799,40 @@
   },
   "recent_events": [
     {
-      "at": "2026-05-03T19:39:31.951897+00:00",
+      "at": "2026-05-06T18:12:47.117243+00:00",
+      "kind": "manager_start",
+      "detail": {
+        "KiBot_target": "127.0.0.1:9999"
+      }
+    },
+    {
+      "at": "2026-05-06T18:12:47.754613+00:00",
       "kind": "trinity_heartbeat_emit",
       "detail": {
         "sender": "kibot"
       }
     },
     {
-      "at": "2026-05-03T19:39:32.957251+00:00",
-      "kind": "trinity_heartbeat_emit",
+      "at": "2026-05-06T18:12:48.264498+00:00",
+      "kind": "ai_provider_success",
       "detail": {
-        "sender": "kibot"
+        "provider": "groq",
+        "task": "correlation_matrix"
       }
     },
     {
-      "at": "2026-05-03T19:39:33.961733+00:00",
-      "kind": "trinity_heartbeat_emit",
+      "at": "2026-05-06T18:12:48.269146+00:00",
+      "kind": "correlation_matrix_refresh",
       "detail": {
-        "sender": "kibot"
+        "sector_count": 5
       }
     },
     {
-      "at": "2026-05-03T19:39:34.965904+00:00",
-      "kind": "trinity_heartbeat_emit",
+      "at": "2026-05-06T18:12:48.488744+00:00",
+      "kind": "ai_provider_success",
       "detail": {
-        "sender": "kibot"
-      }
-    },
-    {
-      "at": "2026-05-03T19:39:35.968750+00:00",
-      "kind": "trinity_heartbeat_emit",
-      "detail": {
-        "sender": "kibot"
-      }
-    },
-    {
-      "at": "2026-05-03T19:39:36.975675+00:00",
-      "kind": "trinity_heartbeat_emit",
-      "detail": {
-        "sender": "kibot"
-      }
-    },
-    {
-      "at": "2026-05-03T19:39:37.980015+00:00",
-      "kind": "trinity_heartbeat_emit",
-      "detail": {
-        "sender": "kibot"
-      }
-    },
-    {
-      "at": "2026-05-03T19:39:38.984721+00:00",
-      "kind": "trinity_heartbeat_emit",
-      "detail": {
-        "sender": "kibot"
-      }
-    },
-    {
-      "at": "2026-05-03T19:39:39.986220+00:00",
-      "kind": "trinity_heartbeat_emit",
-      "detail": {
-        "sender": "kibot"
-      }
-    },
-    {
-      "at": "2026-05-03T19:39:40.992473+00:00",
-      "kind": "trinity_heartbeat_emit",
-      "detail": {
-        "sender": "kibot"
-      }
-    },
-    {
-      "at": "2026-05-03T19:39:41.994964+00:00",
-      "kind": "trinity_heartbeat_emit",
-      "detail": {
-        "sender": "kibot"
-      }
-    },
-    {
-      "at": "2026-05-03T19:39:43.001712+00:00",
-      "kind": "trinity_heartbeat_emit",
-      "detail": {
-        "sender": "kibot"
-      }
-    },
-    {
-      "at": "2026-05-03T19:39:44.005137+00:00",
-      "kind": "trinity_heartbeat_emit",
-      "detail": {
-        "sender": "kibot"
-      }
-    },
-    {
-      "at": "2026-05-03T19:39:45.007971+00:00",
-      "kind": "trinity_heartbeat_emit",
-      "detail": {
-        "sender": "kibot"
-      }
-    },
-    {
-      "at": "2026-05-03T19:39:45.379954+00:00",
-      "kind": "manager_shutdown",
-      "detail": {
-        "signal": "SIGTERM"
+        "provider": "groq",
+        "task": "batch_review"
       }
     }
   ]

@@ -112,6 +112,8 @@ try:
     from kibot_ai_coordinator import (
         get_provider_status as _coordinator_provider_status_fn,
         query_ai as _coordinator_query_ai_fn,
+        query_ai_consensus as _coordinator_query_ai_consensus_fn,
+        query_ai_debate as _coordinator_query_ai_debate_fn,
     )
 except Exception:
     _coordinator_provider_status_fn = None
@@ -233,26 +235,39 @@ class BrainManager:
     def _get_ai_consensus(self, pair: str, msg_type: str, regime: str, obi: float, session: str) -> Tuple[str, str]:
         """
         Multi-Agent Reasoning: Debate between analysts to reach a sovereign decision.
+        Uses the high-IQ 7-agent consensus architecture from the AI Coordinator.
         """
-        # Logic to call LLM with multi-agent prompt
-        # (Assuming self._call_llm or similar exists in ki_brain.py)
-        prompt = f"""
-        [SOVEREIGN AI CONSENSUS]
-        Asset: {pair} | Signal: {msg_type}
-        Regime: {regime} | OBI: {obi:.2f} | Session: {session}
+        if not self.ai_coordinator_enabled or _coordinator_query_ai_consensus_fn is None:
+            return "APPROVE", "AI Coordinator disabled or offline; falling back to rule-based approval."
+
+        context = {
+            "pair": pair,
+            "msg_type": msg_type,
+            "regime": regime,
+            "obi": obi,
+            "session": session,
+            "market_pulse": self.snapshot().get("market_pulse", {}),
+            "world_model": self.snapshot().get("world_model", {}),
+            "timestamp": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+        }
         
-        Debate Plan:
-        1. Macro Analyst: Does {session} & {regime} support this {msg_type}?
-        2. Technical Analyst: Does {obi} (liquidity) confirm strength?
-        3. Arbitrator: Decision (APPROVE/REJECT) + Reason.
-        """
         try:
-            # Placeholder for actual LLM call logic already existing in KiBrain
-            # In KiBot v7.1, we use _get_ai_critic internally
-            res = self._get_ai_critic(prompt)
-            decision = "APPROVE" if "APPROVE" in res.upper() else "REJECT"
-            return decision, res[:200]
-        except:
+            # Use the 7-agent consensus for critical decisions
+            symbol = pair.split('_')[0] if '_' in pair else pair
+            result = _coordinator_query_ai_consensus_fn(context, symbol=symbol)
+            
+            if not result:
+                return "APPROVE", "Consensus returned empty; default approval."
+                
+            decision = str(result.get("decision") or "APPROVE").upper()
+            reason = str(result.get("reason") or "No reason provided by arbitrator.")
+            plan = str(result.get("action_plan") or "")
+            
+            final_reason = f"{reason} | Plan: {plan}"[:280]
+            return decision, final_reason
+        except Exception as e:
+            logger.error(f"[Brain] Consensus error: {e}")
+            return "APPROVE", f"Consensus failed: {e}"
             return "APPROVE", "Fallback to default approval (AI offline)"
 
         
@@ -734,8 +749,8 @@ class BrainManager:
         }
 
         def loader() -> Dict[str, Any]:
-            if self.ai_coordinator_enabled and _coordinator_query_ai_fn is not None:
-                critic = _coordinator_query_ai_fn(
+            if self.ai_coordinator_enabled and _coordinator_query_ai_debate_fn is not None:
+                critic = _coordinator_query_ai_debate_fn(
                     "BRAIN_CRITIC",
                     critic_context,
                     cache_ttl_minutes=max(1, int(self.gemini_ttl_sec / 60)),

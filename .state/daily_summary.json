@@ -1,6 +1,8 @@
 {
   "date": "2026-05-04",
-  "ai_success": {},
+  "ai_success": {
+    "groq": 2
+  },
   "ai_failure": {
     "openrouter": 6,
     "gemini": 3
@@ -173,6 +175,22 @@
         "risks": [
           "Waspadai whipsaw pada pair momentum pendek dan fee bleed dari exit terlalu cepat."
         ]
+      }
+    },
+    {
+      "at": "2026-05-06T18:12:48.263194+00:00",
+      "kind": "ai_success",
+      "detail": {
+        "provider": "groq",
+        "task": "correlation_matrix"
+      }
+    },
+    {
+      "at": "2026-05-06T18:12:48.488234+00:00",
+      "kind": "ai_success",
+      "detail": {
+        "provider": "groq",
+        "task": "batch_review"
       }
     }
   ],

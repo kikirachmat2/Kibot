@@ -4,7 +4,7 @@ from pathlib import Path
 
 # Add AI_Orchestration to path
 _root = Path(__file__).resolve().parent.parent.parent
-sys.path.append(str(_root / "Batam" / "AI_Orchestration"))
+sys.path.append(str(_root / "SERVER_BATAM" / "AI_Orchestration"))
 
 import kibot_ai_coordinator
 from kibot_ai_search import AISearchService

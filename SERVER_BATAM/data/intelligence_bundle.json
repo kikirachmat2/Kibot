@@ -1,0 +1,134 @@
+{
+  "rules": {
+    "core": "# \ud83d\udcdc KIBOT PROJECT RULES (TRINITY ARCHITECTURE) v2.0\n\n## \ud83d\udd04 PROSEDUR SINKRONISASI (HARGA MATI)\n1.  **DILARANG KERAS** melakukan perubahan kode sebelum menjalankan `git pull origin main`. \n2.  Setiap sesi coding WAJIB diawali dengan Audit Status: `sudo systemctl status kibot-*`.\n3.  Setelah perubahan selesai, WAJIB `git push` dan lapor ke Bos via Telegram.\n\n---\n\n## \ud83d\udcc2 STRUKTUR FOLDER & ATURAN KHUSUS\n### 1. `Batam/Core_Logic/`\n*   Pusat komando **Trinity Governor**. Jangan sentuh logic loop tanpa simulasi.\n### 2. `Batam/Communication/`\n*   Semua notifikasi harus melalui `kibot_notifier`.\n\n---\n\n## \ud83c\udf19 JALUR EVOLUSI (MIDNIGHT ORACLE)\nSistem akan melakukan riset mandiri setiap jam 00:00 WIB untuk mencari optimasi performa dan fitur baru. Jangan kaget jika ada saran fitur di pagi hari.\n\n## \ud83d\udee1\ufe0f JALUR PENYEMBUHAN (3-RETRY POLICY)\nSistem memiliki mandat untuk mencoba 3 kali perbaikan berbeda jika terjadi error sebelum menyerah dan meminta bantuan manusia.\n\n**DISETUJUI OLEH: KIBOT GOVERNOR & ANTIGRAVITY**\n"
+  },
+  "system_map": "# \ud83d\udef0\ufe0f Trinity Mesh v9.1.1 - Sovereign Architecture Map\n\n## 1. DATA FLOW (Based on Design)\n[SCANNER: 152.69.218.198] \n      |\n      | (UDP 9997 - Real-time Signal)\n      v\n[BATAM: 168.110.201.228] <--- (Brain / Decision Maker)\n      |\n      | (SSH ControlMaster - Latency: 199ms)\n      v\n[EXECUTOR: 213.35.118.26] <--- (Indodax & Polymarket ARMED)\n\n## 2. COMPONENT STATUS\n- **Scanner**: Eyes active.\n- **Batam**: Sovereign mode ON. Resource governor active.\n- **Executor**: API Keys validated. 199ms execution path established.\n- **Guard**: SSH Failover active.\n\n## 3. RECOVERY COMMANDS\n- **Check All**: python3 SERVER_BATAM/Core_Logic/kibot_manager.py --status\n- **Restart Mesh**: python3 SERVER_BATAM/Core_Logic/kibot_manager.py --restart-all\n",
+  "learning_experience": {
+    "btc_idr": {
+      "pair": "btc_idr",
+      "alpha": 15.0,
+      "beta": 10.0,
+      "trade_count": 25,
+      "win_count": 15,
+      "loss_count": 10,
+      "sum_wins": 0.45,
+      "sum_losses": 0.2,
+      "ema_pnl": 0.01,
+      "last_trade_ts": 1778088722.348108,
+      "cooldown_until_ts": 0.0,
+      "regime_stats": {
+        "NORMAL": {
+          "count": 25,
+          "sum_pnl": 0.25
+        }
+      },
+      "lessons": [
+        "Consistently reacts to 4H VWAP",
+        "Avoid entry during high exchange inflow"
+      ]
+    },
+    "eth_idr": {
+      "pair": "eth_idr",
+      "alpha": 12.0,
+      "beta": 8.0,
+      "trade_count": 20,
+      "win_count": 12,
+      "loss_count": 8,
+      "sum_wins": 0.35,
+      "sum_losses": 0.15,
+      "ema_pnl": 0.008,
+      "last_trade_ts": 1778088722.348115,
+      "cooldown_until_ts": 0.0,
+      "regime_stats": {
+        "NORMAL": {
+          "count": 20,
+          "sum_pnl": 0.2
+        }
+      },
+      "lessons": [
+        "Correlated with BTC momentum",
+        "Strong support at previous week low"
+      ]
+    }
+  },
+  "world_context": {
+    "urgent_alerts": [
+      {
+        "at": 1777789125.562102,
+        "pair": "BTC_IDR",
+        "validation": {
+          "verdict": "SPECULATIVE_PUMP",
+          "catalyst": "",
+          "confidence": 0.1,
+          "is_valid": false,
+          "reason": "No official announcement from Indodax or credible sources. Social media hype without verification is insufficient for a real catalyst. Rumors of exchange listings require confirmation from the exchange itself or major news outlets.",
+          "provider": "mistral_large",
+          "model": "mistral-large-latest",
+          "cache_fallback": true,
+          "cache_fallback_age_sec": 28.17
+        }
+      },
+      {
+        "at": 1777788652.158738,
+        "pair": "BTC_IDR",
+        "validation": {
+          "verdict": "SPECULATIVE_PUMP",
+          "catalyst": "None",
+          "confidence": 0.1,
+          "is_valid": false,
+          "reason": "The raw data only mentions 'social media hype' and 'rumors' of an Indodax listing without any official announcement or credible source. No concrete evidence (e.g., exchange press release, project team confirmation) supports the claim. This is characteristic of speculative pumping rather than a real catalyst.",
+          "provider": "mistral_large",
+          "model": "mistral-large-latest",
+          "cache_fallback": true,
+          "cache_fallback_age_sec": 33.52
+        }
+      },
+      {
+        "at": 1777788648.360872,
+        "pair": "BTC_IDR",
+        "validation": {
+          "verdict": "SPECULATIVE_PUMP",
+          "catalyst": "None",
+          "confidence": 0.1,
+          "is_valid": false,
+          "reason": "The raw data only mentions 'social media hype' and 'rumors' of an Indodax listing without any official announcement or credible source. No concrete evidence (e.g., exchange press release, project team confirmation) supports the claim. This is characteristic of speculative pumping rather than a real catalyst.",
+          "provider": "mistral_large",
+          "model": "mistral-large-latest",
+          "cache_fallback": true,
+          "cache_fallback_age_sec": 29.72
+        }
+      },
+      {
+        "at": 1777785103.775025,
+        "pair": "BTC_IDR",
+        "validation": {
+          "verdict": "SPECULATIVE_PUMP",
+          "catalyst": "Indodax listing rumors for PEPE",
+          "confidence": 0.2,
+          "is_valid": false,
+          "reason": "No official announcement or credible source confirming the Indodax listing. Social media hype alone does not constitute real news and is likely generic bot noise or speculative pumping.",
+          "provider": "cohere",
+          "model": "command-a-03-2025",
+          "cache_fallback": true,
+          "cache_fallback_age_sec": 15.28
+        }
+      },
+      {
+        "at": 1777784840.277924,
+        "pair": "BTC_IDR",
+        "validation": {
+          "verdict": "SPECULATIVE_PUMP",
+          "catalyst": "Indodax listing rumors for PEPE",
+          "confidence": 0.2,
+          "is_valid": false,
+          "reason": "No official announcement or credible sources confirming the Indodax listing. Social media hype alone does not constitute real news, and rumors are often used to manipulate prices.",
+          "provider": "cohere",
+          "model": "command-a-03-2025",
+          "cache_fallback": true,
+          "cache_fallback_age_sec": 325.82
+        }
+      }
+    ],
+    "last_updated": 1777789125.5621061
+  }
+}
