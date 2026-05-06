@@ -59,56 +59,39 @@ class GlobalScannerMesh:
         self.max_workers = int(os.getenv("KIBOT_SCANNER_MESH_WORKERS", "10"))
 
     def _build_scanners(self) -> List[Any]:
-        from ki_bitbank_scanner import KiBitScanner as KiBitbankScanner
-        from ki_bitget_scanner import KiBitScanner as KiBitgetScanner
-        from ki_bithumb_scanner import KiBitScanner as KiBithumbScanner
-        from ki_bitmart_scanner import BitmartScanner
-        from ki_binance_scanner import KiBinanceScanner
-        from ki_bybit_scanner import KiBitScanner
-        from ki_coinbase_scanner import CoinbaseScanner
-        from ki_cryptocom_scanner import KiComScanner
-        from ki_gate_scanner import KiBitScanner as KiGateScanner
-        from ki_htx_scanner import KiBitScanner as KiHtxScanner
-        from ki_kucoin_scanner import KiKuScanner
-        from ki_lbank_scanner import KiBitScanner as KiLbankScanner
-        from ki_mexc_scanner import KiMexScanner
-        from ki_okx_scanner import KiBitScanner as KiOkxScanner
-        from ki_phemex_scanner import PhemexScanner
-        from ki_upbit_scanner import KiBitScanner as KiUpbitScanner
-        from ki_whale_scanner import KiWhaleScanner
-        from ki_indodax_scanner import KiIndodaxScanner
-        from ki_polymarket_scanner import KiPolymarketScanner
-        from ki_kraken_scanner import KiKrakenScanner
-
         factories = [
-            ("BINANCE", "KIBOT_ENABLE_BINANCE_SCANNER", KiBinanceScanner),
-            ("BYBIT", "KIBOT_ENABLE_BYBIT_SCANNER", KiBitScanner),
-            ("KUCOIN", "KIBOT_ENABLE_KUCOIN_SCANNER", KiKuScanner),
-            ("CRYPTOCOM", "KIBOT_ENABLE_CRYPTOCOM_SCANNER", KiComScanner),
-            ("MEXC", "KIBOT_ENABLE_MEXC_SCANNER", KiMexScanner),
-            ("GATE", "KIBOT_ENABLE_GATE_SCANNER", KiGateScanner),
-            ("HTX", "KIBOT_ENABLE_HTX_SCANNER", KiHtxScanner),
-            ("OKX", "KIBOT_ENABLE_OKX_SCANNER", KiOkxScanner),
-            ("BITGET", "KIBOT_ENABLE_BITGET_SCANNER", KiBitgetScanner),
-            ("BITBANK", "KIBOT_ENABLE_BITBANK_SCANNER", KiBitbankScanner),
-            ("BITMART", "KIBOT_ENABLE_BITMART_SCANNER", BitmartScanner),
-            ("COINBASE", "KIBOT_ENABLE_COINBASE_SCANNER", CoinbaseScanner),
-            ("LBANK", "KIBOT_ENABLE_LBANK_SCANNER", KiLbankScanner),
-            ("UPBIT", "KIBOT_ENABLE_UPBIT_SCANNER", KiUpbitScanner),
-            ("PHEMEX", "KIBOT_ENABLE_PHEMEX_SCANNER", PhemexScanner),
-            ("BITHUMB", "KIBOT_ENABLE_BITHUMB_SCANNER", KiBithumbScanner),
-            ("WHALE", "KIBOT_ENABLE_WHALE_SCANNER", KiWhaleScanner),
-            ("INDODAX", "KIBOT_ENABLE_INDODAX_SCANNER", KiIndodaxScanner),
-            ("POLYMARKET", "KIBOT_ENABLE_POLYMARKET_SCANNER", KiPolymarketScanner),
-            ("KRAKEN", "KIBOT_ENABLE_KRAKEN_SCANNER", KiKrakenScanner),
+            ("BINANCE", "KIBOT_ENABLE_BINANCE_SCANNER", True, "ki_binance_scanner", "KiBinanceScanner"),
+            ("BYBIT", "KIBOT_ENABLE_BYBIT_SCANNER", True, "ki_bybit_scanner", "KiBitScanner"),
+            ("OKX", "KIBOT_ENABLE_OKX_SCANNER", True, "ki_okx_scanner", "KiBitScanner"),
+            ("UPBIT", "KIBOT_ENABLE_UPBIT_SCANNER", True, "ki_upbit_scanner", "KiBitScanner"),
+            ("KUCOIN", "KIBOT_ENABLE_KUCOIN_SCANNER", False, "ki_kucoin_scanner", "KiKuScanner"),
+            ("CRYPTOCOM", "KIBOT_ENABLE_CRYPTOCOM_SCANNER", False, "ki_cryptocom_scanner", "KiComScanner"),
+            ("MEXC", "KIBOT_ENABLE_MEXC_SCANNER", False, "ki_mexc_scanner", "KiMexScanner"),
+            ("GATE", "KIBOT_ENABLE_GATE_SCANNER", False, "ki_gate_scanner", "KiBitScanner"),
+            ("HTX", "KIBOT_ENABLE_HTX_SCANNER", False, "ki_htx_scanner", "KiBitScanner"),
+            ("BITGET", "KIBOT_ENABLE_BITGET_SCANNER", False, "ki_bitget_scanner", "KiBitScanner"),
+            ("BITBANK", "KIBOT_ENABLE_BITBANK_SCANNER", False, "ki_bitbank_scanner", "KiBitScanner"),
+            ("BITMART", "KIBOT_ENABLE_BITMART_SCANNER", False, "ki_bitmart_scanner", "BitmartScanner"),
+            ("COINBASE", "KIBOT_ENABLE_COINBASE_SCANNER", False, "ki_coinbase_scanner", "CoinbaseScanner"),
+            ("LBANK", "KIBOT_ENABLE_LBANK_SCANNER", False, "ki_lbank_scanner", "KiBitScanner"),
+            ("PHEMEX", "KIBOT_ENABLE_PHEMEX_SCANNER", False, "ki_phemex_scanner", "PhemexScanner"),
+            ("BITHUMB", "KIBOT_ENABLE_BITHUMB_SCANNER", False, "ki_bithumb_scanner", "KiBitScanner"),
+            ("WHALE", "KIBOT_ENABLE_WHALE_SCANNER", False, "ki_whale_scanner", "KiWhaleScanner"),
+            ("INDODAX", "KIBOT_ENABLE_INDODAX_SCANNER", False, "ki_indodax_scanner", "KiIndodaxScanner"),
+            ("POLYMARKET", "KIBOT_ENABLE_POLYMARKET_SCANNER", False, "ki_polymarket_scanner", "KiPolymarketScanner"),
+            ("KRAKEN", "KIBOT_ENABLE_KRAKEN_SCANNER", False, "ki_kraken_scanner", "KiKrakenScanner"),
         ]
         active: List[Any] = []
-        for name, flag, factory in factories:
-            if not _enabled(flag, True):
+        for name, flag, default_enabled, module_name, class_name in factories:
+            if not _enabled(flag, default_enabled):
                 print(f"[GLOBAL_SCANNER_MESH] skip {name} disabled via {flag}", flush=True)
                 continue
             try:
-                active.append(factory())
+                import importlib
+                mod = importlib.import_module(module_name)
+                factory_class = getattr(mod, class_name)
+                active.append(factory_class())
+                print(f"[GLOBAL_SCANNER_MESH] loaded {name} successfully", flush=True)
             except Exception as error:
                 print(f"[GLOBAL_SCANNER_MESH][WARN] init {name} failed reason={error}", flush=True)
         return active
@@ -260,13 +243,25 @@ class GlobalScannerMesh:
                 tickers = scanner.fetch_tickers() or {}
                 scanned = len(tickers)
                 for base_sym, data in tickers.items():
-                    signal = scanner.detect_signal(
-                        base_symbol=base_sym,
-                        price=data.get("price", 0),
-                        vol_usdt=data.get("vol_usdt_24h", 0),
-                        change_24h=data.get("change_24h", 0),
-                        change_1h=data.get("change_1h", 0),
-                    )
+                    # process_ticker handles indodax filtering and send_signal internally
+                    if hasattr(scanner, "process_ticker"):
+                        # We temporarily mock send_signal to capture the payload without sending twice
+                        # or we just let it send and we manually reconstruct the signal for supabase logging
+                        pass
+                    
+                    pair = scanner.symbol_to_indodax(base_sym)
+                    if not pair: continue
+                    signal = {
+                        "exchange": scanner.exchange,
+                        "base_symbol": base_sym.upper(),
+                        "pair_indodax": pair,
+                        "price_usdt": data.get("price", 0),
+                        "vol_usdt_24h": data.get("vol_usdt_24h", 0),
+                        "change_24h": round(data.get("change_24h", 0), 3),
+                        "change_1h": round(data.get("change_1h", 0), 3),
+                        "timestamp": datetime.now(timezone.utc).isoformat(),
+                        "is_raw": True
+                    }
                     if signal:
                         signal["signal_uid"] = self._signal_uid(signal)
                         scanner.send_signal(signal)
