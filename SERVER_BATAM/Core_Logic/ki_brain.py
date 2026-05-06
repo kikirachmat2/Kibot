@@ -254,53 +254,7 @@ class BrainManager:
             return decision, res[:200]
         except:
             return "APPROVE", "Fallback to default approval (AI offline)"
-        state_root = Path(os.getenv("KIBOT_MANAGER_STATE_DIR", "state"))
-        state_root.mkdir(parents=True, exist_ok=True)
-        self.state_file = state_root / "brain_status.json"
-        self.request_timeout = (
-            float(os.getenv("KIBOT_BRAIN_CONNECT_TIMEOUT_SEC", "2.0")),
-            float(os.getenv("KIBOT_BRAIN_READ_TIMEOUT_SEC", "4.0")),
-        )
-        self.review_ttl_sec = int(os.getenv("KIBOT_BRAIN_REVIEW_TTL_SEC", "900"))
-        self.market_pulse_ttl_sec = int(os.getenv("KIBOT_BRAIN_MARKET_PULSE_TTL_SEC", "900"))
-        self.tavily_ttl_sec = int(os.getenv("KIBOT_BRAIN_TAVILY_TTL_SEC", "7200"))
-        self.serper_ttl_sec = int(os.getenv("KIBOT_BRAIN_SERPER_TTL_SEC", "5400"))
-        self.ddg_ttl_sec = int(os.getenv("KIBOT_BRAIN_DDG_TTL_SEC", "3600"))
-        self.finnhub_ttl_sec = int(os.getenv("KIBOT_BRAIN_FINNHUB_TTL_SEC", "900"))
-        self.gemini_ttl_sec = int(os.getenv("KIBOT_BRAIN_GEMINI_TTL_SEC", "7200"))
-        self.polymarket_ttl_sec = int(os.getenv("KIBOT_BRAIN_POLYMARKET_TTL_SEC", "90"))
-        self.world_model_ttl_sec = int(os.getenv("KIBOT_BRAIN_WORLD_MODEL_TTL_SEC", "600"))
-        self.coingecko_ttl_sec = int(os.getenv("KIBOT_BRAIN_COINGECKO_TTL_SEC", "900"))
-        self.gdelt_ttl_sec = int(os.getenv("KIBOT_BRAIN_GDELT_TTL_SEC", "1800"))
-        self.x_ttl_sec = int(os.getenv("KIBOT_BRAIN_X_TTL_SEC", "600"))
-        self.fear_greed_ttl_sec = int(os.getenv("KIBOT_BRAIN_FEAR_GREED_TTL_SEC", "900"))
-        self.funding_rate_ttl_sec = int(os.getenv("KIBOT_BRAIN_FUNDING_RATE_TTL_SEC", "300"))
-        self.stablecoin_flow_ttl_sec = int(os.getenv("KIBOT_BRAIN_STABLECOIN_FLOW_TTL_SEC", "1800"))
-        self.binance_symbol_allowlist = self._parse_binance_symbol_allowlist()
-        self.max_watch_symbols = max(1, int(os.getenv("KIBOT_BRAIN_MAX_WATCH_SYMBOLS", "5")))
-        self.max_external_symbols = max(1, int(os.getenv("KIBOT_BRAIN_NEWS_MAX_SYMBOLS", "2")))
-        self.max_world_events = max(1, int(os.getenv("KIBOT_BRAIN_MAX_WORLD_EVENTS", "6")))
-        self.max_world_opportunities = max(1, int(os.getenv("KIBOT_BRAIN_MAX_WORLD_OPPORTUNITIES", "5")))
-        self.green_target_daily_pct = float(os.getenv("KIBOT_GREEN_TARGET_DAILY_PCT", "0.003"))
-        self.external_research_enabled = os.getenv("KIBOT_BRAIN_ENABLE_EXTERNAL_RESEARCH", "true").lower() == "true"
-        self.ai_coordinator_enabled = os.getenv("KIBOT_BRAIN_ENABLE_AI_COORDINATOR", "true").lower() == "true"
-        self.world_model_enabled = os.getenv("KIBOT_BRAIN_ENABLE_WORLD_MODEL", "true").lower() == "true"
-        self.gdelt_enabled = os.getenv("KIBOT_BRAIN_ENABLE_GDELT", "true").lower() == "true"
-        self.search_country = os.getenv("KIBOT_BRAIN_SEARCH_COUNTRY", "indonesia")
-        self.search_lang = os.getenv("KIBOT_BRAIN_SEARCH_LANG", "id")
-        self.x_lang = os.getenv("KIBOT_BRAIN_X_LANG", "en")
-        self.gemini_model = os.getenv("KIBOT_BRAIN_GEMINI_MODEL", os.getenv("GEMINI_MODEL", "gemini-2.0-flash-lite"))
-        self.polymarket_state_url = os.getenv("KIBOT_POLYMARKET_STATE_URL", "").strip()
-        self._pair_cache: Dict[str, Dict[str, Any]] = {}
-        self._provider_cache: Dict[str, Dict[str, Any]] = {}
-        self._indodax_pairs_cache: Dict[str, str] = {}
-        self._indodax_pairs_cache_at: float = 0.0
-        self._indodax_pairs_cooldown_until: float = 0.0
-        self._indodax_pairs_cache_file = state_root / "brain_indodax_pairs.json"
-        self._indodax_pairs_cache = self._load_indodax_pairs_cache()
-        self._last_snapshot: Dict[str, Any] = self._load_snapshot()
-        self._refresh_lock = threading.Lock()
-        self._refresh_in_flight = False
+
         
         # AI Search Service (Dynamic Integration)
         self.ai_search = None
@@ -1144,6 +1098,7 @@ class BrainManager:
             funding_rate = self._get_binance_funding_rate()
             stablecoin_flow = self._get_stablecoin_flow()
             provider_status = self._provider_status()
+            external_world = self._load_external_world_model()
 
             source_names = set(str(item) for item in list(market_pulse.get("providers_used") or []) if str(item).strip())
             if x_brief:
@@ -1192,6 +1147,7 @@ class BrainManager:
                 list(market_pulse.get("top_headlines") or [])
                 + [str(item.get("text") or "") for item in list(x_brief.get("results") or [])[:2] if isinstance(item, dict)]
                 + [str(item.get("title") or "") for item in list(gdelt_brief.get("articles") or [])[:2] if isinstance(item, dict)]
+                + ([str(external_world.get("intelligence", {}).get("summary", ""))] if external_world.get("intelligence") else [])
             )[:4]
 
             event_rows: List[Dict[str, Any]] = []
@@ -1322,6 +1278,17 @@ class BrainManager:
                 key=lambda item: self._safe_float(item.get("score")),
                 reverse=True,
             )[: self.max_world_opportunities]
+
+            # Merge external possibilities from WorldScout
+            if external_world.get("possibility_matrix"):
+                for item in list(external_world["possibility_matrix"])[:2]:
+                    if not isinstance(item, dict): continue
+                    opportunities.append({
+                        "pair": item.get("pair") or "UNKNOWN",
+                        "kind": "world_scout_possibility",
+                        "score": round(self._safe_float(item.get("confidence", 0.75)), 4),
+                        "thesis": str(item.get("reasoning") or "WorldScout identified catalyst")[:140]
+                    })
 
             risk_register: List[Dict[str, Any]] = []
             if risk_bias == "RISK_OFF":
@@ -2112,6 +2079,16 @@ class BrainManager:
             return {}
         try:
             return json.loads(self.state_file.read_text(encoding="utf-8"))
+        except Exception:
+            return {}
+
+    def _load_external_world_model(self) -> Dict[str, Any]:
+        """Loads the proactive intelligence model from WorldScout."""
+        path = ROOT_DIR / "state" / "world_model.json"
+        if not path.exists():
+            return {}
+        try:
+            return json.loads(path.read_text(encoding="utf-8"))
         except Exception:
             return {}
 

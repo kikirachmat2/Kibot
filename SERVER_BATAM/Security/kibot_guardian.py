@@ -7,8 +7,7 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - GUARDIAN - %(messa
 
 SERVICES = [
     "kibot-brain.service",
-    "kibot-commander.service",
-    "ai_oracle_agent.py"
+    "kibot-commander.service"
 ]
 
 def check_service(service_name):

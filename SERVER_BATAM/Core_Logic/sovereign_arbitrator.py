@@ -91,8 +91,12 @@ class SovereignArbitrator:
                 "max_daily_loss_pct": self.max_daily_loss_pct,
                 "ts": time.time()
             }
-            with open(self.state_file, "w") as f:
+            tmp_file = self.state_file.with_suffix(".tmp")
+            with open(tmp_file, "w") as f:
                 json.dump(data, f, indent=2)
+                f.flush()
+                os.fsync(f.fileno())
+            os.replace(tmp_file, self.state_file)
         except Exception as e:
             logger.error(f"Failed to save arbitrator state: {e}")
 
