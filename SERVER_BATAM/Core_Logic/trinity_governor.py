@@ -24,7 +24,24 @@ def report_to_github(action_type, details):
         subprocess.run(["git", "fetch", "origin"], check=False, capture_output=True)
         
         # 2. Add changes
-        subprocess.run(["git", "add", "."], check=False, capture_output=True)
+        subprocess.run(
+            [
+                "git",
+                "add",
+                "-A",
+                "--",
+                ".",
+                ":(exclude)**/.env",
+                ":(exclude)**/.env.*",
+                ":(exclude)**/*.pem",
+                ":(exclude)**/*.key",
+                ":(exclude)**/state",
+                ":(exclude)**/logs",
+                ":(exclude)**/__pycache__",
+            ],
+            check=False,
+            capture_output=True,
+        )
         
         # 3. Commit with rich metadata
         timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
@@ -55,9 +72,9 @@ def autonomous_git_watcher():
                 print("[TRINITY][GIT] Update detected! Pulling and deploying...", flush=True)
                 telegram_send("🔄 *TRINITY UPDATE*: New code detected on GitHub. Pulling and applying...")
                 subprocess.run(["git", "pull", "origin", "main"], check=False)
-                # Restart Manager to apply changes
-                subprocess.run(["systemctl", "restart", "kibot-manager"], check=False)
-                telegram_send("✅ *TRINITY UPDATE*: Code applied and Manager restarted.")
+                # Restart the primary runtime to apply changes
+                subprocess.run(["systemctl", "restart", "kibot-trinity"], check=False)
+                telegram_send("✅ *TRINITY UPDATE*: Code applied and Trinity restarted.")
         except Exception as e:
             print(f"[TRINITY][GIT][ERROR] {e}", flush=True)
         time.sleep(300) # Every 5 minutes

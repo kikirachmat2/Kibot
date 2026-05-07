@@ -1,21 +1,19 @@
 [Unit]
 Description=KiBot Server Guardian
-After=network-online.target
-Wants=network-online.target
+After=network-online.target kibot-trinity.service
+Wants=network-online.target kibot-trinity.service
 StartLimitIntervalSec=300
 StartLimitBurst=5
 
 [Service]
-Type=notify
+Type=simple
 User=ubuntu
 WorkingDirectory=/home/ubuntu/KiBot
 EnvironmentFile=-/home/ubuntu/KiBot/.env.server
 EnvironmentFile=-/home/ubuntu/KiBot/.env.kibot
 EnvironmentFile=-/home/ubuntu/KiBot/.env.kibot_manager
 Environment=PYTHONUNBUFFERED=1
-ExecStart=/usr/bin/python3 scripts/kibot_guardian.py
-NotifyAccess=all
-WatchdogSec=180
+ExecStart=/usr/bin/python3 /home/ubuntu/KiBot/SERVER_BATAM/Security/kibot_guardian.py
 Restart=always
 RestartSec=30
 MemoryMax=128M
@@ -23,7 +21,6 @@ CPUQuota=20%
 OOMPolicy=kill
 ProtectSystem=full
 PrivateTmp=yes
-NoNewPrivileges=yes
 
 [Install]
 WantedBy=multi-user.target

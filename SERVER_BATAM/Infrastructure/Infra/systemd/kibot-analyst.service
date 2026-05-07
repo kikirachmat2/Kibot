@@ -1,7 +1,7 @@
 [Unit]
 Description=KiBot Data Analyst
-After=network-online.target kibot-manager.service
-Wants=network-online.target kibot-manager.service
+After=network-online.target kibot-trinity.service
+Wants=network-online.target kibot-trinity.service
 
 [Service]
 Type=simple
@@ -11,7 +11,7 @@ EnvironmentFile=-/home/ubuntu/KiBot/.env.server
 EnvironmentFile=-/home/ubuntu/KiBot/.env.kibot
 EnvironmentFile=-/home/ubuntu/KiBot/.env.kibot_manager
 Environment=PYTHONUNBUFFERED=1
-ExecStart=/usr/bin/python3 /home/ubuntu/KiBot/Batam/Support/Audit_Testing/kibot_analyst.py
+ExecStart=/usr/bin/python3 /home/ubuntu/KiBot/SERVER_BATAM/Support/Audit_Testing/kibot_analyst.py
 Restart=on-failure
 RestartSec=30
 MemoryMax=50M

@@ -6,8 +6,12 @@ import logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - GUARDIAN - %(message)s')
 
 SERVICES = [
-    "kibot-brain.service",
-    "kibot-commander.service"
+    "kibot-command-center.service",
+    "kibot-notifier.service",
+    "kibot-security.service",
+    "kibot-analyst.service",
+    "kibot-orchestrator.service",
+    "lazarus-ampere.service",
 ]
 
 def check_service(service_name):

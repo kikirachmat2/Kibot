@@ -18,7 +18,7 @@ sys.path.append(str(ROOT_DIR / "SERVER_BATAM" / "Support"))
 from Support.ki_config import TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID
 
 logging.basicConfig(level=logging.INFO)
-CONTROL_SERVICES = ["kibot-orchestrator", "kibot-manager"]
+CONTROL_SERVICES = ["kibot-orchestrator", "kibot-trinity"]
 
 def get_state_data():
     paths = [

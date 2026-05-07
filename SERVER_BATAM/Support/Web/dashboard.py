@@ -10,8 +10,8 @@ NODES = {
     "SCANNER": "152.69.218.198"
 }
 
-LISTEN_HOST = "0.0.0.0"
-LISTEN_PORT = 8787
+LISTEN_HOST = os.environ.get("KIBOT_DASHBOARD_HOST", "0.0.0.0")
+LISTEN_PORT = int(os.environ.get("KIBOT_DASHBOARD_PORT", "8787"))
 NETDATA_PORT = 19999
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))

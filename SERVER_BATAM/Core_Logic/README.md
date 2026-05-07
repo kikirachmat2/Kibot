@@ -5,7 +5,7 @@ This module is the heartbeat of KiBot. It orchestrates all incoming signals, man
 ## Critical Engine Components
 
 ### 1. `kibot_manager.py` (The General)
-- **Role**: Entry point for the entire trading loop.
+- **Role**: Entry point for the entire trading loop, executed by `kibot-trinity.service`.
 - **V9.1 Update**: Fixed initialization sequence to prevent `NameError` on `HardStopConfig`. Handles central signal aggregation from UDP Port 9999.
 
 ### 2. `sovereign_arbitrator.py` (The Judge)
@@ -18,6 +18,10 @@ This module is the heartbeat of KiBot. It orchestrates all incoming signals, man
 
 ### 4. `multi_scanner_engine.py` (Internal)
 - **Role**: Manages internal data piping from raw UDP streams to the Decision Engine.
+
+### 5. `batam_ghost_agent.py` (The Advisor)
+- **Role**: Interactive Batam-side AI assistant for operator questions.
+- **Feature**: Can pull local knowledge and RAG context from `AI_Orchestration/kibot_rag.py`.
 
 ## Operational Standards
 - **Latency**: Critical decision path must remain under **1.2ms**.

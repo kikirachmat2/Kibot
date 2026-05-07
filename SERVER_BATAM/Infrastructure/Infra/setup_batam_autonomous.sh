@@ -3,6 +3,8 @@
 set -euo pipefail
 
 RUNTIME_ROOT="${KIBOT_RUNTIME_ROOT:-/home/ubuntu/KiBot}"
+SERVICE_ROOT="${RUNTIME_ROOT}/SERVER_BATAM/Infrastructure/Infra/systemd"
+APP_ROOT="${RUNTIME_ROOT}/SERVER_BATAM"
 LOGROTATE_CONF="/etc/logrotate.d/kibot-batam"
 WATCHDOG_SCRIPT="/usr/local/bin/kibot-batam-watchdog.sh"
 WATCHDOG_SERVICE="/etc/systemd/system/kibot-batam-watchdog.service"
@@ -10,12 +12,14 @@ WATCHDOG_TIMER="/etc/systemd/system/kibot-batam-watchdog.timer"
 HEALTH_SCRIPT="/usr/local/bin/kibot-batam-health-report.sh"
 HEALTH_SERVICE="/etc/systemd/system/kibot-batam-health-report.service"
 HEALTH_TIMER="/etc/systemd/system/kibot-batam-health-report.timer"
+HEALER_SERVICE="/etc/systemd/system/kibot-healer.service"
 NOTIFIER_SERVICE="/etc/systemd/system/kibot-notifier.service"
 ORCHESTRATOR_SERVICE="/etc/systemd/system/kibot-orchestrator.service"
 SECURITY_SERVICE="/etc/systemd/system/kibot-security.service"
 GUARDIAN_SERVICE="/etc/systemd/system/kibot-guardian.service"
 ANALYST_SERVICE="/etc/systemd/system/kibot-analyst.service"
 MANAGER_SERVICE="/etc/systemd/system/kibot-manager.service"
+TRINITY_SERVICE="/etc/systemd/system/kibot-trinity.service"
 OLLAMA_GATEWAY_SERVICE="/etc/systemd/system/kibot-ollama-gateway.service"
 POLYMARKET_SERVICE="/etc/systemd/system/kibot-polymarket.service"
 CRASHLOOP_GUARD_SCRIPT="/usr/local/bin/kibot-crashloop-guard.sh"
@@ -99,19 +103,37 @@ install_service() {
   install -m 0644 "$src" "$dst"
 }
 
-install_service "${RUNTIME_ROOT}/infra/systemd/kibot-notifier.service" "${NOTIFIER_SERVICE}"
-install_service "${RUNTIME_ROOT}/infra/systemd/kibot-orchestrator.service" "${ORCHESTRATOR_SERVICE}"
-install_service "${RUNTIME_ROOT}/infra/systemd/kibot-security.service" "${SECURITY_SERVICE}"
-install_service "${RUNTIME_ROOT}/infra/systemd/kibot-guardian.service" "${GUARDIAN_SERVICE}"
-install_service "${RUNTIME_ROOT}/infra/systemd/kibot-analyst.service" "${ANALYST_SERVICE}"
-install_service "${RUNTIME_ROOT}/infra/systemd/kibot-manager.service" "${MANAGER_SERVICE}"
-install_service "${RUNTIME_ROOT}/infra/systemd/kibot-ollama-gateway.service" "${OLLAMA_GATEWAY_SERVICE}"
-install_service "${RUNTIME_ROOT}/infra/systemd/kibot-polymarket.service" "${POLYMARKET_SERVICE}"
-install_service "${RUNTIME_ROOT}/infra/systemd/kibot-command-center.service" "${COMMAND_CENTER_SERVICE}"
-install_service "${RUNTIME_ROOT}/infra/systemd/lazarus-ampere.service" "${LAZARUS_SERVICE}"
-install -m 755 "${RUNTIME_ROOT}/tools/kibot_crashloop_guard.sh" "${CRASHLOOP_GUARD_SCRIPT}"
-install -m 755 "${RUNTIME_ROOT}/tools/kibot_config_sanity.py" "/usr/local/bin/kibot-config-sanity.py"
-install -m 755 "${RUNTIME_ROOT}/tools/kibot_replay_viewer.py" "/usr/local/bin/kibot-replay-viewer.py"
+install_if_exists() {
+  local src="$1"
+  local dst="$2"
+  if [[ -f "$src" ]]; then
+    install -m 0644 "$src" "$dst"
+  fi
+}
+
+install_script_if_exists() {
+  local src="$1"
+  local dst="$2"
+  if [[ -f "$src" ]]; then
+    install -m 755 "$src" "$dst"
+  fi
+}
+
+install_service "${SERVICE_ROOT}/kibot-notifier.service" "${NOTIFIER_SERVICE}"
+install_service "${SERVICE_ROOT}/kibot-healer.service" "${HEALER_SERVICE}"
+install_service "${SERVICE_ROOT}/kibot-orchestrator.service" "${ORCHESTRATOR_SERVICE}"
+install_service "${SERVICE_ROOT}/kibot-security.service" "${SECURITY_SERVICE}"
+install_service "${SERVICE_ROOT}/kibot-guardian.service" "${GUARDIAN_SERVICE}"
+install_service "${SERVICE_ROOT}/kibot-analyst.service" "${ANALYST_SERVICE}"
+install_service "${SERVICE_ROOT}/kibot-manager.service" "${MANAGER_SERVICE}"
+install_service "${SERVICE_ROOT}/kibot-trinity.service" "${TRINITY_SERVICE}"
+install_if_exists "${SERVICE_ROOT}/kibot-ollama-gateway.service" "${OLLAMA_GATEWAY_SERVICE}"
+install_if_exists "${SERVICE_ROOT}/kibot-polymarket.service" "${POLYMARKET_SERVICE}"
+install_service "${SERVICE_ROOT}/kibot-command-center.service" "${COMMAND_CENTER_SERVICE}"
+install_service "${SERVICE_ROOT}/lazarus-ampere.service" "${LAZARUS_SERVICE}"
+install_script_if_exists "${APP_ROOT}/tools/kibot_crashloop_guard.sh" "${CRASHLOOP_GUARD_SCRIPT}"
+install_script_if_exists "${APP_ROOT}/tools/kibot_config_sanity.py" "/usr/local/bin/kibot-config-sanity.py"
+install_script_if_exists "${APP_ROOT}/tools/kibot_replay_viewer.py" "/usr/local/bin/kibot-replay-viewer.py"
 
 if ! command -v netdata >/dev/null 2>&1; then
   if command -v curl >/dev/null 2>&1; then
@@ -238,12 +260,14 @@ WantedBy=timers.target
 EOF
 
 systemctl daemon-reload
+systemctl enable --now kibot-trinity.service
+systemctl enable --now kibot-healer.service
 systemctl enable --now kibot-notifier.service
 systemctl enable --now kibot-orchestrator.service
 systemctl enable --now kibot-security.service
 systemctl enable --now kibot-guardian.service
 systemctl enable --now kibot-analyst.service
-systemctl enable --now kibot-manager.service
+systemctl disable --now kibot-manager.service || true
 systemctl enable --now kibot-ollama-gateway.service
 systemctl enable --now kibot-polymarket.service
 systemctl enable --now kibot-crashloop-guard.timer
@@ -251,6 +275,8 @@ systemctl enable --now kibot-config-sanity.timer
 systemctl enable --now kibot-command-center.service
 systemctl enable --now kibot-batam-watchdog.timer
 systemctl enable --now kibot-batam-health-report.timer
+systemctl disable --now indodax-dashboard-proxy.service || true
+systemctl mask indodax-dashboard-proxy.service || true
 if systemctl list-unit-files | grep -q '^netdata\.service'; then
   systemctl daemon-reload
   systemctl enable --now netdata.service

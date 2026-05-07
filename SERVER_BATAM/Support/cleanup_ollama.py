@@ -5,8 +5,7 @@ import os
 
 # Models to KEEP
 WHITELIST = {
-    "qwen3.5:4b",
-    "qwen3.5:9b",
+    "qwen3:0.6b",
     "nomic-embed-text:latest",
 }
 

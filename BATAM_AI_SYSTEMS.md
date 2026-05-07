@@ -97,7 +97,9 @@ Service crash → trinity_healer.py detects → spawn Aider
 |---|---|---|
 | **nomic-embed-text** (Ollama) | Mengubah market data → vector embedding | ✅ Installed |
 | **Jina Embeddings** | Cloud embeddings untuk document chunking | ✅ Key aktif |
-| **Supabase** | Database + vector storage untuk RAG memory | ✅ Key aktif |
+| **Supabase** | Database + vector storage (LEGACY) | ❌ DEPRECATED (Sovereign Mode) |
+| **SQLite (Local)** | Primary Trade & Post-Mortem Logs | ✅ ACTIVE (Sovereign DB) |
+| **JSON/Local Vector** | Vector storage untuk RAG memory | ✅ ACTIVE (Local) |
 | **Redis** | In-memory cache sinyal & state | ✅ Running |
 
 ---
@@ -117,13 +119,23 @@ Service crash → trinity_healer.py detects → spawn Aider
 
 | Service | Status | Fungsi |
 |---|---|---|
-| `kibot-orchestrator.service` | ✅ Running | Brain utama (kibot_manager.py) |
+| `kibot-manager.service` | ✅ Running | Brain utama (UDP Veto Daemon) |
 | `kibot-ollama-gateway.service` | ✅ Running | Ollama API gateway |
 | `kibot-healer.service` | ✅ Running | Self-healing & Aider trigger |
 | `kibot-polymarket.service` | ✅ Running | Polymarket oracle |
-| `kibot-sentiment.service` | ✅ Running | Sentiment analysis engine |
+| `kibot-resource-governor.timer` | ✅ Running | Disk & Memory cleanup (6h cycle) |
 | `telegram_commander.py` | ✅ Running | Telegram command interface |
 | `dashboard.py` | ✅ Running | Web dashboard HTTP |
+
+---
+
+## 🚀 2026 SOTA RECOMMENDATIONS (Hardware: 4-Core ARM, 24GB RAM)
+
+| Task Tier | Recommended Model | Current | Benefit |
+|---|---|---|---|
+| **Deep Reasoning** | `deepseek-r1:8b` | `qwen2.5-coder:7b` | Chain-of-Thought untuk keputusan Arbitrator yang lebih logis. |
+| **Default Logic** | `qwen3:7b` | `qwen2.5:7b` | Peningkatan akurasi pada market regime detection. |
+| **Fast Veto** | `llama3.2:3b` | `qwen2.5:3b` | Latensi lebih rendah & pemahaman instruksi lebih tajam di ARM. |
 
 ---
 
@@ -137,9 +149,6 @@ Service crash → trinity_healer.py detects → spawn Aider
 
 ---
 
-> **Total AI Providers:** 15 Online + 4 Local Ollama Models + 1 Embedding Model  
-> **Total Search Tools:** DuckDuckGo (∞) + Tavily + Serper + Jina + Brave + Finnhub + GDELT  
+> **Total AI Providers:** 15 Online + 4 Local Ollama Models + 1 Embedding Model
+> **Infrastructure Status:** 100% Sovereign (No Cloud Dependency)
 > **Self-Healing:** Aider + deepseek-coder-v2:16b + GitHub Copilot (fully autonomous)
-
-Viewed task.md:1-15
-Viewed implementation_plan.md:1-43

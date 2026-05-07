@@ -240,7 +240,6 @@ main() {
   if [[ ${LAUNCH_EXIT} -eq 0 ]] && grep -Eq '"lifecycle-state"[[:space:]]*:[[:space:]]*"PROVISIONING"|"lifecycleState"[[:space:]]*:[[:space:]]*"PROVISIONING"' <<<"${LAUNCH_OUTPUT}"; then
     rate_limit_level=0
     log "ALHAMDULILLAH! INSTANCE AMPERE BERHASIL DIBUAT!"
-    printf '\a'
     notify_telegram "Ampere OK: ${INSTANCE_NAME}"
     break
   fi
@@ -248,7 +247,6 @@ main() {
   if [[ ${LAUNCH_EXIT} -eq 0 ]] && ! grep -Eqi '"code"|ServiceError|Exception|Error:' <<<"${LAUNCH_OUTPUT}"; then
     rate_limit_level=0
     log "ALHAMDULILLAH! INSTANCE AMPERE BERHASIL DIBUAT!"
-    printf '\a'
     notify_telegram "Ampere OK: ${INSTANCE_NAME}"
     break
   fi

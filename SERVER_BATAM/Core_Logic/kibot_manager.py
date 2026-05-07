@@ -2833,8 +2833,6 @@ SUPABASE_USER_PASSWORD = ""
 TIMEOUT = 12.0
 UDP_BIND_HOST = "0.0.0.0"
 UDP_BIND_PORT = 9998
-KiBot_UDP_HOST = ""
-KiBot_UDP_PORT = 9999
 KiBot_UDP_HOST = "127.0.0.1"
 KiBot_UDP_PORT = 9999
 MANAGER_HEARTBEAT_INTERVAL_SEC = 1.0
@@ -2846,7 +2844,7 @@ def _init_config():
     global SUPABASE_URL, SUPABASE_ANON_KEY, SUPABASE_SERVICE_ROLE_KEY, SUPABASE_KEY
     global SUPABASE_USER_EMAIL, SUPABASE_USER_PASSWORD, TIMEOUT
     global UDP_BIND_HOST, UDP_BIND_PORT, KiBot_UDP_HOST, KiBot_UDP_PORT
-    global KiBot_UDP_HOST, KiBot_UDP_PORT, MANAGER_HEARTBEAT_INTERVAL_SEC
+    global MANAGER_HEARTBEAT_INTERVAL_SEC
     global TAKER_FEE_PCT, STALE_SIGNAL_ABORT_MS, FOMO_GUARD_PCT
 
     SUPABASE_URL = os.getenv("SUPABASE_URL", "").rstrip("/")
@@ -2858,8 +2856,6 @@ def _init_config():
     TIMEOUT = float(os.getenv("KIBOT_MANAGER_HTTP_TIMEOUT_SEC", "12"))
     UDP_BIND_HOST = os.getenv("KIBOT_MANAGER_UDP_BIND_HOST", "127.0.0.1")
     UDP_BIND_PORT = int(os.getenv("KIBOT_MANAGER_UDP_BIND_PORT", "9998"))
-    KiBot_UDP_HOST = os.getenv("KiBot_UDP_HOST", "")
-    KiBot_UDP_PORT = int(os.getenv("KiBot_UDP_PORT", "9999"))
     KiBot_UDP_HOST = os.getenv("KiBot_UDP_HOST", "127.0.0.1")
     KiBot_UDP_PORT = int(os.getenv("KiBot_UDP_PORT", "9999"))
     MANAGER_HEARTBEAT_INTERVAL_SEC = float(os.getenv("KIBOT_MANAGER_HEARTBEAT_INTERVAL_SEC", "1.0"))
@@ -3121,7 +3117,7 @@ PAIR_MEMORY_MIN_TRADES_FOR_WINRATE = int(os.getenv("KIBOT_PAIR_MEMORY_MIN_TRADES
 AI_BATCH_REVIEW_INTERVAL_SEC = int(os.getenv("KIBOT_AI_BATCH_REVIEW_INTERVAL_SEC", str(6 * 60 * 60)))
 
 OLLAMA_API_KEY = _env_first("OLLAMA_API_KEY", "KIBOT_OLLAMA_GATEWAY_TOKEN")
-OLLAMA_MODEL = os.getenv("KIBOT_OLLAMA_MODEL", "qwen3:4b")
+OLLAMA_MODEL = os.getenv("KIBOT_OLLAMA_MODEL", "qwen3:0.6b")
 OLLAMA_API_URL = os.getenv("KIBOT_OLLAMA_BASE_URL", "http://127.0.0.1:11435/api/chat")
 
 GROQ_API_KEY = os.getenv("GROQ_API_KEY", "")
@@ -6198,7 +6194,6 @@ def _write_runtime_note(*, force: bool = False) -> None:
         "midnight_reset_pending": _midnight_reset_pending(),
         "daily_cycle_state": dict(_daily_cycle_state),
         "host_bind": f"{UDP_BIND_HOST}:{UDP_BIND_PORT}",
-        "KiBot_target": f"{KiBot_UDP_HOST}:{KiBot_UDP_PORT}" if KiBot_UDP_HOST else "",
         "KiBot_target": f"{KiBot_UDP_HOST}:{KiBot_UDP_PORT}" if KiBot_UDP_HOST else "",
         "system_state": str(_gate_state.get("entry_state") or "HEALTHY"),
         "trading_mode": str(_gate_state.get("mode") or "CONSERVATIVE"),
@@ -9855,7 +9850,6 @@ def main() -> None:
     _append_runtime_event(
         "manager_start",
         {
-            "KiBot_target": f"{KiBot_UDP_HOST}:{KiBot_UDP_PORT}" if KiBot_UDP_HOST else "",
             "KiBot_target": f"{KiBot_UDP_HOST}:{KiBot_UDP_PORT}" if KiBot_UDP_HOST else "",
         },
     )

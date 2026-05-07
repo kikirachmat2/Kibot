@@ -9,17 +9,78 @@ HOST="168.110.201.228"
 DEST="/home/ubuntu/KiBot"
 
 rsync -avz -e "ssh -i $KEY -o StrictHostKeyChecking=no" \
-    SERVER_BATAM/Core_Logic/kibot_manager.py \
-    $USER@$HOST:$DEST/SERVER_BATAM/Core_Logic/kibot_manager.py
+    --exclude '.env' \
+    --exclude '.env.*' \
+    --exclude 'state/' \
+    --exclude 'logs/' \
+    --exclude 'scratch/' \
+    SERVER_BATAM/Core_Logic/ \
+    $USER@$HOST:$DEST/SERVER_BATAM/Core_Logic/
 
 rsync -avz -e "ssh -i $KEY -o StrictHostKeyChecking=no" \
-    SERVER_BATAM/AI_Orchestration/kibot_ai_scout.py \
-    $USER@$HOST:$DEST/SERVER_BATAM/AI_Orchestration/kibot_ai_scout.py
+    --exclude '.env' \
+    --exclude '.env.*' \
+    --exclude 'state/' \
+    --exclude 'logs/' \
+    --exclude 'scratch/' \
+    SERVER_BATAM/AI_Orchestration/ \
+    $USER@$HOST:$DEST/SERVER_BATAM/AI_Orchestration/
 
-echo "Restarting kibot-manager.service..."
-ssh -i $KEY $USER@$HOST "sudo systemctl restart kibot-manager.service"
+rsync -avz -e "ssh -i $KEY -o StrictHostKeyChecking=no" \
+    --exclude '.env' \
+    --exclude '.env.*' \
+    --exclude 'state/' \
+    --exclude 'logs/' \
+    --exclude 'scratch/' \
+    SERVER_BATAM/Indicators_Math/ \
+    $USER@$HOST:$DEST/SERVER_BATAM/Indicators_Math/
 
-echo "Checking kibot-manager.service status..."
-ssh -i $KEY $USER@$HOST "systemctl status kibot-manager.service --no-pager"
+rsync -avz -e "ssh -i $KEY -o StrictHostKeyChecking=no" \
+    --exclude '.env' \
+    --exclude '.env.*' \
+    --exclude 'state/' \
+    --exclude 'logs/' \
+    --exclude 'scratch/' \
+    SERVER_BATAM/Infrastructure/Automation/ \
+    $USER@$HOST:$DEST/SERVER_BATAM/Infrastructure/Automation/
+
+rsync -avz -e "ssh -i $KEY -o StrictHostKeyChecking=no" \
+    --exclude '.env' \
+    --exclude '.env.*' \
+    --exclude 'state/' \
+    --exclude 'logs/' \
+    --exclude 'scratch/' \
+    SERVER_BATAM/Infrastructure/Infra/systemd/ \
+    $USER@$HOST:$DEST/SERVER_BATAM/Infrastructure/Infra/systemd/
+
+rsync -avz -e "ssh -i $KEY -o StrictHostKeyChecking=no" \
+    --exclude '.env' \
+    --exclude '.env.*' \
+    --exclude 'state/' \
+    --exclude 'logs/' \
+    --exclude 'scratch/' \
+    SERVER_BATAM/Security/ \
+    $USER@$HOST:$DEST/SERVER_BATAM/Security/
+
+rsync -avz -e "ssh -i $KEY -o StrictHostKeyChecking=no" \
+    --exclude '.env' \
+    --exclude '.env.*' \
+    --exclude 'state/' \
+    --exclude 'logs/' \
+    --exclude 'scratch/' \
+    SERVER_BATAM/Support/Web/ \
+    $USER@$HOST:$DEST/SERVER_BATAM/Support/Web/
+
+rsync -avz -e "ssh -i $KEY -o StrictHostKeyChecking=no" \
+    --exclude '.env' \
+    --exclude '.env.*' \
+    --exclude 'state/' \
+    --exclude 'logs/' \
+    --exclude 'scratch/' \
+    SERVER_BATAM/Support/ \
+    $USER@$HOST:$DEST/SERVER_BATAM/Support/
+
+echo "Reinstalling Batam baseline on remote..."
+ssh -i $KEY -o StrictHostKeyChecking=no $USER@$HOST "cd $DEST && sudo bash SERVER_BATAM/Infrastructure/Infra/setup_batam_autonomous.sh"
 
 echo "Deployment complete."

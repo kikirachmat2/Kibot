@@ -2,20 +2,31 @@ import os
 import json
 import httpx
 import logging
+import sys
 from pathlib import Path
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - GHOST - %(message)s')
 
 ROOT_DIR = Path(os.getenv("KIBOT_RUNTIME_ROOT", Path(__file__).resolve().parents[2]))
+sys.path.append(str(ROOT_DIR / "AI_Orchestration"))
+try:
+    from kibot_rag import get_rag_context
+except Exception:
+    get_rag_context = None
+
 OLLAMA_GENERATE_URL = os.getenv(
     "KIBOT_GHOST_AGENT_OLLAMA_URL",
     os.getenv("KIBOT_OLLAMA_GENERATE_URL", "http://127.0.0.1:11435/api/generate"),
 ).strip()
+OLLAMA_FALLBACK_URL = os.getenv(
+    "KIBOT_GHOST_AGENT_OLLAMA_FALLBACK_URL",
+    "http://127.0.0.1:11434/api/generate",
+).strip()
 OLLAMA_AUTH_TOKEN = os.getenv("KIBOT_OLLAMA_GATEWAY_TOKEN", os.getenv("OLLAMA_API_KEY", "")).strip()
 
 class GhostAgent:
-    def __init__(self, model="deepseek-coder-v2:16b"):
-        self.model = model
+    def __init__(self, model=None):
+        self.model = model or os.getenv("KIBOT_GHOST_AGENT_MODEL", "qwen3:0.6b")
         self.knowledge_base = self._load_knowledge()
 
     def _load_knowledge(self):
@@ -33,26 +44,43 @@ class GhostAgent:
         return knowledge
 
     async def chat(self, user_input):
+        rag_context = ""
+        if get_rag_context:
+            try:
+                rag_context = get_rag_context(user_input, top_k=2).strip()
+            except Exception as e:
+                logging.info(f"[GHOST][RAG] {e}")
         prompt = (
             f"KNOWLEDGE BASE:\n{self.knowledge_base}\n\n"
+            f"RAG CONTEXT:\n{rag_context or '(none)'}\n\n"
             f"PERTANYAAN USER: {user_input}\n\n"
             "Kamu adalah Ghost Agent Batam. Gunakan knowledge di atas untuk menjawab. "
             "Jawab dengan gaya 'Cyberpunk Agent', dingin tapi cerdas."
         )
-        try:
-            async with httpx.AsyncClient() as client:
-                headers = {"Content-Type": "application/json"}
-                if OLLAMA_AUTH_TOKEN:
-                    headers["Authorization"] = f"Bearer {OLLAMA_AUTH_TOKEN}"
-                res = await client.post(
-                    OLLAMA_GENERATE_URL,
-                    json={"model": self.model, "prompt": prompt, "stream": False},
-                    headers=headers,
-                    timeout=120.0,
-                )
-                return res.json()['response']
-        except Exception as e:
-            return f"Error: {e}"
+        urls = [OLLAMA_GENERATE_URL]
+        if OLLAMA_FALLBACK_URL and OLLAMA_FALLBACK_URL not in urls:
+            urls.append(OLLAMA_FALLBACK_URL)
+        headers = {"Content-Type": "application/json"}
+        if OLLAMA_AUTH_TOKEN:
+            headers["Authorization"] = f"Bearer {OLLAMA_AUTH_TOKEN}"
+        last_error = None
+        async with httpx.AsyncClient() as client:
+            for url in urls:
+                try:
+                    res = await client.post(
+                        url,
+                        json={"model": self.model, "prompt": prompt, "stream": False},
+                        headers=headers if url != OLLAMA_FALLBACK_URL or OLLAMA_AUTH_TOKEN else {"Content-Type": "application/json"},
+                        timeout=120.0,
+                    )
+                    data = res.json()
+                    if isinstance(data, dict) and data.get("response"):
+                        return data["response"]
+                    last_error = f"empty_response_from_{url}"
+                except Exception as e:
+                    last_error = f"{url}: {e}"
+                    continue
+        return f"Error: {last_error or 'unknown'}"
 
 # Uji Coba Agent
 if __name__ == "__main__":

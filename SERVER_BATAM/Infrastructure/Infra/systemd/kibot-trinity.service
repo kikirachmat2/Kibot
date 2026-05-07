@@ -1,0 +1,26 @@
+[Unit]
+Description=KiBot Trinity Autonomous Brain
+After=network-online.target tailscaled.service
+Wants=network-online.target tailscaled.service
+
+[Service]
+Type=simple
+User=ubuntu
+WorkingDirectory=/home/ubuntu/KiBot/SERVER_BATAM
+Environment=PYTHONUNBUFFERED=1
+Environment=KIBOT_MATH_REVIEW_MIN_TRADES=0
+Environment=KIBOT_UDP_HOST=100.122.1.109
+Environment=KIBOT_UDP_PORT=9999
+EnvironmentFile=-/home/ubuntu/KiBot/.env.server
+ExecStartPre=/bin/sh -c '/usr/bin/sudo /usr/bin/fuser -k 9999/udp 9998/tcp || true'
+ExecStart=/usr/bin/python3 -u Core_Logic/kibot_manager.py
+Restart=always
+RestartSec=10
+MemoryMax=1500M
+CPUQuota=80%
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=kibot-trinity
+
+[Install]
+WantedBy=multi-user.target

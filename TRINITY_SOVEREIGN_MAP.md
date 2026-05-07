@@ -7,9 +7,9 @@
       v
 [BATAM: 168.110.201.228] <--- (Brain / Decision Maker)
       |
-      | (UDP - Latency: 199ms)
+      | (UDP - Real-time Signal)
       v
-[EXECUTOR: 213.35.118.26] <--- (Indodax & Polymarket ARMED)
+[EXECUTOR: 213.35.118.26] <--- (Indodax & Polymarket LIVE TRADE)
 
 ## 2. COMPONENT STATUS
 - **Scanner**: Eyes active.

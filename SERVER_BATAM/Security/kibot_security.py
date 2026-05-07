@@ -12,7 +12,8 @@ from typing import List, Optional
 # Constants
 ROOT = Path(__file__).resolve().parent.parent
 STATE_DIR = ROOT / "state"
-SECURITY_LOG = STATE_DIR / "security_ledger.jsonl"
+SECURITY_LOG = STATE_DIR / "security_log.jsonl"
+LEGACY_SECURITY_LOG = STATE_DIR / "security_ledger.jsonl"
 
 # Import Vault
 sys.path.append(str(ROOT / "Support"))
@@ -35,16 +36,22 @@ def _get_signing_key() -> bytes:
 
 def _get_last_hash() -> str:
     """Gets the hash of the last entry in the ledger to ensure chain integrity."""
-    if not SECURITY_LOG.exists():
+    source = SECURITY_LOG if SECURITY_LOG.exists() else LEGACY_SECURITY_LOG
+    if not source.exists():
         return "GENESIS_BLOCK_0000000000000000"
     try:
-        with open(SECURITY_LOG, "rb") as f:
+        if source.stat().st_size == 0:
+            return "GENESIS_BLOCK_0000000000000000"
+    except OSError:
+        return "ERROR_OR_TAMPERED"
+    try:
+        with open(source, "rb") as f:
             f.seek(-2, os.SEEK_END)
             while f.read(1) != b"\n":
                 f.seek(-2, os.SEEK_CUR)
             last_line = f.readline().decode()
             data = json.loads(last_line)
-            return data["h"] # current entry's hash
+            return str(data.get("h") or data.get("s") or "ERROR_OR_TAMPERED")
     except:
         return "ERROR_OR_TAMPERED"
 
@@ -70,6 +77,12 @@ def append_secure_log(event_type: str, message: str, severity: str = "INFO"):
     with open(SECURITY_LOG, "a", encoding="utf-8") as f:
         f.write(json.dumps(entry) + "\n")
 
+
+def _append_log(payload: dict, event_type: str = "LEGACY_EVENT", severity: str = "INFO") -> None:
+    """Compatibility shim for older callers and smoke tests."""
+    message = json.dumps(payload, sort_keys=True, ensure_ascii=True)
+    append_secure_log(event_type, message, severity)
+
 def verify_ledger() -> bool:
     """Verifies the entire log chain. Any deletion or modification will return False."""
     if not SECURITY_LOG.exists():
@@ -83,7 +96,10 @@ def verify_ledger() -> bool:
             try:
                 data = json.loads(line)
                 payload = data["p"]
-                actual_hash = data["h"]
+                actual_hash = str(data.get("h") or data.get("s") or "")
+                if not actual_hash:
+                    print(f"CORRUPTION at line {i}: missing signature")
+                    return False
                 
                 # Check Chain Integrity
                 if payload["prev"] != expected_prev_hash:
@@ -102,6 +118,14 @@ def verify_ledger() -> bool:
                 print(f"CORRUPTION at line {i}: {e}")
                 return False
     return True
+
+
+def verify_logs() -> list[str]:
+    """Compatibility shim that returns violations instead of a boolean."""
+    violations: list[str] = []
+    if not verify_ledger():
+        violations.append("Signature mismatch or chain corruption detected")
+    return violations
 
 if __name__ == "__main__":
     if "--verify" in sys.argv:

@@ -4,7 +4,8 @@ After=network-online.target
 Wants=network-online.target
 
 [Service]
-Type=simple
+Type=oneshot
+RemainAfterExit=yes
 User=ubuntu
 WorkingDirectory=/home/ubuntu/KiBot
 EnvironmentFile=-/home/ubuntu/KiBot/.env.server
@@ -12,8 +13,6 @@ EnvironmentFile=-/home/ubuntu/KiBot/.env.kibot
 EnvironmentFile=-/home/ubuntu/KiBot/.env.kibot_manager
 Environment=PYTHONUNBUFFERED=1
 ExecStart=/usr/bin/python3 SERVER_BATAM/Security/kibot_security.py
-Restart=on-failure
-RestartSec=60
 MemoryMax=128M
 CPUQuota=10%
 OOMPolicy=kill

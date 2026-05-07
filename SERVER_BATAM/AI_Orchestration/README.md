@@ -9,8 +9,8 @@ This module is the "Brain" of KiBot. It transforms raw data into actionable trad
 - **V9.1 Update**: Enhanced rate-limit handling and async provider switching.
 
 ### 2. `kibot_ollama_gateway.py` (The Local Shield)
-- **Role**: Jumps to local **DeepSeek-Coder-V2** when internet/API limits fail.
-- **Privacy**: Ensures sensitive trading configurations stay local during code-healing.
+- **Role**: Routes non-critical AI calls to local Ollama and falls back to direct `11434` when needed.
+- **Privacy**: Ensures sensitive trading configurations stay local during code-healing and analysis.
 
 ### 3. `kibot_ai_scout.py` (The Hunter)
 - **Role**: 5-minute global research loops. Focuses on Indodax premiums and Polymarket sentiment.
@@ -21,6 +21,10 @@ This module is the "Brain" of KiBot. It transforms raw data into actionable trad
 ### 5. `Dify` workflow bridge
 - **Role**: Optional decision-engine layer for Batam strategy and ops prompts.
 - **Setup**: `SERVER_BATAM/Support/dify_bypass_setup.py` can check Dify reachability, configure the local Ollama provider, and invoke a workflow endpoint when `DIFY_API_KEY` and `DIFY_WORKFLOW_ID` are set.
+
+### 6. `kibot_rag.py` (The Librarian Cache)
+- **Role**: Lightweight local RAG index for Batam-side assistant prompts.
+- **Feature**: Pulls knowledge from the bundled intelligence snapshot without egress.
 
 ## Integration: KiBot Manager & Trinity Mesh
 The AI fleet is tightly integrated into the `kibot_manager.py` operational daemon. 
