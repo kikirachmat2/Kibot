@@ -82,7 +82,7 @@ fun DashboardScreen(
             // KiBot Status Card
             item {
                 BotStatusCard(
-                    name = "KiBot",
+                    name = "KiBot Holdings",
                     subtitle = KiBotSubtitle(botState),
                     status = botState.heartbeat.KiBot.status,
                     pingMs = null,
@@ -117,8 +117,8 @@ fun DashboardScreen(
             // KiBot Status Card
             item {
                 BotStatusCard(
-                    name = "KiBot",
-                    subtitle = KiBotSubtitle(botState),
+                    name = "KiBot Radar",
+                    subtitle = kiBotRadarSubtitle(botState),
                     status = botState.heartbeat.KiBot.status,
                     pingMs = botState.heartbeat.KiBot.ping,
                     aiStatus = botState.heartbeat.KiBot.aiStatus,
@@ -225,7 +225,7 @@ private fun KiBotSubtitle(botState: BotState): String {
     }
 }
 
-private fun KiBotSubtitle(botState: BotState): String = when {
+private fun kiBotRadarSubtitle(botState: BotState): String = when {
     botState.connectedBotId == "KiBot" && botState.topCandidate != "-" -> "Radar lagi scan ${botState.topCandidate}"
     botState.heartbeat.KiBot.status == "online" && botState.topCandidate != "-" -> "Mesh lagi kirim bias ${botState.topCandidate}"
     botState.heartbeat.KiBot.status == "degraded" -> "Radar lagi sinkron ulang"

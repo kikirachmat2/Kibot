@@ -1,13 +1,13 @@
 {
-  "date": "2026-05-04",
-  "start_of_day_equity": 70000.0,
+  "date": "2026-04-20",
+  "start_of_day_equity": 50000.0,
   "current_equity": 70000.0,
   "daily_pnl_pct": 0.0,
   "hard_stopped": false,
   "triggered_at": "",
   "reset_at": "",
   "reason": "",
-  "external_cashflow_idr": 0.0,
-  "external_cashflow_reason": "",
-  "external_cashflow_detected_at": ""
+  "external_cashflow_idr": 20000.0,
+  "external_cashflow_reason": "auto_detected_balance_jump",
+  "external_cashflow_detected_at": "2026-05-07T15:11:02.676143+00:00"
 }

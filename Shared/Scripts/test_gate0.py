@@ -1,10 +1,11 @@
 import sys
 import os
 import time
+from pathlib import Path
 from unittest.mock import MagicMock
 
-# Mock dependencies before importing
-sys.path.insert(0, "scripts")
+REPO_ROOT = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(REPO_ROOT / "SERVER_BATAM" / "Core_Logic"))
 
 # Mock os.environ for test
 os.environ["KIBOT_MANAGER_DATA_DIR"] = "/tmp/kibot_data"

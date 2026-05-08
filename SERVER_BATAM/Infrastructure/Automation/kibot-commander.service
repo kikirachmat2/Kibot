@@ -1,0 +1,21 @@
+[Unit]
+Description=KiBot Telegram Commander
+After=network-online.target kibot-trinity.service
+Wants=network-online.target kibot-trinity.service
+
+[Service]
+Type=simple
+User=ubuntu
+WorkingDirectory=/home/ubuntu/KiBot/SERVER_BATAM
+EnvironmentFile=-/home/ubuntu/KiBot/.env.server
+Environment=KIBOT_RUNTIME_ROOT=/home/ubuntu/KiBot
+Environment=PYTHONUNBUFFERED=1
+ExecStart=/usr/bin/python3 Core_Logic/telegram_commander.py
+Restart=always
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=kibot-commander
+
+[Install]
+WantedBy=multi-user.target

@@ -1,26 +1,28 @@
-# 🧠 SERVER_BATAM (The Brain) - Trinity v9.1
+# SERVER_BATAM: The Central Brain
 
-## Overview
-Batam is the **Single Source of Truth** and the central command center of the KiBot ecosystem. It aggregates sensory data from globally distributed Scanners and issues execution orders to reactive Executor nodes.
+Folder ini berisi logika pusat komando (C2) untuk seluruh jaringan KiBot.
 
-## Core Components
-- **Core_Logic/**: Contains `kibot_manager.py` (Main entry), `trinity_governor.py` (Git-safe tuning and recovery), and `batam_ghost_agent.py` (interactive AI assistant).
-- **AI_Orchestration/**: Integrates local LLMs via Ollama, the local RAG index, and the Ollama gateway for autonomous code healing and sentiment validation.
-- **Indicators_Math/**: Handles Z-Score, technical analysis, and Polymarket probability math.
-- **Security/**: Enforces the "Sovereign Shield" and monitors for unauthorized system changes.
+## 🧠 Komponen Utama
 
-## Deployment & Management
-Batam operates via systemd:
-- `kibot-trinity.service`: Primary autonomous brain runtime on Batam.
-- `kibot-manager.service`: Compatibility shim for legacy references.
-- `kibot-orchestrator.service`: Oversees support services and recovery helpers.
-- `kibot-healer.service`: Autonomous maintenance via local Ollama-backed AI.
-- `kibot-command-center.service`: Local command dashboard and status UI.
-- `kibot-trinity.service`: Primary runtime; `kibot-manager.service` exists only as a compatibility shim.
+1.  **kibot_brain_gateway.py**: 
+    *   Menerima signal dari Scanner.
+    *   Melakukan kalkulasi Kelly Criterion dan Veto trading.
+    *   Dengarkan feedback dari Executor.
+2.  **sovereign_arbitrator.py**:
+    *   Pengawas risiko (Risk Manager).
+    *   Membaca `sovereign_state.json` untuk mengecek apakah batas rugi harian tercapai.
+3.  **telegram_commander.py**:
+    *   Interface bot Telegram untuk `/status`, `/run_all`, dan notifikasi trade real-time.
+4.  **kibot_node_agent.py**:
+    *   Agen lokal yang memungkinkan Batam mengontrol service systemd di node lain via API.
 
-## Current System Status (v9.1.1 Sovereign)
-- **Mode**: 100% LOCAL-FIRST (Supabase Disabled to prevent quota breach).
-- **Resource Management**: Autonomous Governor active (Self-cleaning logs).
-- **Node Health**: 3/3 Nodes Online (Batam, Scanner, Executor).
-- **Stability**: High (Uptime verified).
-- **Safety**: "Sovereign Shield" active (Zero-trust SSH mesh).
+## 🛠️ Setup & Config
+Pastikan file `.env` memiliki:
+*   `TELEGRAM_BOT_TOKEN`
+*   `TELEGRAM_CHAT_ID`
+*   `KIBOT_MANAGER_ENV_FILE`
+
+## 📡 Port Map
+*   `9998`: Inbound UDP (From Scanner)
+*   `9997`: Inbound UDP (From Executor Feedback)
+*   `9991`: Outbound HTTP (To Node Agents)

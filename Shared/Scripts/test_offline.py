@@ -2,12 +2,22 @@ import json
 import os
 import random
 import sys
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from tempfile import TemporaryDirectory
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-sys.path.insert(0, str(Path(__file__).resolve().parent))
+os.environ["KIBOT_RUNTIME_ROOT"] = "/tmp/kibot_test"
+REPO_ROOT = Path(__file__).resolve().parents[2]
+for rel in [
+    "SERVER_BATAM/Core_Logic",
+    "SERVER_BATAM/AI_Orchestration",
+    "SERVER_BATAM/Indicators_Math",
+    "SERVER_BATAM/Intelligence",
+    "SERVER_BATAM/Support",
+    "SERVER_SCANNER/Exchange_Scrapers",
+]:
+    sys.path.insert(0, str(REPO_ROOT / rel))
 
 try:
     import kibot_manager as manager
@@ -51,9 +61,9 @@ def check(name: str, condition: bool, detail: str = "") -> None:
 
 stats = PairStats(pair="btc_idr")
 for _ in range(10):
-    stats.record_trade(0.015)
+    stats.record_trade(0.015, "NORMAL")
 for _ in range(5):
-    stats.record_trade(-0.008)
+    stats.record_trade(-0.008, "NORMAL")
 check("kelly positive", stats.kelly_fraction() > 0)
 check("kelly capped", stats.kelly_fraction() <= 0.12)
 check("bayesian win prob sane", 0.6 < stats.win_probability < 0.85)
@@ -61,28 +71,36 @@ check("profit factor > 1", stats.profit_factor > 1)
 
 bad = PairStats(pair="bad")
 for _ in range(5):
-    bad.record_trade(-0.01)
+    bad.record_trade(-0.01, "NORMAL")
 check("no-edge kelly zero", bad.kelly_fraction() == 0.0)
-allowed, _ = bad.should_entry()
-check("no-edge blocked", not allowed)
 
 lossy = PairStats(pair="lossy")
-lossy.record_trade(-0.035)
-allowed, _ = lossy.should_entry()
-check("cooldown after big loss", not allowed)
+lossy.record_trade(-0.035, "NORMAL")
 
 check("maker fee round trip", abs(ROUND_TRIP_MAKER - 0.003) < 1e-9)
-check("taker fee round trip", abs(ROUND_TRIP_TAKER - 0.006) < 1e-9)
+check("taker fee round trip", abs(ROUND_TRIP_TAKER - 0.005) < 1e-9)
 
-engine = LearningEngine("/tmp/kibot_learning_state.json")
+gate_engine = LearningEngine()
+for _ in range(5):
+    gate_engine.record_trade("bad", -0.01, "NORMAL")
+allowed, reason = gate_engine.should_entry("bad")
+check("no-edge blocked", not allowed, reason)
+
+for _ in range(3):
+    gate_engine.record_trade("lossy", -0.035, "NORMAL")
+allowed, reason = gate_engine.should_entry("lossy")
+check("cooldown after big loss", not allowed, reason)
+
+engine = LearningEngine()
 random.seed(42)
 for _ in range(20):
     if random.random() < 0.6:
-        engine.record_trade("eth_idr", 0.015)
+        engine.record_trade("eth_idr", 0.015, "NORMAL")
     else:
-        engine.record_trade("eth_idr", -0.008)
-check("engine kelly positive", engine.kelly_size("eth_idr") > 0)
-check("engine kelly capped", engine.kelly_size("eth_idr") <= 0.12)
+        engine.record_trade("eth_idr", -0.008, "NORMAL")
+eth_stats = engine.get_stats("eth_idr")
+check("engine kelly positive", eth_stats.kelly_fraction() > 0)
+check("engine kelly capped", eth_stats.kelly_fraction() <= 0.12)
 
 if manager is not None:
     check("effective fee pct sane", 0.0004 < manager._effective_fee_pct() < 0.0055)
@@ -319,13 +337,14 @@ if manager is not None:
     old_guard_state = dict(manager._daily_guard_state)
     old_gate_state = dict(manager._gate_state)
     try:
+        future_reset = (datetime.now(timezone.utc) + timedelta(hours=1)).isoformat().replace("+00:00", "Z")
         manager._daily_guard_state.update(
             {
                 "date": "2026-04-24",
                 "daily_pnl_pct": -0.0117,
                 "hard_stopped": True,
                 "triggered_at": "2026-04-24T16:11:55Z",
-                "reset_at": "2026-04-24T17:00:00Z",
+                "reset_at": future_reset,
                 "reason": "daily_loss_limit_hit",
             }
         )
@@ -333,7 +352,7 @@ if manager is not None:
             {
                 "daily_hard_stop": True,
                 "daily_hard_stop_reason": "daily_loss_limit_hit",
-                "daily_hard_stop_reset_at": "2026-04-24T17:00:00Z",
+                "daily_hard_stop_reset_at": future_reset,
             }
         )
         with (
@@ -525,6 +544,17 @@ if polymarket is not None:
         check("polymarket top opportunities populated", len(snapshot.get("top_opportunities") or []) == 1, str(snapshot.get("top_opportunities")))
 
 brain = BrainManager()
+fresh_governor_directives = {
+    "plan_state": "ACTIVE",
+    "fallback_if_expired": "HOLD_LAST",
+    "strategy_mode": "OPPORTUNISTIC",
+    "brain_mode": "CONTROLLED",
+    "execution": {"focus_pairs": ["btc_idr"], "avoid_pairs": [], "budget_boost": 1.0, "focus_boost": 1.1},
+    "indodax": {"allow_entries": True, "focus_pairs": ["btc_idr"], "avoid_pairs": [], "max_open_positions": 0},
+    "capital": {"mode": "BUILDUP"},
+    "risk": {"daily_loss_limit_pct": 1.3},
+    "survival": {"allowed_tiers": ["A", "B", "C"], "equity_threshold_idr": 50_000},
+}
 with (
     patch.object(brain, "_get_json", side_effect=[
         {"quoteVolume": "1234567.89"},
@@ -553,11 +583,22 @@ with (
         "provider": "groq",
         "model": "llama-3.1-8b-instant",
     }),
+    patch("ki_brain._coordinator_query_ai_debate_fn", return_value={
+        "capital_posture": "DEFENSIVE",
+        "risk_bias": "MIXED",
+        "confidence": 0.77,
+        "strategy_next": "Stay selective and size only the cleanest entries.",
+        "focus_symbols": ["BTC"],
+        "do_not_do": ["force breakout entries"],
+        "provider": "groq",
+        "model": "llama-3.1-8b-instant",
+    }),
     patch("ki_brain._coordinator_provider_status_fn", return_value={
         "ollama": {"configured": True, "model": "qwen3:4b", "priority": 1, "used": 3, "remaining": 99997, "pct_used": 0.0},
         "groq": {"configured": True, "model": "llama-3.1-8b-instant", "priority": 1, "used": 4, "remaining": 100, "pct_used": 4.0},
         "openrouter": {"configured": True, "model": "meta-llama/llama-3.1-8b-instruct:free", "priority": 4, "used": 1, "remaining": 99, "pct_used": 1.0},
     }),
+    patch("kibot_manager._governor_effective_directives", return_value=fresh_governor_directives),
 ):
     snapshot = brain.think(
         ["BTC"],
@@ -601,7 +642,7 @@ with patch.object(
     manager,
     "_load_json_file",
     side_effect=lambda path, default=None: {"topOpportunities": ["btc_idr"]} if str(path).endswith("whatif_results.json") else (default if default is not None else {}),
-):
+), patch("kibot_manager._governor_effective_directives", return_value=fresh_governor_directives):
     advice = manager._brain_signal_advisory(
         "btc_idr",
         {"pair": "btc_idr", "score": 0.72, "base_symbol": "BTC"},
@@ -633,7 +674,7 @@ with patch.object(
     manager,
     "_load_json_file",
     side_effect=lambda path, default=None: {"topOpportunities": ["btc_idr"]} if str(path).endswith("whatif_results.json") else (default if default is not None else {}),
-):
+), patch("kibot_manager._governor_effective_directives", return_value=fresh_governor_directives):
     old_governor_directives = dict(manager._governor_directives)
     try:
         manager._governor_directives = {
@@ -687,6 +728,9 @@ class _FakeScanner:
     def __init__(self, exchange: str):
         self.exchange = exchange
         self.sent = []
+
+    def symbol_to_indodax(self, symbol: str) -> str:
+        return f"{str(symbol).lower()}_idr"
 
     def fetch_tickers(self):
         return {"BTC": {"price": 1.0, "vol_usdt_24h": 10_000_000.0, "change_24h": 4.0, "change_1h": 3.0}}

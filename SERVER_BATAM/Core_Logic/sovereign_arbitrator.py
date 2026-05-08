@@ -12,7 +12,10 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 import sys
-from kibot_sentinel import get_sentinel
+try:
+    from kibot_sentinel import get_sentinel
+except ImportError:
+    get_sentinel = lambda: None
 
 # Intelligence Imports
 _root = Path(__file__).resolve().parent.parent

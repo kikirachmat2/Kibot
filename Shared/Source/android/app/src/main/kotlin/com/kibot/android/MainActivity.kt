@@ -23,6 +23,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.AndroidViewModel
+import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.kibot.android.data.*
 import com.kibot.android.ui.*
@@ -32,6 +33,7 @@ import com.kibot.android.websocket.KiBotWebSocketClient
 import com.kibot.android.http.StatePollingClient
 import com.kibot.android.widget.KiBotWidgetHelper
 import kotlinx.coroutines.flow.*
+import kotlinx.coroutines.launch
 
 // Navigation destinations
 sealed class Screen(
@@ -57,10 +59,12 @@ class KiBotViewModel(application: Application) : AndroidViewModel(application) {
     // Fallback: WebSocket client
     private val wsClient = KiBotWebSocketClient(initialServerConfig.getUrl())
     
-    // Merge states: prefer polling if connected, fallback to WebSocket
-    val connectionStatus: StateFlow<ConnectionStatus> = pollingClient.connectionStatus
-    val botState: StateFlow<BotState> = pollingClient.botState
-    val errors: SharedFlow<String> = pollingClient.errors
+    private val _connectionStatus = MutableStateFlow(ConnectionStatus.DISCONNECTED)
+    val connectionStatus: StateFlow<ConnectionStatus> = _connectionStatus.asStateFlow()
+    private val _botState = MutableStateFlow(BotState())
+    val botState: StateFlow<BotState> = _botState.asStateFlow()
+    private val _errors = MutableSharedFlow<String>(extraBufferCapacity = 32)
+    val errors: SharedFlow<String> = _errors.asSharedFlow()
     
     private val _currentScreen = MutableStateFlow<Screen>(Screen.Dashboard)
     val currentScreen: StateFlow<Screen> = _currentScreen
@@ -68,6 +72,43 @@ class KiBotViewModel(application: Application) : AndroidViewModel(application) {
     val serverConfig: StateFlow<ServerConfig> = _serverConfig
 
     init {
+        viewModelScope.launch {
+            combine(pollingClient.connectionStatus, wsClient.connectionStatus) { pollStatus, wsStatus ->
+                when {
+                    wsStatus == ConnectionStatus.CONNECTED || pollStatus == ConnectionStatus.CONNECTED -> ConnectionStatus.CONNECTED
+                    wsStatus == ConnectionStatus.CONNECTING || pollStatus == ConnectionStatus.CONNECTING -> ConnectionStatus.CONNECTING
+                    wsStatus == ConnectionStatus.ERROR || pollStatus == ConnectionStatus.ERROR -> ConnectionStatus.ERROR
+                    else -> ConnectionStatus.DISCONNECTED
+                }
+            }.collect { mergedStatus ->
+                _connectionStatus.value = mergedStatus
+            }
+        }
+
+        viewModelScope.launch {
+            combine(pollingClient.botState, wsClient.botState, wsClient.connectionStatus) { pollState, wsState, wsStatus ->
+                if (
+                    wsStatus == ConnectionStatus.CONNECTED ||
+                    wsState.isConnected ||
+                    wsState.balance != 0.0 ||
+                    wsState.positions.isNotEmpty() ||
+                    wsState.trades.isNotEmpty()
+                ) {
+                    wsState
+                } else {
+                    pollState
+                }
+            }.collect { mergedState ->
+                _botState.value = mergedState
+            }
+        }
+
+        viewModelScope.launch {
+            merge(pollingClient.errors, wsClient.errors).collect { error ->
+                _errors.emit(error)
+            }
+        }
+
         connect()
     }
     

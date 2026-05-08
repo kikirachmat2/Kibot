@@ -140,7 +140,7 @@ def is_command_safe(cmd: str) -> bool:
 
 def ask_ollama(prompt):
     try:
-        payload = {'model': 'qwen3:0.6b', 'messages': [{'role': 'user', 'content': prompt}], 'stream': False}
+        payload = {'model': 'qwen2.5-coder:7b', 'messages': [{'role': 'user', 'content': prompt}], 'stream': False}
         r = requests.post(OLLAMA_URL, json=payload, timeout=30)
         return r.json()['message']['content'].strip()
     except Exception as e:

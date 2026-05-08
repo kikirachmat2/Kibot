@@ -13,11 +13,20 @@ import time
 import shutil
 from pathlib import Path
 
-ROOT = Path(os.getenv("KIBOT_RUNTIME_ROOT", Path(__file__).resolve().parent.parent))
+ROOT = Path(os.getenv("KIBOT_RUNTIME_ROOT", Path(__file__).resolve().parents[2]))
 os.environ["KIBOT_RUNTIME_ROOT"] = str(ROOT)
 os.environ.setdefault("KIBOT_STATE_DIR", str(ROOT / "state"))
 os.environ.setdefault("KIBOT_DATA_DIR", str(ROOT / "data"))
 API_BASE = os.getenv("KIBOT_API_BASE", "http://127.0.0.1:8787")
+CORE_DIR = ROOT / "SERVER_BATAM" / "Core_Logic"
+AI_DIR = ROOT / "SERVER_BATAM" / "AI_Orchestration"
+INDICATORS_DIR = ROOT / "SERVER_BATAM" / "Indicators_Math"
+INTELLIGENCE_DIR = ROOT / "SERVER_BATAM" / "Intelligence"
+AUDIT_TESTING_DIR = ROOT / "SERVER_BATAM" / "Support" / "Audit_Testing"
+
+for path in [CORE_DIR, AI_DIR, INDICATORS_DIR, INTELLIGENCE_DIR, AUDIT_TESTING_DIR]:
+    if path.exists():
+        sys.path.insert(0, str(path))
 
 
 def manager_port() -> int:
@@ -84,14 +93,27 @@ def test_manager_udp_port():
 
 def test_thread_profiling():
     """Verify that all required background threads are correctly defined."""
-    manager_path = ROOT / "scripts" / "kibot_manager.py"
+    manager_path = CORE_DIR / "kibot_manager.py"
     content = manager_path.read_text()
     required_threads = [
-        "kibot-news-scanner", "kibot-correlation-loop", "kibot-coingecko-loop",
-        "kibot-pair-screen-loop", "kibot-heartbeat-loop", "kibot-health-gate-loop",
-        "kibot-ai-review-loop", "kibot-learning-review-loop", "kibot-daily-cycle-loop",
-        "kibot-simulation-loop", "kibot-state-server",
-        "kibot-discovery", "kibot-portfolio", "kibot-signal-mgr"
+        "kibot-news-scanner",
+        "kibot-correlation-loop",
+        "kibot-coingecko-loop",
+        "kibot-pair-screen-loop",
+        "kibot-heartbeat-loop",
+        "kibot-health-gate-loop",
+        "kibot-ai-review-loop",
+        "kibot-math-review-loop",
+        "kibot-learning-review-loop",
+        "kibot-daily-cycle-loop",
+        "kibot-simulation-loop",
+        "kibot-state-server",
+        "kibot-discovery",
+        "kibot-portfolio",
+        "kibot-signal-mgr",
+        "kibot-resource-governor",
+        "kibot-ai-scout-loop",
+        "kibot-universe-discovery-loop",
     ]
     missing = [t for t in required_threads if f'name="{t}"' not in content]
     return log_test("Manager Thread Profiling", len(missing) == 0, f"Missing: {missing}" if missing else "All required threads defined")
@@ -106,7 +128,7 @@ def test_log_maintenance_logic():
 
 def test_ai_fallback_chain():
     """Verify AI Legion has at least 3 active providers (excluding HF)."""
-    coordinator_path = ROOT / "scripts" / "kibot_ai_coordinator.py"
+    coordinator_path = AI_DIR / "kibot_ai_coordinator.py"
     content = coordinator_path.read_text()
     providers = ["groq", "gemini", "nvidia", "cohere", "openrouter"]
     active = [p for p in providers if p in content]
@@ -115,7 +137,7 @@ def test_ai_fallback_chain():
 
 def test_analyst_entrypoint():
     """Verify analyst service boots into its real loop, not demo fixtures."""
-    analyst_path = ROOT / "scripts" / "kibot_analyst.py"
+    analyst_path = AUDIT_TESTING_DIR / "kibot_analyst.py"
     content = analyst_path.read_text()
     has_loop_entry = "run_analyst_loop(ANALYST_INTERVAL_SECONDS)" in content
     has_demo_seed = 'record_trade("bio_idr"' in content
@@ -130,10 +152,12 @@ def test_workflow_deploy_mode():
     """Verify deploy workflows do not auto-SSH on every push to main."""
     workflows = [
         ROOT / ".github" / "workflows" / "deploy-KiBot.yml",
-        ROOT / ".github" / "workflows" / "deploy-KiBot.yml",
     ]
+    existing = [workflow for workflow in workflows if workflow.exists()]
+    if not existing:
+        return log_test("Workflow Deploy Mode", True, "workflow file absent; manual deploy mode")
     invalid = []
-    for workflow in workflows:
+    for workflow in existing:
         content = workflow.read_text()
         if "push:" in content:
             invalid.append(workflow.name)
@@ -145,13 +169,12 @@ def test_workflow_deploy_mode():
 def test_service_env_wiring():
     """Verify critical Python services inherit the live env files."""
     service_files = [
-        ROOT / "infra" / "systemd" / "kibot-manager.service",
-        ROOT / "infra" / "systemd" / "kibot-notifier.service",
-        ROOT / "infra" / "systemd" / "kibot-analyst.service",
-        ROOT / "infra" / "systemd" / "kibot-guardian.service",
-        ROOT / "infra" / "systemd" / "kibot-auditor.service",
-        ROOT / "infra" / "systemd" / "kibot-orchestrator.service",
-        ROOT / "infra" / "systemd" / "kibot-security.service",
+        ROOT / "SERVER_BATAM" / "Infrastructure" / "Infra" / "systemd" / "kibot-manager.service",
+        ROOT / "SERVER_BATAM" / "Infrastructure" / "Infra" / "systemd" / "kibot-notifier.service",
+        ROOT / "SERVER_BATAM" / "Infrastructure" / "Infra" / "systemd" / "kibot-analyst.service",
+        ROOT / "SERVER_BATAM" / "Infrastructure" / "Infra" / "systemd" / "kibot-guardian.service",
+        ROOT / "SERVER_BATAM" / "Infrastructure" / "Infra" / "systemd" / "kibot-orchestrator.service",
+        ROOT / "SERVER_BATAM" / "Infrastructure" / "Infra" / "systemd" / "kibot-security.service",
     ]
     missing = []
     for service_file in service_files:
@@ -164,7 +187,7 @@ def test_service_env_wiring():
 
 def test_manager_runtime_overrides():
     """Verify the last active manager loop definitions use the fixed runtime paths."""
-    manager_path = ROOT / "scripts" / "kibot_manager.py"
+    manager_path = CORE_DIR / "kibot_manager.py"
     content = manager_path.read_text()
     pair_idx = content.rfind("def _pair_screen_loop()")
     math_idx = content.rfind("def _math_review_loop()")

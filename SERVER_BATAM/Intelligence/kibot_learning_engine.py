@@ -118,7 +118,7 @@ class PairStats:
         if pf > 2.0: mult *= 1.2
         elif pf < 1.0: mult *= 0.5
 
-        return max(0.01, min(0.15, full_kelly * mult))
+        return max(0.01, min(0.12, full_kelly * mult))
 
     def record_trade(self, pnl: float, regime: str):
         self.trade_count += 1

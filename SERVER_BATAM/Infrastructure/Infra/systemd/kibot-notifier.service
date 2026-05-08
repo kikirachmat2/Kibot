@@ -8,6 +8,8 @@ Type=simple
 User=ubuntu
 WorkingDirectory=/home/ubuntu/KiBot/SERVER_BATAM/Communication
 EnvironmentFile=-/home/ubuntu/KiBot/.env.server
+EnvironmentFile=-/home/ubuntu/KiBot/.env.kibot
+EnvironmentFile=-/home/ubuntu/KiBot/.env.kibot_manager
 Environment=KIBOT_RUNTIME_ROOT=/home/ubuntu/KiBot/SERVER_BATAM
 Environment=PYTHONUNBUFFERED=1
 ExecStart=/usr/bin/python3 /home/ubuntu/KiBot/SERVER_BATAM/Communication/kibot_notifier.py

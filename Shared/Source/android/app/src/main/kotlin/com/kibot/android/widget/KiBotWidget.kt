@@ -36,12 +36,10 @@ object KiBotWidgetKeys {
     val BALANCE = doublePreferencesKey("widget_balance")
     val PNL_TODAY = doublePreferencesKey("widget_pnl_today")
     val TOTAL_RETURN = doublePreferencesKey("widget_total_return")
-    val KiBot_STATUS = stringPreferencesKey("widget_KiBot_status")
-    val KiBot_STATUS = stringPreferencesKey("widget_KiBot_status")
-    val KICRYP_STATUS = stringPreferencesKey("widget_kibot_status")
-    val KiBot_PING = longPreferencesKey("widget_KiBot_ping")
-    val KiBot_PING = longPreferencesKey("widget_KiBot_ping")
-    val KICRYP_PING = longPreferencesKey("widget_kibot_ping")
+    val PRIMARY_STATUS = stringPreferencesKey("widget_kibot_status")
+    val SECONDARY_STATUS = stringPreferencesKey("widget_manager_status")
+    val PRIMARY_PING = longPreferencesKey("widget_kibot_ping")
+    val SECONDARY_PING = longPreferencesKey("widget_manager_ping")
     val LAST_UPDATE = longPreferencesKey("widget_last_update")
 }
 
@@ -60,16 +58,25 @@ class KiBotWidget : GlanceAppWidget() {
         
         // Read data from SharedPreferences (reliable)
         val data = KiBotWidgetHelper.getWidgetData(context)
-        android.util.Log.i("KiBotWidget", "🎨 Widget data from SharedPrefs: balance=${data.balance}, pnl=${data.pnlToday}, status=${data.KiBotStatus}")
+        android.util.Log.i("KiBotWidget", "🎨 Widget data from SharedPrefs: balance=${data.balance}, pnl=${data.pnlToday}, status=${data.kiBotStatus}")
         
         provideContent {
             val size = LocalSize.current
             android.util.Log.i("KiBotWidget", "🎨 Widget size: ${size.width} x ${size.height}")
             
             when {
-                size.width < 150.dp -> SmallWidget(data.balance, data.pnlToday, data.KiBotStatus)
-                size.width < 250.dp -> MediumWidget(data.balance, data.pnlToday, data.totalReturn, data.KiBotStatus)
-                else -> LargeWidget(data.balance, data.pnlToday, data.totalReturn, data.KiBotStatus, data.KiBotStatus, data.kibotStatus, data.KiBotPing, 0L, 0L, data.lastUpdate)
+                size.width < 150.dp -> SmallWidget(data.balance, data.pnlToday, data.kiBotStatus)
+                size.width < 250.dp -> MediumWidget(data.balance, data.pnlToday, data.totalReturn, data.kiBotStatus)
+                else -> LargeWidget(
+                    data.balance,
+                    data.pnlToday,
+                    data.totalReturn,
+                    data.kiBotStatus,
+                    data.kibotStatus,
+                    data.kiBotPing,
+                    data.kibotPing,
+                    data.lastUpdate
+                )
             }
         }
     }
@@ -216,11 +223,9 @@ private fun LargeWidget(
     balance: Double,
     pnlToday: Double,
     totalReturn: Double,
-    KiBotStatus: String,
-    KiBotStatus: String,
+    kiBotStatus: String,
     kibotStatus: String,
-    KiBotPing: Long,
-    KiBotPing: Long,
+    kiBotPing: Long,
     kibotPing: Long,
     lastUpdate: Long
 ) {
@@ -256,10 +261,10 @@ private fun LargeWidget(
             Spacer(modifier = GlanceModifier.defaultWeight())
             
             Row(verticalAlignment = Alignment.CenterVertically) {
-                StatusDot(KiBotStatus)
+                StatusDot(kiBotStatus)
                 Spacer(modifier = GlanceModifier.width(4.dp))
                 Text(
-                    text = "Exchange ${KiBotPing}ms",
+                    text = "KiBot ${kiBotPing}ms",
                     style = TextStyle(
                         color = ColorProvider(WidgetTextSecondary),
                         fontSize = 10.sp
@@ -343,11 +348,9 @@ private fun LargeWidget(
             modifier = GlanceModifier.fillMaxWidth(),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            BotStatusItem(name = "KiBot", status = kibotStatus, pingMs = kibotPing)
+            BotStatusItem(name = "KiBot", status = kiBotStatus, pingMs = kiBotPing)
             Spacer(modifier = GlanceModifier.width(8.dp))
-            BotStatusItem(name = "KiBot", status = KiBotStatus, pingMs = KiBotPing)
-            Spacer(modifier = GlanceModifier.width(8.dp))
-            BotStatusItem(name = "KiBot", status = KiBotStatus, pingMs = KiBotPing)
+            BotStatusItem(name = "Manager", status = kibotStatus, pingMs = kibotPing)
         }
 
         Spacer(modifier = GlanceModifier.height(8.dp))

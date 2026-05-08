@@ -4,7 +4,14 @@ from pathlib import Path
 # Setup test environment
 os.environ["SUPABASE_URL"] = ""  # disable sync
 os.environ["KIBOT_STATE_DIR"] = "/tmp/kibot_test"
-sys.path.insert(0, "scripts")
+REPO_ROOT = Path(__file__).resolve().parents[2]
+for rel in [
+    "SERVER_BATAM/Core_Logic",
+    "SERVER_BATAM/Indicators_Math",
+    "SERVER_BATAM/Intelligence",
+    "SERVER_BATAM/Support",
+]:
+    sys.path.insert(0, str(REPO_ROOT / rel))
 
 test_state = Path("/tmp/kibot_test")
 test_state.mkdir(parents=True, exist_ok=True)

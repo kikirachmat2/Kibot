@@ -45,10 +45,6 @@ class KiBotWidgetSyncWorker(
                             status = json.get("KiBotNodeStatus")?.asString ?: "offline",
                             ping = json.get("exchangePingValueMs")?.asLong ?: 0L,
                         ),
-                        KiBot = ServiceStatus(
-                            status = json.get("KiBotNodeStatus")?.asString ?: "offline",
-                            ping = 0L,
-                        ),
                         kibot = ServiceStatus(
                             status = json.get("kibotNodeStatus")?.asString ?: "offline",
                             ping = 0L,

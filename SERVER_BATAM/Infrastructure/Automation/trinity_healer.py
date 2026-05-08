@@ -29,7 +29,7 @@ TRACEBACK_HINTS = (
 )
 
 AIDER_CMD = "/home/ubuntu/.local/bin/aider"
-OLLAMA_MODEL = "ollama/qwen3:0.6b"
+OLLAMA_MODEL = "qwen2.5-coder:7b"
 BASE_DIR = "/home/ubuntu/KiBot/SERVER_BATAM"
 LOCK_FILE = "/tmp/kibot_healing.lock"
 

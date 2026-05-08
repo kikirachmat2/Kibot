@@ -97,7 +97,6 @@ data class TradeLoser(
 @Serializable
 data class HeartbeatData(
     val KiBot: ServiceStatus = ServiceStatus(),
-    val KiBot: ServiceStatus = ServiceStatus(),
     val kibot: ServiceStatus = ServiceStatus()
 )
 
@@ -259,6 +258,6 @@ data class ServerConfig(
     }
 
     fun getConnectionUrls(): List<String> {
-        return listOf(getUrl(), getTunnelUrl(), getDirectTunnelUrl()).distinct()
+        return listOf(getTunnelUrl(), getDirectTunnelUrl(), getUrl()).distinct()
     }
 }

@@ -29,9 +29,9 @@ except ImportError:
     TELEGRAM_CHAT_ID = os.getenv("KIBOT_TELEGRAM_CHAT_ID")
 
 def send_telegram(message: str):
-    if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID:
-        print("[MONITOR] Telegram not configured, skipping alert.")
-        return
+    # SILENCED: User requested to stop spam
+    print(f"[MONITOR][MUTE] Alert suppressed: {message}")
+    return
     
     url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
     payload = {"chat_id": TELEGRAM_CHAT_ID, "text": f"⚠️ [KiBot Batam] RESOURCE ALERT\n\n{message}", "parse_mode": "HTML"}

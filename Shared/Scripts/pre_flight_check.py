@@ -4,8 +4,10 @@ import sys
 import json
 from pathlib import Path
 
+ROOT = Path(__file__).resolve().parents[2]
+
 def check_file(path, required_text=None):
-    p = Path(path)
+    p = ROOT / path
     if not p.exists():
         print(f"❌ MISSING: {path}")
         return False
@@ -22,11 +24,12 @@ def main():
     
     # 1. Critical Files
     critical = [
-        ("scripts/kibot_manager.py", "Fail-Soft v7.3.2"),
-        ("scripts/kibot_manager.py", "KiBot_HEARTBEAT_TIMEOUT_SEC = 15.0"),
-        ("infra/systemd/kibot-manager.service", "MemoryMax=1G"),
-        ("infra/systemd/kibot-manager.service", "OOMScoreAdjust=-500"),
-        ("scripts/kibot_polymarket.py", "avg_prob"),
+        ("SERVER_BATAM/Core_Logic/kibot_manager.py", "_strategy_learning_loop"),
+        ("SERVER_BATAM/Core_Logic/kibot_manager.py", "_state_server_loop"),
+        ("SERVER_BATAM/Core_Logic/kibot_manager.py", "run_local_signal_engine_manager"),
+        ("SERVER_BATAM/Infrastructure/Infra/systemd/kibot-trinity.service", "MemoryMax=1500M"),
+        ("SERVER_BATAM/Infrastructure/Infra/systemd/kibot-trinity.service", "CPUQuota=80%"),
+        ("SERVER_BATAM/Indicators_Math/kibot_polymarket.py", "PAPER_TRADE_CAPITAL_USD"),
     ]
     
     all_ok = True
@@ -37,7 +40,7 @@ def main():
     # 2. Environment (Local Presence)
     env_files = [".env.server", ".env.kibot", ".env.kibot_manager"]
     for f in env_files:
-        if not Path(f).exists():
+        if not (ROOT / f).exists():
             print(f"⚠️  WARNING: {f} missing locally (ensure it exists on server)")
 
     if all_ok:

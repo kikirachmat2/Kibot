@@ -1,26 +1,19 @@
-# 👁️ SERVER_SCANNER (Sensory Node) - Trinity v9.1
+# SERVER_SCANNER: The Sensor Node
 
-## Overview
-The Scanner collection acts as the **"Eyes"** of the KiBot ecosystem. These nodes function as high-frequency sensory arrays that stream raw market data from 20+ global exchanges directly to the **Batam Control Plane**.
+Node ini bertugas sebagai "Mata" yang memantau anomali di berbagai exchange secara real-time.
 
-## Role & Responsibility
-1. **Sensory Mesh**: Fetch tickers and orderbook depth from Binance, Bybit, MEXC, Indodax, etc.
-2. **Polymarket Integration**: Specialized scanner for prediction markets to feed the Arbitrator.
-3. **Bandwidth Optimization**: Dynamically filters data based on Indodax-listed assets.
-4. **Data Integrity**: Streams are signed via HMAC-SHA256 for secure Inbound communication.
+## 📡 Komponen Utama
 
-## Core Scrapers
-- **Exchange_Scrapers/**: Contains 20+ specialized exchange modules.
-- **ki_scanner_base.py**: The foundation for all sensory logic.
-- **ki_global_scanner_mesh.py**: Orchestrates the entire scanner cluster.
+1.  **Exchange_Scrapers/ki_global_scanner_mesh.py**:
+    *   Mesin scraper utama yang mendukung Binance, Bybit, Kucoin, dll.
+    *   Mengirimkan signal anomali via UDP ke Batam.
+    *   **Heartbeat Thread**: Melapor ke Batam tiap 10 detik agar sistem tahu node ini masih hidup.
+2.  **Deployment/systemd**:
+    *   Konfigurasi untuk menjalankan scanner sebagai service background yang otomatis restart jika crash.
 
-> [!NOTE]
-> **Optimization Update**: To preserve RAM on the 1GB Scanner node, 10 "Tier-2" scrapers (Mexc, Phemex, Gate.io, Kucoin, etc.) have been disabled. Only Tier-1 scrapers (Binance, Bybit, OKX, Upbit) are active.
+## 🚀 Jalur Data
+*   **Target**: `SERVER_BATAM_IP:9998` (UDP)
+*   **Format**: JSON Packet (v1)
 
-## Deployment & systemd
-- `kibot-scanner-mesh.service`: Global orchestrator for all scrapers.
-- `kibot-scanner@.service`: Template for running individual exchange instances.
-
-## Protocol
-- **Outbound**: UDP Packets (JSON) to Batam Port 9999.
-- **Frequency**: Configurable, default 5-10s polling interval.
+## 🔐 Keamanan
+Akses ke node ini menggunakan SSH Key yang ada di folder `Auth/`. Pastikan public key sudah terdaftar di server target.

@@ -1,26 +1,25 @@
-# ⚡ SERVER_EXECUTOR (Reactive Hands) - Trinity v9.1
+# SERVER_EXECUTOR: The High-Frequency Hand
 
-## Overview
-This is a **Reactive Execution Service** designed for absolute control by the **Batam Control Plane**. It acts as the "Hands" of the system, performing high-speed trade execution across multiple venues.
+Node eksekusi pesanan dengan latency rendah (Singapore).
 
-## Core Principles
-1. **Reactive Only**: No local decision-making. It purely executes `ExecutionPlan` payloads from Batam.
-2. **Atomic Execution**: Uses `ClientOrderId` mapping to ensure trades are never double-executed.
-3. **Multi-Venue**: Native support for **Indodax** (Spot) and **Polymarket** (Prediction/CLOB).
-4. **Kotlin-Powered**: Built on the JVM for multi-threaded performance and safety.
+## ⚡ Arsitektur Eksekusi
 
-## Key Modules
-- **Kotlin_Engine/mac-engine**: Source code for the core reactive engine.
-- **Binaries/mac-engine-all.jar**: The production-ready fat JAR for deployment.
-- **Infrastructure/systemd**: Service files for low-latency execution.
+Sistem di sini menggunakan jembatan dua tahap:
+1.  **Python Listener (`kibot_signal_listener.py`)**:
+    *   Menerima instruksi JSON dari Batam.
+    *   Mengonversi instruksi menjadi **Binary V2 Protocol**.
+    *   Menambahkan Signature **HMAC-SHA256**.
+    *   Push via UDP Lokal ke Kotlin Engine.
+2.  **Kotlin MacEngine (`mac-engine-0.1.0-all.jar`)**:
+    *   Mesin eksekusi inti (High Performance).
+    *   Dengarkan port `10001` (UDP).
+    *   Melakukan eksekusi ke API Indodax/Exchange.
+    *   Memiliki Circuit Breaker internal untuk proteksi market.
 
-## Deployment & systemd
-- `kibot-executor-engine.service`: Manages Indodax spot execution.
-- `kibot-polymarket.service`: Specialized executor for Polymarket positions.
+## 📡 Koneksi
+*   **Inbound**: `Port 9999` (UDP from Batam)
+*   **Local Bridge**: `Port 10001` (UDP Python -> Kotlin)
+*   **Outbound Feedback**: `Port 9997` (UDP to Batam)
 
-> [!NOTE]
-> **Optimization Update**: Legacy services (`kibot-engine.service` and `kibot-manager.service`) have been removed to prevent port conflicts and optimize memory usage.
-
-## Command Polling
-- **Interval**: 1 second polling from `pending_commands` table.
-- **Heartbeat**: Nodes report health state every 15s to Batam.
+## 📊 Monitoring
+Kotlin engine menyediakan dashboard lokal di `http://localhost:8080` (tergantung config) untuk melihat status eksekusi secara visual.

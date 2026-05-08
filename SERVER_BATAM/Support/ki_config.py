@@ -45,9 +45,11 @@ PROJECT_ROOT = Path(os.getenv("KIBOT_RUNTIME_ROOT", BASE_PATH.parent))
 STATE_DIR = Path(os.getenv("KIBOT_STATE_DIR", PROJECT_ROOT / "state"))
 
 # --- CLUSTER NODES ---
-BATAM_HOST = os.getenv("KIBOT_BATAM_HOST", "168.110.201.228")
-EXECUTOR_HOST = os.getenv("KIBOT_EXECUTOR_HOST", "213.35.118.26")
-SCANNER_HOST = os.getenv("KIBOT_SCANNER_HOST", "152.69.218.198")
+# --- CLUSTER NODES (Mesh-First) ---
+BATAM_HOST = os.getenv("KIBOT_BATAM_HOST", "168.110.201.228") # Batam Node
+EXECUTOR_HOST = os.getenv("KIBOT_EXECUTOR_HOST", "100.122.1.109") # Tailscale Mesh (Singapore Executor)
+SCANNER_HOST = os.getenv("KIBOT_SCANNER_HOST", "152.69.218.198")  # Scanner Node
+SCANNER_MESH_HOST = os.getenv("KIBOT_SCANNER_MESH_HOST", SCANNER_HOST)
 
 # --- TIMEZONE ---
 WIB = pytz.timezone('Asia/Jakarta')

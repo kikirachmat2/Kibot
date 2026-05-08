@@ -16,17 +16,17 @@ except Exception:
 
 OLLAMA_GENERATE_URL = os.getenv(
     "KIBOT_GHOST_AGENT_OLLAMA_URL",
-    os.getenv("KIBOT_OLLAMA_GENERATE_URL", "http://127.0.0.1:11435/api/generate"),
+    os.getenv("KIBOT_OLLAMA_GENERATE_URL", "http://127.0.0.1:11435/api/chat"),
 ).strip()
 OLLAMA_FALLBACK_URL = os.getenv(
     "KIBOT_GHOST_AGENT_OLLAMA_FALLBACK_URL",
-    "http://127.0.0.1:11434/api/generate",
+    "http://127.0.0.1:11434/api/chat",
 ).strip()
 OLLAMA_AUTH_TOKEN = os.getenv("KIBOT_OLLAMA_GATEWAY_TOKEN", os.getenv("OLLAMA_API_KEY", "")).strip()
 
 class GhostAgent:
     def __init__(self, model=None):
-        self.model = model or os.getenv("KIBOT_GHOST_AGENT_MODEL", "qwen3:0.6b")
+        self.model = model or os.getenv("KIBOT_GHOST_AGENT_MODEL", "qwen2.5-coder:7b")
         self.knowledge_base = self._load_knowledge()
 
     def _load_knowledge(self):
@@ -67,18 +67,23 @@ class GhostAgent:
         async with httpx.AsyncClient() as client:
             for url in urls:
                 try:
+                    res = None
                     res = await client.post(
                         url,
-                        json={"model": self.model, "prompt": prompt, "stream": False},
-                        headers=headers if url != OLLAMA_FALLBACK_URL or OLLAMA_AUTH_TOKEN else {"Content-Type": "application/json"},
-                        timeout=120.0,
+                        json={"model": self.model, "messages": [{"role": "user", "content": prompt}], "stream": False},
+                        headers=headers if url == OLLAMA_GENERATE_URL else {"Content-Type": "application/json"},
+                        timeout=300.0,
                     )
                     data = res.json()
-                    if isinstance(data, dict) and data.get("response"):
+                    if isinstance(data, dict) and "message" in data:
+                        return data["message"]["content"]
+                    elif isinstance(data, dict) and "response" in data:
                         return data["response"]
                     last_error = f"empty_response_from_{url}"
                 except Exception as e:
                     last_error = f"{url}: {e}"
+                    if res is not None:
+                        last_error += f" (Status: {res.status_code})"
                     continue
         return f"Error: {last_error or 'unknown'}"
 

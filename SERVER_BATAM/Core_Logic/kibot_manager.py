@@ -309,13 +309,14 @@ class AsyncUDPProtocol(asyncio.DatagramProtocol):
             # 2. Update Registry
             _scanner_registry.update(host, msg)
 
-            # 3. Process Signal
+            # 3. Process Signal (Non-Blocking via Executor)
+            loop = asyncio.get_running_loop()
             if msg.get("type") == "MULTI_SCANNER_SIGNAL":
                 # Route through MSC engine for consensus/voting
-                _msc_engine.process_and_relay(msg, _process_signal)
+                loop.run_in_executor(None, _msc_engine.process_and_relay, msg, _process_signal)
             else:
                 # Direct processing for other types (Heartbeats, etc)
-                _process_signal(msg)
+                loop.run_in_executor(None, _process_signal, msg)
 
         except Exception as e:
             pass # Suppress noise for invalid packets
@@ -3117,7 +3118,7 @@ PAIR_MEMORY_MIN_TRADES_FOR_WINRATE = int(os.getenv("KIBOT_PAIR_MEMORY_MIN_TRADES
 AI_BATCH_REVIEW_INTERVAL_SEC = int(os.getenv("KIBOT_AI_BATCH_REVIEW_INTERVAL_SEC", str(6 * 60 * 60)))
 
 OLLAMA_API_KEY = _env_first("OLLAMA_API_KEY", "KIBOT_OLLAMA_GATEWAY_TOKEN")
-OLLAMA_MODEL = os.getenv("KIBOT_OLLAMA_MODEL", "qwen3:0.6b")
+OLLAMA_MODEL = os.getenv("KIBOT_OLLAMA_MODEL", "qwen3:1.7b")
 OLLAMA_API_URL = os.getenv("KIBOT_OLLAMA_BASE_URL", "http://127.0.0.1:11435/api/chat")
 
 GROQ_API_KEY = os.getenv("GROQ_API_KEY", "")
@@ -6186,9 +6187,13 @@ def _write_runtime_note(*, force: bool = False) -> None:
     if not force and (now_ts - _last_runtime_note_write_at) < max(5, RUNTIME_NOTE_MIN_INTERVAL_SEC):
         return
     _last_runtime_note_write_at = now_ts
+    gate_payload = _manager_gate_payload(include_runtime_state=False)
+    ai_provider = str(_ai_provider_last_status.get("provider") or "")
+    ai_summary = f"AI ONLINE | {ai_provider or 'standby'}" if _ai_healthy else "AI OFFLINE"
     note = {
         "updated_at": datetime.now(timezone.utc).isoformat(),
         "service": "kibot_manager",
+        "botId": "kibot",
         "operational_wib_date": _operational_wib_date(),
         "actual_wib_date": _wib_today_str(),
         "midnight_reset_pending": _midnight_reset_pending(),
@@ -6196,6 +6201,9 @@ def _write_runtime_note(*, force: bool = False) -> None:
         "host_bind": f"{UDP_BIND_HOST}:{UDP_BIND_PORT}",
         "KiBot_target": f"{KiBot_UDP_HOST}:{KiBot_UDP_PORT}" if KiBot_UDP_HOST else "",
         "system_state": str(_gate_state.get("entry_state") or "HEALTHY"),
+        "effectiveState": str(gate_payload.get("effectiveState") or ("RUNNING" if gate_payload.get("effectiveTradingAllowed") else "DEGRADED")),
+        "tradingAllowed": bool(gate_payload.get("tradingAllowed")),
+        "liveExecutionEnabled": bool(gate_payload.get("effectiveTradingAllowed")),
         "trading_mode": str(_gate_state.get("mode") or "CONSERVATIVE"),
         "api_fail_streak": _api_fail_streak,
         "control_plane_healthy": _control_plane_healthy,
@@ -6204,6 +6212,10 @@ def _write_runtime_note(*, force: bool = False) -> None:
         "external_cashflow_idr": _daily_guard_state.get("external_cashflow_idr"),
         "daily_hard_stop_reset_at": _gate_state.get("daily_hard_stop_reset_at") or _daily_guard_state.get("reset_at"),
         "ai_router_enabled": AI_ROUTER_ENABLED,
+        "aiProviderSummary": ai_summary,
+        "healthSummary": "Monitoring..." if gate_payload.get("effectiveTradingAllowed") else "Gate suspended",
+        "statusMessage": "Server monitor connected to live feed" if gate_payload.get("effectiveTradingAllowed") else "Trading paused",
+        "nodeStatus": "active" if gate_payload.get("effectiveTradingAllowed") else "degraded",
         "ai_provider_order": _iter_ai_provider_order(),
         "ai_provider_last_status": dict(_ai_provider_last_status),
         "provider_runtime_state": _provider_runtime_state,
@@ -8882,10 +8894,16 @@ def _process_active_positions(msg: Dict[str, Any]) -> None:
 
 
 def _signal_handler(signum: int, frame: Any) -> None:
-    """Handle shutdown signals gracefully."""
+    """Handle shutdown signals gracefully with diagnostic logging."""
     global _main_socket
+    import traceback
     sig_name = signal.Signals(signum).name if hasattr(signal, 'Signals') else str(signum)
+    
+    # Capture stack trace to identify if termination was internal (sys.exit) or external (systemd)
+    stack = "".join(traceback.format_stack(frame))
     print(f"\n[KIBOT][SHUTDOWN] Received {sig_name}, initiating graceful shutdown...", flush=True)
+    print(f"[KIBOT][SHUTDOWN][DEBUG] Call Stack:\n{stack}", flush=True)
+    
     _shutdown_event.set()
     # Close main socket to unblock recvfrom
     if _main_socket:
@@ -8899,7 +8917,7 @@ def _signal_handler(signum: int, frame: Any) -> None:
             _http_server.shutdown()
         except Exception:
             pass
-    _append_runtime_event("manager_shutdown", {"signal": sig_name})
+    _append_runtime_event("manager_shutdown", {"signal": sig_name, "traceback": stack[-500:]})
     _write_runtime_note(force=True)
 
 
@@ -9795,8 +9813,18 @@ def _maintenance_loop():
                     del _pair_cooldowns[p]
                     
             # 3. Cleanup Old Prices (Only keep active pairs)
-            if len(_price_history) > 500:
-                pass
+            # 3. Cleanup Old Prices (Memory Governor)
+            if len(_price_history) > 300:
+                with _state_lock:
+                    # Keep only the most recently updated symbols or limit their history
+                    for pair in list(_price_history.keys()):
+                        if len(_price_history[pair]) > 100:
+                            _price_history[pair] = _price_history[pair][-100:]
+                    
+                    if len(_price_history) > 500:
+                        # Too many pairs, prune those with oldest data? 
+                        # Simple prune for now: remove all if extreme bloat
+                        pass 
 
             # 4. Sovereign Intelligence: Sync Dynamic Config based on performance
             try:
@@ -9872,6 +9900,22 @@ def main() -> None:
     ai_review_thread.start()
     math_review_thread = threading.Thread(target=_math_review_loop, name="kibot-math-review-loop", daemon=True)
     math_review_thread.start()
+    learning_review_thread = threading.Thread(target=_strategy_learning_loop, name="kibot-learning-review-loop", daemon=True)
+    learning_review_thread.start()
+    daily_cycle_thread = threading.Thread(target=_daily_cycle_loop, name="kibot-daily-cycle-loop", daemon=True)
+    daily_cycle_thread.start()
+    simulation_thread = threading.Thread(target=_simulation_loop, name="kibot-simulation-loop", daemon=True)
+    simulation_thread.start()
+    state_server_thread = threading.Thread(target=_state_server_loop, name="kibot-state-server", daemon=True)
+    state_server_thread.start()
+    discovery_thread = threading.Thread(target=run_discovery_loop, name="kibot-discovery", daemon=True)
+    discovery_thread.start()
+    portfolio_thread = threading.Thread(target=run_portfolio_monitor_loop, name="kibot-portfolio", daemon=True)
+    portfolio_thread.start()
+    signal_mgr_thread = threading.Thread(target=run_local_signal_engine_manager, name="kibot-signal-mgr", daemon=True)
+    signal_mgr_thread.start()
+    universe_discovery_thread = threading.Thread(target=_universe_discovery_loop, name="kibot-universe-discovery-loop", daemon=True)
+    universe_discovery_thread.start()
     
     # === START RESOURCE GOVERNOR (THE BRAIN) ===
     governor_thread = threading.Thread(target=run_resource_governor, name="kibot-resource-governor", daemon=True)

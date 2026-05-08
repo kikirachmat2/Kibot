@@ -473,31 +473,25 @@ class KiBotWebSocketClient(
                 }
             )
 
-            val KiBotPingMs = snapshot.get("KiBotPingMs")?.asLong
+            val kiBotPingMs = snapshot.get("KiBotPingMs")?.asLong
                 ?: snapshot.get("KiBotLatencyMs")?.asLong
                 ?: 0L
 
-            val KiBotNodeStatus = snapshot.get("KiBotNodeStatus")?.asString ?: currentState.heartbeat.KiBot.status
-            val KiBotNodeStatus = snapshot.get("KiBotNodeStatus")?.asString ?: currentState.heartbeat.KiBot.status
+            val kiBotNodeStatus = snapshot.get("KiBotNodeStatus")?.asString ?: currentState.heartbeat.KiBot.status
             val kibotNodeStatus = snapshot.get("kibotNodeStatus")?.asString ?: currentState.heartbeat.kibot.status
 
-            val KiBotStatus = when (connectedBotId) {
-                "KiBot" -> connectedService.copy(status = KiBotNodeStatus)
-                else -> currentState.heartbeat.KiBot.copy(status = KiBotNodeStatus)
-            }
-            val KiBotStatus = when (connectedBotId) {
-                "KiBot" -> connectedService.copy(holdings = emptyList(), status = KiBotNodeStatus)
+            val kiBotStatus = when (connectedBotId) {
+                "KiBot" -> connectedService.copy(status = kiBotNodeStatus)
                 else -> currentState.heartbeat.KiBot.copy(
-                    ping = KiBotPingMs,
-                    status = KiBotNodeStatus,
-                    holdings = emptyList(),
-                    aiStatus = "active"
+                    ping = kiBotPingMs,
+                    status = kiBotNodeStatus,
+                    aiStatus = aiStatus
                 )
             }
             val kibotStatus = when (connectedBotId) {
                 "kibot" -> connectedService.copy(holdings = emptyList(), status = kibotNodeStatus)
                 else -> currentState.heartbeat.kibot.copy(
-                    ping = 0L,
+                    ping = currentState.heartbeat.kibot.ping,
                     status = kibotNodeStatus,
                     holdings = emptyList(),
                     aiStatus = aiStatus
@@ -614,8 +608,7 @@ class KiBotWebSocketClient(
                     topCandidate = topCandidate,
                     radarPairs = radarPairs,
                     heartbeat = HeartbeatData(
-                        KiBot = KiBotStatus,
-                        KiBot = KiBotStatus,
+                        KiBot = kiBotStatus,
                         kibot = kibotStatus
                     ),
                     returnSummary = ReturnSummary(
@@ -831,7 +824,7 @@ class KiBotWebSocketClient(
             ServerConfig.DIRECT_TUNNEL_PORT,
             token
         )
-        return listOf(normalized, proxyTunnelUrl, directTunnelUrl).distinct()
+        return listOf(proxyTunnelUrl, directTunnelUrl, normalized).distinct()
     }
 
     private fun advanceTargetIfNeeded() {

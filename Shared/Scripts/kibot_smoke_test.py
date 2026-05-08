@@ -3,7 +3,10 @@ import os
 import sys
 from pathlib import Path
 
-PROJECT_ROOT = Path(__file__).resolve().parent.parent
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+CORE_DIR = PROJECT_ROOT / "SERVER_BATAM" / "Core_Logic"
+INDICATORS_DIR = PROJECT_ROOT / "SERVER_BATAM" / "Indicators_Math"
+INTELLIGENCE_DIR = PROJECT_ROOT / "SERVER_BATAM" / "Intelligence"
 
 
 def project_path(*parts: str) -> Path:
@@ -26,7 +29,7 @@ def smoke_test():
         sys.exit(1)
 
     # 2. Check Core Directory Structure
-    required_dirs = ["state", "scripts", "logs"]
+    required_dirs = ["state", "logs"]
     for d in required_dirs:
         dir_path = project_path(d)
         if not dir_path.exists():
@@ -59,9 +62,14 @@ def smoke_test():
         print("ℹ️ Note: This warning is normal if you haven't sourced your .env file yet.")
 
     # 4. Check critical script availability
-    core_scripts = ["scripts/kibot_manager.py", "scripts/kibot_engine_v2.py"]
+    core_scripts = [
+        CORE_DIR / "kibot_manager.py",
+        CORE_DIR / "kibot_engine_v2.py",
+        INDICATORS_DIR / "ki_stats.py",
+        INTELLIGENCE_DIR / "kibot_learning_engine.py",
+    ]
     for s in core_scripts:
-        if not project_path(*s.split("/")).exists():
+        if not s.exists():
             print(f"❌ CRITICAL: Missing core script: {s}")
             sys.exit(1)
     

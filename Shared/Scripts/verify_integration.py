@@ -3,7 +3,7 @@ import os
 import socket
 from pathlib import Path
 
-ROOT = Path(os.getenv("KIBOT_RUNTIME_ROOT", Path(__file__).resolve().parent.parent))
+ROOT = Path(os.getenv("KIBOT_RUNTIME_ROOT", Path(__file__).resolve().parents[2]))
 API_BASE = os.getenv("KIBOT_API_BASE", "http://127.0.0.1:8787")
 ENV_PATHS = [
     Path(os.getenv("KIBOT_MANAGER_ENV_FILE", ROOT / ".env.server")),
@@ -39,7 +39,7 @@ def check_keys():
 
 def check_manager_threads():
     # Source-level validation: confirm expected watchdog loops are still present.
-    manager_path = ROOT / "scripts" / "kibot_manager.py"
+    manager_path = ROOT / "SERVER_BATAM" / "Core_Logic" / "kibot_manager.py"
     content = manager_path.read_text(encoding="utf-8")
     checks = {
         "News Scanner": "_news_scanner_loop",

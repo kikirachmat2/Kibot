@@ -22,7 +22,9 @@ class StatePollingClient(wsUrl: String) {
     private val baseUrl = wsUrl
         .replace("ws://", "http://")
         .replace("wss://", "https://")
-        .replaceAfterLast("/", "")  // Remove everything after last /
+        .substringBefore("?")
+        .substringBefore("/ws")
+        .trimEnd('/')
     
     private val client = OkHttpClient.Builder()
         .connectTimeout(5, TimeUnit.SECONDS)

@@ -174,8 +174,9 @@ fun SettingsScreen(
 
             // Default Notice
             Text(
-                "Default: 168.110.201.228:8787 (Batam proxy)\n" +
-                "USB fallback: 127.0.0.1:18787 / 18798 (adb reverse)\n" +
+                "Default: 168.110.201.228:8787 (legacy direct)\n" +
+                "USB fallback: 127.0.0.1:18787 / 18798 (adb reverse -> Batam command center)\n" +
+                "Batam control center: 127.0.0.1:18080 (via SSH tunnel)\n" +
                 "Alt: 100.103.77.10:9998 (internal; needs VPN/tunnel)\n" +
                 "Token hanya kalau server minta",
                 style = MaterialTheme.typography.labelSmall,

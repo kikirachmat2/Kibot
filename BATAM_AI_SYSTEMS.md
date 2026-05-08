@@ -10,15 +10,15 @@
 | Model | Ukuran | Peran | Speed |
 |---|---|---|---|
 | `qwen3:0.6b` | 522 MB | **Fast Path** — Screening & scoring sinyal cepat | ~200ms |
-| `qwen3:8b` | 5.2 GB | **Default Brain** — Reasoning & veto analysis | ~3-8 detik |
-| `deepseek-coder-v2:16b` | 8.9 GB | **Deep Brain** — Self-healing, code analysis, Aider | ~15-30 detik |
+| `qwen3:1.7b` | 1.4 GB | **Default Brain** — Reasoning & veto analysis | ~1-3 detik |
+| `qwen3:4b` | 2.5 GB | **Deep Brain** — Daily review, what-if, post-mortem | ~3-8 detik |
 | `nomic-embed-text` | 274 MB | **RAG Embeddings** — Mengubah teks → vektor untuk memory | ~50ms |
 
 **Config kunci Ollama:**
 ```
 KIBOT_OLLAMA_FAST_NUM_CTX=2048
-KIBOT_OLLAMA_DEFAULT_NUM_CTX=4096
-KIBOT_OLLAMA_DEEP_NUM_CTX=8192
+KIBOT_OLLAMA_DEFAULT_NUM_CTX=3072
+KIBOT_OLLAMA_DEEP_NUM_CTX=4096
 KIBOT_OLLAMA_THINK_LEVEL=true   ← Chain of Thought aktif
 keep_alive: Fast=45s, Default=90s, Deep=5m
 ```
@@ -76,8 +76,8 @@ keep_alive: Fast=45s, Default=90s, Deep=5m
 
 | Tool | Fungsi | Status |
 |---|---|---|
-| **Aider** (`aider-chat`) | AI coding agent — auto-fix service crashes | ✅ Running (PID 2566650) |
-| **Model:** `deepseek-coder-v2:16b` | Model yang digunakan Aider untuk analisis & perbaikan kode | ✅ Loaded 100% CPU |
+| **Aider** (`aider-chat`) | AI coding agent — auto-fix service crashes | ✅ Running |
+| **Model:** `qwen3:1.7b` | Model yang digunakan Aider untuk analisis & perbaikan kode | ✅ Loaded |
 | **GitHub CLI** (`gh`) | Deploy otomatis ke repo — sudah login di server | ✅ Login aktif |
 | **GitHub Copilot** | AI code completion untuk Aider | ✅ Login aktif |
 | **trinity_healer.py** | Trigger otomatis Aider saat service crash | ✅ Running |
@@ -119,13 +119,13 @@ Service crash → trinity_healer.py detects → spawn Aider
 
 | Service | Status | Fungsi |
 |---|---|---|
-| `kibot-manager.service` | ✅ Running | Brain utama (UDP Veto Daemon) |
+| `kibot-trinity.service` | ✅ Running | Brain utama / autonomous loop |
 | `kibot-ollama-gateway.service` | ✅ Running | Ollama API gateway |
 | `kibot-healer.service` | ✅ Running | Self-healing & Aider trigger |
 | `kibot-polymarket.service` | ✅ Running | Polymarket oracle |
 | `kibot-resource-governor.timer` | ✅ Running | Disk & Memory cleanup (6h cycle) |
-| `telegram_commander.py` | ✅ Running | Telegram command interface |
-| `dashboard.py` | ✅ Running | Web dashboard HTTP |
+| `kibot-command-center.service` | ✅ Running | Web command dashboard |
+| `ki-telegram-monitor.service` | ✅ Running | Telegram monitor & alerts |
 
 ---
 
@@ -133,9 +133,9 @@ Service crash → trinity_healer.py detects → spawn Aider
 
 | Task Tier | Recommended Model | Current | Benefit |
 |---|---|---|---|
-| **Deep Reasoning** | `deepseek-r1:8b` | `qwen2.5-coder:7b` | Chain-of-Thought untuk keputusan Arbitrator yang lebih logis. |
-| **Default Logic** | `qwen3:7b` | `qwen2.5:7b` | Peningkatan akurasi pada market regime detection. |
-| **Fast Veto** | `llama3.2:3b` | `qwen2.5:3b` | Latensi lebih rendah & pemahaman instruksi lebih tajam di ARM. |
+| **Deep Reasoning** | `qwen3:4b` | `qwen3:0.6b` | Lebih kuat untuk daily review, what-if, dan post-mortem. |
+| **Default Logic** | `qwen3:1.7b` | `qwen3:0.6b` | Balance terbaik untuk keputusan inti trading. |
+| **Fast Veto** | `qwen3:0.6b` | `qwen3:0.6b` | Latensi paling rendah untuk screening cepat. |
 
 ---
 
@@ -149,6 +149,6 @@ Service crash → trinity_healer.py detects → spawn Aider
 
 ---
 
-> **Total AI Providers:** 15 Online + 4 Local Ollama Models + 1 Embedding Model
+> **Total AI Providers:** 15 Online + 3 Local Ollama Models + 1 Embedding Model
 > **Infrastructure Status:** 100% Sovereign (No Cloud Dependency)
 > **Self-Healing:** Aider + deepseek-coder-v2:16b + GitHub Copilot (fully autonomous)

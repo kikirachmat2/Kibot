@@ -118,6 +118,8 @@ try:
 except Exception:
     _coordinator_provider_status_fn = None
     _coordinator_query_ai_fn = None
+    _coordinator_query_ai_consensus_fn = None
+    _coordinator_query_ai_debate_fn = None
 
 
 class BrainManager:
@@ -1717,7 +1719,7 @@ class BrainManager:
         configured = [name for name, detail in provider_status.items() if bool(detail.get("configured"))]
         llm_providers = {
             name: detail for name, detail in provider_status.items()
-            if name in {"dify", "ollama", "groq", "gemini", "openrouter", "cohere", "jina", "nvidia"}
+            if name in {"ollama", "groq", "gemini", "openrouter", "cohere", "jina", "nvidia"}
         }
         search_providers = {
             name: detail for name, detail in provider_status.items()

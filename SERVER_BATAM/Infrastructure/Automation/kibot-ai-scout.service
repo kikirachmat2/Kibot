@@ -1,0 +1,18 @@
+[Unit]
+Description=KiBot AI World Scout
+After=network.target
+
+[Service]
+Environment=PYTHONPATH=/home/ubuntu/KiBot/SERVER_BATAM
+Type=simple
+User=ubuntu
+WorkingDirectory=/home/ubuntu/KiBot
+EnvironmentFile=/home/ubuntu/KiBot/.env
+ExecStart=/usr/bin/python3 /home/ubuntu/KiBot/SERVER_BATAM/AI_Orchestration/kibot_ai_scout.py
+Restart=always
+RestartSec=30
+StandardOutput=append:/home/ubuntu/KiBot/logs/scout.log
+StandardError=append:/home/ubuntu/KiBot/logs/scout.log
+
+[Install]
+WantedBy=multi-user.target
