@@ -18,9 +18,9 @@ dan di-serve via /api/state.whatIfSimulation
 
 import json, time, math, os
 from datetime import datetime
-from kibot_learning_engine import get_engine, ROUND_TRIP_MAKER, ROUND_TRIP_TAKER
+from SERVER_BATAM.Intelligence.kibot_learning_engine import get_engine, ROUND_TRIP_MAKER, ROUND_TRIP_TAKER
 
-WHATIF_PATH = "state/whatif_results.json"
+WHATIF_PATH =  "Data/State/whatif_results.json"
 
 def atomic_write_json(path: str, payload: dict) -> None:
     tmp = f"{path}.tmp.{os.getpid()}"

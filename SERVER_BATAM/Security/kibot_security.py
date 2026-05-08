@@ -15,10 +15,11 @@ STATE_DIR = ROOT / "state"
 SECURITY_LOG = STATE_DIR / "security_log.jsonl"
 LEGACY_SECURITY_LOG = STATE_DIR / "security_ledger.jsonl"
 
-# Import Vault
-sys.path.append(str(ROOT / "Support"))
+# Root Directory Setup
+ROOT = Path(__file__).resolve().parent.parent
+
 try:
-    from ki_vault import get_vault
+    from SERVER_BATAM.Support.ki_vault import get_vault
 except ImportError as e:
     print(f"Failed to import vault: {e}", file=sys.stderr)
     get_vault = lambda: None

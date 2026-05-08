@@ -1,10 +1,24 @@
 import json
 import time
 import requests
+import sys
 from pathlib import Path
 from datetime import datetime, timezone, timedelta
 from typing import Any, Optional
-from ki_config import WIB, TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID
+
+# Pathing resolved via PYTHONPATH=.
+root = Path(__file__).resolve().parent.parent.parent
+
+try:
+    from SERVER_BATAM.Support.ki_config import WIB, TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID
+except ImportError:
+    # Fallback to local import if run as a script in the Support directory
+    try:
+        from ki_config import WIB, TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID
+    except ImportError:
+        WIB = None
+        TELEGRAM_BOT_TOKEN = None
+        TELEGRAM_CHAT_ID = None
 
 def get_wib_now() -> datetime:
     return datetime.now(timezone.utc) + timedelta(hours=7)

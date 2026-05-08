@@ -5,8 +5,22 @@ import pytz
 def _load_dotenv_early():
     """Load .env or .env.kiv files early before constants are assigned."""
     import os
-    from ki_vault import get_vault
-    vault = get_vault()
+    import sys
+    from pathlib import Path
+    
+    # Pathing resolved via PYTHONPATH=.
+    root = Path(__file__).resolve().parent.parent.parent
+        
+    try:
+        from SERVER_BATAM.Support.ki_vault import get_vault
+    except ImportError:
+        # Fallback to local import if run as a script in the Support directory
+        try:
+            from ki_vault import get_vault
+        except ImportError:
+            get_vault = lambda: None
+            
+    vault = get_vault() if callable(get_vault) else None
     
     candidates = [
         Path(".env.kiv"), Path(".env"), 

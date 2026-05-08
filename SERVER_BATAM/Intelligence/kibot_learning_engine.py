@@ -11,6 +11,7 @@ from dataclasses import asdict, dataclass, field
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Dict, Optional, Tuple, List
+import sys
 import urllib.request
 
 # --- CONFIGURATION ---
@@ -163,7 +164,7 @@ def _get_signing_key() -> bytes:
     # Use the same root of trust as kibot_security
     secret = os.getenv("KIBOT_SECRET", "SOVEREIGN_DEFAULT_SECRET").encode()
     try:
-        from ki_vault import get_vault
+        from SERVER_BATAM.Support.ki_vault import get_vault
         vault = get_vault()
         if vault and hasattr(vault, "_key") and vault._key:
             return vault._key
@@ -525,11 +526,7 @@ if __name__ == "__main__":
     
     # [VAULT] Load Sovereign Secrets
     try:
-        import sys
-        import os
-        # Ensure Support is in path
-        sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
-        from Support.ki_vault import load_sovereign_env
+        from SERVER_BATAM.Support.ki_vault import load_sovereign_env
         load_sovereign_env()
     except Exception as ve:
         print(f"[BOOT][VAULT][WARN] Could not load vaulted env: {ve}")

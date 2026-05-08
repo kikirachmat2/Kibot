@@ -1,28 +1,20 @@
-# SERVER_BATAM: The Central Brain
+# 🎖️ KiBot High Command (Batam)
 
-Folder ini berisi logika pusat komando (C2) untuk seluruh jaringan KiBot.
+The master node of the Trinity Mesh. Responsible for signal validation, AI veto, portfolio management, and Telegram orchestration.
 
-## 🧠 Komponen Utama
+## 📁 Directory Structure
+- **[Core/](file:///home/ubuntu/KiBot/SERVER_BATAM/Core/)**: Decision engine and sovereign arbitrator.
+- **[Intelligence/](file:///home/ubuntu/KiBot/SERVER_BATAM/Intelligence/)**: AI Orchestration, Models, and RAG.
+- **[Infrastructure/](file:///home/ubuntu/KiBot/SERVER_BATAM/Infrastructure/)**: System-wide automation and SSH control.
+- **[Data/](file:///home/ubuntu/KiBot/SERVER_BATAM/Data/)**: Live state, logs, and testing sandbox.
 
-1.  **kibot_brain_gateway.py**: 
-    *   Menerima signal dari Scanner.
-    *   Melakukan kalkulasi Kelly Criterion dan Veto trading.
-    *   Dengarkan feedback dari Executor.
-2.  **sovereign_arbitrator.py**:
-    *   Pengawas risiko (Risk Manager).
-    *   Membaca `sovereign_state.json` untuk mengecek apakah batas rugi harian tercapai.
-3.  **telegram_commander.py**:
-    *   Interface bot Telegram untuk `/status`, `/run_all`, dan notifikasi trade real-time.
-4.  **kibot_node_agent.py**:
-    *   Agen lokal yang memungkinkan Batam mengontrol service systemd di node lain via API.
+## 🔑 SSH Access Info
+- **Public IP**: `168.110.201.228`
+- **Tailscale IP**: `100.122.1.109` (Primary Mesh IP)
+- **User**: `ubuntu`
+- **SSH Key**: `SERVER_BATAM/Infrastructure/SSH/ssh-key-batam-active.pem`
 
-## 🛠️ Setup & Config
-Pastikan file `.env` memiliki:
-*   `TELEGRAM_BOT_TOKEN`
-*   `TELEGRAM_CHAT_ID`
-*   `KIBOT_MANAGER_ENV_FILE`
-
-## 📡 Port Map
-*   `9998`: Inbound UDP (From Scanner)
-*   `9997`: Inbound UDP (From Executor Feedback)
-*   `9991`: Outbound HTTP (To Node Agents)
+### Direct SSH
+```bash
+ssh -i SERVER_BATAM/Infrastructure/SSH/ssh-key-batam-active.pem ubuntu@168.110.201.228
+```

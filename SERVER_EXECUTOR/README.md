@@ -1,25 +1,27 @@
-# SERVER_EXECUTOR: The High-Frequency Hand
+# 🇸🇬 KiBot Executor Node (Singapore)
 
-Node eksekusi pesanan dengan latency rendah (Singapore).
+This node is responsible for high-frequency order execution and managing the interface with the Indodax/Binance exchange APIs.
 
-## ⚡ Arsitektur Eksekusi
+## 📁 Directory Structure
+- **[Core/](file:///home/ubuntu/KiBot/SERVER_EXECUTOR/Core/)**: The high-performance Kotlin-based Execution Engine (`mac-engine`).
+- **[Infrastructure/](file:///home/ubuntu/KiBot/SERVER_EXECUTOR/Infrastructure/)**: Systemd units and automation scripts.
+- **[Legacy/](file:///home/ubuntu/KiBot/SERVER_EXECUTOR/Legacy/)**: Older signal processing scripts.
+- **[Data/](file:///home/ubuntu/KiBot/SERVER_EXECUTOR/Data/)**: Local trade logs and execution state.
 
-Sistem di sini menggunakan jembatan dua tahap:
-1.  **Python Listener (`kibot_signal_listener.py`)**:
-    *   Menerima instruksi JSON dari Batam.
-    *   Mengonversi instruksi menjadi **Binary V2 Protocol**.
-    *   Menambahkan Signature **HMAC-SHA256**.
-    *   Push via UDP Lokal ke Kotlin Engine.
-2.  **Kotlin MacEngine (`mac-engine-0.1.0-all.jar`)**:
-    *   Mesin eksekusi inti (High Performance).
-    *   Dengarkan port `10001` (UDP).
-    *   Melakukan eksekusi ke API Indodax/Exchange.
-    *   Memiliki Circuit Breaker internal untuk proteksi market.
+## 🔑 SSH Access Info
+- **Public IP**: `213.35.118.26`
+- **Tailscale IP**: `100.122.1.109`
+- **User**: `ubuntu`
+- **SSH Key**: `SERVER_BATAM/Infrastructure/SSH/ssh-key-executor.pem`
 
-## 📡 Koneksi
-*   **Inbound**: `Port 9999` (UDP from Batam)
-*   **Local Bridge**: `Port 10001` (UDP Python -> Kotlin)
-*   **Outbound Feedback**: `Port 9997` (UDP to Batam)
+### Access via Tailscale (Recommended)
+```bash
+ssh -i SERVER_BATAM/Infrastructure/SSH/ssh-key-executor.pem ubuntu@100.122.1.109
+```
 
-## 📊 Monitoring
-Kotlin engine menyediakan dashboard lokal di `http://localhost:8080` (tergantung config) untuk melihat status eksekusi secara visual.
+### Access via Jump Host (Batam)
+```bash
+ssh -i SERVER_BATAM/Infrastructure/SSH/ssh-key-executor.pem \
+    -o ProxyCommand="ssh -i SERVER_BATAM/Infrastructure/SSH/ssh-key-batam-active.pem -W %h:%p ubuntu@168.110.201.228" \
+    ubuntu@100.122.1.109
+```

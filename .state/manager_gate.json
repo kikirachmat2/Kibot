@@ -1,9 +1,0 @@
-{
-  "mode": "CONSERVATIVE",
-  "entry_state": "HEALTHY",
-  "reason": "math_review_wait_for_sample",
-  "updated_at": "2026-05-07T15:11:02.468656+00:00",
-  "daily_hard_stop": false,
-  "daily_hard_stop_reset_at": "",
-  "daily_hard_stop_reason": ""
-}

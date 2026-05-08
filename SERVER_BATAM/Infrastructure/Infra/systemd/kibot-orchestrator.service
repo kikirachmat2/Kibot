@@ -11,7 +11,8 @@ EnvironmentFile=-/home/ubuntu/KiBot/.env.server
 EnvironmentFile=-/home/ubuntu/KiBot/.env.kibot
 EnvironmentFile=-/home/ubuntu/KiBot/.env.kibot_manager
 Environment=PYTHONUNBUFFERED=1
-ExecStart=/usr/bin/python3 /home/ubuntu/KiBot/SERVER_BATAM/Core_Logic/kibot_orchestrator.py
+Environment=PYTHONPATH=.
+ExecStart=/usr/bin/python3 SERVER_BATAM/Core_Logic/kibot_orchestrator.py
 Restart=on-failure
 RestartSec=30
 MemoryMax=30M

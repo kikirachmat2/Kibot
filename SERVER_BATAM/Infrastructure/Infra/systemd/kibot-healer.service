@@ -8,10 +8,10 @@ Type=simple
 User=ubuntu
 WorkingDirectory=/home/ubuntu/KiBot
 Environment=PYTHONUNBUFFERED=1
-Environment=PYTHONPATH=/home/ubuntu/KiBot/SERVER_BATAM
+Environment=PYTHONPATH=.
 Environment=KIBOT_OLLAMA_API_BASE=http://127.0.0.1:11434
 Environment=OLLAMA_API_BASE=http://127.0.0.1:11434
-ExecStart=/usr/bin/python3 /home/ubuntu/KiBot/SERVER_BATAM/Infrastructure/Automation/trinity_healer.py
+ExecStart=/usr/bin/python3 SERVER_BATAM/Infrastructure/Automation/trinity_healer.py
 Restart=always
 RestartSec=30
 StandardOutput=journal

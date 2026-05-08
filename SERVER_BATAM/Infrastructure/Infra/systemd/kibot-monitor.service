@@ -11,6 +11,7 @@ EnvironmentFile=-/home/ubuntu/KiBot/.env.server
 EnvironmentFile=-/home/ubuntu/KiBot/.env.kibot
 EnvironmentFile=-/home/ubuntu/KiBot/.env.kibot_manager
 Environment=PYTHONUNBUFFERED=1
+Environment=PYTHONPATH=.
 ExecStart=/usr/bin/python3 SERVER_BATAM/Infrastructure/Automation/trinity_monitor.py
 Restart=always
 RestartSec=30

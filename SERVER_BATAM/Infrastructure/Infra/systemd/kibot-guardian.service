@@ -13,7 +13,8 @@ EnvironmentFile=-/home/ubuntu/KiBot/.env.server
 EnvironmentFile=-/home/ubuntu/KiBot/.env.kibot
 EnvironmentFile=-/home/ubuntu/KiBot/.env.kibot_manager
 Environment=PYTHONUNBUFFERED=1
-ExecStart=/usr/bin/python3 /home/ubuntu/KiBot/SERVER_BATAM/Security/kibot_guardian.py
+Environment=PYTHONPATH=.
+ExecStart=/usr/bin/python3 SERVER_BATAM/Security/kibot_guardian.py
 Restart=always
 RestartSec=30
 MemoryMax=128M

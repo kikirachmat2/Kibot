@@ -1,19 +1,26 @@
-# SERVER_SCANNER: The Sensor Node
+# 🇯🇵 KiBot Scanner Node (Tokyo)
 
-Node ini bertugas sebagai "Mata" yang memantau anomali di berbagai exchange secara real-time.
+This node is responsible for low-latency market scanning across multiple global exchanges (Binance, Bybit, KuCoin, MEXC, Polymarket).
 
-## 📡 Komponen Utama
+## 📁 Directory Structure
+- **[Core/](file:///home/ubuntu/KiBot/SERVER_SCANNER/Core/)**: Multi-threaded exchange scrapers and global mesh broadcaster.
+- **[Security/](file:///home/ubuntu/KiBot/SERVER_SCANNER/Security/)**: SSH keys and authentication certificates.
+- **[Infrastructure/](file:///home/ubuntu/KiBot/SERVER_SCANNER/Infrastructure/)**: Systemd services for the scanner mesh.
 
-1.  **Exchange_Scrapers/ki_global_scanner_mesh.py**:
-    *   Mesin scraper utama yang mendukung Binance, Bybit, Kucoin, dll.
-    *   Mengirimkan signal anomali via UDP ke Batam.
-    *   **Heartbeat Thread**: Melapor ke Batam tiap 10 detik agar sistem tahu node ini masih hidup.
-2.  **Deployment/systemd**:
-    *   Konfigurasi untuk menjalankan scanner sebagai service background yang otomatis restart jika crash.
+## 🔑 SSH Access Info
+- **Public IP**: `152.69.218.198`
+- **Tailscale IP**: `100.105.139.21`
+- **User**: `ubuntu`
+- **SSH Key**: `SERVER_BATAM/Infrastructure/SSH/ssh-key-scanner.pem`
 
-## 🚀 Jalur Data
-*   **Target**: `SERVER_BATAM_IP:9998` (UDP)
-*   **Format**: JSON Packet (v1)
+### Access via Tailscale (Recommended)
+```bash
+ssh -i SERVER_BATAM/Infrastructure/SSH/ssh-key-scanner.pem ubuntu@100.105.139.21
+```
 
-## 🔐 Keamanan
-Akses ke node ini menggunakan SSH Key yang ada di folder `Auth/`. Pastikan public key sudah terdaftar di server target.
+### Access via Jump Host (Batam)
+```bash
+ssh -i SERVER_BATAM/Infrastructure/SSH/ssh-key-scanner.pem \
+    -o ProxyCommand="ssh -i SERVER_BATAM/Infrastructure/SSH/ssh-key-batam-active.pem -W %h:%p ubuntu@168.110.201.228" \
+    ubuntu@100.105.139.21
+```
