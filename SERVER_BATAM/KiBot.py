@@ -17,8 +17,10 @@ import threading
 import subprocess
 from datetime import datetime
 from pathlib import Path
-from telegram import Update, ReplyKeyboardMarkup
-from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
+from telegram import Update, ReplyKeyboardMarkup, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes, CallbackQueryHandler
+import uvicorn
+from fastapi import FastAPI
 
 # --- PATH CONFIGURATION ---
 ROOT_DIR = Path(__file__).resolve().parent.parent
@@ -29,6 +31,7 @@ from SERVER_BATAM.Support.ki_config import TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID
 from SERVER_BATAM.Core.ki_brain import BrainManager
 from SERVER_BATAM.Intelligence.kibot_whatif_engine import simulate_pair
 from SERVER_BATAM.Support import dynamic_config
+from SERVER_BATAM.Intelligence.kibot_learning_engine import LearningEngine
 
 # --- LOGGING ---
 logging.basicConfig(
@@ -72,6 +75,75 @@ class KiBotMaster:
         
         # State
         self.last_state = {}
+        self.mesh_health = {"SCANNER": "UNKNOWN", "EXECUTOR": "UNKNOWN"}
+
+        # Pillar 3: Commander API Setup
+        self.api_app = FastAPI()
+        self.setup_api_routes()
+
+    # --- PILLAR 1: FULL AUTONOMY (HEALTH MONITORING) ---
+    def mesh_health_monitor_loop(self):
+        logger.info("🟢 Pulse Check Mesh Active (60s loop)")
+        while True:
+            for name, cfg in NODES.items():
+                try:
+                    # Quick ping test
+                    res = subprocess.run(["ping", "-c", "1", "-W", "2", cfg['ip']], capture_output=True)
+                    new_status = "ONLINE" if res.returncode == 0 else "OFFLINE"
+                    
+                    if self.mesh_health[name] != new_status:
+                        self.mesh_health[name] = new_status
+                        icon = "🟢" if new_status == "ONLINE" else "🔴"
+                        asyncio.run_coroutine_threadsafe(
+                            self.notify_telegram(f"{icon} **MESH ALERT**: {name} is now {new_status}"), 
+                            self.loop
+                        )
+                except: pass
+            time.sleep(60)
+
+    # --- PILLAR 2: SOVEREIGN INTELLIGENCE (MIDNIGHT ORACLE) ---
+    def midnight_oracle_loop(self):
+        logger.info("🌙 Midnight Oracle Loop Waiting for 00:00...")
+        while True:
+            now = datetime.now()
+            if now.hour == 0 and now.minute == 0:
+                logger.info("📜 Executing Midnight Oracle Self-Learning...")
+                try:
+                    asyncio.run_coroutine_threadsafe(
+                        self.notify_telegram("📜 **MIDNIGHT ORACLE**: Analyzing today's performance..."), 
+                        self.loop
+                    )
+                    engine = LearningEngine()
+                    result = engine.audit_and_optimize()
+                    
+                    msg = f"🧠 **ORACLE UPDATE**\n{result.get('summary', 'Optimized.')}"
+                    asyncio.run_coroutine_threadsafe(self.notify_telegram(msg), self.loop)
+                except Exception as e:
+                    logger.error(f"Oracle Error: {e}")
+                time.sleep(70) # Skip the current minute
+            time.sleep(30)
+
+    # --- PILLAR 3: COMMANDER UI (API FOR ANDROID) ---
+    def setup_api_routes(self):
+        @self.api_app.get("/")
+        async def root():
+            return {"status": "ONLINE", "node": "BATAM_MASTER", "mesh": self.mesh_health}
+
+        @self.api_app.get("/state")
+        async def get_state():
+            return self.get_state_data()
+
+        @self.api_app.get("/pnl")
+        async def get_pnl():
+            state = self.get_state_data()
+            return {
+                "daily_pnl_pct": state.get("daily_pnl_pct", 0.0),
+                "daily_pnl_idr": state.get("daily_pnl_idr", 0)
+            }
+
+    def run_api_server(self):
+        logger.info("📱 Commander API Serving on http://0.0.0.0:8080")
+        uvicorn.run(self.api_app, host="0.0.0.0", port=8080, log_level="error")
 
     # --- NODE MANAGEMENT ---
     async def get_node_status(self, name, cfg):
@@ -330,6 +402,9 @@ class KiBotMaster:
         # Start Threads
         threading.Thread(target=self.signal_receiver_loop, daemon=True).start()
         threading.Thread(target=self.feedback_listener_loop, daemon=True).start()
+        threading.Thread(target=self.mesh_health_monitor_loop, daemon=True).start()
+        threading.Thread(target=self.midnight_oracle_loop, daemon=True).start()
+        threading.Thread(target=self.run_api_server, daemon=True).start()
         
         # Start Telegram
         app = ApplicationBuilder().token(TELEGRAM_BOT_TOKEN).build()
@@ -341,6 +416,19 @@ class KiBotMaster:
         app.add_handler(CommandHandler("run_all", self.run_all_cmd))
         app.add_handler(CommandHandler("stop_all", self.stop_all_cmd))
         app.add_handler(CommandHandler("emergency_stop", self.emergency_stop_cmd))
+        
+        # Callback Handlers for Remote Control
+        async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+            query = update.callback_query
+            await query.answer()
+            if query.data.startswith("restart_"):
+                node = query.data.split("_")[1].upper()
+                await query.edit_message_text(text=f"🔄 Restarting {node}...")
+                # Logic to send SSH restart command via send_node_command
+                await self.send_node_command(node, "restart", "kibot-mesh")
+                await context.bot.send_message(chat_id=TELEGRAM_CHAT_ID, text=f"✅ {node} Restart Signal Sent.")
+
+        app.add_handler(CallbackQueryHandler(callback_handler))
         
         logger.info("🎖️ KiBot High Command is now ONLINE.")
         app.run_polling()
