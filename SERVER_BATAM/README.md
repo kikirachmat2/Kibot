@@ -1,30 +1,33 @@
-# 🧠 KiBot: Strategic Command (Batam Node)
+# Batam High Command Node (Master)
 
-> **Role**: Master Brain & Risk Orchestrator
-> **Motto**: "Tekan Kerugian, Maksimalkan Probabilitas Keuntungan"
+This server acts as the sovereign brain of the KiBot Trinity Mesh.
 
-## 📂 Structured Hierarchy
+## 🚀 Quick Start
+```bash
+# 1. Register SSH Keys
+ssh-add Infrastructure/SSH/ssh-key-batam-active.pem
 
-### 🏗️ [/Core](file:///home/ubuntu/KiBot/SERVER_BATAM/Core/)
-The heart of the command plane.
-- `kibot_manager.py`: Central signal orchestrator.
-- `ki_brain.py`: Strategic decision engine.
-- `trinity_governor.py`: Cross-node health & synchronization.
+# 2. Run KiBot Master
+export PYTHONPATH=$PYTHONPATH:$(pwd)
+python3 KiBot.py
+```
 
-### 🛡️ [/Strategic](file:///home/ubuntu/KiBot/SERVER_BATAM/Strategic/)
-Risk management and AI validation layers.
-- `kibot_guardian.py`: Real-time risk gate (Max Drawdown enforcement).
-- `sovereign_arbitrator.py`: Final validation before execution.
+## 🛠️ Infrastructure Services
+- **Ollama:** `127.0.0.1:11434` (Logic Engine)
+- **FastAPI Commander:** `0.0.0.0:8080` (Android Bridge)
+- **Signal Ports:** `9998` (Receiver), `9997` (Feedback)
 
-### 🖥️ [/Interface](file:///home/ubuntu/KiBot/SERVER_BATAM/Interface/)
-User interaction and visualization.
-- `telegram_commander.py`: Mobile control plane.
-- `dashboard.py`: Real-time mesh monitoring.
+## 📋 Monitoring Logs
+- **Master Log:** `tail -f Logs/kibot_master.log`
+- **Vault Debug:** `tail -f Logs/vault.log`
 
-### 🔧 [/Support](file:///home/ubuntu/KiBot/SERVER_BATAM/Support/)
-Utilities and configuration.
-- `ki_config.py`: Centralized philosophy & mesh constants.
-- `ki_vault.py`: Cryptographic secret management.
+## 🤖 Self-Healing (The Mechanic)
+When a mesh node fails, the Master will:
+1. Pull remote logs via `get_remote_logs()`.
+2. Analyze via `qwen2.5-coder:7b`.
+3. Apply fix via `aider`.
+4. Restart remote service.
 
 ---
-*Operational Protocol: "Sedikit Demi Sedikit, Lama-Lama Jadi Bukit"*
+*Environment:* **PRODUCTION**
+*Sovereignty Level:* **MAXIMUM**

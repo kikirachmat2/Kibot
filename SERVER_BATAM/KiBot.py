@@ -1,22 +1,52 @@
-#!/usr/bin/env python3
-"""
-🎖️ KiBot Sovereign High Command (Unified Master Controller)
-Batam Master Node - Alpha Entry Point
-"""
-
+# --- BOOTSTRAP: Absolute Pathing & Log Rotation ---
 import os
 import sys
-import json
-import time
-import psutil
-import socket
+from pathlib import Path
 import logging
+from logging.handlers import RotatingFileHandler
+
+# Force absolute pathing to project root
+ROOT_DIR = Path(__file__).resolve().parent.parent
+if str(ROOT_DIR) not in sys.path:
+    sys.path.insert(0, str(ROOT_DIR))
+
+# Load Sovereign Environment (API Keys, etc.)
+try:
+    from SERVER_BATAM.Support.ki_vault import load_sovereign_env
+    load_sovereign_env()
+except Exception as e:
+    print(f"⚠️ Vault Load Warning: {e}")
+
+# Setup Rotating Logs (Max 10MB per file, keep 5 backups)
+log_file = ROOT_DIR / "SERVER_BATAM" / "Logs" / "kibot_master.log"
+log_file.parent.mkdir(parents=True, exist_ok=True)
+handler = RotatingFileHandler(log_file, maxBytes=10*1024*1024, backupCount=5)
+formatter = logging.Formatter('[%(asctime)s] 🎖️ KIBOT - %(levelname)s - %(message)s')
+handler.setFormatter(formatter)
+
+logger = logging.getLogger("KiBot")
+logger.setLevel(logging.INFO)
+logger.addHandler(handler)
+logger.addHandler(logging.StreamHandler()) # Also print to console
+
+# --- BOOTSTRAP: Dynamic Imports to prevent Startup Death ---
+import time
+import json
 import asyncio
-import httpx
 import threading
 import subprocess
 from datetime import datetime
-from pathlib import Path
+from typing import Dict, List, Optional
+
+try:
+    from SERVER_BATAM.Core.ki_brain import BrainManager
+except Exception as e:
+    print(f"⚠️ Warning: Could not load BrainManager during bootstrap: {e}")
+    BrainManager = None
+
+import psutil
+import socket
+import httpx
 from telegram import Update, ReplyKeyboardMarkup, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes, CallbackQueryHandler
 import uvicorn
@@ -28,19 +58,14 @@ ROOT_DIR = Path(__file__).resolve().parent.parent
 sys.path.append(str(ROOT_DIR))
 
 # --- KIBOT CORE IMPORTS ---
-from SERVER_BATAM.Support.ki_config import TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID
-from SERVER_BATAM.Core.ki_brain import BrainManager
+from SERVER_BATAM.Support.ki_config import TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID, OLLAMA_URL
 from SERVER_BATAM.Intelligence.kibot_whatif_engine import simulate_pair
 from SERVER_BATAM.Support import dynamic_config
 from SERVER_BATAM.Intelligence.kibot_learning_engine import LearningEngine
+from SERVER_BATAM.Intelligence.kibot_ai_search import search_web
 
-# --- LOGGING ---
-logging.basicConfig(
-    level=logging.INFO,
-    format='[%(asctime)s] 🎖️ KIBOT - %(levelname)s - %(message)s',
-    handlers=[logging.StreamHandler()]
-)
-logger = logging.getLogger("KiBotMaster")
+# Use the global logger configured in the bootstrap section
+logger = logging.getLogger("KiBot")
 
 # --- CONSTANTS ---
 LOCAL_LISTEN_PORT = 9998
@@ -65,7 +90,10 @@ NODES = {
 
 class KiBotMaster:
     def __init__(self):
-        self.brain = BrainManager()
+        # AI Core Initialization
+        self.brain = BrainManager() if BrainManager else None
+        if not self.brain:
+            logger.error("⚠️ CRITICAL: BrainManager is NOT available. KiBot running in DEGRADED MODE (Healer Active).")
         self.running = False
         self.start_time = datetime.now()
         
@@ -81,6 +109,14 @@ class KiBotMaster:
         # Pillar 3: Commander API Setup
         self.api_app = FastAPI()
         self.setup_api_routes()
+        
+        # Market Sentiment State
+        self.market_mood = "NEUTRAL"
+        self.last_mood_update = None
+        
+        # Start Background Pulses
+        threading.Thread(target=self.mesh_health_monitor_loop, daemon=True).start()
+        threading.Thread(target=self.global_market_pulse_loop, daemon=True).start()
 
     # --- PILLAR 1: FULL AUTONOMY (HEALTH MONITORING) ---
     def mesh_health_monitor_loop(self):
@@ -98,31 +134,107 @@ class KiBotMaster:
                         
                         # Trigger Telegram Alert
                         msg = f"{icon} **MESH ALERT**: {name} is now {new_status}"
-                        if new_status == "OFFLINE":
-                            msg += "\n🛠️ *Initiating Auto-Recovery...*"
-                        
-                        asyncio.run_coroutine_threadsafe(self.notify_telegram(msg), self.loop)
-                        
-                        # --- SELF-HEALING LOGIC ---
-                        if new_status == "OFFLINE":
-                            threading.Thread(target=self.attempt_node_recovery, args=(name,), daemon=True).start()
-                            
+                        asyncio.run(self.send_telegram_msg(msg))
                 except Exception as e:
-                    logger.error(f"Monitor Error for {name}: {e}")
+                    logger.error(f"Health check failed for {name}: {e}")
             time.sleep(60)
+    def global_market_pulse_loop(self):
+        """
+        Periodically wakes up the 'Scout' (1B) to check global market mood.
+        """
+        logger.info("🟢 Global Market Pulse Active (30m loop) - SCOUT ENABLED")
+        while True:
+            try:
+                # 1. Search for latest crypto news
+                news = search_web("latest crypto market sentiment today btc eth", max_results=5)
+                news_text = "\n".join([f"- {n.get('title')}: {n.get('snippet')}" for n in news])
+
+                # 2. Ask the Scout (1B) for a quick mood check
+                prompt = f"Analyze these news headlines and return only ONE word: BULLISH, BEARISH, or NEUTRAL. \n\n{news_text}"
+                
+                payload = {
+                    "model": "llama3.2:1b",
+                    "prompt": prompt,
+                    "stream": False,
+                    "options": {"temperature": 0.0}
+                }
+                
+                # Use brain's post helper
+                response = self.brain._post_json(f"{OLLAMA_URL}/api/generate", body=payload, timeout=15.0)
+                mood = response.get("response", "NEUTRAL").strip().upper()
+                
+                # Sanitize response to just the keyword
+                for valid in ["BULLISH", "BEARISH", "NEUTRAL"]:
+                    if valid in mood:
+                        self.market_mood = valid
+                        break
+                
+                self.last_mood_update = datetime.now()
+                logger.info(f"📊 SCOUT PULSE: Market Mood is now {self.market_mood}")
+                
+            except Exception as e:
+                logger.error(f"Scout pulse failed: {e}")
+            
+            time.sleep(1800)  # 30 minutes
 
     def attempt_node_recovery(self, node_name):
-        """Proactive recovery for dead nodes"""
+        """Proactive recovery for dead nodes with AI Self-Healing Escalation"""
         logger.warning(f"🛠️ Attempting recovery for {node_name}...")
         services = NODES[node_name]["services"]
         for svc in services:
-            # We try to send a start command. If it's a network glitch, this might fail, 
-            # but if it's a crashed service, the node manager might still be up.
             res = asyncio.run(self.send_node_command(node_name, "start", svc))
             if res.get("ok"):
                 logger.info(f"✅ Recovery signal sent to {node_name} for {svc}")
             else:
-                logger.error(f"❌ Recovery failed for {node_name}: {res.get('msg')}")
+                logger.error(f"❌ Standard recovery failed for {node_name}. Escalating to THE MECHANIC...")
+                self.trigger_ai_healer(node_name, res.get("msg", "Node unreachable"))
+
+    def get_remote_stats(self, node_name):
+        """Pulls CPU/RAM/Disk stats from remote node via SSH"""
+        try:
+            cfg = NODES.get(node_name)
+            # Lightweight command to get stats in JSON-like format
+            cmd = ["ssh", cfg['ip'], "free -m | awk 'NR==2{printf \"RAM: %s/%sMB \", $3,$2}'; df -h / | awk 'NR==2{printf \"Disk: %s/%s \", $3,$2}'; top -bn1 | grep \"Cpu(s)\" | awk '{printf \"CPU: %s%%\", $2}'"]
+            res = subprocess.run(cmd, capture_output=True, text=True, timeout=10)
+            return res.stdout if res.returncode == 0 else "Stats Unavailable"
+        except Exception: return "Oversight Offline"
+
+    def get_remote_logs(self, node_name, tail_lines=100):
+        """Autonomous Log Harvester for The Mechanic"""
+        try:
+            cfg = NODES.get(node_name)
+            # Find common log paths
+            remote_path = f"/home/ubuntu/KiBot/Logs/{node_name.lower()}.log"
+            cmd = ["ssh", cfg['ip'], f"tail -n {tail_lines} {remote_path} || journalctl -u kibot-{node_name.lower()} -n {tail_lines}"]
+            res = subprocess.run(cmd, capture_output=True, text=True, timeout=10)
+            return res.stdout if res.returncode == 0 else f"Fail: {res.stderr}"
+        except Exception as e: return f"Error: {e}"
+
+    def trigger_ai_healer(self, node_name, error_msg):
+        """
+        Escalation path: Use qwen2.5-coder:7b + Aider + Remote Logs to fix bugs.
+        """
+        try:
+            # 1. Gather context from the node
+            remote_logs = self.get_remote_logs(node_name)
+            remote_stats = self.get_remote_stats(node_name)
+            
+            # 2. Construct Aider command with full context
+            aider_cmd = [
+                "/home/ubuntu/.local/bin/aider",
+                "--model", "ollama/qwen2.5-coder:7b",
+                "--message", f"URGENT REPAIR for {node_name}. \nError: {error_msg}\nStats: {remote_stats}\nLogs: {remote_logs}\nAction: Fix and provide SSH deploy command.",
+                "--auto-commit", "--no-show-diffs", "--yes"
+            ]
+            
+            logger.info(f"🤖 MECHANIC: Fixing {node_name} with remote context...")
+            def run_fix():
+                subprocess.run(aider_cmd, capture_output=True, text=True, timeout=300)
+                # After fix, try to push to node (Aider auto-commits locally, we just need to restart node)
+                self.attempt_node_recovery(node_name)
+            
+            threading.Thread(target=run_fix, daemon=True).start()
+        except Exception as ex: logger.error(f"⚠️ Healer bridge crashed: {ex}")
 
     # --- PILLAR 2: SOVEREIGN INTELLIGENCE (MIDNIGHT ORACLE) ---
     def midnight_oracle_loop(self):
@@ -141,10 +253,61 @@ class KiBotMaster:
                     
                     msg = f"🧠 **ORACLE UPDATE**\n{result.get('summary', 'Optimized.')}"
                     asyncio.run_coroutine_threadsafe(self.notify_telegram(msg), self.loop)
+                    
+                    # --- NEW: Auto-Backup Vault ---
+                    logger.info("💾 Triggering Midnight Vault Backup...")
+                    subprocess.run(["python3", "SERVER_BATAM/Support/ki_vault.py", "backup"], capture_output=True)
                 except Exception as e:
                     logger.error(f"Oracle Error: {e}")
                 time.sleep(70) # Skip the current minute
             time.sleep(30)
+
+    # --- PILLAR 2.1: INFRASTRUCTURE GUARD ---
+    async def resource_monitor_loop(self):
+        """Autonomous Resource Management: Prevents OOM by unloading AI models"""
+        logger.info("🟢 Resource Monitor Active (5m loop) - AUTO-OPTIMIZE ENABLED")
+        while True:
+            try:
+                mem = psutil.virtual_memory()
+                if mem.percent > 85:
+                    logger.warning(f"⚠️ RAM Critical ({mem.percent}%). Unloading AI Cache...")
+                    subprocess.run(["curl", "-X", "POST", f"{OLLAMA_URL}/api/generate", "-d", '{"model": "", "keep_alive": 0}'], capture_output=True)
+                
+                for node_name, node_data in NODES.items():
+                    ip = node_data.get("ip")
+                    res = subprocess.run(["ping", "-c", "1", "-W", "2", ip], capture_output=True)
+                    if res.returncode != 0:
+                        logger.error(f"🌐 Mesh Link Broken: {node_name} ({ip}) is unreachable!")
+                
+            except Exception as e:
+                logger.error(f"Resource monitor error: {e}")
+            await asyncio.sleep(300)
+
+    # --- PILLAR 2.2: LIVE HEARTBEAT ---
+    async def daily_report_loop(self):
+        """Sends a status summary to Telegram every morning at 08:00"""
+        logger.info("🟢 Daily Heartbeat Active (Waiting for 08:00)")
+        while True:
+            now = datetime.now()
+            if now.hour == 8 and now.minute == 0:
+                try:
+                    uptime = datetime.now() - self.start_time
+                    msg = f"🎖️ **KiBot Daily Heartbeat**\n⏱️ Uptime: {str(uptime).split('.')[0]}\n🧠 Mood: {self.market_mood}\nStatus: **LIVE** 🟢"
+                    await self.send_telegram_msg(msg)
+                    time.sleep(70)
+                except Exception as e:
+                    logger.error(f"Heartbeat error: {e}")
+            await asyncio.sleep(30)
+
+    def get_remote_logs(self, node_name, tail_lines=50):
+        """Autonomous Log Harvester for The Mechanic"""
+        try:
+            cfg = NODES.get(node_name)
+            remote_path = f"/home/ubuntu/KiBot/Logs/{node_name.lower()}.log"
+            cmd = ["ssh", cfg['ip'], f"tail -n {tail_lines} {remote_path}"]
+            res = subprocess.run(cmd, capture_output=True, text=True, timeout=10)
+            return res.stdout if res.returncode == 0 else f"Fail: {res.stderr}"
+        except Exception as e: return f"Error: {e}"
 
     # --- PILLAR 3: COMMANDER UI (API FOR ANDROID) ---
     def setup_api_routes(self):
@@ -316,10 +479,15 @@ class KiBotMaster:
                 logger.error(f"Feedback Listener Error: {e}")
 
     async def notify_telegram(self, msg):
+        """Legacy helper for sending telegram messages"""
         try:
             async with httpx.AsyncClient() as client:
                 await client.get(f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage?chat_id={TELEGRAM_CHAT_ID}&text={msg}&parse_mode=Markdown")
         except: pass
+
+    async def send_telegram_msg(self, msg):
+        """Modern async alias for notify_telegram"""
+        await self.notify_telegram(msg)
 
     def get_state_data(self):
         """Unified State Aggregator for Android Dashboard"""
@@ -479,6 +647,11 @@ class KiBotMaster:
         threading.Thread(target=self.mesh_health_monitor_loop, daemon=True).start()
         threading.Thread(target=self.midnight_oracle_loop, daemon=True).start()
         threading.Thread(target=self.run_api_server, daemon=True).start()
+        
+        # New Autonomous Triggers
+        threading.Thread(target=lambda: asyncio.run(self.resource_monitor_loop()), daemon=True).start()
+        threading.Thread(target=lambda: asyncio.run(self.global_market_pulse_loop()), daemon=True).start()
+        threading.Thread(target=lambda: asyncio.run(self.daily_report_loop()), daemon=True).start()
         
         # Start Telegram
         app = ApplicationBuilder().token(TELEGRAM_BOT_TOKEN).build()

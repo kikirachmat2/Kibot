@@ -139,8 +139,8 @@ class BrainManager:
         state_root.mkdir(parents=True, exist_ok=True)
         self.state_file = state_root / "brain_status.json"
         self.request_timeout = (
-            float(os.getenv("KIBOT_BRAIN_CONNECT_TIMEOUT_SEC", "2.0")),
-            float(os.getenv("KIBOT_BRAIN_READ_TIMEOUT_SEC", "4.0")),
+            float(os.getenv("KIBOT_BRAIN_CONNECT_TIMEOUT_SEC", "5.0")),
+            float(os.getenv("KIBOT_BRAIN_READ_TIMEOUT_SEC", "30.0")),
         )
         self.review_ttl_sec = int(os.getenv("KIBOT_BRAIN_REVIEW_TTL_SEC", "900"))
         self.market_pulse_ttl_sec = int(os.getenv("KIBOT_BRAIN_MARKET_PULSE_TTL_SEC", "900"))
@@ -237,10 +237,22 @@ class BrainManager:
     def _get_ai_consensus(self, pair: str, msg_type: str, regime: str, obi: float, session: str) -> Tuple[str, str]:
         """
         Multi-Agent Reasoning: Debate between analysts to reach a sovereign decision.
-        Uses the high-IQ 7-agent consensus architecture from the AI Coordinator.
+        Uses a tiered architecture:
+        1. Sniper (1.5b) - Fast Filter (Instant)
+        2. AI Coordinator - High-IQ Consensus (Strategic)
         """
+        # --- TIER 1: SNIPER FAST FILTER ---
+        try:
+            sniper_decision, sniper_reason = self._fast_filter_sniper(pair, msg_type, regime, obi)
+            if sniper_decision == "REJECT":
+                logger.info(f"[Brain] Sniper REJECTED {pair}: {sniper_reason}")
+                return "REJECT", f"Sniper: {sniper_reason}"
+        except Exception as e:
+            logger.warning(f"[Brain] Sniper bypass due to error: {e}")
+
+        # --- TIER 2: COORDINATOR CONSENSUS ---
         if not self.ai_coordinator_enabled or _coordinator_query_ai_consensus_fn is None:
-            return "APPROVE", "AI Coordinator disabled or offline; falling back to rule-based approval."
+            return "APPROVE", "AI Coordinator disabled; passing through Sniper check."
 
         context = {
             "pair": pair,
@@ -273,6 +285,30 @@ class BrainManager:
             return "APPROVE", "Fallback to default approval (AI offline)"
 
         
+    def _fast_filter_sniper(self, pair: str, msg_type: str, regime: str, obi: float) -> Tuple[str, str]:
+        """
+        Calls the Always-On Qwen 1.5b model for near-instant signal validation.
+        """
+        ollama_url = os.getenv("OLLAMA_URL", "http://localhost:11434")
+        prompt = (
+            f"As a high-frequency trading sniper, filter this signal.\n"
+            f"Asset: {pair}, Type: {msg_type}, Regime: {regime}, OBI: {obi}\n"
+            f"Strictly output JSON: {{\"decision\": \"APPROVE\" or \"REJECT\", \"reason\": \"short reason\"}}"
+        )
+        try:
+            payload = {
+                "model": "qwen2.5:1.5b",
+                "prompt": prompt,
+                "stream": False,
+                "format": "json",
+                "options": {"temperature": 0.1, "top_p": 0.9}
+            }
+            response = self._post_json(f"{ollama_url}/api/generate", body=payload, timeout=30.0)
+            res_json = json.loads(response.get("response", "{}"))
+            return str(res_json.get("decision", "APPROVE")).upper(), str(res_json.get("reason", ""))
+        except Exception as e:
+            raise RuntimeError(f"Sniper call failed: {e}")
+
         # AI Search Service (Dynamic Integration)
         self.ai_search = None
         try:
@@ -1772,14 +1808,14 @@ class BrainManager:
         request_url = f"{url}?{urlencode(params)}" if params else url
         return self._request_json(request_url, headers=headers, timeout=timeout)
 
-    def _post_json(self, url: str, *, body: Dict[str, Any], headers: Optional[Dict[str, str]] = None) -> Any:
+    def _post_json(self, url: str, *, body: Dict[str, Any], headers: Optional[Dict[str, str]] = None, timeout: Optional[float] = None) -> Any:
         merged_headers = {
             "Content-Type": "application/json",
             "User-Agent": "KiBot-Brain/1.0",
         }
         if headers:
             merged_headers.update(headers)
-        return self._request_json(url, body=body, headers=merged_headers)
+        return self._request_json(url, body=body, headers=merged_headers, timeout=timeout)
 
     def _request_json(
         self,

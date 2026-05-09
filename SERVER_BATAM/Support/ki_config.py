@@ -10,7 +10,6 @@ def _load_dotenv_early():
     
     # Pathing resolved via PYTHONPATH=.
     root = Path(__file__).resolve().parent.parent.parent
-        
     try:
         from SERVER_BATAM.Support.ki_vault import get_vault
     except ImportError:
@@ -134,7 +133,7 @@ def verify_egress_health() -> bool:
 KIBOT_EGRESS_HOSTS = [h for h in [KIBOT_UDP_HOST, KIBOT_UDP_HOST_BACKUP] if h]
 
 # --- AI & OLLAMA ---
-OLLAMA_URL = os.getenv("OLLAMA_URL", "http://127.0.0.1:11435/api/chat")
+OLLAMA_URL = os.getenv("OLLAMA_URL", "http://127.0.0.1:11434")
 AI_REQUEST_TIMEOUT_SEC = float(os.getenv("KIBOT_AI_TIMEOUT", "10.0"))
 AI_ROUTER_ENABLED = os.getenv("KIBOT_AI_ROUTER_ENABLED", "true").lower() == "true"
 

@@ -263,16 +263,17 @@ class AISearchService:
             return payload.get("articles", []) if isinstance(payload, dict) else []
         return self._cached(f"gdelt:{hashlib.md5(query.encode()).hexdigest()}", 1800, loader)
 
-if __name__ == "__main__":
+def search_web(query: str, max_results: int = 5) -> List[Dict]:
+    """Helper function for quick web search using DDG/Tavily."""
     service = AISearchService()
+    # Try Tavily first if key exists, otherwise DDG
+    if os.getenv("TAVILY_API_KEY"):
+        results = service.tavily_search(query)
+        if results.get("results"):
+            return results["results"][:max_results]
+    return service.ddg_search(query, max_results=max_results)
+
+if __name__ == "__main__":
     print("--- AI Search Service Test ---")
-    
-    # Test Jina if key exists
-    if os.getenv("JINA_API_KEY"):
-        print("\nTesting Jina Search...")
-        results = service.jina_search("Crypto market news today")
-        print(f"Jina Results Snippet: {results[:200]}...")
-    
-    news = service.finnhub_news()
-    print(f"\nFinnhub News found: {len(news)}")
-    if news: print(f"Top: {news[0].get('headline')}")
+    res = search_web("bitcoin price news")
+    print(f"Results: {len(res)}")
