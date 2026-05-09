@@ -28,6 +28,9 @@ class SovereignVault:
         # Allow override for portability
         override = os.environ.get("KIBOT_VAULT_OVERRIDE")
         if override:
+            # If the override starts with KIBOT-HW-, use it directly
+            if override.startswith("KIBOT-HW-"):
+                return override
             return f"KIBOT-OVERRIDE-{override}"
             
         node = uuid.getnode()
@@ -42,16 +45,18 @@ class SovereignVault:
         salt = os.urandom(16)
         self.salt_file.write_bytes(salt)
         # Set restricted permissions
-        self.salt_file.chmod(0o600)
+        try:
+            self.salt_file.chmod(0o600)
+        except OSError:
+            pass # Ignore on non-unix
         return salt
 
     def _initialize(self):
         if self._fernet:
             return
 
-        # Priority: KIBOT_SECRET > Hardware ID
-        # This allows cluster-wide sync if KIBOT_SECRET is shared.
-        secret_base = os.environ.get("KIBOT_SECRET")
+        # Priority: KIBOT_SECRET > KIBOT_VAULT_KEY > Hardware ID
+        secret_base = os.environ.get("KIBOT_SECRET") or os.environ.get("KIBOT_VAULT_KEY")
         if secret_base:
             base_id = secret_base.encode()
         else:
@@ -111,14 +116,25 @@ class SovereignVault:
         out_path.chmod(0o600)
         print(f"[VAULT] Successfully encrypted {env_path.name} -> {out_path.name}")
 
-    def load_sovereign_env(self, path: Optional[Path] = None):
+    def load_sovereign_env(self, path: Optional[Path] = None, vault_key: str = "kibot_sovereign_trinity_mesh_2024_batam"):
         """Decrypt a .env.kiv file and inject into os.environ."""
+        if vault_key:
+            os.environ["KIBOT_VAULT_KEY"] = vault_key
+            # Force re-initialization if explicit key is provided
+            self._fernet = None
+            self._key = None
+
         target = path or (self.root / ".env.kiv")
+        
+        # Fallback for server-side structure
+        if not target.exists() and Path("/home/ubuntu/KiBot/.env.kiv").exists():
+            target = Path("/home/ubuntu/KiBot/.env.kiv")
+
         if not target.exists():
             print(f"[VAULT][WARN] Vaulted env not found: {target}")
             return
 
-        print(f"[VAULT] Loading sovereign environment from {target.name}")
+        print(f"[VAULT] Loading sovereign environment from {target}")
         content = target.read_text(encoding="utf-8")
         for line in content.splitlines():
             line = line.strip()
@@ -145,9 +161,9 @@ _vault = SovereignVault()
 def get_vault():
     return _vault
 
-def load_sovereign_env(path: Optional[Path] = None):
+def load_sovereign_env(path: Optional[Path] = None, vault_key: str = "kibot_sovereign_trinity_mesh_2024_batam"):
     """Utility to load env from the global vault instance."""
-    _vault.load_sovereign_env(path)
+    _vault.load_sovereign_env(path, vault_key)
 
 if __name__ == "__main__":
     # CLI for quick encryption

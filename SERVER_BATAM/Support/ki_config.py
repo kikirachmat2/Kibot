@@ -2,58 +2,25 @@ import os
 from pathlib import Path
 import pytz
 
-def _load_dotenv_early():
-    """Load .env or .env.kiv files early before constants are assigned."""
-    import os
-    import sys
-    from pathlib import Path
-    
-    # Pathing resolved via PYTHONPATH=.
-    root = Path(__file__).resolve().parent.parent.parent
+def _load_sovereign_env():
+    """Load and decrypt vaulted environment variables."""
     try:
-        from SERVER_BATAM.Support.ki_vault import get_vault
+        from SERVER_BATAM.Support.ki_vault import load_sovereign_env
     except ImportError:
-        # Fallback to local import if run as a script in the Support directory
         try:
-            from ki_vault import get_vault
+            from ki_vault import load_sovereign_env
         except ImportError:
-            get_vault = lambda: None
+            return
             
-    vault = get_vault() if callable(get_vault) else None
-    
-    candidates = [
-        Path(".env.kiv"), Path(".env"), 
-        Path("scripts/.env"), Path("../.env"), 
-        Path(__file__).resolve().parent.parent / ".env",
-        Path(__file__).resolve().parent.parent / ".env.kiv"
-    ]
-    if os.getenv("KIBOT_MANAGER_ENV_FILE"):
-        candidates.insert(0, Path(os.getenv("KIBOT_MANAGER_ENV_FILE")))
-    
-    for p in candidates:
-        if p.exists():
-            for line in p.read_text(encoding="utf-8").splitlines():
-                line = line.strip()
-                if line and not line.startswith("#") and "=" in line:
-                    k, v = line.split("=", 1)
-                    k, v = k.strip(), v.strip().strip("'").strip('"')
-                    
-                    # Decrypt if encrypted
-                    if v.startswith("ENC(") and v.endswith(")"):
-                        try:
-                            v = vault.decrypt(v[4:-1])
-                        except Exception as e:
-                            print(f"[KIBOT][VAULT][ERROR] Failed to decrypt {k}: {e}", flush=True)
-                            continue
-                            
-                    if k and k not in os.environ:
-                        os.environ[k] = v
+    # Load from vault (looks for .env.kiv by default)
+    load_sovereign_env()
 
-_load_dotenv_early()
+# Load everything before constants are assigned
+_load_sovereign_env()
 
 # --- PATHS ---
 BASE_PATH = Path(__file__).resolve().parent.parent
-REPO_PATH = BASE_PATH.parent if (BASE_PATH / ".env").exists() else BASE_PATH
+REPO_PATH = BASE_PATH.parent if (BASE_PATH / ".env.kiv").exists() else BASE_PATH
 PROJECT_ROOT = Path(os.getenv("KIBOT_RUNTIME_ROOT", BASE_PATH.parent))
 STATE_DIR = Path(os.getenv("KIBOT_STATE_DIR", PROJECT_ROOT / "state"))
 
@@ -63,12 +30,6 @@ STATE_DIR = Path(os.getenv("KIBOT_STATE_DIR", PROJECT_ROOT / "state"))
 # Philosophy: "Sedikit Demi Sedikit, Lama-Lama Jadi Bukit"
 # Protocol: "Tekan Kerugian, Maksimalkan Probabilitas Keuntungan"
 # ==============================================================================
-
-import os
-from dotenv import load_dotenv
-
-# Load environment
-load_dotenv()
 
 class KiConfig:
     # --- PHILOSOPHY & RISK GATE ---

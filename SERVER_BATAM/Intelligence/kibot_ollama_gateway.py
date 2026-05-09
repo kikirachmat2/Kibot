@@ -13,36 +13,13 @@ from urllib.request import Request, urlopen
 ROOT_DIR = Path(__file__).resolve().parent.parent
 
 
-def _load_dotenv_early() -> None:
-    candidates = [
-        ROOT_DIR / ".env.kibot_manager",
-        ROOT_DIR / ".env.kibot",
-        ROOT_DIR / ".env.server",
-        ROOT_DIR / ".env",
-        Path(".env.kibot_manager"),
-        Path(".env.kibot"),
-        Path(".env.server"),
-        Path(".env"),
-        Path("../.env"),
-    ]
-    explicit = os.getenv("KIBOT_OLLAMA_GATEWAY_ENV_FILE")
-    if explicit:
-        candidates.insert(0, Path(explicit))
-    for path in candidates:
-        if not path.exists():
-            continue
-        for line in path.read_text(encoding="utf-8").splitlines():
-            raw = line.strip()
-            if not raw or raw.startswith("#") or "=" not in raw:
-                continue
-            key, value = raw.split("=", 1)
-            key = key.strip()
-            value = value.strip().strip("'").strip('"')
-            if key and key not in os.environ:
-                os.environ[key] = value
+try:
+    from SERVER_BATAM.Support.ki_vault import load_sovereign_env
+    vault_key = os.getenv("KIBOT_VAULT_KEY", "kibot_sovereign_trinity_mesh_2024_batam")
+    load_sovereign_env(vault_key=vault_key)
+except Exception as e:
+    print(f"⚠️ Vault Load Warning: {e}")
 
-
-_load_dotenv_early()
 
 HOST = os.getenv("KIBOT_OLLAMA_GATEWAY_BIND_HOST", "0.0.0.0")
 PORT = int(os.getenv("KIBOT_OLLAMA_GATEWAY_PORT", "11435"))

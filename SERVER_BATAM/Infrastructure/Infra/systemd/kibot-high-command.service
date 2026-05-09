@@ -9,6 +9,7 @@ User=ubuntu
 WorkingDirectory=/home/ubuntu/KiBot
 Environment=PYTHONUNBUFFERED=1
 Environment=PYTHONPATH=.
+Environment=KIBOT_PRIMARY_NODE=1
 EnvironmentFile=-/home/ubuntu/KiBot/.env.server
 
 # Cleanup ports before start

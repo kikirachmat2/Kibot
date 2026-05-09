@@ -14,10 +14,12 @@ if str(ROOT_DIR) not in sys.path:
 # Load Sovereign Environment (API Keys, etc.)
 try:
     from SERVER_BATAM.Support.ki_vault import load_sovereign_env
+    # Prioritize KIBOT_VAULT_KEY from environment (injected by systemd)
     vault_key = os.getenv("KIBOT_VAULT_KEY", "kibot_sovereign_trinity_mesh_2024_batam")
     load_sovereign_env(vault_key=vault_key)
 except Exception as e:
     print(f"⚠️ Vault Load Warning: {e}")
+
 
 # Setup Rotating Logs (Max 10MB per file, keep 5 backups)
 log_file = ROOT_DIR / "SERVER_BATAM" / "Logs" / "kibot_master.log"
@@ -64,15 +66,6 @@ sys.path.append(str(ROOT_DIR))
 from SERVER_BATAM.Support.ki_config import TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID, OLLAMA_URL, KiConfig
 from SERVER_BATAM.Intelligence.kibot_whatif_engine import simulate_pair
 from SERVER_BATAM.Support import dynamic_config
-
-# --- [NEW] COUNCIL & AUDIT IMPORTS ---
-try:
-    from SERVER_BATAM.Core_Logic.fast_path_logger import FastPathLogger
-    from SERVER_BATAM.Core_Logic.what_if_tracker import WhatIfTracker
-    from SERVER_BATAM.Core_Logic.trading_council import TradingCouncil
-except ImportError as e:
-    print(f"⚠️ Warning: Council modules not found: {e}")
-    FastPathLogger = WhatIfTracker = TradingCouncil = None
 from SERVER_BATAM.Intelligence.kibot_learning_engine import LearningEngine
 from SERVER_BATAM.Intelligence.kibot_ai_search import search_web
 
@@ -82,22 +75,20 @@ logger = logging.getLogger("KiBot")
 # --- CONSTANTS ---
 LOCAL_LISTEN_PORT = 9998
 FEEDBACK_PORT = 9997
-EXECUTOR_IP = KiConfig.EXECUTOR_NODE # Tailscale Mesh IP
+EXECUTOR_IP = "213.35.118.26"  # Singapore Public IP (Oracle)
 EXECUTOR_PORT = 9999
 SECRET_KEY = "kibot_trinity_secure_node"
 CONTROL_SERVICES = ["kibot-orchestrator", "kibot-trinity", "indodax-dashboard-proxy"]
 
 NODES = {
     "SCANNER": {
-        "ip": KiConfig.SCANNER_NODE, 
+        "ip": "152.69.218.198", 
         "port": 9991, 
-        "key": "/home/ubuntu/KiBot/SERVER_BATAM/Infrastructure/SSH/ssh-key-scanner.pem",
         "services": ["kibot-scanner-mesh", "kibot-sensory-mesh"]
     },
     "EXECUTOR": {
-        "ip": KiConfig.EXECUTOR_NODE, 
+        "ip": "213.35.118.26", 
         "port": 9991, 
-        "key": "/home/ubuntu/KiBot/SERVER_BATAM/Infrastructure/SSH/ssh-key-executor.pem",
         "services": ["kibot-executor-engine", "kibot-polymarket"]
     }
 }
@@ -118,8 +109,7 @@ class KiBotMaster:
         
         # State
         self.last_state = {}
-        self.mesh_health = {name: "UNKNOWN" for name in NODES}
-        self.last_mesh_alert = {name: 0 for name in NODES} # Throttling
+        self.mesh_health = {"SCANNER": "UNKNOWN", "EXECUTOR": "UNKNOWN"}
 
         # Pillar 3: Commander API Setup
         self.api_app = FastAPI()
@@ -135,19 +125,6 @@ class KiBotMaster:
         # [NEW] PID Management to prevent Telegram Conflicts
         self.manage_pid()
 
-        # --- [NEW] COUNCIL & AUDIT INITIALIZATION ---
-        self.fp_logger = FastPathLogger() if FastPathLogger else None
-        self.what_if = WhatIfTracker() if WhatIfTracker else None
-        self.council = TradingCouncil(self) if TradingCouncil else None
-        
-        if self.what_if:
-            self.what_if.start_background_loop()
-            logger.info("🟢 What-If Tracker Active (Audit Mode)")
-            
-        if self.council:
-            threading.Thread(target=self.council_orchestrator_loop, daemon=True).start()
-            logger.info("🟢 Trading Council Orchestrator Active (Governance Mode)")
-
     def manage_pid(self):
         pid_file = ROOT_DIR / "kibot.pid"
         current_pid = os.getpid()
@@ -155,111 +132,47 @@ class KiBotMaster:
             try:
                 old_pid = int(pid_file.read_text().strip())
                 if psutil.pid_exists(old_pid) and old_pid != current_pid:
-                    proc = psutil.Process(old_pid)
-                    # Verify it's actually KiBot before killing
-                    if "python" in proc.name().lower() and any("KiBot.py" in arg for arg in proc.cmdline()):
-                        logger.warning(f"⚠️ Found legacy KiBot process ({old_pid}). Terminating for clean startup...")
-                        proc.terminate()
-                        try:
-                            proc.wait(timeout=5)
-                        except psutil.TimeoutExpired:
-                            proc.kill()
-                    else:
-                        logger.info(f"ℹ️ PID {old_pid} exists but doesn't look like KiBot. Skipping cleanup.")
-            except (Exception, psutil.NoSuchProcess) as e:
+                    logger.warning(f"⚠️ Found legacy KiBot process ({old_pid}). Terminating for clean startup...")
+                    os.kill(old_pid, signal.SIGTERM)
+                    time.sleep(2)
+                    if psutil.pid_exists(old_pid):
+                        os.kill(old_pid, signal.SIGKILL)
+            except Exception as e:
                 logger.error(f"PID cleanup error: {e}")
         
         pid_file.write_text(str(current_pid))
         logger.info(f"🆔 KiBot Master PID: {current_pid}")
-        
-        # Register signal handlers for clean exit
-        signal.signal(signal.SIGTERM, self.handle_exit)
-        signal.signal(signal.SIGINT, self.handle_exit)
-
-    def handle_exit(self, signum, frame):
-        logger.info(f"👋 Received signal {signum}. Cleaning up...")
-        pid_file = ROOT_DIR / "kibot.pid"
-        if pid_file.exists():
-            try:
-                pid_val = int(pid_file.read_text().strip())
-                if pid_val == os.getpid():
-                    pid_file.unlink()
-            except: pass
-        sys.exit(0)
 
     # --- PILLAR 1: FULL AUTONOMY (HEALTH MONITORING) ---
     def mesh_health_monitor_loop(self):
-        logger.info("🟢 Pulse Check Mesh Active (30s probe, Multi-Port) - SELF-HEALING ENABLED")
-        retry_counts = {name: 0 for name in NODES}
+        logger.info("🟢 Pulse Check Mesh Active (60s loop) - SELF-HEALING ENABLED")
         while True:
             for name, cfg in NODES.items():
                 try:
-                    ip = cfg['ip']
-                    api_port = cfg['port']
+                    # Smart Probe via SSH port (since Oracle blocks PING)
+                    import socket
+                    is_reachable = False
+                    try:
+                        with socket.create_connection((cfg['ip'], 22), timeout=3):
+                            is_reachable = True
+                    except:
+                        is_reachable = False
                     
-                    # 1. Probe SSH (Port 22)
-                    ssh_up = self._check_port(ip, 22)
-                    
-                    # 2. Probe API (Port 9991) - Correct endpoint is /status
-                    api_up = False
-                    if ssh_up:
-                        try:
-                            import requests
-                            r = requests.get(f"http://{ip}:{api_port}/status", timeout=2)
-                            if r.status_code == 200:
-                                api_up = True
-                        except:
-                            api_up = self._check_port(ip, api_port) # Fallback to raw port check
-                    
-                    if not ssh_up:
-                        retry_counts[name] += 1
-                        if retry_counts[name] >= 3:
-                            new_status = "OFFLINE"
-                        else:
-                            continue
-                    elif not api_up:
-                        retry_counts[name] = 0
-                        new_status = "DEGRADED"
-                    else:
-                        retry_counts[name] = 0
-                        new_status = "ONLINE"
-                    
-                    # Alert and Recovery Logic with Throttling (10 minutes)
-                    current_time = time.time()
-                    last_alert_time = self.last_mesh_alert.get(name, 0)
+                    new_status = "ONLINE" if is_reachable else "OFFLINE"
                     
                     if self.mesh_health.get(name) != new_status:
-                        if (current_time - last_alert_time) > 600:
-                            self.mesh_health[name] = new_status
-                            self.last_mesh_alert[name] = current_time
-                            
-                            icon = "🟢" if new_status == "ONLINE" else "🟡" if new_status == "DEGRADED" else "🔴"
-                            msg = f"{icon} **MESH ALERT**: {name} is now {new_status}"
-                            
-                            if new_status in ["DEGRADED", "OFFLINE"]:
-                                msg += f"\n⚠️ Mode: {'SSH Recovery' if new_status == 'DEGRADED' else 'Full Failover'}"
-                                threading.Thread(target=self.attempt_node_recovery, args=(name,), daemon=True).start()
-                                
-                            try:
-                                if hasattr(self, 'loop') and self.loop:
-                                    asyncio.run_coroutine_threadsafe(self.send_telegram_msg(msg), self.loop)
-                            except: pass
-                        else:
-                            logger.info(f"⏳ Throttling alert for {name} ({new_status}). Cooldown active.")
-                            # Update internal state WITHOUT alerting/recovering to prevent flapping
-                            self.mesh_health[name] = new_status
-
+                        self.mesh_health[name] = new_status
+                        icon = "🟢" if new_status == "ONLINE" else "🔴"
+                        # Trigger Telegram Alert using threadsafe way
+                        msg = f"{icon} **MESH ALERT**: {name} is now {new_status}"
+                        try:
+                            if hasattr(self, 'loop') and self.loop:
+                                asyncio.run_coroutine_threadsafe(self.send_telegram_msg(msg), self.loop)
+                        except:
+                            pass
                 except Exception as e:
                     logger.error(f"Health check failed for {name}: {e}")
-            time.sleep(30) # Increased from 5s to 30s to be less aggressive
-
-    def _check_port(self, ip, port, timeout=2):
-        import socket
-        try:
-            with socket.create_connection((ip, port), timeout=timeout):
-                return True
-        except:
-            return False
+            time.sleep(5)
     def global_market_pulse_loop(self):
         """
         Periodically wakes up the 'Scout' (1B) to check global market mood.
@@ -300,80 +213,37 @@ class KiBotMaster:
             time.sleep(1800)  # 30 minutes
 
     def attempt_node_recovery(self, node_name):
-        """Proactive recovery for dead/degraded nodes with SSH fallback and AI escalation"""
-        status = self.mesh_health.get(node_name)
-        logger.warning(f"🛠️ Attempting recovery for {node_name} (Status: {status})...")
-        
-        cfg = NODES.get(node_name)
-        services = cfg["services"]
-        
-        # 1. If DEGRADED (SSH is up), try direct SSH restart
-        if status == "DEGRADED":
-            success = True
-            for svc in services:
-                logger.info(f"⚡ SSH Recovery: Restarting {svc} on {node_name}...")
-                res = self.ssh_node_command(node_name, f"sudo systemctl restart {svc}")
-                if "fail" in res.lower():
-                    success = False
-            
-            if success:
-                logger.info(f"✅ SSH Recovery signal sent to {node_name}")
-                return
-            else:
-                logger.error(f"❌ SSH Recovery failed for {node_name}. Escalating...")
-
-        # 2. Try Standard API recovery (if node is somehow reachable via API now)
+        """Proactive recovery for dead nodes with AI Self-Healing Escalation"""
+        logger.warning(f"🛠️ Attempting recovery for {node_name}...")
+        services = NODES[node_name]["services"]
         for svc in services:
             res = asyncio.run(self.send_node_command(node_name, "start", svc))
             if res.get("ok"):
-                logger.info(f"✅ API Recovery signal sent to {node_name} for {svc}")
+                logger.info(f"✅ Recovery signal sent to {node_name} for {svc}")
             else:
-                # 3. Last Resort: Trigger THE MECHANIC (AI Healer)
-                logger.error(f"❌ Recovery failed for {node_name}. Triggering AI HEALER...")
+                logger.error(f"❌ Standard recovery failed for {node_name}. Escalating to THE MECHANIC...")
                 self.trigger_ai_healer(node_name, res.get("msg", "Node unreachable"))
 
-    def ssh_node_command(self, node_name, shell_cmd):
-        """Executes a shell command on a remote node via SSH with explicit identity"""
-        try:
-            cfg = NODES.get(node_name)
-            key_path = cfg.get("key")
-            cmd = ["ssh", "-o", "ConnectTimeout=5", "-o", "StrictHostKeyChecking=no"]
-            if key_path:
-                cmd += ["-i", key_path]
-            cmd += [f"ubuntu@{cfg['ip']}", shell_cmd]
-            
-            res = subprocess.run(cmd, capture_output=True, text=True, timeout=15)
-            if res.returncode == 0:
-                return f"Success: {res.stdout}"
-            else:
-                return f"Fail: {res.stderr}"
-        except Exception as e:
-            return f"Error: {e}"
-
     def get_remote_stats(self, node_name):
-        """Pulls CPU/RAM/Disk stats from remote node via SSH with identity"""
+        """Pulls CPU/RAM/Disk stats from remote node via SSH"""
         try:
             cfg = NODES.get(node_name)
-            key_path = cfg.get("key")
-            cmd = ["ssh", "-o", "ConnectTimeout=5", "-o", "StrictHostKeyChecking=no"]
-            if key_path: cmd += ["-i", key_path]
-            cmd += [f"ubuntu@{cfg['ip']}", "free -m | awk 'NR==2{printf \"RAM: %s/%sMB \", $3,$2}'; df -h / | awk 'NR==2{printf \"Disk: %s/%s \", $3,$2}'; top -bn1 | grep \"Cpu(s)\" | awk '{printf \"CPU: %s%%\", $2}'"]
+            # Lightweight command to get stats in JSON-like format
+            cmd = ["ssh", cfg['ip'], "free -m | awk 'NR==2{printf \"RAM: %s/%sMB \", $3,$2}'; df -h / | awk 'NR==2{printf \"Disk: %s/%s \", $3,$2}'; top -bn1 | grep \"Cpu(s)\" | awk '{printf \"CPU: %s%%\", $2}'"]
             res = subprocess.run(cmd, capture_output=True, text=True, timeout=10)
             return res.stdout if res.returncode == 0 else "Stats Unavailable"
         except Exception: return "Oversight Offline"
 
     def get_remote_logs(self, node_name, tail_lines=100):
-        """Autonomous Log Harvester for The Mechanic with identity"""
+        """Autonomous Log Harvester for The Mechanic"""
         try:
             cfg = NODES.get(node_name)
-            key_path = cfg.get("key")
+            # Find common log paths
             remote_path = f"/home/ubuntu/KiBot/Logs/{node_name.lower()}.log"
-            cmd = ["ssh", "-o", "ConnectTimeout=5", "-o", "StrictHostKeyChecking=no"]
-            if key_path: cmd += ["-i", key_path]
-            cmd += [f"ubuntu@{cfg['ip']}", f"tail -n {tail_lines} {remote_path} || journalctl -u kibot-{node_name.lower()} -n {tail_lines}"]
+            cmd = ["ssh", cfg['ip'], f"tail -n {tail_lines} {remote_path} || journalctl -u kibot-{node_name.lower()} -n {tail_lines}"]
             res = subprocess.run(cmd, capture_output=True, text=True, timeout=10)
-            return res.stdout if res.returncode == 0 else f"Logs Unavailable: {res.stderr}"
-        except Exception as e: return f"Log Harvest Fail: {e}"
+            return res.stdout if res.returncode == 0 else f"Fail: {res.stderr}"
+        except Exception as e: return f"Error: {e}"
 
     def trigger_ai_healer(self, node_name, error_msg):
         """
@@ -395,7 +265,8 @@ class KiBotMaster:
             logger.info(f"🤖 MECHANIC: Fixing {node_name} with remote context...")
             def run_fix():
                 subprocess.run(aider_cmd, capture_output=True, text=True, timeout=300)
-                logger.info(f"✅ MECHANIC: Fix applied to {node_name}. Monitor will verify status.")
+                # After fix, try to push to node (Aider auto-commits locally, we just need to restart node)
+                self.attempt_node_recovery(node_name)
             
             threading.Thread(target=run_fix, daemon=True).start()
         except Exception as ex: logger.error(f"⚠️ Healer bridge crashed: {ex}")
@@ -475,6 +346,16 @@ class KiBotMaster:
                 except Exception as e:
                     logger.error(f"Heartbeat error: {e}")
             await asyncio.sleep(30)
+
+    def get_remote_logs(self, node_name, tail_lines=50):
+        """Autonomous Log Harvester for The Mechanic"""
+        try:
+            cfg = NODES.get(node_name)
+            remote_path = f"/home/ubuntu/KiBot/Logs/{node_name.lower()}.log"
+            cmd = ["ssh", cfg['ip'], f"tail -n {tail_lines} {remote_path}"]
+            res = subprocess.run(cmd, capture_output=True, text=True, timeout=10)
+            return res.stdout if res.returncode == 0 else f"Fail: {res.stderr}"
+        except Exception as e: return f"Error: {e}"
 
     # --- PILLAR 3: COMMANDER UI (API FOR ANDROID) ---
     def setup_api_routes(self):
@@ -573,10 +454,6 @@ class KiBotMaster:
 
         if veto_status != "APPROVED":
             logger.info(f"🛡️ VETOED: {symbol} | Reason: {veto_reason}")
-            if self.fp_logger:
-                self.fp_logger.log_decision(s, "VETOED", veto_reason)
-            if self.what_if:
-                self.what_if.track_rejection(symbol, price, f"VETO:{veto_reason}")
             return
 
         # 2. What-If Engine (Math Guard)
@@ -584,10 +461,6 @@ class KiBotMaster:
             sim = simulate_pair(symbol, price)
             if sim.get("verdict") == "SKIP":
                 logger.info(f"🛡️ MATH_SKIP: {symbol} | EV: {sim.get('expectedValue')}")
-                if self.fp_logger:
-                    self.fp_logger.log_decision(s, "MATH_SKIP", f"EV:{sim.get('expectedValue')}")
-                if self.what_if:
-                    self.what_if.track_rejection(symbol, price, f"MATH_SKIP:EV={sim.get('expectedValue')}")
                 return
         except Exception as e:
             logger.error(f"WhatIf Error: {e}")
@@ -613,10 +486,6 @@ class KiBotMaster:
         try:
             self.out_sock.sendto(json.dumps(execution_order).encode("utf-8"), (EXECUTOR_IP, target_port))
             logger.info(f"📤 Signal routed to {EXECUTOR_IP}:{target_port} for {symbol}")
-            
-            # Log successful execution
-            if self.fp_logger:
-                self.fp_logger.log_decision(s, "APPROVED", veto_reason)
             
             # [NEW] Telegram Approval Alert
             alert = (
@@ -670,26 +539,6 @@ class KiBotMaster:
                 logger.debug(f"Deep reasoning failed for {symbol}: {e}")
 
         threading.Thread(target=worker, daemon=True).start()
-
-    # --- PILLAR 4: GOVERNANCE (COUNCIL SESSIONS) ---
-    def council_orchestrator_loop(self):
-        """
-        Runs the Trading Council sessions periodically.
-        TIER 1 (Fast Sync): Every 4 hours.
-        TIER 2 (Deep Analysis): Every 24 hours (Summits).
-        """
-        logger.info("🟢 Council Orchestrator Loop Active (4h frequency)")
-        while True:
-            try:
-                # Every 4 hours, conduct a sync session
-                if self.council:
-                    # Run async task in separate event loop for the thread
-                    asyncio.run(self.council.conduct_session(tier="TIER_1_SYNC"))
-            except Exception as e:
-                logger.error(f"Council Session Failed: {e}")
-            
-            # Sleep for 4 hours
-            time.sleep(14400)
 
     def signal_receiver_loop(self):
         logger.info(f"📡 Signal Receiver Active (Port {LOCAL_LISTEN_PORT})")
@@ -747,13 +596,11 @@ class KiBotMaster:
                 logger.error(f"Feedback Listener Error: {e}")
 
     async def notify_telegram(self, msg):
-        """Force Delivery via CURL (Resilient to library timeouts)"""
-        import shlex
+        """Legacy helper for sending telegram messages"""
         try:
-            cmd = f'curl -s -X POST "https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage" -d chat_id="{TELEGRAM_CHAT_ID}" -d text="{msg}" -d parse_mode="Markdown"'
-            subprocess.run(shlex.split(cmd), capture_output=True, timeout=15)
-        except Exception as e:
-            logger.error(f"Telegram CURL failed: {e}")
+            async with httpx.AsyncClient() as client:
+                await client.get(f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage?chat_id={TELEGRAM_CHAT_ID}&text={msg}&parse_mode=Markdown")
+        except: pass
 
     async def send_telegram_msg(self, msg):
         """Modern async alias for notify_telegram"""
@@ -897,6 +744,15 @@ class KiBotMaster:
 
     async def kill_cmd(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         await self.emergency_stop_cmd(update, context)
+
+    async def send_telegram_msg(self, text):
+        """Force Delivery via CURL (Resilient to library timeouts)"""
+        import shlex
+        try:
+            cmd = f'curl -s -X POST "https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage" -d chat_id="{TELEGRAM_CHAT_ID}" -d text="{text}" -d parse_mode="Markdown"'
+            subprocess.run(shlex.split(cmd), capture_output=True, timeout=15)
+        except Exception as e:
+            logger.error(f"Telegram CURL failed: {e}")
 
     async def health_cmd(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         if not await self.auth_check(update): return
@@ -1045,19 +901,7 @@ class KiBotMaster:
         app.add_handler(CallbackQueryHandler(callback_handler))
         
         logger.info("🎖️ KiBot High Command is now ONLINE.")
-        
-        # [HARDENING] Conflict-aware Polling Loop
-        while True:
-            try:
-                app.run_polling(drop_pending_updates=True)
-                break # Clean exit
-            except Exception as e:
-                if "Conflict" in str(e):
-                    logger.warning("⚠️ Telegram Conflict detected! Another instance is polling. Waiting 30s to retry...")
-                    time.sleep(30)
-                else:
-                    logger.error(f"💥 Bot crashed: {e}")
-                    time.sleep(10)
+        app.run_polling()
 
 if __name__ == "__main__":
     kibot = KiBotMaster()
