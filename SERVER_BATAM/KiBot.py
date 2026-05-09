@@ -3,6 +3,7 @@ import os
 import sys
 from pathlib import Path
 import logging
+import signal
 from logging.handlers import RotatingFileHandler
 
 # Force absolute pathing to project root
@@ -35,6 +36,7 @@ import json
 import asyncio
 import threading
 import subprocess
+import platform
 from datetime import datetime
 from typing import Dict, List, Optional
 
@@ -58,7 +60,7 @@ ROOT_DIR = Path(__file__).resolve().parent.parent
 sys.path.append(str(ROOT_DIR))
 
 # --- KIBOT CORE IMPORTS ---
-from SERVER_BATAM.Support.ki_config import TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID, OLLAMA_URL
+from SERVER_BATAM.Support.ki_config import TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID, OLLAMA_URL, KiConfig
 from SERVER_BATAM.Intelligence.kibot_whatif_engine import simulate_pair
 from SERVER_BATAM.Support import dynamic_config
 from SERVER_BATAM.Intelligence.kibot_learning_engine import LearningEngine
@@ -70,19 +72,19 @@ logger = logging.getLogger("KiBot")
 # --- CONSTANTS ---
 LOCAL_LISTEN_PORT = 9998
 FEEDBACK_PORT = 9997
-EXECUTOR_IP = "100.122.1.109"  # Singapore Tailscale IP
+EXECUTOR_IP = "213.35.118.26"  # Singapore Public IP (Oracle)
 EXECUTOR_PORT = 9999
 SECRET_KEY = "kibot_trinity_secure_node"
 CONTROL_SERVICES = ["kibot-orchestrator", "kibot-trinity", "indodax-dashboard-proxy"]
 
 NODES = {
     "SCANNER": {
-        "ip": "100.105.139.21", 
+        "ip": "152.69.218.198", 
         "port": 9991, 
-        "services": ["kibot-scanner"]
+        "services": ["kibot-scanner-mesh", "kibot-sensory-mesh"]
     },
     "EXECUTOR": {
-        "ip": "100.122.1.109", 
+        "ip": "213.35.118.26", 
         "port": 9991, 
         "services": ["kibot-executor-engine", "kibot-polymarket"]
     }
@@ -114,9 +116,29 @@ class KiBotMaster:
         self.market_mood = "NEUTRAL"
         self.last_mood_update = None
         
-        # Start Background Pulses
-        threading.Thread(target=self.mesh_health_monitor_loop, daemon=True).start()
+        # Start Background Pulses (Market Scout)
         threading.Thread(target=self.global_market_pulse_loop, daemon=True).start()
+        
+        # [NEW] PID Management to prevent Telegram Conflicts
+        self.manage_pid()
+
+    def manage_pid(self):
+        pid_file = ROOT_DIR / "kibot.pid"
+        current_pid = os.getpid()
+        if pid_file.exists():
+            try:
+                old_pid = int(pid_file.read_text().strip())
+                if psutil.pid_exists(old_pid) and old_pid != current_pid:
+                    logger.warning(f"⚠️ Found legacy KiBot process ({old_pid}). Terminating for clean startup...")
+                    os.kill(old_pid, signal.SIGTERM)
+                    time.sleep(2)
+                    if psutil.pid_exists(old_pid):
+                        os.kill(old_pid, signal.SIGKILL)
+            except Exception as e:
+                logger.error(f"PID cleanup error: {e}")
+        
+        pid_file.write_text(str(current_pid))
+        logger.info(f"🆔 KiBot Master PID: {current_pid}")
 
     # --- PILLAR 1: FULL AUTONOMY (HEALTH MONITORING) ---
     def mesh_health_monitor_loop(self):
@@ -124,20 +146,30 @@ class KiBotMaster:
         while True:
             for name, cfg in NODES.items():
                 try:
-                    # Quick ping test
-                    res = subprocess.run(["ping", "-c", "1", "-W", "2", cfg['ip']], capture_output=True)
-                    new_status = "ONLINE" if res.returncode == 0 else "OFFLINE"
+                    # Smart Probe via SSH port (since Oracle blocks PING)
+                    import socket
+                    is_reachable = False
+                    try:
+                        with socket.create_connection((cfg['ip'], 22), timeout=3):
+                            is_reachable = True
+                    except:
+                        is_reachable = False
                     
-                    if self.mesh_health[name] != new_status:
+                    new_status = "ONLINE" if is_reachable else "OFFLINE"
+                    
+                    if self.mesh_health.get(name) != new_status:
                         self.mesh_health[name] = new_status
                         icon = "🟢" if new_status == "ONLINE" else "🔴"
-                        
-                        # Trigger Telegram Alert
+                        # Trigger Telegram Alert using threadsafe way
                         msg = f"{icon} **MESH ALERT**: {name} is now {new_status}"
-                        asyncio.run(self.send_telegram_msg(msg))
+                        try:
+                            if hasattr(self, 'loop') and self.loop:
+                                asyncio.run_coroutine_threadsafe(self.send_telegram_msg(msg), self.loop)
+                        except:
+                            pass
                 except Exception as e:
                     logger.error(f"Health check failed for {name}: {e}")
-            time.sleep(60)
+            time.sleep(5)
     def global_market_pulse_loop(self):
         """
         Periodically wakes up the 'Scout' (1B) to check global market mood.
@@ -275,9 +307,22 @@ class KiBotMaster:
                 
                 for node_name, node_data in NODES.items():
                     ip = node_data.get("ip")
-                    res = subprocess.run(["ping", "-c", "1", "-W", "2", ip], capture_output=True)
-                    if res.returncode != 0:
+                    # Smart Probe: Try KiBot port or SSH
+                    is_reachable = False
+                    try:
+                        with socket.create_connection((ip, node_data.get('port', 9991)), timeout=2):
+                            is_reachable = True
+                    except:
+                        try:
+                            with socket.create_connection((ip, 22), timeout=2):
+                                is_reachable = True
+                        except:
+                            is_reachable = False
+                    
+                    if not is_reachable:
                         logger.error(f"🌐 Mesh Link Broken: {node_name} ({ip}) is unreachable!")
+                    else:
+                        logger.info(f"🌐 Mesh Link Stable: {node_name} ({ip})")
                 
             except Exception as e:
                 logger.error(f"Resource monitor error: {e}")
@@ -356,15 +401,21 @@ class KiBotMaster:
     async def get_node_status(self, name, cfg):
         try:
             async with httpx.AsyncClient(timeout=3.0) as client:
+                # Try high-level API status
                 resp = await client.get(f"http://{cfg['ip']}:{cfg['port']}/status")
                 if resp.status_code == 200:
                     data = resp.json()
                     cpu = data['metrics']['cpu']
                     status_icon = "🟢" if data['status'] == "ONLINE" else "🔴"
                     return f"{status_icon} **{name}**: {cpu}% CPU"
-                return f"🔴 **{name}**: UNREACHABLE"
         except Exception:
-            return f"🔴 **{name}**: OFFLINE"
+            pass
+            
+        # Fallback to mesh_health (verified via SSH port 22 in health monitor loop)
+        cached_health = self.mesh_health.get(name, "OFFLINE")
+        if cached_health == "ONLINE":
+            return f"🟢 **{name}**: ONLINE (via Mesh Link)"
+        return f"🔴 **{name}**: OFFLINE"
 
     async def send_node_command(self, node_name, command, service):
         node = NODES.get(node_name.upper())
@@ -412,7 +463,7 @@ class KiBotMaster:
             logger.error(f"WhatIf Error: {e}")
 
         # 3. Deep Reasoning (Async Path - Don't block execution but inform next trade)
-        # TODO: Trigger Ollama async for long-term sentiment update
+        self._trigger_deep_reasoning(symbol, price)
 
         # 4. Execution Dispatch to Singapore
         logger.info(f"🚀 GASS! {symbol} | Executing via Singapore...")
@@ -424,14 +475,55 @@ class KiBotMaster:
             "timestamp": datetime.now().isoformat(),
             "meta": s.get("meta", {})
         }
+        # Dynamic Routing based on Symbol
+        target_port = EXECUTOR_PORT
+        if symbol.startswith("POLY:"):
+            target_port = 9990 # Polymarket Executor Port
+            
         try:
-            self.out_sock.sendto(json.dumps(execution_order).encode("utf-8"), (EXECUTOR_IP, EXECUTOR_PORT))
+            self.out_sock.sendto(json.dumps(execution_order).encode("utf-8"), (EXECUTOR_IP, target_port))
+            logger.info(f"📤 Signal routed to {EXECUTOR_IP}:{target_port} for {symbol}")
         except Exception as e:
-            logger.error(f"Execution Dispatch Failed: {e}")
+            logger.error(f"❌ Failed to route signal: {e}")
             asyncio.run_coroutine_threadsafe(
                 self.notify_telegram(f"❌ **EXECUTION ERROR**: Failed to dispatch {symbol} to Singapore!"), 
                 self.loop
             )
+
+    def _trigger_deep_reasoning(self, symbol, price):
+        """
+        [DEEP RESEARCH] Async sentiment and math validation using Llama 3.1 8B.
+        Doesn't block the trade but informs the 'Oracle' and 'Brain' for next moves.
+        """
+        def worker():
+            try:
+                if not self.brain: return
+                logger.info(f"🧠 DEEP REASONING: Analyzing {symbol} in background...")
+                prompt = (
+                    f"As a sovereign analyst, evaluate {symbol} at {price}. "
+                    f"Current Market Mood: {self.market_mood}. "
+                    f"Provide 1-sentence strategic guidance for the next trade."
+                )
+                payload = {
+                    "model": "llama3.1:8b",
+                    "prompt": prompt,
+                    "stream": False,
+                    "options": {"temperature": 0.4}
+                }
+                response = self.brain._post_json(f"{OLLAMA_URL}/api/generate", body=payload, timeout=30.0)
+                advice = response.get("response", "No advice generated.").strip()
+                logger.info(f"🧠 ORACLE ADVICE for {symbol}: {advice}")
+                
+                # Optional: Send to Telegram if it's very important
+                if "URGENT" in advice.upper() or "WARNING" in advice.upper():
+                    asyncio.run_coroutine_threadsafe(
+                        self.notify_telegram(f"🧠 **DEEP REASONING ALERT** ({symbol}):\n{advice}"), 
+                        self.loop
+                    )
+            except Exception as e:
+                logger.debug(f"Deep reasoning failed for {symbol}: {e}")
+
+        threading.Thread(target=worker, daemon=True).start()
 
     def signal_receiver_loop(self):
         logger.info(f"📡 Signal Receiver Active (Port {LOCAL_LISTEN_PORT})")
@@ -578,6 +670,15 @@ class KiBotMaster:
         )
         await update.message.reply_text(msg, parse_mode='Markdown')
 
+    async def send_telegram_msg(self, text):
+        """Force Delivery via CURL (Resilient to library timeouts)"""
+        import shlex
+        try:
+            cmd = f'curl -s -X POST "https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage" -d chat_id="{TELEGRAM_CHAT_ID}" -d text="{text}" -d parse_mode="Markdown"'
+            subprocess.run(shlex.split(cmd), capture_output=True, timeout=15)
+        except Exception as e:
+            logger.error(f"Telegram CURL failed: {e}")
+
     async def health_cmd(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         if not await self.auth_check(update): return
         res = subprocess.run(["systemctl", "list-units", "kibot-*", "--all", "--no-legend"], capture_output=True, text=True)
@@ -609,12 +710,16 @@ class KiBotMaster:
         if not await self.auth_check(update): return
         await update.message.reply_text("🚀 **Global Startup Sequence Initiated...**")
         
-        # Local
-        subprocess.run(["sudo", "systemctl", "start", *CONTROL_SERVICES], check=False)
+        # Local (Linux Only fallback)
+        try:
+            if platform.system() == "Linux":
+                subprocess.run(["sudo", "systemctl", "start", *CONTROL_SERVICES], check=False)
+        except: pass
+
         # Remote
-        await self.send_node_command("SCANNER", "start", "kibot-scanner")
-        await self.send_node_command("EXECUTOR", "start", "kibot-executor-engine")
-        await self.send_node_command("EXECUTOR", "start", "kibot-polymarket")
+        for node_name, cfg in NODES.items():
+            for service in cfg.get("services", []):
+                await self.send_node_command(node_name, "start", service)
         
         await update.message.reply_text("✅ **All Subsystems Activated.**")
 
@@ -623,11 +728,15 @@ class KiBotMaster:
         await update.message.reply_text("🛑 **Global Shutdown Sequence Initiated...**")
         
         # Remote
-        await self.send_node_command("SCANNER", "stop", "kibot-scanner")
-        await self.send_node_command("EXECUTOR", "stop", "kibot-executor-engine")
-        await self.send_node_command("EXECUTOR", "stop", "kibot-polymarket")
-        # Local
-        subprocess.run(["sudo", "systemctl", "stop", *CONTROL_SERVICES], check=False)
+        for node_name, cfg in NODES.items():
+            for service in cfg.get("services", []):
+                await self.send_node_command(node_name, "stop", service)
+                
+        # Local (Linux Only fallback)
+        try:
+            if platform.system() == "Linux":
+                subprocess.run(["sudo", "systemctl", "stop", *CONTROL_SERVICES], check=False)
+        except: pass
         
         await update.message.reply_text("💤 **All Subsystems Parked.**")
 
@@ -636,21 +745,56 @@ class KiBotMaster:
         await update.message.reply_text("🚨 **EMERGENCY STOP TRIGGERED!**")
         await self.stop_all_cmd(update, context)
 
+    def verify_mesh_connectivity(self):
+        """Pre-flight check for Trinity Mesh connectivity"""
+        logger.info("🧪 Running pre-flight mesh diagnostics...")
+        for name, cfg in NODES.items():
+            ip = cfg['ip']
+            try:
+                # Test SSH port 22
+                with socket.create_connection((ip, 22), timeout=3):
+                    logger.info(f"✅ Node {name} ({ip}) - SSH REACHABLE")
+            except Exception:
+                logger.error(f"❌ Node {name} ({ip}) - SSH UNREACHABLE")
+
+        # Test Ollama
+        try:
+            with socket.create_connection(("127.0.0.1", 11434), timeout=2):
+                logger.info("✅ Local Ollama - REACHABLE")
+        except Exception:
+            logger.error("❌ Local Ollama - UNREACHABLE")
+
     # --- RUNNER ---
     def start(self):
+        # 0. Kill legacy instances
+        self.manage_pid()
+
+        # 1. Clear Telegram Webhook (Avoid Conflict)
+        import httpx
+        try:
+            async def clear_webhook():
+                async with httpx.AsyncClient() as client:
+                    await client.get(f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/deleteWebhook?drop_pending_updates=True")
+            asyncio.run(clear_webhook())
+        except: pass
+
+        # Run pre-flight checks
+        self.verify_mesh_connectivity()
+
         self.loop = asyncio.new_event_loop()
         asyncio.set_event_loop(self.loop)
         
         # Start Threads
         threading.Thread(target=self.signal_receiver_loop, daemon=True).start()
         threading.Thread(target=self.feedback_listener_loop, daemon=True).start()
-        threading.Thread(target=self.mesh_health_monitor_loop, daemon=True).start()
         threading.Thread(target=self.midnight_oracle_loop, daemon=True).start()
         threading.Thread(target=self.run_api_server, daemon=True).start()
         
+        # Start Mesh Health Monitor AFTER loop is established
+        threading.Thread(target=self.mesh_health_monitor_loop, daemon=True).start()
+        
         # New Autonomous Triggers
         threading.Thread(target=lambda: asyncio.run(self.resource_monitor_loop()), daemon=True).start()
-        threading.Thread(target=lambda: asyncio.run(self.global_market_pulse_loop()), daemon=True).start()
         threading.Thread(target=lambda: asyncio.run(self.daily_report_loop()), daemon=True).start()
         
         # Start Telegram

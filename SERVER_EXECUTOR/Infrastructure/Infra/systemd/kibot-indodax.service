@@ -1,21 +1,25 @@
 [Unit]
-Description=KiBot Polymarket Gateway (Python)
+Description=KiBot Trinity Trading Engine (Python)
 After=network-online.target
 Wants=network-online.target
+StartLimitIntervalSec=300
+StartLimitBurst=5
 
 [Service]
 Type=simple
 User=ubuntu
 WorkingDirectory=/home/ubuntu/KiBot
+# Load encrypted environment if available
 EnvironmentFile=-/home/ubuntu/KiBot/.env
 Environment=PYTHONUNBUFFERED=1
-ExecStart=/usr/bin/python3 -u /home/ubuntu/KiBot/SERVER_EXECUTOR/Core/Python_Executor/polymarket_executor.py
+Environment=KIBOT_EXCHANGE_KIND=INDODAX
+ExecStart=/usr/bin/python3 -u /home/ubuntu/KiBot/SERVER_EXECUTOR/Core/Python_Executor/indodax_executor.py
 Restart=always
 RestartSec=5
 MemoryMax=256M
 StandardOutput=journal
 StandardError=journal
-SyslogIdentifier=kibot-polymarket
+SyslogIdentifier=kibot-indodax
 
 [Install]
 WantedBy=multi-user.target

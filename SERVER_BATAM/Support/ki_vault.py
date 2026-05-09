@@ -25,6 +25,11 @@ class SovereignVault:
 
     def _get_hardware_id(self) -> str:
         """Get a unique hardware ID (MAC address + system node)."""
+        # Allow override for portability
+        override = os.environ.get("KIBOT_VAULT_OVERRIDE")
+        if override:
+            return f"KIBOT-OVERRIDE-{override}"
+            
         node = uuid.getnode()
         return f"KIBOT-HW-{node}"
 
@@ -73,7 +78,12 @@ class SovereignVault:
         try:
             return self._fernet.decrypt(token.encode()).decode()
         except Exception as e:
-            raise ValueError(f"Decryption failed. Vault key may be invalid for this hardware. Error: {e}")
+            hw_id = self._get_hardware_id()
+            raise ValueError(
+                f"Decryption failed. Vault key may be invalid for this hardware ({hw_id}). "
+                f"If you migrated machines, set KIBOT_VAULT_OVERRIDE to the original hardware ID or secret. "
+                f"Error: {e}"
+            )
 
     def vaultify_env(self, env_path: Path, out_path: Path):
         """Encrypt a standard .env file into a .env.kiv file."""

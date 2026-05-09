@@ -1,6 +1,6 @@
 # Batam High Command Node (Master)
 
-This server acts as the sovereign brain of the KiBot Trinity Mesh.
+This server acts as the sovereign brain of the KiBot Trinity Mesh, orchestrating Scanners and Python Executors.
 
 ## 🚀 Quick Start
 ```bash
@@ -15,19 +15,20 @@ python3 KiBot.py
 ## 🛠️ Infrastructure Services
 - **Ollama:** `127.0.0.1:11434` (Logic Engine)
 - **FastAPI Commander:** `0.0.0.0:8080` (Android Bridge)
-- **Signal Ports:** `9998` (Receiver), `9997` (Feedback)
+- **Smart Signal Routing:** 
+  - `9999` (UDP): Indodax Signal Route
+  - `9990` (UDP): Polymarket (POLY: prefix) Route
+  - `9997` (UDP): Feedback Loop
 
 ## 📋 Monitoring Logs
 - **Master Log:** `tail -f Logs/kibot_master.log`
-- **Vault Debug:** `tail -f Logs/vault.log`
+- **Executor Feedback:** `tail -f Logs/execution.log`
 
-## 🤖 Self-Healing (The Mechanic)
-When a mesh node fails, the Master will:
-1. Pull remote logs via `get_remote_logs()`.
-2. Analyze via `qwen2.5-coder:7b`.
-3. Apply fix via `aider`.
-4. Restart remote service.
+## 🤖 Trinity Orchestration
+The Master node manages specialized Python Executors:
+- **Indodax Node**: High-frequency spot trading.
+- **Polymarket Node**: Web3 prediction market execution.
 
 ---
-*Environment:* **PRODUCTION**
+*Environment:* **PRODUCTION (Python-Native)**
 *Sovereignty Level:* **MAXIMUM**

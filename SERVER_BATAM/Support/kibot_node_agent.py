@@ -78,7 +78,7 @@ class NodeCommandHandler(BaseHTTPRequestHandler):
     def check_services(self):
         """Check status of relevant services on this node"""
         # Monitoring both Indodax and Polymarket trading venues
-        services_to_check = ["kibot-scanner", "kibot-executor-engine", "kibot-polymarket", "tailscaled"]
+        services_to_check = ["kibot-scanner", "kibot-indodax", "kibot-polymarket", "tailscaled"]
         results = {}
         for s in services_to_check:
             res = subprocess.run(["systemctl", "is-active", s], capture_output=True, text=True)
