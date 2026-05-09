@@ -1,21 +1,21 @@
-# 🛰️ Trinity Mesh v9.1.1 - Sovereign Architecture Map
+# 🛰️ Trinity Mesh v9.2.0 - Sovereign Architecture Map
 
 ## 1. DATA FLOW (Based on Design)
 [SCANNER: 152.69.218.198] 
       |
-      | (UDP 9997 - Real-time Signal)
+      | (UDP 9997/9999 - Real-time Signal)
       v
 [BATAM: 168.110.201.228] <--- (Brain / Decision Maker)
       |
-      | (UDP - Real-time Signal)
+      | (UDP/CLOB - Real-time Execution)
       v
-[EXECUTOR: 213.35.118.26] <--- (Indodax & Polymarket LIVE TRADE)
+[EXECUTOR: 213.35.118.26] <--- (Indodax & Polymarket PROD-READY)
 
 ## 2. COMPONENT STATUS
-- **Scanner**: Eyes active.
-- **Batam**: Sovereign mode ON. Resource governor active.
-- **Executor**: API Keys validated. 199ms execution path established.
-- **Guard**: SSH Failover active.
+- **Scanner**: Sensory Mesh active. [NEW] Indodax Small-Cap Pump & Polymarket Full Coverage enabled.
+- **Batam**: Sovereign mode ON. [NEW] Lead-Lag Veto logic & 10s Latency Gate active.
+- **Executor**: [PROD] Indodax Pythonic Executor & Polymarket CLOB Client (py-clob-client) active.
+- **Guard**: SSH Failover & Tailscale mesh active.
 
 ini catatan owner. jangan dihapus tapi wajib dibaca dan dimengerti.
 

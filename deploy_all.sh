@@ -67,8 +67,16 @@ sync_env "$EXECUTOR_IP" "$KEY_EXECUTOR"
 echo "✅ Environment parity established."
 
 # --- POST-DEPLOYMENT: REFRESH ---
+echo "🛠️  Updating Scanner services..."
+ssh -i "$KEY_SCANNER" -o StrictHostKeyChecking=no "$USER@$SCANNER_IP" << EOF
+    sudo cp $REMOTE_ROOT/SERVER_SCANNER/Infrastructure/systemd/kibot-scanner-indodax-smallcap.service /etc/systemd/system/
+    sudo systemctl daemon-reload
+    sudo systemctl restart kibot-scanner-indodax-smallcap
+EOF
+
 echo "🛠️  Hard-restarting Executor services..."
 ssh -i "$KEY_EXECUTOR" -o StrictHostKeyChecking=no "$USER@$EXECUTOR_IP" << EOF
+    pip install py-clob-client --break-system-packages || true
     sudo killall -9 python3 || true
     sudo systemctl daemon-reload
     sudo systemctl restart kibot-indodax kibot-polymarket kibot-node-agent

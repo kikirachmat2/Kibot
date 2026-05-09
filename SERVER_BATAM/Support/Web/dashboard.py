@@ -165,7 +165,7 @@ async def handle_full_state(request):
 
 async def handle_websocket(request):
     """WebSocket endpoint /ws — serves CommandCenterLiveSnapshot to Android APK."""
-    ws = web.WebSocketResponse(heartbeat=15)
+    ws = web.WebSocketResponse(heartbeat=15, max_msg_size=1024*1024)
     await ws.prepare(request)
     _ws_clients.add(ws)
     log.info(f"[WS] Client connected: {request.remote} | total={len(_ws_clients)}")

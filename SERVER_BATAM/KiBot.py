@@ -554,6 +554,16 @@ class KiBotMaster:
 
     # --- BRAIN LOGIC (SIGNAL PROCESSING) ---
     def decide_and_execute(self, s):
+        # Anti-replay: tolak sinyal yang terlambat > 10 detik (bukan 90 detik)
+        sent_at_ms = float(s.get("sentAtEpochMs", 0) or s.get("ts", 0))
+        if sent_at_ms > 0:
+            age_sec = (time.time() * 1000 - sent_at_ms) / 1000
+            if age_sec > 10.0:  # Turunkan dari 90s ke 10s untuk HFT
+                logger.debug(f"⏰ Stale signal rejected: {s.get('s')} age={age_sec:.1f}s")
+                if self.fp_logger:
+                    self.fp_logger.log_decision(s, "STALE_SIGNAL", f"Age: {age_sec:.1f}s > 10s")
+                return
+
         symbol = s.get('s') or s.get('base_symbol')
         price = float(s.get('p') or s.get('price_idr') or s.get('price_usdt', 0))
         

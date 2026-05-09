@@ -38,56 +38,51 @@ class PolymarketExecutor:
         }
 
     async def execute_order(self, signal):
-        """Execute a prediction market order via Web3."""
-        symbol = signal.get("symbol", "UNKNOWN")
-        price = float(signal.get("price", 0))
-        side = signal.get("side", "BUY")
-        
-        # Polymarket usually uses USDC. 
-        # For a production bot, we'd use the Polymarket CLOB SDK or 
-        # interact with the CTF Exchange contract.
-        
-        logger.info(f"🚀 EXECUTING POLYMARKET: {side} {symbol} @ {price}")
-        
-        if not self.private_key:
-            logger.error("❌ Cannot execute: Private Key missing!")
-            self.report_to_batam(symbol, "FAILED", "Private Key missing")
-            return
-
+        """Real Polymarket execution via CLOB API."""
         try:
-            # Note: Actual contract interaction requires the specific Market ID 
-            # and Outcome Index from the signal.
+            from py_clob_client.client import ClobClient
+            from py_clob_client.clob_types import OrderArgs, OrderType
+            from py_clob_client.constants import POLYGON
+
             market_id = signal.get("meta", {}).get("market_id")
-            outcome_index = signal.get("meta", {}).get("outcome_index", 0) # 0 for Yes, 1 for No usually
-            
             if not market_id:
-                logger.warning("⚠️ Market ID missing in signal. Using dry-run mode.")
-                await asyncio.sleep(1)
-                self.report_to_batam(symbol, "SUCCESS", "Polymarket Dry-Run Success (No Market ID)")
+                logger.warning("No market_id in signal")
                 return
 
-            # --- WEB3 EXECUTION LOGIC ---
-            # 1. Connect to Polygon
-            from web3 import Web3
-            w3 = Web3(Web3.HTTPProvider("https://1rpc.io/matic"))
-            
-            # 2. Account Setup
-            account = w3.eth.account.from_key(self.private_key)
-            
-            # 3. (Simplified) Interaction with CTF Exchange or Proxy
-            # For brevity in this unified architecture, we assume 
-            # the Batam Master provides pre-signed or structured data.
-            # Real production implementation would use polymarket-clob-python SDK.
-            
-            logger.info(f"🔗 Sending transaction for Market: {market_id}")
-            # Mocking the hex transaction hash
-            tx_hash = "0x" + "f"*64 
-            
-            self.report_to_batam(symbol, "SUCCESS", f"TX: {tx_hash}")
-            
+            client = ClobClient(
+                host="https://clob.polymarket.com",
+                chain_id=POLYGON,
+                key=self.private_key,
+                signature_type=2,  # POLY signature
+            )
+
+            outcome_idx = signal.get("meta", {}).get("outcome_index", 0)
+            price       = float(signal.get("price", 0.5))
+            size_usdc   = float(signal.get("meta", {}).get("size_usdc", 5.0))  # default $5 USDC
+
+            if price <= 0 or price >= 1:
+                logger.warning(f"Invalid price {price} for {market_id}")
+                return
+
+            order_args = OrderArgs(
+                token_id=market_id,
+                price=price,
+                size=size_usdc,
+                side="BUY",
+                order_type=OrderType.GTC,
+            )
+
+            resp = client.create_and_post_order(order_args)
+            logger.info(f"✅ Polymarket order placed: {resp}")
+            self.report_to_batam(signal.get("symbol"), "SUCCESS", str(resp))
+
+        except ImportError:
+            logger.error("py-clob-client not installed: pip install py-clob-client")
+            # Fallback ke dry-run
+            self.report_to_batam(signal.get("symbol"), "DRY_RUN", "SDK not installed")
         except Exception as e:
-            logger.error(f"❌ Polymarket Execution Error: {e}")
-            self.report_to_batam(symbol, "FAILED", str(e))
+            logger.error(f"Polymarket execution error: {e}")
+            self.report_to_batam(signal.get("symbol"), "FAILED", str(e))
 
     def report_to_batam(self, symbol, status, msg):
         """Sends an execution report back to Batam."""

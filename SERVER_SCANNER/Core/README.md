@@ -8,7 +8,8 @@ In Trinity v9.1, Scrapers no longer perform local filtering. They are "Dumb & Fa
 ## Critical Sensors
 - **ki_binance_scanner_v2.py**: Optimized for WebSocket stream to capture micro-second movements.
 - **ki_indodax_scanner.py**: Monitors local liquidity and IDR spread.
-- **ki_polymarket_scanner.py**: Tracks prediction market odds as a leading indicator for spot volatility.
+- **ki_indodax_smallcap_scanner.py**: [NEW v9.2] Detects volume spikes and OBI pumps on low-liquidity Indodax pairs.
+- **ki_polymarket_full_scanner.py**: [NEW v9.2] Full-coverage prediction market scanner with confidence scoring and momentum detection.
 - **ki_whale_scanner.py**: Monitors large exchange inflows/outflows.
 
 ## Core Foundation

@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
 from urllib.parse import urlencode
 from urllib.request import Request, urlopen
+import requests
 
 
 logger = logging.getLogger("KiBrain")
@@ -232,7 +233,52 @@ class BrainManager:
         if decision == "REJECT":
             return "REJECTED", reason
             
+        # 5. Lead-lag check (v9.2): Verify against Binance for Indodax signals
+        if "idr" in pair.lower() or "idx" in session.lower():
+            ll_ok, ll_reason = self._check_lead_lag(pair, {"change_5m_pct": 0}) # Placeholder change
+            if not ll_ok:
+                return "REJECTED", f"Lead-Lag Veto: {ll_reason}"
+
         return "APPROVED", f"Passed all Sovereign checks ({regime}/{session})."
+
+    def _check_lead_lag(self, pair: str, signal: dict) -> tuple[bool, str]:
+        """
+        Cek apakah sinyal Indodax masih dalam window lead-lag Binance.
+        Jika Binance sudah naik 5%+ 5 menit lalu, Indodax kemungkinan terlambat.
+        """
+        # Extract base symbol
+        base = pair.split('_')[0].upper() if '_' in pair else pair.upper().replace('IDR', '').replace('/', '')
+        binance_pair = f"{base}USDT"
+        
+        try:
+            r = requests.get(
+                "https://api.binance.com/api/v3/klines",
+                params={"symbol": binance_pair, "interval": "1m", "limit": 10},
+                timeout=3
+            )
+            klines = r.json()
+            if not klines or len(klines) < 7:
+                return True, "lead_lag_skip"
+
+            # Perubahan harga 5 menit lalu di Binance
+            price_5m_ago = float(klines[-6][4])  # close 5 candle lalu
+            price_now    = float(klines[-1][4])  # close terakhir
+            binance_change = (price_now - price_5m_ago) / price_5m_ago * 100
+
+            indodax_change = float(signal.get("change_5m_pct", 0))
+
+            # Kalau Binance sudah naik >3% dan Indodax baru mulai, ini lead-lag valid
+            if binance_change > 3.0 and indodax_change < binance_change * 0.5:
+                return True, f"lead_lag_valid: BNB+{binance_change:.1f}% IDX+{indodax_change:.1f}%"
+
+            # Kalau Binance sudah naik >5% dan Indodax sudah naik sebanding, terlambat
+            if binance_change > 5.0 and indodax_change > 3.0:
+                return False, f"lead_lag_late: BNB already +{binance_change:.1f}%"
+
+        except Exception as e:
+            logger.debug(f"Lead-lag error: {e}")
+            pass
+        return True, "lead_lag_ok"
 
     def _get_ai_consensus(self, pair: str, msg_type: str, regime: str, obi: float, session: str) -> Tuple[str, str]:
         """

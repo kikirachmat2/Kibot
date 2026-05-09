@@ -8,7 +8,7 @@
 ### 🐍 [/Core/Python_Executor](file:///home/ubuntu/KiBot/SERVER_EXECUTOR/Core/Python_Executor/)
 The sovereign execution core. No JVM/Kotlin dependencies.
 - `indodax_executor.py`: Dedicated Indodax trading node (Port 9999).
-- `polymarket_executor.py`: Dedicated Polymarket Web3 node (Port 9990).
+- `polymarket_executor.py`: Dedicated Polymarket Web3 node (Port 9990). [PROD] Real-time CLOB API execution enabled.
 - `risk_gate.py`: Safety-first order validation engine.
 - `trinity_cli.py`: Unified control interface for all executors.
 
