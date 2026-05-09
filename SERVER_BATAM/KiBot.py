@@ -20,7 +20,8 @@ from pathlib import Path
 from telegram import Update, ReplyKeyboardMarkup, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes, CallbackQueryHandler
 import uvicorn
-from fastapi import FastAPI
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+import json
 
 # --- PATH CONFIGURATION ---
 ROOT_DIR = Path(__file__).resolve().parent.parent
@@ -83,7 +84,7 @@ class KiBotMaster:
 
     # --- PILLAR 1: FULL AUTONOMY (HEALTH MONITORING) ---
     def mesh_health_monitor_loop(self):
-        logger.info("🟢 Pulse Check Mesh Active (60s loop)")
+        logger.info("🟢 Pulse Check Mesh Active (60s loop) - SELF-HEALING ENABLED")
         while True:
             for name, cfg in NODES.items():
                 try:
@@ -94,12 +95,34 @@ class KiBotMaster:
                     if self.mesh_health[name] != new_status:
                         self.mesh_health[name] = new_status
                         icon = "🟢" if new_status == "ONLINE" else "🔴"
-                        asyncio.run_coroutine_threadsafe(
-                            self.notify_telegram(f"{icon} **MESH ALERT**: {name} is now {new_status}"), 
-                            self.loop
-                        )
-                except: pass
+                        
+                        # Trigger Telegram Alert
+                        msg = f"{icon} **MESH ALERT**: {name} is now {new_status}"
+                        if new_status == "OFFLINE":
+                            msg += "\n🛠️ *Initiating Auto-Recovery...*"
+                        
+                        asyncio.run_coroutine_threadsafe(self.notify_telegram(msg), self.loop)
+                        
+                        # --- SELF-HEALING LOGIC ---
+                        if new_status == "OFFLINE":
+                            threading.Thread(target=self.attempt_node_recovery, args=(name,), daemon=True).start()
+                            
+                except Exception as e:
+                    logger.error(f"Monitor Error for {name}: {e}")
             time.sleep(60)
+
+    def attempt_node_recovery(self, node_name):
+        """Proactive recovery for dead nodes"""
+        logger.warning(f"🛠️ Attempting recovery for {node_name}...")
+        services = NODES[node_name]["services"]
+        for svc in services:
+            # We try to send a start command. If it's a network glitch, this might fail, 
+            # but if it's a crashed service, the node manager might still be up.
+            res = asyncio.run(self.send_node_command(node_name, "start", svc))
+            if res.get("ok"):
+                logger.info(f"✅ Recovery signal sent to {node_name} for {svc}")
+            else:
+                logger.error(f"❌ Recovery failed for {node_name}: {res.get('msg')}")
 
     # --- PILLAR 2: SOVEREIGN INTELLIGENCE (MIDNIGHT ORACLE) ---
     def midnight_oracle_loop(self):
@@ -129,17 +152,38 @@ class KiBotMaster:
         async def root():
             return {"status": "ONLINE", "node": "BATAM_MASTER", "mesh": self.mesh_health}
 
-        @self.api_app.get("/state")
-        async def get_state():
-            return self.get_state_data()
+        @self.api_app.websocket("/ws")
+        async def websocket_endpoint(websocket: WebSocket):
+            await websocket.accept()
+            logger.info("📱 Android Commander Connected via WebSocket")
+            try:
+                while True:
+                    # Stream state data every 2 seconds
+                    state_data = self.get_state_data()
+                    state_data["mesh"] = self.mesh_health
+                    state_data["timestamp"] = datetime.now().isoformat()
+                    
+                    await websocket.send_json(state_data)
+                    
+                    # Receive potential commands from APK
+                    try:
+                        data = await asyncio.wait_for(websocket.receive_text(), timeout=2.0)
+                        cmd_data = json.loads(data)
+                        logger.info(f"📱 Command from APK: {cmd_data}")
+                        # Process command (e.g., restart node)
+                        if "action" in cmd_data:
+                            await self.handle_apk_command(cmd_data)
+                    except asyncio.TimeoutError:
+                        pass
+            except WebSocketDisconnect:
+                logger.info("📱 Android Commander Disconnected")
 
-        @self.api_app.get("/pnl")
-        async def get_pnl():
-            state = self.get_state_data()
-            return {
-                "daily_pnl_pct": state.get("daily_pnl_pct", 0.0),
-                "daily_pnl_idr": state.get("daily_pnl_idr", 0)
-            }
+    async def handle_apk_command(self, cmd_data):
+        action = cmd_data.get("action")
+        target = cmd_data.get("target")
+        if action == "restart":
+            await self.send_node_command(target, "restart", "kibot-mesh")
+            await self.notify_telegram(f"📱 **APK CMD**: Restarting {target}...")
 
     def run_api_server(self):
         logger.info("📱 Commander API Serving on http://0.0.0.0:8080")
@@ -179,11 +223,11 @@ class KiBotMaster:
         
         if not symbol or price <= 0: return
 
-        # 1. AI Veto
+        # 1. AI Veto (Fast Path)
         try:
             veto_status, veto_reason = self.brain.veto_signal(
                 pair=symbol,
-                msg_type="SIGNAL",
+                msg_type=s.get('type', 'SIGNAL'),
                 regime=s.get('regime', 'UNKNOWN'),
                 obi=float(s.get('obi', 0.0))
             )
@@ -195,7 +239,7 @@ class KiBotMaster:
             logger.info(f"🛡️ VETOED: {symbol} | Reason: {veto_reason}")
             return
 
-        # 2. What-If Engine
+        # 2. What-If Engine (Math Guard)
         try:
             sim = simulate_pair(symbol, price)
             if sim.get("verdict") == "SKIP":
@@ -204,19 +248,27 @@ class KiBotMaster:
         except Exception as e:
             logger.error(f"WhatIf Error: {e}")
 
-        # 3. Execution Dispatch to Singapore
+        # 3. Deep Reasoning (Async Path - Don't block execution but inform next trade)
+        # TODO: Trigger Ollama async for long-term sentiment update
+
+        # 4. Execution Dispatch to Singapore
         logger.info(f"🚀 GASS! {symbol} | Executing via Singapore...")
         execution_order = {
             "symbol": symbol,
             "price": price,
             "side": "BUY",
             "brain_reason": f"AI:{veto_reason}",
-            "timestamp": datetime.now().isoformat()
+            "timestamp": datetime.now().isoformat(),
+            "meta": s.get("meta", {})
         }
         try:
             self.out_sock.sendto(json.dumps(execution_order).encode("utf-8"), (EXECUTOR_IP, EXECUTOR_PORT))
         except Exception as e:
             logger.error(f"Execution Dispatch Failed: {e}")
+            asyncio.run_coroutine_threadsafe(
+                self.notify_telegram(f"❌ **EXECUTION ERROR**: Failed to dispatch {symbol} to Singapore!"), 
+                self.loop
+            )
 
     def signal_receiver_loop(self):
         logger.info(f"📡 Signal Receiver Active (Port {LOCAL_LISTEN_PORT})")
@@ -270,20 +322,42 @@ class KiBotMaster:
         except: pass
 
     def get_state_data(self):
+        """Unified State Aggregator for Android Dashboard"""
+        aggregated = {
+            "total_equity_idr": 0,
+            "daily_pnl_pct": 0,
+            "daily_pnl_idr": 0,
+            "active_trades": [],
+            "last_update": datetime.now().isoformat(),
+            "mesh_status": self.mesh_health
+        }
+        
+        # Priority Paths
         paths = [
-            ROOT_DIR / "SERVER_BATAM" / ".state" / "runtime_note.json",
+            ROOT_DIR / "Data" / "State" / "sovereign_state.json",
+            ROOT_DIR / "Data" / "State" / "world_model.json",
             ROOT_DIR / "state" / "full_system_state.json",
             ROOT_DIR / "state" / "portfolio_state.json",
             ROOT_DIR / "state" / "brain_status.json",
         ]
+        
         for p in paths:
             try:
                 if p.exists():
                     with open(p, "r", encoding="utf-8") as f:
                         data = json.load(f)
-                        if data: return data
-            except: continue
-        return {}
+                        if isinstance(data, dict):
+                            # Smart merge
+                            for key in ["total_equity_idr", "daily_pnl_pct", "daily_pnl_idr", "active_trades"]:
+                                if key in data and data[key]:
+                                    aggregated[key] = data[key]
+                            # World Model / Sentiment merge
+                            if "global_bias" in data: aggregated["bias"] = data["global_bias"]
+                            if "fear_greed_index" in data: aggregated["fear_greed"] = data["fear_greed_index"]
+            except Exception as e:
+                logger.debug(f"State load skip {p}: {e}")
+                
+        return aggregated
 
     # --- TELEGRAM HANDLERS ---
     async def auth_check(self, update: Update):

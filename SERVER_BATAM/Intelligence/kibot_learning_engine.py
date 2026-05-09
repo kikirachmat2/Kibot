@@ -370,23 +370,8 @@ class LearningEngine:
             self.redis.lpush("kibot:history", json.dumps(trade))
             self.redis.ltrim("kibot:history", 0, 999)
 
-        self._sync_to_supabase(trade)
         return trade
 
-    def _sync_to_supabase(self, trade: dict):
-        def do_sync():
-            try:
-                url = os.environ.get("SUPABASE_URL")
-                key = os.environ.get("SUPABASE_ANON_KEY")
-                if not url or not key: return
-                req = urllib.request.Request(
-                    f"{url}/rest/v1/trade_history",
-                    data=json.dumps(trade).encode(),
-                    headers={"apikey": key, "Authorization": f"Bearer {key}", "Content-Type": "application/json"}
-                )
-                urllib.request.urlopen(req, timeout=5)
-            except Exception: pass
-        threading.Thread(target=do_sync, daemon=True).start()
 
     def get_today_stats(self) -> dict:
         today = datetime.utcnow().strftime("%Y-%m-%d")

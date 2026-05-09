@@ -2105,5 +2105,16 @@ class BrainManager:
 
     def _write_snapshot(self, snapshot: Dict[str, Any]) -> None:
         tmp = self.state_file.with_suffix(".tmp")
-        tmp.write_text(json.dumps(snapshot, ensure_ascii=False, indent=2), encoding="utf-8")
+        json_data = json.dumps(snapshot, ensure_ascii=False, indent=2)
+        tmp.write_text(json_data, encoding="utf-8")
         tmp.replace(self.state_file)
+        
+        # Mirror to dashboard runtime_note.json
+        mirror_path = os.getenv("KIBOT_RUNTIME_NOTE_PATH")
+        if mirror_path:
+            try:
+                m_path = Path(mirror_path)
+                m_path.parent.mkdir(parents=True, exist_ok=True)
+                m_path.write_text(json_data, encoding="utf-8")
+            except Exception as e:
+                logger.debug("Failed to mirror brain snapshot: %s", e)

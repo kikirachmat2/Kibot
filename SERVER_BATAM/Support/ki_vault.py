@@ -160,7 +160,7 @@ if __name__ == "__main__":
         elif cmd == "load":
             _vault.load_sovereign_env()
             # Print a few to verify (masked)
-            for k in ["SUPABASE_URL", "BINANCE_API_KEY", "KIBOT_SECRET"]:
+            for k in ["BINANCE_API_KEY", "KIBOT_SECRET"]:
                 val = os.environ.get(k, "NOT_FOUND")
                 masked = val[:6] + "..." if len(val) > 6 else val
                 print(f"{k}={masked}")

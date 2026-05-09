@@ -17,10 +17,9 @@ NETDATA_PORT = 19999
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 DASHBOARD_HTML = os.path.join(SCRIPT_DIR, "kibot_dashboard.html")
 
-# Path to kibot runtime state (used to push snapshot to APK)
 RUNTIME_STATE_PATH = Path(os.environ.get(
     "KIBOT_RUNTIME_NOTE_PATH",
-    "/home/ubuntu/KiBot/SERVER_BATAM/.state/runtime_note.json"
+    os.path.join(os.path.dirname(SCRIPT_DIR), "state", "runtime_note.json")
 ))
 
 # Connected WebSocket clients
@@ -195,7 +194,7 @@ async def handle_websocket(request):
                         await ws.send_str(json.dumps({"type": "subscribed", "channels": data.get("channels", [])}))
                     elif "command" in data or data.get("type") == "command":
                         # Forward commands to kibot_manager via a command file drop
-                        cmd_path = Path("/home/ubuntu/KiBot/SERVER_BATAM/.state/android_command.json")
+                        cmd_path = RUNTIME_STATE_PATH.parent / "android_command.json"
                         try:
                             cmd_path.parent.mkdir(parents=True, exist_ok=True)
                             cmd_path.write_text(json.dumps({

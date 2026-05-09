@@ -6,11 +6,11 @@ Wants=network-online.target kibot-trinity.service
 [Service]
 Type=simple
 User=ubuntu
-WorkingDirectory=/home/ubuntu/KiBot
-EnvironmentFile=-/home/ubuntu/KiBot/.env.server
-Environment=KIBOT_RUNTIME_NOTE_PATH=/home/ubuntu/KiBot/SERVER_BATAM/.state/runtime_note.json
-Environment=KIBOT_DASHBOARD_HOST=127.0.0.1
-Environment=KIBOT_DASHBOARD_PORT=18080
+WorkingDirectory=/Users/kiki/Documents/Web Develop/KiBot
+EnvironmentFile=-/Users/kiki/Documents/Web Develop/KiBot/SERVER_BATAM/.env
+Environment=KIBOT_RUNTIME_NOTE_PATH=/Users/kiki/Documents/Web Develop/KiBot/SERVER_BATAM/state/runtime_note.json
+Environment=KIBOT_DASHBOARD_HOST=0.0.0.0
+Environment=KIBOT_DASHBOARD_PORT=8787
 Environment=PYTHONUNBUFFERED=1
 Environment=PYTHONPATH=.
 ExecStart=/usr/bin/python3 SERVER_BATAM/Support/Web/dashboard.py
