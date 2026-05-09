@@ -483,6 +483,18 @@ class KiBotMaster:
         try:
             self.out_sock.sendto(json.dumps(execution_order).encode("utf-8"), (EXECUTOR_IP, target_port))
             logger.info(f"📤 Signal routed to {EXECUTOR_IP}:{target_port} for {symbol}")
+            
+            # [NEW] Telegram Approval Alert
+            alert = (
+                f"🚀 **EXECUTION DISPATCHED**\n"
+                f"Pair: `{symbol}`\n"
+                f"Price: `{price:,.2f}`\n"
+                f"Side: `BUY`\n"
+                f"Reason: _{veto_reason}_\n"
+                f"Node: `{EXECUTOR_IP}:{target_port}`"
+            )
+            asyncio.run_coroutine_threadsafe(self.notify_telegram(alert), self.loop)
+            
         except Exception as e:
             logger.error(f"❌ Failed to route signal: {e}")
             asyncio.run_coroutine_threadsafe(
@@ -562,10 +574,20 @@ class KiBotMaster:
                 if report.get("type") == "EXECUTION_REPORT":
                     symbol = report.get("symbol")
                     status = report.get("status")
+                    price = report.get("price", "N/A")
+                    order_id = report.get("order_id", "N/A")
                     logger.info(f"📬 REPORT FROM SINGAPORE: {symbol} -> {status}")
                     
-                    # Forward to Telegram
-                    msg = f"🔔 **TRADE REPORT**\nPair: `{symbol}`\nStatus: {'✅ SUCCESS' if status == 'SUCCESS' else '❌ FAILED'}"
+                    # Forward to Telegram with Richer Data
+                    icon = "✅ SUCCESS" if status == "SUCCESS" else "❌ FAILED"
+                    msg = (
+                        f"🔔 **TRADE REPORT**\n"
+                        f"Status: {icon}\n"
+                        f"Pair: `{symbol}`\n"
+                        f"Price: `{price}`\n"
+                        f"Order ID: `{order_id}`\n"
+                        f"Timestamp: `{datetime.now().strftime('%H:%M:%S')}`"
+                    )
                     asyncio.run_coroutine_threadsafe(self.notify_telegram(msg), self.loop)
             except Exception as e:
                 logger.error(f"Feedback Listener Error: {e}")
@@ -630,11 +652,17 @@ class KiBotMaster:
         if not await self.auth_check(update): return
         keyboard = [
             ['/status', '/health', '/pnl'],
-            ['/run_all', '/stop_all', '/ask'],
-            ['/emergency_stop']
+            ['/run_all', '/stop_all', '/report'],
+            ['/mesh', '/ask', '/emergency_stop']
         ]
         reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
-        await update.message.reply_text("🎖️ **KiBot High Command (Unified)**\nBatam Master Controller Active.", reply_markup=reply_markup, parse_mode='Markdown')
+        await update.message.reply_text(
+            "🎖️ **KiBot High Command (Sovereign)**\n"
+            "Batam Master Controller Active.\n\n"
+            "Use buttons below or type `/help` for cmd list.", 
+            reply_markup=reply_markup, 
+            parse_mode='Markdown'
+        )
 
     async def status_cmd(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         if not await self.auth_check(update): return
@@ -642,6 +670,7 @@ class KiBotMaster:
         
         state = self.get_state_data()
         batam_cpu = psutil.cpu_percent()
+        batam_mem = psutil.virtual_memory().percent
         
         # Remote Nodes
         node_reports = []
@@ -652,23 +681,66 @@ class KiBotMaster:
         msg = (
             f"📊 **SYSTEM MESH STATUS**\n\n"
             f"🏰 **BATAM (MASTER)**\n"
-            f"• CPU: {batam_cpu}%\n"
-            f"• Equity: Rp{state.get('total_equity_idr', 0):,.0f}\n\n"
+            f"• CPU: `{batam_cpu}%` | MEM: `{batam_mem}%`\n"
+            f"• Equity: `Rp{state.get('total_equity_idr', 0):,.0f}`\n"
+            f"• Bias: `{state.get('bias', 'NEUTRAL')}`\n"
+            f"• Fear/Greed: `{state.get('fear_greed', 'N/A')}`\n\n"
             f"📡 **REMOTE NODES**\n" + "\n".join(node_reports) + "\n\n"
-            f"🛡️ **TRINITY MESH**: SYNCHRONIZED"
+            f"🛰️ **TRINITY MESH**: {'🟢 SYNCHRONIZED' if 'OFFLINE' not in str(node_reports) else '🟡 DEGRADED'}"
         )
         await update.message.reply_text(msg, parse_mode='Markdown')
 
     async def pnl_cmd(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         if not await self.auth_check(update): return
         state = self.get_state_data()
+        active_trades = state.get('active_trades', [])
+        trade_count = len(active_trades) if isinstance(active_trades, list) else 0
+        
         msg = (
             "💰 **PNL SUMMARY**\n"
-            f"• Today: {state.get('daily_pnl_pct', 0.0):+.2f}%\n"
-            f"• Net IDR: Rp{state.get('daily_pnl_idr', 0):,.0f}\n"
-            "• Fee: PMK-68 Applied ✅"
+            f"• Today: `{state.get('daily_pnl_pct', 0.0):+.2f}%`\n"
+            f"• Net IDR: `Rp{state.get('daily_pnl_idr', 0):,.0f}`\n"
+            f"• Active Trades: `{trade_count}`\n"
+            "• Fee: `PMK-68 Applied ✅`"
         )
         await update.message.reply_text(msg, parse_mode='Markdown')
+
+    async def report_cmd(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        if not await self.auth_check(update): return
+        # Quick summary of recent logs
+        log_tail = []
+        try:
+            res = subprocess.run(["tail", "-n", "15", str(log_file)], capture_output=True, text=True)
+            log_tail = [line for line in res.stdout.splitlines() if "TRADE REPORT" in line or "GASS!" in line]
+        except: pass
+        
+        msg = "📜 **RECENT OPERATIONS**\n\n" + ("\n".join(log_tail[-5:]) or "No recent trades found in logs.")
+        await update.message.reply_text(msg, parse_mode='Markdown')
+
+    async def mesh_cmd(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        if not await self.auth_check(update): return
+        await update.message.reply_text("🧪 **Probing Trinity Mesh...**")
+        results = []
+        for name, cfg in NODES.items():
+            ip = cfg['ip']
+            try:
+                # Test SSH port 22
+                with socket.create_connection((ip, 22), timeout=3):
+                    results.append(f"✅ `{name}` ({ip}) - **REACHABLE**")
+            except Exception:
+                results.append(f"❌ `{name}` ({ip}) - **UNREACHABLE**")
+        
+        await update.message.reply_text("\n".join(results), parse_mode='Markdown')
+
+    async def ping_cmd(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        if not await self.auth_check(update): return
+        start = time.time()
+        sent_msg = await update.message.reply_text("🏓 Pinging...")
+        latency = (time.time() - start) * 1000
+        await sent_msg.edit_text(f"🏓 **PONG**\nLatency: `{latency:.1f}ms`")
+
+    async def kill_cmd(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        await self.emergency_stop_cmd(update, context)
 
     async def send_telegram_msg(self, text):
         """Force Delivery via CURL (Resilient to library timeouts)"""
@@ -804,6 +876,10 @@ class KiBotMaster:
         app.add_handler(CommandHandler("pnl", self.pnl_cmd))
         app.add_handler(CommandHandler("health", self.health_cmd))
         app.add_handler(CommandHandler("ask", self.ask_cmd))
+        app.add_handler(CommandHandler("report", self.report_cmd))
+        app.add_handler(CommandHandler("mesh", self.mesh_cmd))
+        app.add_handler(CommandHandler("ping", self.ping_cmd))
+        app.add_handler(CommandHandler("kill", self.kill_cmd))
         app.add_handler(CommandHandler("run_all", self.run_all_cmd))
         app.add_handler(CommandHandler("stop_all", self.stop_all_cmd))
         app.add_handler(CommandHandler("emergency_stop", self.emergency_stop_cmd))
