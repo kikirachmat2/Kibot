@@ -1,26 +1,22 @@
-# 🇯🇵 KiBot Scanner Node (Tokyo)
+# 📡 KiBot: Market Intelligence (Scanner Node)
 
-This node is responsible for low-latency market scanning across multiple global exchanges (Binance, Bybit, KuCoin, MEXC, Polymarket).
+> **Role**: High-Probability Setup Identification
+> **Motto**: "Maksimalkan Probabilitas Keuntungan"
 
-## 📁 Directory Structure
-- **[Core/](file:///home/ubuntu/KiBot/SERVER_SCANNER/Core/)**: Multi-threaded exchange scrapers and global mesh broadcaster.
-- **[Security/](file:///home/ubuntu/KiBot/SERVER_SCANNER/Security/)**: SSH keys and authentication certificates.
-- **[Infrastructure/](file:///home/ubuntu/KiBot/SERVER_SCANNER/Infrastructure/)**: Systemd services for the scanner mesh.
+## 📂 Structured Hierarchy
 
-## 🔑 SSH Access Info
-- **Public IP**: `152.69.218.198`
-- **Tailscale IP**: `100.105.139.21`
-- **User**: `ubuntu`
-- **SSH Key**: `SERVER_BATAM/Infrastructure/SSH/ssh-key-scanner.pem`
+### 🔍 [/Scrapers](file:///home/ubuntu/KiBot/SERVER_SCANNER/Scrapers/)
+The eyes of the system. Dedicated low-latency exchange monitoring.
+- `ki_global_scanner_mesh.py`: Unified multi-exchange scanner.
+- `ki_binance_scanner.py`: Depth & volume delta tracking.
 
-### Access via Tailscale (Recommended)
-```bash
-ssh -i SERVER_BATAM/Infrastructure/SSH/ssh-key-scanner.pem ubuntu@100.105.139.21
-```
+### 🧠 [/Signal_Processing](file:///home/ubuntu/KiBot/SERVER_SCANNER/Signal_Processing/)
+Filtering the noise to find the gold.
+- `kibot_local_signal.py`: Local probability calculation.
 
-### Access via Jump Host (Batam)
-```bash
-ssh -i SERVER_BATAM/Infrastructure/SSH/ssh-key-scanner.pem \
-    -o ProxyCommand="ssh -i SERVER_BATAM/Infrastructure/SSH/ssh-key-batam-active.pem -W %h:%p ubuntu@168.110.201.228" \
-    ubuntu@100.105.139.21
-```
+### 🏗️ [/Infrastructure](file:///home/ubuntu/KiBot/SERVER_SCANNER/Infrastructure/)
+Deployment and system orchestration.
+- `systemd/`: Service unit files for automated recovery.
+
+---
+*Operational Protocol: "Scan for Quality, Not Quantity"*

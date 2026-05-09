@@ -1,20 +1,30 @@
-# 🎖️ KiBot High Command (Batam)
+# 🧠 KiBot: Strategic Command (Batam Node)
 
-The master node of the Trinity Mesh. Responsible for signal validation, AI veto, portfolio management, and Telegram orchestration.
+> **Role**: Master Brain & Risk Orchestrator
+> **Motto**: "Tekan Kerugian, Maksimalkan Probabilitas Keuntungan"
 
-## 📁 Directory Structure
-- **[Core/](file:///home/ubuntu/KiBot/SERVER_BATAM/Core/)**: Decision engine and sovereign arbitrator.
-- **[Intelligence/](file:///home/ubuntu/KiBot/SERVER_BATAM/Intelligence/)**: AI Orchestration, Models, and RAG.
-- **[Infrastructure/](file:///home/ubuntu/KiBot/SERVER_BATAM/Infrastructure/)**: System-wide automation and SSH control.
-- **[Data/](file:///home/ubuntu/KiBot/SERVER_BATAM/Data/)**: Live state, logs, and testing sandbox.
+## 📂 Structured Hierarchy
 
-## 🔑 SSH Access Info
-- **Public IP**: `168.110.201.228`
-- **Tailscale IP**: `100.122.1.109` (Primary Mesh IP)
-- **User**: `ubuntu`
-- **SSH Key**: `SERVER_BATAM/Infrastructure/SSH/ssh-key-batam-active.pem`
+### 🏗️ [/Core](file:///home/ubuntu/KiBot/SERVER_BATAM/Core/)
+The heart of the command plane.
+- `kibot_manager.py`: Central signal orchestrator.
+- `ki_brain.py`: Strategic decision engine.
+- `trinity_governor.py`: Cross-node health & synchronization.
 
-### Direct SSH
-```bash
-ssh -i SERVER_BATAM/Infrastructure/SSH/ssh-key-batam-active.pem ubuntu@168.110.201.228
-```
+### 🛡️ [/Strategic](file:///home/ubuntu/KiBot/SERVER_BATAM/Strategic/)
+Risk management and AI validation layers.
+- `kibot_guardian.py`: Real-time risk gate (Max Drawdown enforcement).
+- `sovereign_arbitrator.py`: Final validation before execution.
+
+### 🖥️ [/Interface](file:///home/ubuntu/KiBot/SERVER_BATAM/Interface/)
+User interaction and visualization.
+- `telegram_commander.py`: Mobile control plane.
+- `dashboard.py`: Real-time mesh monitoring.
+
+### 🔧 [/Support](file:///home/ubuntu/KiBot/SERVER_BATAM/Support/)
+Utilities and configuration.
+- `ki_config.py`: Centralized philosophy & mesh constants.
+- `ki_vault.py`: Cryptographic secret management.
+
+---
+*Operational Protocol: "Sedikit Demi Sedikit, Lama-Lama Jadi Bukit"*

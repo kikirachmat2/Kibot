@@ -59,6 +59,47 @@ PROJECT_ROOT = Path(os.getenv("KIBOT_RUNTIME_ROOT", BASE_PATH.parent))
 STATE_DIR = Path(os.getenv("KIBOT_STATE_DIR", PROJECT_ROOT / "state"))
 
 # --- CLUSTER NODES ---
+# ==============================================================================
+# KiBot: The Agentic Sovereign Framework
+# Philosophy: "Sedikit Demi Sedikit, Lama-Lama Jadi Bukit"
+# Protocol: "Tekan Kerugian, Maksimalkan Probabilitas Keuntungan"
+# ==============================================================================
+
+import os
+from dotenv import load_dotenv
+
+# Load environment
+load_dotenv()
+
+class KiConfig:
+    # --- PHILOSOPHY & RISK GATE ---
+    PHILOSOPHY = "Sedikit Demi Sedikit, Lama-Lama Jadi Bukit"
+    MOTTO = "Tekan Kerugian, Maksimalkan Probabilitas Keuntungan"
+    
+    # Strict Risk Parameters (Sovereign Level)
+    MAX_DAILY_LOSS_PERCENT = 1.5      # "Tekan Kerugian" - Hard cap per day
+    MIN_SIGNAL_PROBABILITY = 0.85     # "Maksimalkan Probabilitas" - Only 85%+ high-conviction
+    SCALPING_TP_PERCENT = 0.5         # "Sedikit Demi Sedikit" - Take profit early
+    SCALPING_SL_PERCENT = 0.3         # Strict stop loss to maintain 2:1 RR approx
+    
+    # --- MESH TOPOLOGY ---
+    BATAM_MASTER = "168.110.201.228"
+    SCANNER_NODE = "100.105.139.21"   # Tokyo (Tailscale)
+    EXECUTOR_NODE = "100.122.1.109"  # Singapore (Tailscale)
+    
+    # --- PORTS ---
+    UDP_SIGNAL_PORT = 9999
+    COMMAND_PLANE_PORT = 9991
+    
+    # --- SECURITY ---
+    VAULT_SALT = os.getenv("KIBOT_VAULT_SALT", "SOVEREIGN_SALT_2026")
+    SECRET_KEY = os.getenv("KIBOT_SECRET", "TRINITY_SECRET_CHANGE_ME")
+
+    @classmethod
+    def get_node_name(cls):
+        # Auto-detect node based on environment or hostname
+        return os.getenv("KIBOT_NODE_NAME", "UNKNOWN_NODE")
+
 # --- CLUSTER NODES (Mesh-First) ---
 BATAM_HOST = os.getenv("KIBOT_BATAM_HOST", "168.110.201.228") # Batam Node
 EXECUTOR_HOST = os.getenv("KIBOT_EXECUTOR_HOST", "100.122.1.109") # Tailscale Mesh (Singapore Executor)
