@@ -9,9 +9,18 @@ import requests
 import json
 from datetime import datetime
 
-# Add paths to imports
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
-from Support.ki_config import KiConfig
+# Add paths to imports (Robust Path Resolution)
+import sys
+from pathlib import Path
+project_root = str(Path(__file__).resolve().parent.parent)
+if project_root not in sys.path:
+    sys.path.append(project_root)
+
+# Standard imports
+try:
+    from SERVER_BATAM.Support.ki_config import KiConfig
+except ImportError:
+    from Support.ki_config import KiConfig
 
 def check_node(name, ip, port=9991):
     try:
