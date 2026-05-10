@@ -1,11 +1,11 @@
 [Unit]
-Description=KiBot Sovereign High Command (Unified BATAM_MASTER)
+Description=KiBot Sovereign High Command (Unified Batam)
 After=network.target tailscaled.service
 
 [Service]
 Type=simple
 User=ubuntu
-WorkingDirectory=/home/ubuntu/KiBot/BATAM_MASTER
+WorkingDirectory=/home/ubuntu/KiBot/Batam
 Environment=PYTHONPATH=/home/ubuntu/KiBot
 ExecStart=/usr/bin/python3 KiBot.py
 Restart=always

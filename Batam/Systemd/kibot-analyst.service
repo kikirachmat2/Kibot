@@ -12,7 +12,7 @@ EnvironmentFile=-/home/ubuntu/KiBot/.env.kibot
 EnvironmentFile=-/home/ubuntu/KiBot/.env.kibot_manager
 Environment=PYTHONUNBUFFERED=1
 Environment=PYTHONPATH=.
-ExecStart=/usr/bin/python3 BATAM_MASTER/Support/Audit_Testing/kibot_analyst.py
+ExecStart=/usr/bin/python3 Batam/Support/Audit_Testing/kibot_analyst.py
 Restart=on-failure
 RestartSec=30
 MemoryMax=50M

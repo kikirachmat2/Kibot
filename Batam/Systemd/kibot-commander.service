@@ -6,7 +6,7 @@ Wants=network-online.target kibot-trinity.service
 [Service]
 Type=simple
 User=ubuntu
-WorkingDirectory=/home/ubuntu/KiBot/BATAM_MASTER
+WorkingDirectory=/home/ubuntu/KiBot/Batam
 EnvironmentFile=-/home/ubuntu/KiBot/.env.server
 Environment=KIBOT_RUNTIME_ROOT=/home/ubuntu/KiBot
 Environment=PYTHONUNBUFFERED=1
