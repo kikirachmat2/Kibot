@@ -1,0 +1,17 @@
+[Unit]
+Description=KiBot Sovereign High Command (Unified Master)
+After=network.target tailscaled.service
+
+[Service]
+Type=simple
+User=ubuntu
+WorkingDirectory=/home/ubuntu/KiBot/Master
+Environment=PYTHONPATH=/home/ubuntu/KiBot
+ExecStart=/usr/bin/python3 KiBot.py
+Restart=always
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,24 @@
+[Unit]
+Description=KiBot Command Center Dashboard
+After=network-online.target kibot-trinity.service
+Wants=network-online.target kibot-trinity.service
+
+[Service]
+Type=simple
+User=ubuntu
+WorkingDirectory=/home/ubuntu/KiBot/Master
+EnvironmentFile=-/home/ubuntu/KiBot/Master/Master/.env
+Environment=KIBOT_RUNTIME_NOTE_PATH=/home/ubuntu/KiBot/Master/Master/state/runtime_note.json
+Environment=KIBOT_DASHBOARD_HOST=0.0.0.0
+Environment=KIBOT_DASHBOARD_PORT=8787
+Environment=PYTHONUNBUFFERED=1
+Environment=PYTHONPATH=.
+ExecStart=/usr/bin/python3 Master/Support/Web/dashboard.py
+Restart=always
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=kibot-command-center
+
+[Install]
+WantedBy=multi-user.target

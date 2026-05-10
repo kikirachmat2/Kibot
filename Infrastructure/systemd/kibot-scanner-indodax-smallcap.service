@@ -1,0 +1,15 @@
+[Unit]
+Description=KiBot Indodax Small Cap Pump Scanner
+After=network-online.target
+
+[Service]
+Type=simple
+User=ubuntu
+WorkingDirectory=/home/ubuntu/KiBot
+ExecStart=/usr/bin/python3 Scanner/Core/ki_indodax_smallcap_scanner.py
+Restart=always
+RestartSec=10
+MemoryMax=64M
+
+[Install]
+WantedBy=multi-user.target

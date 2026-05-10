@@ -1,0 +1,22 @@
+[Unit]
+Description=KiBot Trinity Dashboard (Support/Web)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=ubuntu
+# Folder sudah kita rename ke Master
+WorkingDirectory=/home/ubuntu/KiBot
+EnvironmentFile=-/home/ubuntu/KiBot/.env.indodax
+EnvironmentFile=-/home/ubuntu/KiBot/.env.server
+Environment=PYTHONPATH=.
+ExecStart=/usr/bin/python3 Master/Support/Web/dashboard.py
+Restart=always
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=kibot-dashboard
+
+[Install]
+WantedBy=multi-user.target

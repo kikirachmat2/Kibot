@@ -1,0 +1,22 @@
+[Unit]
+Description=KiBot Manager Compatibility Shim
+After=network-online.target kibot-trinity.service
+Wants=network-online.target kibot-trinity.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+User=ubuntu
+WorkingDirectory=/home/ubuntu/KiBot
+EnvironmentFile=-/home/ubuntu/KiBot/.env.server
+EnvironmentFile=-/home/ubuntu/KiBot/.env.kibot
+EnvironmentFile=-/home/ubuntu/KiBot/.env.kibot_manager
+Environment=PYTHONUNBUFFERED=1
+ExecStart=/bin/true
+ExecStop=/bin/true
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=kibot-manager-shim
+
+[Install]
+WantedBy=multi-user.target
