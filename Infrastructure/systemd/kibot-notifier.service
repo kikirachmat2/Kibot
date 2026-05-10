@@ -10,10 +10,10 @@ WorkingDirectory=/home/ubuntu/KiBot
 EnvironmentFile=-/home/ubuntu/KiBot/.env.server
 EnvironmentFile=-/home/ubuntu/KiBot/.env.kibot
 EnvironmentFile=-/home/ubuntu/KiBot/.env.kibot_manager
-Environment=KIBOT_RUNTIME_ROOT=/home/ubuntu/KiBot/Master
+Environment=KIBOT_RUNTIME_ROOT=/home/ubuntu/KiBot/BATAM_MASTER
 Environment=PYTHONUNBUFFERED=1
 Environment=PYTHONPATH=.
-ExecStart=/usr/bin/python3 Master/Communication/kibot_notifier.py
+ExecStart=/usr/bin/python3 BATAM_MASTER/Communication/kibot_notifier.py
 Restart=always
 RestartSec=10
 StandardOutput=journal

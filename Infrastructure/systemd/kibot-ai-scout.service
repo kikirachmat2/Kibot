@@ -3,12 +3,12 @@ Description=KiBot AI World Scout
 After=network.target
 
 [Service]
-Environment=PYTHONPATH=/home/ubuntu/KiBot/Master
+Environment=PYTHONPATH=/home/ubuntu/KiBot/BATAM_MASTER
 Type=simple
 User=ubuntu
 WorkingDirectory=/home/ubuntu/KiBot
 EnvironmentFile=/home/ubuntu/KiBot/.env
-ExecStart=/usr/bin/python3 /home/ubuntu/KiBot/Master/AI_Orchestration/kibot_ai_scout.py
+ExecStart=/usr/bin/python3 /home/ubuntu/KiBot/BATAM_MASTER/AI_Orchestration/kibot_ai_scout.py
 Restart=always
 RestartSec=30
 StandardOutput=append:/home/ubuntu/KiBot/logs/scout.log

@@ -1,5 +1,5 @@
 [Unit]
-Description=KiBot Global Scanner (%i)
+Description=KiBot Global SG_SCANNER (%i)
 After=network-online.target
 Wants=network-online.target
 StartLimitIntervalSec=300

@@ -1,5 +1,5 @@
 [Unit]
-Description=KiBot Global Scanner Mesh (Bybit + KuCoin + Crypto.com + MEXC)
+Description=KiBot Global SG_SCANNER Mesh (Bybit + KuCoin + Crypto.com + MEXC)
 After=network-online.target
 Wants=network-online.target
 StartLimitIntervalSec=300

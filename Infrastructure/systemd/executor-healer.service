@@ -1,5 +1,5 @@
 [Unit]
-Description=Executor Healer Service
+Description=SG_EXECUTOR Healer Service
 After=network-online.target
 Wants=network-online.target
 
@@ -8,4 +8,4 @@ Type=oneshot
 User=root
 WorkingDirectory=/home/ubuntu/KiBot
 Environment=PYTHONUNBUFFERED=1
-ExecStart=/usr/bin/python3 /home/ubuntu/KiBot/Master/Infrastructure/executor_memory_watchdog.py
+ExecStart=/usr/bin/python3 /home/ubuntu/KiBot/BATAM_MASTER/Infrastructure/executor_memory_watchdog.py

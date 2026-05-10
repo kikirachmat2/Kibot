@@ -9,7 +9,7 @@ User=ubuntu
 WorkingDirectory=/home/ubuntu/KiBot
 EnvironmentFile=-/home/ubuntu/KiBot/.env
 Environment=PYTHONUNBUFFERED=1
-ExecStart=/usr/bin/python3 -u /home/ubuntu/KiBot/Executor/Core/Python_Executor/polymarket_executor.py
+ExecStart=/usr/bin/python3 -u /home/ubuntu/KiBot/SG_EXECUTOR/Core/Python_SG_EXECUTOR/polymarket_executor.py
 Restart=always
 RestartSec=5
 MemoryMax=256M
