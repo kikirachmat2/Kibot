@@ -273,14 +273,12 @@ class KiBotMaster:
                 await self.deliberate_issue("EMERGENCY", {"type": "SYSTEM_ANOMALY", "snapshot": telemetry})
             elif telemetry["mesh_nodes"]["SINGAPORE_SCANNER"] == "OFFLINE":
                 logger.info("Watchman: Scanner is offline but system remains operational.")
-            
-            # 2. REPORTING: Push status to Telegram
-            await self.send_dashboard(telemetry)
-            
-            # 3. PROACTIVE: Oracle Mode (Every 60 iterations ~ 1 hour)
             elif iteration % 60 == 0:
                 logger.info("Oracle Mode (Periodic): Council performing proactive market scouting...")
                 await self.deliberate_issue("SCOUTING", {"type": "PROACTIVE_ORACLE", "snapshot": telemetry})
+            
+            # 2. REPORTING: Push status to Telegram (Now safe here)
+            await self.send_dashboard(telemetry)
             
             await asyncio.sleep(60)
 
