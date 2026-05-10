@@ -63,7 +63,7 @@ class SovereignCouncil:
             f"CRITICAL RULE: Any status like 'OFFLINE', 'NeedsAuth', or 'Degraded' MUST be flagged as ANOMALY. "
             f"Output ONLY: NORMAL or ANOMALY."
         )
-        obs_analysis = await self._query_ollama("qwen3:0.6b", obs_prompt, "You are a strict KiBot System Auditor.")
+        obs_analysis = await self._query_ollama("qwen2.5:0.5b", obs_prompt, "You are a strict KiBot System Auditor.")
         
         # Decision logic: Either AI says ANOMALY or Python found a failure string
         if not manual_anomaly and "NORMAL" in obs_analysis.upper() and issue_context.get("type") != "CIRCUIT_BREAKER_OPEN":
@@ -75,7 +75,7 @@ class SovereignCouncil:
         
         # 2. DIAGNOSTICIAN (1.7b) - Root Cause Analysis
         diag_prompt = f"Analyze this issue snapshot and provide the root cause:\n{json.dumps(snapshot)}"
-        diagnosis = await self._query_ollama("qwen3:1.7b", diag_prompt, "You are the KiBot Diagnostician. Be precise.")
+        diagnosis = await self._query_ollama("qwen2.5:1.5b", diag_prompt, "You are the KiBot Diagnostician. Be precise.")
         
         # 3. STRATEGIST (DeepSeek-R1 / Reasoning Mode) - Propose Solutions
         # Add External Intelligence if needed
@@ -104,7 +104,7 @@ class SovereignCouncil:
         )
         
         # Using Qwen 1.5b for reliability on local machine
-        strategies = await self._query_ollama("qwen3:1.7b", strat_prompt, "You are a Tactical War-Room Strategist. Analyze the Black Swan risks.")
+        strategies = await self._query_ollama("qwen2.5:1.5b", strat_prompt, "You are a Tactical War-Room Strategist. Analyze the Black Swan risks.")
         
         # 4. RISK ARBITER (0.5b) - Final Scoring
         arb_prompt = (
@@ -112,7 +112,7 @@ class SovereignCouncil:
             f"Pick the most realistic action for NOW.\n"
             f"Output ONLY valid JSON: {{'action': '...', 'confidence': 0.XX, 'risk': '...', 'reasoning': '...'}}"
         )
-        decision_raw = await self._query_ollama("qwen3:0.6b", arb_prompt, "You are the Final Arbiter. Output JSON only.")
+        decision_raw = await self._query_ollama("qwen2.5:0.5b", arb_prompt, "You are the Final Arbiter. Output JSON only.")
         
         # Clean JSON and parse
         try:

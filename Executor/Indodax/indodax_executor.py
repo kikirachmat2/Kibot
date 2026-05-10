@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-from Batam.Support.ki_vault import load_sovereign_env
+# from Batam.Support.ki_vault import load_sovereign_env (Removed to allow dynamic loading below)
 import asyncio
 import json
 import socket
@@ -233,7 +233,7 @@ class SignalProtocol(asyncio.DatagramProtocol):
             logger.error(f"UDP Parse Error: {e}")
 
 if __name__ == "__main__":
-    load_sovereign_env()
+    # load_sovereign_env() # Already called in _load_vault() above
     executor = IndodaxExecutor()
     try:
         asyncio.run(executor.start())

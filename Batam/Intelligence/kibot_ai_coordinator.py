@@ -39,10 +39,12 @@ def _load_env_file(env_path: str = ".env") -> None:
 
 # Load .env files
 _load_env_file(".env")
-_load_env_file("/home/ubuntu/KiBot/.env")
 _load_env_file(".env.kiv") # Load vaulted env as well
 
 _root = Path(__file__).resolve().parent.parent
+# Ensure Support is in path
+if str(_root.parent) not in sys.path:
+    sys.path.append(str(_root.parent))
 
 from Support.ki_config import *
 from Support.ki_utils import _env_first
@@ -56,9 +58,9 @@ RATE_STATE_FILE = STATE_DIR / "ai_coordinator_rate.json"
 RESPONSE_CACHE = STATE_DIR / "ai_coordinator_cache.json"
 PROVIDER_STATE_FILE = STATE_DIR / "ai_coordinator_providers.json"
 REQUEST_TIMEOUT_SEC = float(os.getenv("KIBOT_AI_COORDINATOR_TIMEOUT_SEC", "12"))
-OLLAMA_FAST_MODEL = os.getenv("KIBOT_OLLAMA_FAST_MODEL", "qwen3:0.6b")
-OLLAMA_DEFAULT_MODEL = os.getenv("KIBOT_OLLAMA_MODEL", "qwen3:1.7b")
-OLLAMA_DEEP_MODEL = os.getenv("KIBOT_OLLAMA_DEEP_MODEL", "qwen3:4b")
+OLLAMA_FAST_MODEL = os.getenv("KIBOT_OLLAMA_FAST_MODEL", "qwen2.5:0.5b")
+OLLAMA_DEFAULT_MODEL = os.getenv("KIBOT_OLLAMA_MODEL", "qwen2.5:1.5b")
+OLLAMA_DEEP_MODEL = os.getenv("KIBOT_OLLAMA_DEEP_MODEL", "qwen2.5:1.5b")
 OLLAMA_FAST_TIMEOUT_SEC = float(os.getenv("KIBOT_OLLAMA_FAST_TIMEOUT_SEC", "300"))
 OLLAMA_DEFAULT_TIMEOUT_SEC = float(os.getenv("KIBOT_OLLAMA_TIMEOUT_SEC", "300"))
 OLLAMA_DEEP_TIMEOUT_SEC = float(os.getenv("KIBOT_OLLAMA_DEEP_TIMEOUT_SEC", "300"))

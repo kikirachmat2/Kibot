@@ -1,3 +1,4 @@
+from Intelligence.kibot_ai_search import ROOT_DIR
 import sys
 # pyrefly: ignore [invalid-syntax]
 from __future__ import annotations
@@ -18,8 +19,10 @@ import requests
 
 
 logger = logging.getLogger("KiBrain")
-ROOT_DIR = Path(__file__).resolve().parent.parent
-
+# Force inject Support into sys.path
+BASE_DIR = Path(__file__).resolve().parent.parent.parent
+if str(BASE_DIR / "Support") not in sys.path:
+    sys.path.append(str(BASE_DIR / "Support"))
 POSITIVE_HEADLINE_KEYWORDS = {
     "approval",
     "breakout",

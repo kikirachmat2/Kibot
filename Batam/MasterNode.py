@@ -20,6 +20,7 @@ from typing import Dict, List, Optional
 from pathlib import Path
 from datetime import datetime
 from dotenv import load_dotenv
+import httpx
 
 # Load Environment Variables
 load_dotenv()
@@ -80,34 +81,72 @@ class KiBotMaster:
 
     # --- Mesh Monitoring ---
     async def mesh_monitor_loop(self):
-        """Continuously monitors node health and triggers Council on failure."""
-        logger.info("Starting Mesh Health Monitor...")
+        """High-integrity Monitoring: Combines Watchman, CircuitBreaker, and Oracle Scouting."""
+        logger.info("🛰️ High-Integrity Mesh Monitor started.")
+        
+        # Immediate Oracle Scout on startup
+        logger.info("Oracle Mode (Startup): Performing initial market scouting...")
+        await self.deliberate_issue("SCOUTING", {"type": "PROACTIVE_ORACLE", "snapshot": await self.get_telemetry()})
+        
+        iteration = 0
         while self.is_running:
+            iteration += 1
+            telemetry = await self.get_telemetry()
+            
+            # 1. CIRCUIT BREAKER CHECK (Physical Node Health)
             for name, cfg in NODES.items():
                 if name == "BATAM": continue
                 
                 ip = cfg['ip']
-                breaker = self.breakers.get(name.split("_")[-1])
+                # Determine breaker name (SCANNER or EXECUTOR)
+                breaker_key = name.split("_")[-1]
+                breaker = self.breakers.get(breaker_key)
                 
                 if not breaker or not breaker.can_attempt():
                     continue
 
                 try:
-                    # Async connection check
+                    # Async connection check (Low level port 22)
                     _, writer = await asyncio.wait_for(asyncio.open_connection(ip, 22), timeout=3.0)
                     writer.close()
                     await writer.wait_closed()
                     breaker.record_success()
-                    # logger.info(f"✅ {name} is alive.")
                 except Exception:
                     status = breaker.record_failure()
-                    logger.error(f"❌ {name} unreachable!")
-                    
+                    logger.error(f"❌ {name} unreachable (Port 22)!")
                     if status == "ESCALATE":
-                        # TRIGGER COUNCIL DELIBERATION
-                        asyncio.create_task(self.invoke_council(name, "NODE_UNREACHABLE"))
+                        asyncio.create_task(self.deliberate_issue(name, {"type": "NODE_UNREACHABLE", "snapshot": telemetry}))
+
+            # 2. WATCHMAN CHECK (Service Health)
+            critical_services = [
+                telemetry["redis"] == "OFFLINE",
+                telemetry["tailscale"] != "Running",
+                telemetry["mesh_nodes"]["SINGAPORE_EXECUTOR"] == "OFFLINE"
+            ]
             
-            await asyncio.sleep(30) # Observer frequency as per spec
+            if any(critical_services):
+                logger.warning("Watchman: CRITICAL infrastructure anomaly detected!")
+                await self.deliberate_issue("EMERGENCY", {"type": "SYSTEM_ANOMALY", "snapshot": telemetry})
+            elif telemetry["mesh_nodes"]["SINGAPORE_SCANNER"] == "OFFLINE":
+                logger.info("Watchman: Scanner is offline but system remains operational.")
+            elif iteration % 60 == 0:
+                logger.info("Oracle Mode (Periodic): Council performing proactive market scouting...")
+                await self.deliberate_issue("SCOUTING", {"type": "PROACTIVE_ORACLE", "snapshot": telemetry})
+            
+            # 3. REPORTING
+            await self.send_dashboard(telemetry)
+            await asyncio.sleep(60)
+
+    async def deliberate_issue(self, target: str, context: Dict):
+        """Trigger Council deliberation and execute the resulting strategy."""
+        decision = await self.council.deliberate(context)
+        
+        # Only execute if confidence is high and action is valid
+        if decision.get("action") and decision.get("confidence", 0) >= 0.8:
+            logger.info(f"Council approved action: {decision['action']}. Executing...")
+            await self.execute_action(decision["action"], target)
+        else:
+            logger.info(f"Council decision: {decision.get('action', 'NONE')} (Confidence: {decision.get('confidence', 0)*100:.1f}%). No action taken.")
 
     async def invoke_council(self, target: str, issue_type: str):
         """Invoke the Sovereign Council for complex decision making."""
@@ -167,12 +206,11 @@ class KiBotMaster:
     async def send_telegram(self, message: str):
         """Helper to send alerts to Telegram."""
         if TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID:
-            import httpx
             async with httpx.AsyncClient() as client:
                 url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
                 await client.post(url, data={"chat_id": TELEGRAM_CHAT_ID, "text": message, "parse_mode": "Markdown"})
 
-    async def execute_action(self, action: str, target: str):
+    async def execute_action(self, action: str, target: str = "SYSTEM"):
         """Execute autonomous actions approved by Council."""
         logger.info(f"Executing Council Action: {action} on {target}")
         
@@ -208,6 +246,7 @@ class KiBotMaster:
 
     async def get_telemetry(self) -> Dict:
         """Gather real-time telemetry from Batam and remote Singapore nodes."""
+        import shutil
         telemetry = {
             "timestamp": time.time(),
             "os_load": os.getloadavg() if hasattr(os, "getloadavg") else "N/A",
@@ -221,77 +260,39 @@ class KiBotMaster:
         }
         
         # Check Local Redis
-        try:
-            proc = await asyncio.create_subprocess_shell("redis-cli ping", stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)
-            stdout, _ = await proc.communicate()
-            if b"PONG" in stdout: telemetry["redis"] = "ONLINE"
-        except: pass
+        redis_path = shutil.which("redis-cli")
+        if redis_path:
+            try:
+                proc = await asyncio.create_subprocess_shell(f"{redis_path} ping", stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)
+                stdout, _ = await proc.communicate()
+                if b"PONG" in stdout: telemetry["redis"] = "ONLINE"
+            except: pass
+        else:
+            logger.debug("redis-cli not found in PATH")
 
         # Check Tailscale & Remote Nodes (Singapore)
-        try:
-            # Check local TS status
-            proc = await asyncio.create_subprocess_shell("tailscale status --json", stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)
-            stdout, _ = await proc.communicate()
-            if stdout:
-                ts_data = json.loads(stdout)
-                telemetry["tailscale"] = ts_data.get("BackendState", "ONLINE")
-                
-                # Proactive Mesh Check (Tailscale IPs for Singapore nodes)
-                nodes = {"SINGAPORE_SCANNER": "sg-scanner", "SINGAPORE_EXECUTOR": "sg-executor"}
-                for name, host in nodes.items():
-                    ping = await asyncio.create_subprocess_shell(f"ping -c 1 -W 2 {host}", stdout=asyncio.subprocess.PIPE)
-                    await ping.wait()
-                    telemetry["mesh_nodes"][name] = "ONLINE" if ping.returncode == 0 else "OFFLINE"
-        except: pass
+        ts_path = shutil.which("tailscale")
+        if ts_path:
+            try:
+                # Check local TS status
+                proc = await asyncio.create_subprocess_shell(f"{ts_path} status --json", stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)
+                stdout, _ = await proc.communicate()
+                if stdout:
+                    ts_data = json.loads(stdout)
+                    telemetry["tailscale"] = ts_data.get("BackendState", "ONLINE")
+                    
+                    # Proactive Mesh Check (Tailscale IPs for Singapore nodes)
+                    nodes = {"SINGAPORE_SCANNER": "sg-scanner", "SINGAPORE_EXECUTOR": "sg-executor"}
+                    for name, host in nodes.items():
+                        ping = await asyncio.create_subprocess_shell(f"ping -c 1 -W 1 {host}", stdout=asyncio.subprocess.PIPE)
+                        await ping.wait()
+                        telemetry["mesh_nodes"][name] = "ONLINE" if ping.returncode == 0 else "OFFLINE"
+            except: pass
+        else:
+            logger.debug("tailscale not found in PATH")
 
         return telemetry
 
-    async def mesh_monitor_loop(self):
-        """Main loop with Mesh Awareness and Oracle Mode (Proactive Scouting)."""
-        logger.info("🛰️ Mesh Monitor Loop started.")
-        
-        # Immediate Oracle Scout on startup for validation
-        logger.info("Oracle Mode (Startup): Performing initial market scouting...")
-        await self.deliberate_issue("SCOUTING", {"type": "PROACTIVE_ORACLE", "snapshot": await self.get_telemetry()})
-        
-        iteration = 0
-        while self.is_running:
-            iteration += 1
-            telemetry = await self.get_telemetry()
-            
-            # 1. REACTIVE: Watchman Logic (Batam/Mesh failures)
-            # Check if critical services are down (Scanner is now considered OPTIONAL)
-            critical_services = [
-                telemetry["redis"] == "OFFLINE",
-                telemetry["tailscale"] != "Running",
-                # telemetry["mesh_nodes"]["SINGAPORE_SCANNER"] == "OFFLINE", # [v9.5] Scanner is optional
-                telemetry["mesh_nodes"]["SINGAPORE_EXECUTOR"] == "OFFLINE"
-            ]
-            
-            if any(critical_services):
-                logger.warning("Watchman detected a CRITICAL infrastructure anomaly! Triggering Council...")
-                await self.deliberate_issue("EMERGENCY", {"type": "SYSTEM_ANOMALY", "snapshot": telemetry})
-            elif telemetry["mesh_nodes"]["SINGAPORE_SCANNER"] == "OFFLINE":
-                logger.info("Watchman: Scanner is offline but system remains operational.")
-            elif iteration % 60 == 0:
-                logger.info("Oracle Mode (Periodic): Council performing proactive market scouting...")
-                await self.deliberate_issue("SCOUTING", {"type": "PROACTIVE_ORACLE", "snapshot": telemetry})
-            
-            # 2. REPORTING: Push status to Telegram (Now safe here)
-            await self.send_dashboard(telemetry)
-            
-            await asyncio.sleep(60)
-
-    async def deliberate_issue(self, target: str, context: Dict):
-        """Trigger Council deliberation and execute the resulting strategy."""
-        decision = await self.council.deliberate(context)
-        
-        # Only execute if confidence is high and action is valid
-        if decision.get("action") and decision.get("confidence", 0) >= 0.8:
-            logger.info(f"Council approved action: {decision['action']}. Executing...")
-            await self.execute_action(decision["action"])
-        else:
-            logger.info(f"Council decision: {decision.get('action', 'NONE')} (Confidence: {decision.get('confidence', 0)*100:.1f}%). No action taken.")
 
     def start(self):
         # Start core loops

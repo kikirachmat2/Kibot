@@ -13,12 +13,25 @@ from urllib.request import Request, urlopen
 ROOT_DIR = Path(__file__).resolve().parent.parent
 
 
-try:
-    from SERVER_BATAM.Support.ki_vault import load_sovereign_env
-    vault_key = os.getenv("KIBOT_VAULT_KEY", "kibot_sovereign_trinity_mesh_2024_batam")
-    load_sovereign_env(vault_key=vault_key)
-except Exception as e:
-    print(f"⚠️ Vault Load Warning: {e}")
+# Force load ki_vault from absolute path
+SUPPORT_DIR = ROOT_DIR.parent / "Support"
+VAULT_PATH = SUPPORT_DIR / "ki_vault.py"
+
+load_sovereign_env = lambda vault_key: None
+if VAULT_PATH.exists():
+    try:
+        import importlib.util
+        spec = importlib.util.spec_from_file_location("ki_vault", str(VAULT_PATH))
+        ki_vault = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(ki_vault)
+        load_sovereign_env = ki_vault.load_sovereign_env
+        
+        vault_key = os.getenv("KIBOT_VAULT_KEY", "kibot_sovereign_trinity_mesh_2024_batam")
+        load_sovereign_env(vault_key=vault_key)
+    except Exception as e:
+        print(f"⚠️ [OLLAMA_GATEWAY] Vault Load Warning: {e}")
+else:
+    print(f"⚠️ [OLLAMA_GATEWAY] Vault path not found: {VAULT_PATH}")
 
 
 HOST = os.getenv("KIBOT_OLLAMA_GATEWAY_BIND_HOST", "0.0.0.0")
@@ -33,12 +46,12 @@ ALLOWED_POST = {"/api/chat", "/api/generate", "/api/embed"}
 ALLOWED_GET = {"/api/tags", "/api/ps"}
 FAST_MODELS = {
     item.strip()
-    for item in os.getenv("KIBOT_OLLAMA_GATEWAY_FAST_MODELS", "qwen3:0.6b").split(",")
+    for item in os.getenv("KIBOT_OLLAMA_GATEWAY_FAST_MODELS", "qwen2.5:0.5b").split(",")
     if item.strip()
 }
 DEFAULT_MODELS = {
     item.strip()
-    for item in os.getenv("KIBOT_OLLAMA_GATEWAY_DEFAULT_MODELS", "qwen3:1.7b,qwen3:4b").split(",")
+    for item in os.getenv("KIBOT_OLLAMA_GATEWAY_DEFAULT_MODELS", "qwen2.5:1.5b").split(",")
     if item.strip()
 }
 FORCE_MODEL = os.getenv("KIBOT_OLLAMA_GATEWAY_FORCE_MODEL", "").strip()
