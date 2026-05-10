@@ -135,9 +135,26 @@ async def handle_full_state(request):
     now_ms = int(now.timestamp() * 1000)
     time_str = now.strftime("%H:%M:%S")
 
-    # Parallel Fetch
-    node_results = await asyncio.gather(*[get_node_stats(session, ip) for ip in NODES.values()])
-    engine_data = await fetch_json(session, f"http://{NODES['EXECUTOR']}:8787/api/state", timeout_sec=1.5)
+    # Parallel Fetch with Error Handling
+    try:
+        node_results = await asyncio.gather(*[get_node_stats(session, ip) for ip in NODES.values()], return_exceptions=True)
+        # Filter out exceptions and replace with offline stats
+        processed_nodes = []
+        for res in node_results:
+            if isinstance(res, Exception):
+                processed_nodes.append({"cpu": 0, "ram": 0, "online": false})
+            else:
+                processed_nodes.append(res)
+        node_results = processed_nodes
+    except Exception as e:
+        log.error(f"Node stats global error: {e}")
+        node_results = [{"cpu": 0, "ram": 0, "online": False}] * len(NODES)
+
+    try:
+        engine_data = await fetch_json(session, f"http://{NODES['EXECUTOR']}:8787/api/state", timeout_sec=1.0)
+        if not engine_data: engine_data = {}
+    except:
+        engine_data = {}
 
     last_act = engine_data.get("last_action", "TRINITY V9.1 ACTIVE - Monitoring")
 

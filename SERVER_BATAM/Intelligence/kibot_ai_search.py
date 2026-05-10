@@ -138,28 +138,35 @@ class AISearchService:
         if not api_key: return ""
         
         def loader():
-            # Jina Reader API - using search prefix
-            search_url = f"https://s.jina.ai/{urllib.parse.quote(query)}"
+            # Jina Reader API - using the recommended r.jina.ai prefix
+            search_url = f"https://r.jina.ai/{urllib.parse.quote(query)}"
             req = urllib.request.Request(
                 search_url,
                 headers={
                     "Authorization": f"Bearer {api_key}",
                     "Accept": "application/json",
                     "X-No-Cache": "true",
-                    "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+                    "X-With-Links-Summary": "true",
+                    "User-Agent": "KiBot-Sovereign-Council/1.0"
                 }
             )
             try:
                 with urllib.request.urlopen(req, timeout=20) as resp:
+                    if resp.status != 200:
+                        print(f"[JINA] HTTP Error: {resp.status}")
+                        return ""
                     data = json.loads(resp.read().decode("utf-8"))
-                    # Jina returns a list of results in 'data'
-                    results = data.get("data", [])
+                    # Jina returns a list of results in 'data' or 'content'
+                    results = data.get("data", []) if isinstance(data, dict) else []
+                    if not results and "content" in data:
+                        return data["content"]
+                    
                     content = ""
                     for res in results[:5]: # Top 5
-                        content += f"Source: {res.get('url')}\nContent: {res.get('content')[:1000]}\n\n"
+                        content += f"Source: {res.get('url')}\nContent: {res.get('content', '')[:1000]}\n\n"
                     return content
             except Exception as e:
-                print(f"[JINA] Error: {e}")
+                print(f"[JINA] Connection Error: {e}")
                 return ""
             
         return self._cached(f"jina:{hashlib.md5(query.encode()).hexdigest()}", 3600, loader)

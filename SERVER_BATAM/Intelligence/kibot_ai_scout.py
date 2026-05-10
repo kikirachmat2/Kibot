@@ -11,6 +11,7 @@ import json
 import time
 from pathlib import Path
 from typing import Dict, List, Any
+from SERVER_BATAM.Core.circuit_breaker import CircuitBreaker
 
 # Path resolution
 ROOT_DIR = Path(__file__).resolve().parent.parent
@@ -31,6 +32,7 @@ class WorldScout:
         STATE_DIR.mkdir(parents=True, exist_ok=True)
         self.search_service = get_ai_search()
         self.coordinator = get_ai_coordinator()
+        self.breaker = CircuitBreaker("WORLD_SCOUT", max_failures=3, reset_after_sec=600)
 
     def _log(self, msg: str):
         print(f"[SCOUT][{time.strftime('%Y-%m-%d %H:%M:%S')}] {msg}", flush=True)
@@ -89,10 +91,14 @@ class WorldScout:
                 
                 WORLD_MODEL_FILE.write_text(json.dumps(world_model, indent=2), encoding="utf-8")
                 self._log("World Model updated successfully with Possibility Matrix.")
+                self.breaker.record_success()
             except Exception as e:
                 self._log(f"Failed to save World Model: {e}")
+                self.breaker.record_failure()
         else:
             self._log("[WARN] Intelligence synthesis failed (no AI response).")
+            if self.breaker.record_failure() == "ESCALATE":
+                self._log("[CRITICAL] Scout circuit opened. Escalating to Council/Human.")
 
     def perform_targeted_scouting(self, pair: str):
         self._log(f"Initiating URGENT targeted scouting for {pair}...")

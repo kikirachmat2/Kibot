@@ -8,31 +8,37 @@
   <link rel="icon" type="image/png" href="/kibot.png">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+  <link
+    href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;700&display=swap"
+    rel="stylesheet">
   <style>
     :root {
-      --bg:      #070a10;
-      --bg2:     #0c1220;
-      --bg3:     #111827;
-      --bg4:     #1a2236;
-      --border:  #1c2b42;
+      --bg: #070a10;
+      --bg2: #0c1220;
+      --bg3: #111827;
+      --bg4: #1a2236;
+      --border: #1c2b42;
       --border2: #263d5c;
-      --green:   #00e080;
-      --green-dim: rgba(0,224,128,.12);
-      --green-glow: rgba(0,224,128,.25);
-      --red:     #ff4560;
-      --red-dim: rgba(255,69,96,.10);
-      --amber:   #f59e0b;
-      --blue:    #3b82f6;
-      --cyan:    #22d3ee;
-      --text:    #dde7f5;
-      --text-dim:#7a93b8;
-      --text-mute:#2f4a6a;
-      --mono:   'JetBrains Mono', monospace;
-      --sans:   'Inter', sans-serif;
+      --green: #00e080;
+      --green-dim: rgba(0, 224, 128, .12);
+      --green-glow: rgba(0, 224, 128, .25);
+      --red: #ff4560;
+      --red-dim: rgba(255, 69, 96, .10);
+      --amber: #f59e0b;
+      --blue: #3b82f6;
+      --cyan: #22d3ee;
+      --text: #dde7f5;
+      --text-dim: #7a93b8;
+      --text-mute: #2f4a6a;
+      --mono: 'JetBrains Mono', monospace;
+      --sans: 'Inter', sans-serif;
     }
 
-    * { margin:0; padding:0; box-sizing:border-box; }
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
 
     body {
       background: var(--bg);
@@ -70,7 +76,7 @@
     .logo {
       padding: 18px 16px 15px;
       border-bottom: 1px solid var(--border);
-      background: linear-gradient(135deg, rgba(0,224,128,.04) 0%, transparent 60%);
+      background: linear-gradient(135deg, rgba(0, 224, 128, .04) 0%, transparent 60%);
       position: relative;
     }
 
@@ -103,7 +109,7 @@
       align-items: center;
       gap: 0.75rem;
       padding: 0.6rem 1.25rem;
-      background: rgba(0,0,0,0.3);
+      background: rgba(0, 0, 0, 0.3);
       border-radius: 100px;
       border: 1px solid var(--border);
     }
@@ -118,9 +124,20 @@
     }
 
     @keyframes pulse-ring {
-      0% { transform: scale(0.8); opacity: 0.8; }
-      50% { transform: scale(1.2); opacity: 1; }
-      100% { transform: scale(0.8); opacity: 0.8; }
+      0% {
+        transform: scale(0.8);
+        opacity: 0.8;
+      }
+
+      50% {
+        transform: scale(1.2);
+        opacity: 1;
+      }
+
+      100% {
+        transform: scale(0.8);
+        opacity: 0.8;
+      }
     }
 
     .grid-stats {
@@ -144,20 +161,24 @@
     .stat-card:hover {
       transform: translateY(-8px);
       border-color: var(--accent);
-      box-shadow: 0 20px 40px rgba(0,0,0,0.3), 0 0 20px var(--accent-glow);
+      box-shadow: 0 20px 40px rgba(0, 0, 0, 0.3), 0 0 20px var(--accent-glow);
     }
 
     .stat-card::after {
       content: '';
       position: absolute;
-      top: 0; right: 0;
-      width: 100px; height: 100px;
+      top: 0;
+      right: 0;
+      width: 100px;
+      height: 100px;
       background: radial-gradient(circle at 100% 0%, var(--accent-glow), transparent);
       opacity: 0;
       transition: opacity 0.4s;
     }
 
-    .stat-card:hover::after { opacity: 1; }
+    .stat-card:hover::after {
+      opacity: 1;
+    }
 
     .stat-label {
       color: var(--text2);
@@ -184,8 +205,13 @@
       gap: 0.4rem;
     }
 
-    .stat-change.up { color: var(--up); }
-    .stat-change.down { color: var(--down); }
+    .stat-change.up {
+      color: var(--up);
+    }
+
+    .stat-change.down {
+      color: var(--down);
+    }
 
     .tabs {
       display: flex;
@@ -263,7 +289,7 @@
 
     .progress-bg {
       height: 8px;
-      background: rgba(255,255,255,0.05);
+      background: rgba(255, 255, 255, 0.05);
       border-radius: 100px;
       overflow: hidden;
     }
@@ -275,12 +301,26 @@
       transition: width 1s ease-in-out;
     }
 
-    .progress-fill.high { background: var(--down); }
-    .progress-fill.warn { background: var(--warn); }
+    .progress-fill.high {
+      background: var(--down);
+    }
+
+    .progress-fill.warn {
+      background: var(--warn);
+    }
 
     @keyframes pulse-red {
-      0%, 100% { opacity: 1; transform: scale(1); }
-      50% { opacity: 0.4; transform: scale(1.2); }
+
+      0%,
+      100% {
+        opacity: 1;
+        transform: scale(1);
+      }
+
+      50% {
+        opacity: 0.4;
+        transform: scale(1.2);
+      }
     }
 
     .section-label {
@@ -318,7 +358,9 @@
     .server-card::before {
       content: '';
       position: absolute;
-      left: 0; top: 0; bottom: 0;
+      left: 0;
+      top: 0;
+      bottom: 0;
       width: 2px;
       background: var(--green);
       opacity: 0;
@@ -330,7 +372,9 @@
       background: var(--bg4);
     }
 
-    .server-card:hover::before { opacity: 1; }
+    .server-card:hover::before {
+      opacity: 1;
+    }
 
     .server-head {
       display: flex;
@@ -385,7 +429,7 @@
     .bar-track {
       flex: 1;
       height: 3px;
-      background: rgba(255,255,255,.05);
+      background: rgba(255, 255, 255, .05);
       border-radius: 99px;
       overflow: hidden;
     }
@@ -395,11 +439,18 @@
       border-radius: 99px;
       background: var(--green);
       box-shadow: 0 0 6px var(--green-glow);
-      transition: width .6s cubic-bezier(.4,0,.2,1);
+      transition: width .6s cubic-bezier(.4, 0, .2, 1);
     }
 
-    .bar-fill.warn { background: var(--amber); box-shadow: 0 0 6px rgba(245,158,11,.3); }
-    .bar-fill.crit { background: var(--red);   box-shadow: 0 0 6px rgba(255,69,96,.3); }
+    .bar-fill.warn {
+      background: var(--amber);
+      box-shadow: 0 0 6px rgba(245, 158, 11, .3);
+    }
+
+    .bar-fill.crit {
+      background: var(--red);
+      box-shadow: 0 0 6px rgba(255, 69, 96, .3);
+    }
 
     .metric-val {
       font-family: var(--mono);
@@ -481,14 +532,20 @@
       transition: border-color .2s;
     }
 
-    .top-row .card { padding: 16px 18px; }
+    .top-row .card {
+      padding: 16px 18px;
+    }
 
-    .card:hover { border-color: var(--border2); }
+    .card:hover {
+      border-color: var(--border2);
+    }
 
     .card::before {
       content: '';
       position: absolute;
-      top: 0; left: 0; right: 0;
+      top: 0;
+      left: 0;
+      right: 0;
       height: 1px;
       background: linear-gradient(90deg, transparent 5%, var(--border2) 50%, transparent 95%);
     }
@@ -536,8 +593,13 @@
       font-weight: 700;
     }
 
-    .val.pos { color: var(--green); }
-    .val.neg { color: var(--red); }
+    .val.pos {
+      color: var(--green);
+    }
+
+    .val.neg {
+      color: var(--red);
+    }
 
     /* Portfolio tabs */
     .portfolio-tabs {
@@ -564,11 +626,14 @@
       text-transform: uppercase;
     }
 
-    .ptab:hover { color: var(--text-dim); border-color: var(--border2); }
+    .ptab:hover {
+      color: var(--text-dim);
+      border-color: var(--border2);
+    }
 
     .ptab.active {
       background: var(--green-dim);
-      border-color: rgba(0,224,128,.35);
+      border-color: rgba(0, 224, 128, .35);
       color: var(--green);
     }
 
@@ -578,7 +643,9 @@
       gap: 4px;
     }
 
-    .port-cell { text-align: center; }
+    .port-cell {
+      text-align: center;
+    }
 
     .port-cell .lbl {
       font-size: 8px;
@@ -596,7 +663,8 @@
     }
 
     /* Mid & bottom rows */
-    .mid-row, .bot-row {
+    .mid-row,
+    .bot-row {
       display: grid;
       grid-template-columns: 1fr 1fr;
       gap: 8px;
@@ -630,24 +698,28 @@
       text-transform: uppercase;
     }
 
-    .th:not(:first-child) { text-align: right; }
+    .th:not(:first-child) {
+      text-align: right;
+    }
 
     .table-row {
       display: grid;
       grid-template-columns: 90px 1fr 80px 70px 70px;
       padding: 7px 0;
-      border-bottom: 1px solid rgba(28,43,66,.7);
+      border-bottom: 1px solid rgba(28, 43, 66, .7);
       align-items: center;
       transition: background .12s;
       border-radius: 4px;
     }
 
     .table-row:hover {
-      background: rgba(255,255,255,.02);
+      background: rgba(255, 255, 255, .02);
       padding-left: 6px;
     }
 
-    .table-row:last-child { border-bottom: none; }
+    .table-row:last-child {
+      border-bottom: none;
+    }
 
     .pair-name {
       font-family: var(--mono);
@@ -672,7 +744,7 @@
     .alloc-track {
       flex: 1;
       height: 3px;
-      background: rgba(255,255,255,.05);
+      background: rgba(255, 255, 255, .05);
       border-radius: 99px;
       overflow: hidden;
     }
@@ -680,7 +752,7 @@
     .alloc-fill {
       height: 100%;
       border-radius: 99px;
-      transition: width .6s cubic-bezier(.4,0,.2,1);
+      transition: width .6s cubic-bezier(.4, 0, .2, 1);
     }
 
     .td-val {
@@ -690,8 +762,13 @@
       text-align: right;
     }
 
-    .td-val.pos { color: var(--green); }
-    .td-val.neg { color: var(--red); }
+    .td-val.pos {
+      color: var(--green);
+    }
+
+    .td-val.neg {
+      color: var(--red);
+    }
 
     /* Pie chart */
     .pie-wrap {
@@ -702,7 +779,9 @@
       height: 100%;
     }
 
-    .pie-svg { flex-shrink: 0; }
+    .pie-svg {
+      flex-shrink: 0;
+    }
 
     .legend {
       display: flex;
@@ -731,7 +810,7 @@
       display: grid;
       grid-template-columns: 82px 52px 1fr auto;
       padding: 7px 0;
-      border-bottom: 1px solid rgba(28,43,66,.7);
+      border-bottom: 1px solid rgba(28, 43, 66, .7);
       align-items: center;
       gap: 6px;
       transition: background .12s;
@@ -739,11 +818,13 @@
     }
 
     .trade-row:hover {
-      background: rgba(255,255,255,.02);
+      background: rgba(255, 255, 255, .02);
       padding-left: 6px;
     }
 
-    .trade-row:last-child { border: none; }
+    .trade-row:last-child {
+      border: none;
+    }
 
     .trade-pair {
       font-family: var(--mono);
@@ -765,13 +846,13 @@
     .trade-side.buy {
       background: var(--green-dim);
       color: var(--green);
-      border: 1px solid rgba(0,224,128,.2);
+      border: 1px solid rgba(0, 224, 128, .2);
     }
 
     .trade-side.sell {
       background: var(--red-dim);
       color: var(--red);
-      border: 1px solid rgba(255,69,96,.2);
+      border: 1px solid rgba(255, 69, 96, .2);
     }
 
     .trade-time {
@@ -786,11 +867,13 @@
       display: flex;
       gap: 8px;
       padding: 7px 0;
-      border-bottom: 1px solid rgba(28,43,66,.7);
+      border-bottom: 1px solid rgba(28, 43, 66, .7);
       align-items: center;
     }
 
-    .maint-entry:last-child { border: none; }
+    .maint-entry:last-child {
+      border: none;
+    }
 
     .maint-time {
       font-family: var(--mono);
@@ -828,7 +911,7 @@
     .badge-ok {
       background: var(--green-dim);
       color: var(--green);
-      border: 1px solid rgba(0,224,128,.2);
+      border: 1px solid rgba(0, 224, 128, .2);
     }
 
     /* ════════════════════
@@ -846,7 +929,7 @@
       padding: 18px 16px 16px;
       border-bottom: 1px solid var(--border);
       text-align: center;
-      background: linear-gradient(135deg, rgba(0,224,128,.04) 0%, transparent 70%);
+      background: linear-gradient(135deg, rgba(0, 224, 128, .04) 0%, transparent 70%);
     }
 
     .clock {
@@ -900,11 +983,13 @@
       display: flex;
       gap: 7px;
       padding: 5px 0;
-      border-bottom: 1px solid rgba(28,43,66,.6);
+      border-bottom: 1px solid rgba(28, 43, 66, .6);
       align-items: center;
     }
 
-    .bot-event:last-of-type { border: none; }
+    .bot-event:last-of-type {
+      border: none;
+    }
 
     .be-time {
       font-family: var(--mono);
@@ -927,9 +1012,17 @@
       line-height: 1.3;
     }
 
-    .be-text.ok  { color: var(--green); }
-    .be-text.err { color: var(--red); }
-    .be-text.warn{ color: var(--amber); }
+    .be-text.ok {
+      color: var(--green);
+    }
+
+    .be-text.err {
+      color: var(--red);
+    }
+
+    .be-text.warn {
+      color: var(--amber);
+    }
 
     .bot-desc {
       margin-top: 12px;
@@ -949,22 +1042,50 @@
     }
 
     /* ════════════ SCROLLBAR ════════════ */
-    ::-webkit-scrollbar { width: 4px; }
-    ::-webkit-scrollbar-track { background: transparent; }
-    ::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 99px; }
-    ::-webkit-scrollbar-thumb:hover { background: var(--text-mute); }
+    ::-webkit-scrollbar {
+      width: 4px;
+    }
+
+    ::-webkit-scrollbar-track {
+      background: transparent;
+    }
+
+    ::-webkit-scrollbar-thumb {
+      background: var(--border2);
+      border-radius: 99px;
+    }
+
+    ::-webkit-scrollbar-thumb:hover {
+      background: var(--text-mute);
+    }
 
     /* ════════════ ANIMATIONS ════════════ */
     @keyframes pulse {
-      0%, 100% { opacity: 1; }
-      50% { opacity: .25; }
+
+      0%,
+      100% {
+        opacity: 1;
+      }
+
+      50% {
+        opacity: .25;
+      }
     }
 
-    .pulse { animation: pulse 2.2s ease-in-out infinite; }
+    .pulse {
+      animation: pulse 2.2s ease-in-out infinite;
+    }
 
     @keyframes glow {
-      0%, 100% { text-shadow: 0 0 20px var(--green-glow); }
-      50% { text-shadow: 0 0 40px rgba(0,224,128,.5), 0 0 70px rgba(0,224,128,.15); }
+
+      0%,
+      100% {
+        text-shadow: 0 0 20px var(--green-glow);
+      }
+
+      50% {
+        text-shadow: 0 0 40px rgba(0, 224, 128, .5), 0 0 70px rgba(0, 224, 128, .15);
+      }
     }
   </style>
 </head>
@@ -990,17 +1111,23 @@
       </div>
       <div class="metric-row">
         <span class="metric-label">CPU</span>
-        <div class="bar-track"><div class="bar-fill" style="width:0%"></div></div>
+        <div class="bar-track">
+          <div class="bar-fill" style="width:0%"></div>
+        </div>
         <span class="metric-val">0%</span>
       </div>
       <div class="metric-row">
         <span class="metric-label">RAM</span>
-        <div class="bar-track"><div class="bar-fill" style="width:0%"></div></div>
+        <div class="bar-track">
+          <div class="bar-fill" style="width:0%"></div>
+        </div>
         <span class="metric-val">0%</span>
       </div>
       <div class="metric-row">
         <span class="metric-label">DSK</span>
-        <div class="bar-track"><div class="bar-fill" style="width:0%"></div></div>
+        <div class="bar-track">
+          <div class="bar-fill" style="width:0%"></div>
+        </div>
         <span class="metric-val">0%</span>
       </div>
     </div>
@@ -1014,17 +1141,23 @@
       </div>
       <div class="metric-row">
         <span class="metric-label">CPU</span>
-        <div class="bar-track"><div class="bar-fill" style="width:0%"></div></div>
+        <div class="bar-track">
+          <div class="bar-fill" style="width:0%"></div>
+        </div>
         <span class="metric-val">0%</span>
       </div>
       <div class="metric-row">
         <span class="metric-label">RAM</span>
-        <div class="bar-track"><div class="bar-fill" style="width:0%"></div></div>
+        <div class="bar-track">
+          <div class="bar-fill" style="width:0%"></div>
+        </div>
         <span class="metric-val">0%</span>
       </div>
       <div class="metric-row">
         <span class="metric-label">DSK</span>
-        <div class="bar-track"><div class="bar-fill" style="width:0%"></div></div>
+        <div class="bar-track">
+          <div class="bar-fill" style="width:0%"></div>
+        </div>
         <span class="metric-val">0%</span>
       </div>
     </div>
@@ -1038,17 +1171,23 @@
       </div>
       <div class="metric-row">
         <span class="metric-label">CPU</span>
-        <div class="bar-track"><div class="bar-fill" style="width:0%"></div></div>
+        <div class="bar-track">
+          <div class="bar-fill" style="width:0%"></div>
+        </div>
         <span class="metric-val">0%</span>
       </div>
       <div class="metric-row">
         <span class="metric-label">RAM</span>
-        <div class="bar-track"><div class="bar-fill" style="width:0%"></div></div>
+        <div class="bar-track">
+          <div class="bar-fill" style="width:0%"></div>
+        </div>
         <span class="metric-val">0%</span>
       </div>
       <div class="metric-row">
         <span class="metric-label">DSK</span>
-        <div class="bar-track"><div class="bar-fill" style="width:0%"></div></div>
+        <div class="bar-track">
+          <div class="bar-fill" style="width:0%"></div>
+        </div>
         <span class="metric-val">0%</span>
       </div>
     </div>
@@ -1073,7 +1212,8 @@
     <div class="top-row">
       <div class="card">
         <div class="card-label">Total Saldo</div>
-        <div class="saldo-amount">Rp 0<span style="font-size:13px;color:var(--text-mute);margin-left:4px">IDR</span></div>
+        <div class="saldo-amount">Rp 0<span style="font-size:13px;color:var(--text-mute);margin-left:4px">IDR</span>
+        </div>
         <div class="saldo-sub">
           <div class="saldo-pnl">
             <span class="lbl">PnL</span>
@@ -1123,13 +1263,20 @@
         <div class="card-label" style="margin-bottom:6px">Asset Allocation</div>
         <div class="pie-wrap">
           <svg class="pie-svg" width="120" height="120" viewBox="0 0 120 120">
-            <circle cx="60" cy="60" r="42" fill="none" stroke="#3b82f6" stroke-width="15" transform="rotate(-90 60 60)"/>
-            <circle cx="60" cy="60" r="42" fill="none" stroke="#00e080" stroke-width="15" transform="rotate(-90 60 60)"/>
-            <circle cx="60" cy="60" r="42" fill="none" stroke="#22d3ee" stroke-width="15" transform="rotate(-90 60 60)"/>
-            <circle cx="60" cy="60" r="42" fill="none" stroke="#f59e0b" stroke-width="15" transform="rotate(-90 60 60)"/>
-            <circle cx="60" cy="60" r="42" fill="none" stroke="#1c2b42" stroke-width="15" transform="rotate(-90 60 60)"/>
-            <text x="60" y="56" text-anchor="middle" font-family="var(--mono)" font-size="11" fill="var(--text)" font-weight="700">0%</text>
-            <text x="60" y="68" text-anchor="middle" font-family="var(--sans)" font-size="7" fill="var(--text-mute)">invested</text>
+            <circle cx="60" cy="60" r="42" fill="none" stroke="#3b82f6" stroke-width="15"
+              transform="rotate(-90 60 60)" />
+            <circle cx="60" cy="60" r="42" fill="none" stroke="#00e080" stroke-width="15"
+              transform="rotate(-90 60 60)" />
+            <circle cx="60" cy="60" r="42" fill="none" stroke="#22d3ee" stroke-width="15"
+              transform="rotate(-90 60 60)" />
+            <circle cx="60" cy="60" r="42" fill="none" stroke="#f59e0b" stroke-width="15"
+              transform="rotate(-90 60 60)" />
+            <circle cx="60" cy="60" r="42" fill="none" stroke="#1c2b42" stroke-width="15"
+              transform="rotate(-90 60 60)" />
+            <text x="60" y="56" text-anchor="middle" font-family="var(--mono)" font-size="11" fill="var(--text)"
+              font-weight="700">0%</text>
+            <text x="60" y="68" text-anchor="middle" font-family="var(--sans)" font-size="7"
+              fill="var(--text-mute)">invested</text>
           </svg>
           <div class="legend"></div>
         </div>
@@ -1168,10 +1315,10 @@
       const m = String(now.getMinutes()).padStart(2, '0');
       const s = String(now.getSeconds()).padStart(2, '0');
       document.getElementById('clock').textContent = `${h}:${m}:${s}`;
-      const days = ['SUN','MON','TUE','WED','THU','FRI','SAT'];
-      const months = ['JAN','FEB','MAR','APR','MAY','JUN','JUL','AUG','SEP','OCT','NOV','DEC'];
+      const days = ['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'];
+      const months = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'];
       document.getElementById('date').textContent =
-        `${days[now.getDay()]} · ${String(now.getDate()).padStart(2,'0')} ${months[now.getMonth()]} ${now.getFullYear()}`;
+        `${days[now.getDay()]} · ${String(now.getDate()).padStart(2, '0')} ${months[now.getMonth()]} ${now.getFullYear()}`;
     }
     updateClock();
     setInterval(updateClock, 1000);
@@ -1194,7 +1341,7 @@
       const engine = dashboardData.engine;
       const portGrid = document.querySelector('.port-grid');
       if (!portGrid) return;
-      
+
       const cells = portGrid.querySelectorAll('.val');
       let pnl = engine.dailyPnlPct || 0;
       let ret = engine.dailyPnlIdr || 'Rp 0';
@@ -1216,14 +1363,14 @@
         dashboardData = state;
         document.getElementById('errorDot').style.display = 'none';
 
-        const { engine={}, system={}, manager={}, scanner={} } = state;
+        const { engine = {}, system = {}, manager = {}, scanner = {} } = state;
 
         // Infrastructure
         const serverCards = document.querySelectorAll('.server-card');
         const updateNode = (card, data) => {
           if (!card || !data) return;
           const rows = card.querySelectorAll('.metric-row');
-          const metrics = ['cpu','ram','disk'];
+          const metrics = ['cpu', 'ram', 'disk'];
           metrics.forEach((k, i) => {
             if (!rows[i]) return;
             const v = Math.round(data[k] || 0);
@@ -1240,7 +1387,7 @@
         // Financials
         const saldoAmount = document.querySelector('.saldo-amount');
         if (saldoAmount && engine.portfolioValueIdr) {
-          saldoAmount.innerHTML = engine.portfolioValueIdr.replace(' IDR', '') + 
+          saldoAmount.innerHTML = engine.portfolioValueIdr.replace(' IDR', '') +
             '<span style="font-size:13px;color:var(--text-mute);margin-left:4px">IDR</span>';
         }
         const saldoSub = document.querySelector('.saldo-sub');
@@ -1268,9 +1415,9 @@
                 <span class="pair-name">${h.coin.toUpperCase()}/IDR</span>
                 <div class="alloc-bar"><span class="pair-pct">${h.pct}%</span>
                 <div class="alloc-track"><div class="alloc-fill" style="width:${h.pct}%;background:var(--blue)"></div></div></div>
-                <span class="td-val ${pPos?'pos':'neg'}">${h.unrealized||'0%'}</span>
-                <span class="td-val ${pPos?'pos':'neg'}">${h.pnl||'0%'}</span>
-                <span class="td-val ${rPos?'pos':'neg'}">${h.return||'Rp 0'}</span>
+                <span class="td-val ${pPos ? 'pos' : 'neg'}">${h.unrealized || '0%'}</span>
+                <span class="td-val ${pPos ? 'pos' : 'neg'}">${h.pnl || '0%'}</span>
+                <span class="td-val ${rPos ? 'pos' : 'neg'}">${h.return || 'Rp 0'}</span>
               </div>`;
             });
           } else html += '<div class="table-row" style="justify-content:center;color:var(--text-mute)">Menunggu posisi...</div>';
@@ -1301,25 +1448,25 @@
         // Trade & Maintenance
         const tradeTable = document.querySelector('.bot-row .card:first-child');
         if (tradeTable && engine.recentTrades) {
-          tradeTable.innerHTML = '<div class="card-label" style="margin-bottom:9px">Trade History</div>' + 
+          tradeTable.innerHTML = '<div class="card-label" style="margin-bottom:9px">Trade History</div>' +
             engine.recentTrades.slice(0, 8).map(t => {
               const isBuy = t.side?.toUpperCase() === 'BUY';
               return `<div class="trade-row">
                 <span class="trade-pair">${t.pair.toUpperCase()}</span>
-                <span class="trade-side ${isBuy?'buy':'sell'}">${t.side?.toUpperCase()||'TRD'}</span>
-                <span class="td-val ${!String(t.pnl).includes('-')?'pos':'neg'}" style="text-align:left">${t.pnl||'—'}</span>
-                <span class="trade-time">${t.time||'--:--'}</span>
+                <span class="trade-side ${isBuy ? 'buy' : 'sell'}">${t.side?.toUpperCase() || 'TRD'}</span>
+                <span class="td-val ${!String(t.pnl).includes('-') ? 'pos' : 'neg'}" style="text-align:left">${t.pnl || '—'}</span>
+                <span class="trade-time">${t.time || '--:--'}</span>
               </div>`;
             }).join('');
         }
         const maintTable = document.querySelector('.bot-row .card:last-child');
         if (maintTable && manager.maintenance_log) {
-          maintTable.innerHTML = '<div class="card-label" style="margin-bottom:9px">Maintenance History</div>' + 
+          maintTable.innerHTML = '<div class="card-label" style="margin-bottom:9px">Maintenance History</div>' +
             manager.maintenance_log.slice(0, 6).map(m => `<div class="maint-entry">
               <span class="maint-time">${m.time}</span>
-              <div class="maint-dot" style="background:var(--${m.status==='ok'?'green':'amber'})"></div>
+              <div class="maint-dot" style="background:var(--${m.status === 'ok' ? 'green' : 'amber'})"></div>
               <span class="maint-text">${m.text}</span>
-              <span class="maint-badge ${m.status==='ok'?'badge-ok':''}">${m.badge||'LOG'}</span>
+              <span class="maint-badge ${m.status === 'ok' ? 'badge-ok' : ''}">${m.badge || 'LOG'}</span>
             </div>`).join('');
         }
 
@@ -1327,14 +1474,14 @@
         const eventContainer = document.querySelector('.bot-status');
         if (eventContainer && manager.recent_actions) {
           const label = '<div class="bs-label">Bot Status</div>';
-          const desc = `<div class="bot-desc"><strong>Mode: ${engine.operatingMode||'STANDBY'}</strong><br>Brain sync terakhir: ${engine.lastBrainSync||'--:--'} WIB.</div>`;
+          const desc = `<div class="bot-desc"><strong>Mode: ${engine.operatingMode || 'STANDBY'}</strong><br>Brain sync terakhir: ${engine.lastBrainSync || '--:--'} WIB.</div>`;
           const actionsHtml = manager.recent_actions.slice(0, 6).map(a => {
-            const time = new Date(a.timestamp * 1000).toLocaleTimeString('en-GB', { hour:'2-digit', minute:'2-digit' });
-            const isOk = !['fail','error','gagal'].some(s => a.action.toLowerCase().includes(s));
+            const time = new Date(a.timestamp * 1000).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
+            const isOk = !['fail', 'error', 'gagal'].some(s => a.action.toLowerCase().includes(s));
             return `<div class="bot-event">
               <span class="be-time">${time}</span>
-              <div class="be-dot" style="background:var(--${isOk?'green':'red'})"></div>
-              <span class="be-text ${isOk?'ok':'err'}">${a.action} · ${a.pair||'System'}</span>
+              <div class="be-dot" style="background:var(--${isOk ? 'green' : 'red'})"></div>
+              <span class="be-text ${isOk ? 'ok' : 'err'}">${a.action} · ${a.pair || 'System'}</span>
             </div>`;
           }).join('');
           eventContainer.innerHTML = label + actionsHtml + desc;
@@ -1349,4 +1496,5 @@
     updateDashboard();
   </script>
 </body>
+
 </html>
