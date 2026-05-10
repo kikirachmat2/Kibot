@@ -19,6 +19,21 @@ class CircuitBreaker:
                 self.state = "OPEN"
                 self.opened_at = time.time()
                 self.logger.error(f"[{self.name}] CIRCUIT OPENED! Stopping retries for {self.reset_after}s")
+                
+                # Report to Sovereign Council if possible
+                try:
+                    from SERVER_BATAM.Core.sovereign_council import SovereignCouncil
+                    import asyncio
+                    council = SovereignCouncil()
+                    # Trigger async deliberation in a non-blocking way
+                    asyncio.create_task(council.deliberate({
+                        "type": "CIRCUIT_BREAKER_OPEN",
+                        "component": self.name,
+                        "snapshot": {"failures": self.failures, "timestamp": time.time()}
+                    }))
+                except Exception as e:
+                    self.logger.warning(f"Could not report to Council: {e}")
+                
                 return "ESCALATE"
         return "RETRY"
 

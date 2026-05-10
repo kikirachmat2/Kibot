@@ -121,22 +121,92 @@ class KiBotMaster:
     async def execute_action(self, action: str, target: str):
         """Execute autonomous actions approved by Council."""
         logger.info(f"Executing Council Action: {action} on {target}")
-        # Implementation of SSH restart logic etc.
-        # This is where the Executor Bridge lives.
-        pass
-
-    async def send_telegram(self, text: str):
-        """Helper to send telegram notifications without blocking."""
-        if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID: return
-        import httpx
-        try:
-            async with httpx.AsyncClient() as client:
-                await client.post(
-                    f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage",
-                    data={"chat_id": TELEGRAM_CHAT_ID, "text": text, "parse_mode": "Markdown"}
+        
+        # Mapping Council actions to System commands
+        actions_map = {
+            "RESTART_MESH": "sudo systemctl restart kibot-mesh",
+            "RESTART_SERVICE": f"sudo systemctl restart {target.lower()}",
+            "RECONNECT_ADB": "/Users/kiki/Documents/Web\\ Develop/KiBot/SERVER_BATAM/Infrastructure/Automation/adb_bridge.sh",
+            "CLEAN_CACHE": "rm -rf /Users/kiki/Documents/Web\\ Develop/KiBot/SERVER_BATAM/state/*.tmp",
+            "SELF_HEAL_CODE": f"aider --message 'Fix the bug reported in {target}'"
+        }
+        
+        cmd = actions_map.get(action.upper())
+        if cmd:
+            try:
+                # Use subprocess to run system commands
+                process = await asyncio.create_subprocess_shell(
+                    cmd,
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.PIPE
                 )
-        except Exception as e:
-            logger.error(f"Telegram failed: {e}")
+                stdout, stderr = await process.communicate()
+                if process.returncode == 0:
+                    logger.info(f"✅ Action {action} SUCCESSFUL")
+                    await self.send_telegram(f"✅ **Auto-Fix Success**: `{action}` executed on `{target}`")
+                else:
+                    logger.error(f"❌ Action {action} FAILED: {stderr.decode()}")
+                    await self.send_telegram(f"❌ **Auto-Fix Failed**: `{action}` on `{target}`\nError: `{stderr.decode()[:100]}`")
+            except Exception as e:
+                logger.error(f"Execution error: {e}")
+        else:
+            logger.warning(f"Action {action} not recognized by Master.")
+
+    async def get_telemetry(self) -> Dict:
+        """Gather real-time telemetry from all system sensors."""
+        telemetry = {
+            "timestamp": time.time(),
+            "os_load": os.getloadavg() if hasattr(os, "getloadavg") else "N/A",
+            "memory": "N/A", # Will be filled by shell
+            "redis": "OFFLINE",
+            "tailscale": "OFFLINE",
+            "heartbeat": "ACTIVE" # Default if master is running
+        }
+        
+        # Check Redis
+        try:
+            proc = await asyncio.create_subprocess_shell("redis-cli ping", stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)
+            stdout, _ = await proc.communicate()
+            if b"PONG" in stdout: telemetry["redis"] = "ONLINE"
+        except: pass
+
+        # Check Tailscale
+        try:
+            proc = await asyncio.create_subprocess_shell("tailscale status --json", stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)
+            stdout, _ = await proc.communicate()
+            if stdout:
+                ts_data = json.loads(stdout)
+                telemetry["tailscale"] = ts_data.get("BackendState", "ONLINE")
+        except: pass
+
+        return telemetry
+
+    async def mesh_monitor_loop(self):
+        """Main loop that feeds the Council with constant telemetry."""
+        while self.is_running:
+            telemetry = await self.get_telemetry()
+            
+            # Watchman Logic: Trigger Council if something is wrong
+            if telemetry["redis"] == "OFFLINE" or telemetry["tailscale"] != "Running":
+                logger.warning("Watchman detected anomaly! Triggering Council...")
+                context = {
+                    "type": "SYSTEM_ANOMALY",
+                    "snapshot": telemetry
+                }
+                await self.deliberate_issue("SYSTEM_HEALTH", context)
+            
+            await asyncio.sleep(60) # Scan every minute
+
+    async def deliberate_issue(self, target: str, context: Dict):
+        """Trigger Council deliberation and execute the resulting strategy."""
+        decision = await self.council.deliberate(context)
+        
+        # Only execute if confidence is high and action is valid
+        if decision.get("action") and decision.get("confidence", 0) >= 0.8:
+            logger.info(f"Council approved action: {decision['action']}. Executing...")
+            await self.execute_action(decision["action"])
+        else:
+            logger.info(f"Council decision: {decision.get('action', 'NONE')} (Confidence: {decision.get('confidence', 0)*100:.1f}%). No action taken.")
 
     def start(self):
         # Start core loops
