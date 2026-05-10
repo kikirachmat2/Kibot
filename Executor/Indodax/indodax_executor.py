@@ -138,6 +138,40 @@ class IndodaxExecutor:
             sock.sendto(json.dumps(report).encode(), (self.batam_ip, REPORT_PORT))
         except: pass
 
+    async def monitor_positions(self):
+        """Monitor open positions for auto TP/SL."""
+        TP_PCT = 0.5  # Target Profit 0.5%
+        SL_PCT = -0.3 # Stop Loss -0.3%
+        while self.running:
+            for symbol, trade in list(self.active_trades.items()):
+                try:
+                    pair = symbol.lower().replace("/", "_")
+                    if "_" not in pair: pair = f"{pair}_idr"
+                    ticker = await self.indodax.get_ticker(pair)
+                    current = float(ticker.get("last", 0))
+                    if not current: continue
+                    entry = trade["price"]
+                    change = (current - entry) / entry * 100
+                    if change >= TP_PCT:
+                        await self._execute_exit(symbol, current, "TP_HIT")
+                    elif change <= SL_PCT:
+                        await self._execute_exit(symbol, current, "SL_HIT")
+                except Exception as e:
+                    logger.debug(f"Monitor error {symbol}: {e}")
+            await asyncio.sleep(5)
+
+    async def _execute_exit(self, symbol, price, reason):
+        pair = symbol.lower().replace("/", "_")
+        if "_" not in pair: pair = f"{pair}_idr"
+        trade = self.active_trades.get(symbol, {})
+        amount = trade.get("amount", 0)
+        if amount > 0:
+            await self.indodax.trade(pair=pair, type="sell", 
+                                   price=price, amount_coin=amount)
+        self.active_trades.pop(symbol, None)
+        self.report_to_batam(symbol, reason, f"Exit @ {price}")
+        logger.info(f"{'✅ TP' if reason == 'TP_HIT' else '🔴 SL'}: {symbol} @ {price}")
+
 class SignalProtocol(asyncio.DatagramProtocol):
     def __init__(self, executor):
         self.executor = executor
