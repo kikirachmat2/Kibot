@@ -12,9 +12,13 @@ from datetime import datetime, timezone
 
 # --- CONFIGURATION ---
 NODE_NAME = os.getenv("KIBOT_NODE_NAME", socket.gethostname())
-MASTER_IP = "168.110.201.228"  # IP Batam High Command
 LISTEN_PORT = 9991             # Port khusus Agent
-SECRET_KEY = "kibot_trinity_secure_node" # Simple handshake
+SECRET_KEY = os.getenv("KIBOT_NODE_AGENT_SECRET")
+MASTER_IP = os.getenv("KIBOT_MASTER_IP", "100.103.77.10")
+
+if not SECRET_KEY:
+    print("❌ FATAL: KIBOT_NODE_AGENT_SECRET not found in environment!")
+    sys.exit(1)
 
 logging.basicConfig(level=logging.INFO, format='[%(asctime)s] %(message)s')
 logger = logging.getLogger("NodeAgent")

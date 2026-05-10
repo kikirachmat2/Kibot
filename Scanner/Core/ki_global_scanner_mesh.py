@@ -19,6 +19,25 @@ class GlobalScannerMesh:
         self.last_prices = {} # For Delta Filtering
         self.seq_id = 0
 
+    def _build_scanners(self):
+        """Builds default scanners if none provided."""
+        scanners = []
+        try:
+            from ki_indodax_smallcap_scanner import IndodaxSmallCapScanner
+            scanners.append(IndodaxSmallCapScanner())
+            print("✅ Indodax SmallCap Scanner integrated.")
+        except Exception as e:
+            print(f"⚠️ Failed to build Indodax scanner: {e}")
+            
+        try:
+            from ki_polymarket_full_scanner import PolymarketFullScanner
+            scanners.append(PolymarketFullScanner())
+            print("✅ Polymarket Full Scanner integrated.")
+        except Exception as e:
+            print(f"⚠️ Failed to build Polymarket scanner: {e}")
+            
+        return scanners
+
     def _scan_one(self, scanner: Any) -> Dict[str, Any]:
         exchange = str(getattr(scanner, "exchange", "UNKNOWN")).upper()
         signals = []

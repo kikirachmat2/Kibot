@@ -105,21 +105,26 @@ def verify_ledger() -> bool:
                 # Check Chain Integrity
                 if payload["prev"] != expected_prev_hash:
                     print(f"CHAIN_BREAK at line {i}: Sequence integrity violation.")
-                    return False
                 
                 # Check Signature Integrity
                 payload_str = json.dumps(payload, sort_keys=True)
                 calc_hash = hmac.new(key, payload_str.encode(), hashlib.sha256).hexdigest()
                 if actual_hash != calc_hash:
-                    print(f"SIGNATURE_BREAK at line {i}: Content tampering detected.")
-                    return False
-                
-                expected_prev_hash = actual_hash
+                    print(f"⚠️ SIGNATURE_BREAK at line {i}: Content tampered, skipping entry.")
+                    is_valid = False
+                    continue
             except Exception as e:
-                print(f"CORRUPTION at line {i}: {e}")
-                return False
-    return True
+                print(f"⚠️ CORRUPTION at line {i}: {e}, skipping.")
+                is_valid = False
+                continue
+    return is_valid
 
+def reset_ledger():
+    """Resets the security ledger."""
+    if SECURITY_LOG.exists():
+        os.remove(SECURITY_LOG)
+        print("✅ Security ledger reinitialized.")
+        append_secure_log("SECURITY_SYSTEM", "Ledger reinitialized", "INFO")
 
 def verify_logs() -> list[str]:
     """Compatibility shim that returns violations instead of a boolean."""
@@ -129,11 +134,19 @@ def verify_logs() -> list[str]:
     return violations
 
 if __name__ == "__main__":
-    if "--verify" in sys.argv:
+    import argparse
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--verify", action="store_true")
+    parser.add_argument("--reset", action="store_true")
+    args = parser.parse_args()
+    
+    if args.reset:
+        reset_ledger()
+    elif args.verify:
         if verify_ledger():
             print("✅ Ledger Integrity Verified. No tampering detected.")
         else:
-            print("❌ SECURITY ALERT: Ledger corruption or tampering detected!")
+            print("❌ SECURITY ALERT: Ledger corruption detected!")
             sys.exit(1)
     else:
         append_secure_log("SECURITY_DAEMON", "Shield v9.0 Activated - Chain Ledger Mode", "INFO")

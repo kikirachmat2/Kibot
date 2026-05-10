@@ -38,6 +38,8 @@ class IndodaxExecutor:
         self.batam_ip = os.environ.get("KIBOT_MASTER_IP", "168.110.201.228")
 
     async def start(self):
+        print(f"🚀 {self.__class__.__name__} Starting...")
+        asyncio.create_task(self.monitor_positions())
         self.running = True
         logger.info(f"🚀 Indodax Engine active on port {LISTEN_PORT}...")
         

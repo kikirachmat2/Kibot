@@ -637,6 +637,24 @@ def _provider_state_entry(provider: str) -> Dict[str, Any]:
     return entry if isinstance(entry, dict) else {}
 
 
+def reset_all_cooldowns(self):
+    """Resets all provider cooldowns to zero."""
+    for provider in self.state["providers"].values():
+        provider["cooldown_until"] = 0.0
+    self._save_state()
+    print("✅ All AI provider cooldowns have been reset.")
+
+def get_provider_health_summary(self) -> str:
+    """Returns a string summary of all providers health."""
+    summary = "🤖 **AI Provider Health:**\n"
+    now = time.time()
+    for name, data in self.state["providers"].items():
+        cd = data.get("cooldown_until", 0)
+        status = "✅ ACTIVE" if cd < now else f"⏳ COOLDOWN ({int(cd - now)}s)"
+        summary += f"- {name}: {status}\n"
+    return summary
+
+
 def _provider_cooldown_remaining(provider: str) -> float:
     entry = _provider_state_entry(provider)
     cooldown_until = float(entry.get("cooldown_until") or 0.0)

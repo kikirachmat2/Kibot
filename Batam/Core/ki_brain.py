@@ -232,12 +232,6 @@ class BrainManager:
         decision, reason = self._get_ai_consensus(pair, msg_type, regime, obi, session)
         if decision == "REJECT":
             return "REJECTED", reason
-            
-        # 5. Lead-lag check (v9.2): Verify against Binance for Indodax signals
-        if "idr" in pair.lower() or "idx" in session.lower():
-            ll_ok, ll_reason = self._check_lead_lag(pair, {"change_5m_pct": 0}) # Placeholder change
-            if not ll_ok:
-                return "REJECTED", f"Lead-Lag Veto: {ll_reason}"
 
         return "APPROVED", f"Passed all Sovereign checks ({regime}/{session})."
 

@@ -98,15 +98,21 @@ class PolymarketFullScanner:
         momentum_score = min(1.0, prob_shift * 20)  # shift 5% = momentum 1.0
         self.seen_markets[market_id] = best_prob
 
-        # Weighted composite
+        # 4. Spread Score (v9.5)
+        spread = self.get_market_spread(market_id)
+        if spread > 0.25:
+            return 0.0 # HARD VETO: Market too illiquid
+        
+        spread_score = max(0.0, 1.0 - (spread / 0.15))
+        
+        # Composite Weighted Score
         score = (
-            vol_score * 0.30 +
-            liq_score * 0.25 +
-            time_score * 0.20 +
-            prob_score * 0.15 +
-            momentum_score * 0.10
+            (float(vol_score) * 0.40) +
+            (float(liquidity_score) * 0.30) +
+            (float(time_score) * 0.15) +
+            (float(spread_score) * 0.15)
         )
-        return round(min(1.0, score), 4)
+        return round(score, 3)
 
     def scan(self):
         markets = self.fetch_all_markets()
@@ -121,14 +127,24 @@ class PolymarketFullScanner:
 
             market_id = m.get("conditionId") or m.get("id", "")
             question  = m.get("question", "Unknown")[:80]
-            best_yes  = 0.5
-            outcomes  = m.get("outcomes", [])
-            if outcomes and isinstance(outcomes, list):
+            
+            outcomes_raw = m.get("outcomes", [])
+            if isinstance(outcomes_raw, str):
                 try:
-                    probs = [(float(o.get("price", 0.5)), o.get("outcome", "")) for o in outcomes if isinstance(o, dict)]
-                    best_yes = max(probs, key=lambda x: x[0])[0]
+                    outcomes = json.loads(outcomes_raw)
                 except:
-                    pass
+                    outcomes = []
+            else:
+                outcomes = outcomes_raw
+
+            prices = m.get("outcomePrices", [])
+            if not prices and isinstance(outcomes, list) and len(outcomes) > 0:
+                if isinstance(outcomes[0], dict):
+                    prices = [float(o.get("price", 0.5)) for o in outcomes]
+                else:
+                    prices = [0.5] * len(outcomes)
+            
+            best_yes = max(prices) if prices else 0.5
 
             sig = {
                 "type": "POLYMARKET_OPPORTUNITY",

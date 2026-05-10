@@ -212,7 +212,14 @@ class LearningEngine:
             data = self.redis.get(f"kibot:learning:{pair}")
             if data: return PairStats.from_dict(json.loads(data))
         if pair not in self._cache:
-            self._cache[pair] = PairStats(pair=pair)
+            # New Pair: Use Bayesian Seeds
+            is_large_cap = pair.lower() in ["btc_idr", "eth_idr", "sol_idr", "xrp_idr", "bnb_idr"]
+            if is_large_cap:
+                # Optimistic 50% default
+                self._cache[pair] = PairStats(pair=pair, alpha=5.0, beta=5.0)
+            else:
+                # Conservative 20% default for unknown Small Caps
+                self._cache[pair] = PairStats(pair=pair, alpha=2.0, beta=8.0)
         return self._cache[pair]
 
     def get(self, pair: str) -> PairStats:
