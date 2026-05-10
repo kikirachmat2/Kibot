@@ -53,9 +53,8 @@ def ask_ollama(prompt):
 
 def deploy_and_verify(name, fix_cmd):
     if not is_command_safe(fix_cmd):
-        # Throttle security blocks? Or just log them. User said "Urgent trouble"
-        print(f"⚠️ SECURITY BLOCK: {fix_cmd}", flush=True)
-        telegram_send(f"🛡️ **Sovereign Block**: Trinity attempted an unsafe command.\n`{fix_cmd}`")
+        # Silenced in favor of console logging
+        print(f"🛡️ [SECURITY BLOCK] Trinity attempted an unsafe command: {fix_cmd}", flush=True)
         return False
     try:
         if "|" in fix_cmd or "&&" in fix_cmd:

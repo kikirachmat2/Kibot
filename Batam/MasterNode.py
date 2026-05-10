@@ -43,14 +43,8 @@ sys.path.append(str(ROOT_DIR))
 # Core Imports
 from Core.circuit_breaker import CircuitBreaker
 from Core.sovereign_council import SovereignCouncil
+from Core.sovereign_notifier import SovereignNotifier
 from Core_Logic.council_data_aggregator import CouncilDataAggregator
-
-# Global Config
-try:
-    from Support.ki_config import TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID
-except ImportError:
-    TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
-    TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
 
 NODES = {
     "BATAM": {"ip": "127.0.0.1", "role": "MASTER"},
@@ -86,6 +80,7 @@ class KiBotMaster:
                 logger.error(f"❌ Failed to reset AI cooldowns: {e}")
         
         self.brain = {"status": "IDLE", "memory": []}
+        self.notifier = SovereignNotifier()
         logger.info("Initializing KiBot Sovereign Master...")
 
     # --- Mesh Monitoring ---
@@ -113,10 +108,10 @@ class KiBotMaster:
             except Exception as e:
                 logger.error(f"Telemetry snapshot failed: {e}")
 
-            # 4. Dashboard (Telegram)
-            if self.is_running and (time.time() - last_dashboard_time > dashboard_interval):
-                await self.send_dashboard(telemetry)
-                last_dashboard_time = time.time()
+            # 4. Dashboard (Telegram) - DISABLED (MasterNode no longer spams)
+            # if self.is_running and (time.time() - last_dashboard_time > dashboard_interval):
+            #     await self.send_dashboard(telemetry)
+            #     last_dashboard_time = time.time()
             
             # 1. CIRCUIT BREAKER CHECK (Physical Node Health)
             for name, cfg in NODES.items():
@@ -151,16 +146,12 @@ class KiBotMaster:
             
             if any(critical_services):
                 logger.warning("Watchman: CRITICAL infrastructure anomaly detected!")
-                
-                # Throttle emergency alerts to once per hour per type
-                now_ts = time.time()
-                last_alert = self._emergency_cooldown.get("INFRASTRUCTURE", 0)
-                if now_ts - last_alert > 3600: # 1 hour cooldown
-                    await self.deliberate_issue("EMERGENCY", {"type": "SYSTEM_ANOMALY", "snapshot": telemetry}, alert=True)
-                    self._emergency_cooldown["INFRASTRUCTURE"] = now_ts
-                else:
-                    # Deliberate silently if still in cooldown
-                    await self.deliberate_issue("EMERGENCY", {"type": "SYSTEM_ANOMALY", "snapshot": telemetry}, alert=False)
+                # Throttled emergency alerts via SovereignNotifier
+                await self.notifier.send_urgent_alert(
+                    "CRITICAL infrastructure anomaly detected! Redis, Tailscale, or Executor is OFFLINE.",
+                    "INFRASTRUCTURE_FAILURE"
+                )
+                await self.deliberate_issue("EMERGENCY", {"type": "SYSTEM_ANOMALY", "snapshot": telemetry}, alert=False)
             elif telemetry["mesh_nodes"]["SINGAPORE_SCANNER"] == "OFFLINE":
                 logger.info("Watchman: Scanner is offline but system remains operational.")
             # 3. PERSISTENCE & REPORTING
@@ -176,7 +167,7 @@ class KiBotMaster:
                 if now.hour == 0 and now.minute == 0:
                     if not hasattr(self, '_midnight_sent') or self._midnight_sent != now.day:
                         logger.info("Midnight reached. Sending Sovereign Daily Report...")
-                        await self.send_dashboard(telemetry)
+                        await self.notifier.send_status_reply(telemetry)
                         self._midnight_sent = now.day
                 
                 # B. Periodic Council Deliberation (Scouting) - SILENT (No Telegram)
@@ -203,7 +194,7 @@ class KiBotMaster:
                     f"Action: `{decision['action']}`\n"
                     f"Reasoning: {decision['reasoning']}"
                 )
-                await self.send_telegram(msg)
+                await self.notifier.send_urgent_alert(msg, f"COUNCIL_ACTION_{target}")
             
             logger.info(f"Council approved action: {decision['action']}. Executing...")
             await self.execute_action(decision["action"], target, notify=alert)
@@ -232,26 +223,10 @@ class KiBotMaster:
             f"Risk: `{decision['risk']}`\n"
             f"Reasoning: {decision['reasoning']}"
         )
-        await self.send_telegram(msg)
+        await self.notifier.send_urgent_alert(msg, f"COUNCIL_DECISION_{target}")
         
         if decision.get('auto_execute'):
             await self.execute_action(decision['action'], target)
-
-    async def send_dashboard(self, telemetry: Dict):
-        """Generates and sends the Sovereign Dashboard to Telegram (Heartbeat)."""
-        try:
-            from Core_Logic.telegram_commander import format_status_report
-            report = format_status_report(telemetry)
-            await self.send_telegram(report)
-        except Exception as e:
-            logger.error(f"Failed to send dashboard: {e}")
-
-    async def send_telegram(self, message: str):
-        """Helper to send alerts to Telegram."""
-        if TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID:
-            async with httpx.AsyncClient() as client:
-                url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
-                await client.post(url, data={"chat_id": TELEGRAM_CHAT_ID, "text": message, "parse_mode": "Markdown"})
 
     async def execute_action(self, action: str, target: str, notify: bool = True):
         """Executes a recovery action (restart service, reboot, etc)."""
@@ -275,11 +250,11 @@ class KiBotMaster:
                 if proc.returncode == 0:
                     logger.info(f"Successfully executed {action}")
                     if notify:
-                        await self.send_telegram(f"✅ **Urgent Fix Applied**: `{action}` on `{target}`")
+                        await self.notifier.send_urgent_alert(f"✅ **Urgent Fix Applied**: `{action}` on `{target}`", f"FIX_APPLIED_{action}")
                 else:
                     logger.error(f"Failed to execute {action}: {stderr.decode()}")
                     if notify:
-                        await self.send_telegram(f"❌ **Urgent Fix Failed**: `{action}` on `{target}`\nError: `{stderr.decode()[:100]}`")
+                        await self.notifier.send_urgent_alert(f"❌ **Urgent Fix Failed**: `{action}` on `{target}`\nError: `{stderr.decode()[:100]}`", f"FIX_FAILED_{action}")
             except Exception as e:
                 logger.error(f"Error during action execution: {e}")
         else:
