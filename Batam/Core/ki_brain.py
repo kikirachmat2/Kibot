@@ -110,7 +110,7 @@ def _load_dotenv_early() -> None:
 _load_dotenv_early()
 
 try:
-    from SERVER_BATAM.Intelligence.kibot_ai_coordinator import (
+    from Intelligence.kibot_ai_coordinator import (
         get_provider_status as _coordinator_provider_status_fn,
         query_ai as _coordinator_query_ai_fn,
         query_ai_consensus as _coordinator_query_ai_consensus_fn,
