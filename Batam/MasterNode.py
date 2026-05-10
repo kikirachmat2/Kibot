@@ -49,7 +49,7 @@ TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
 
 NODES = {
     "BATAM": {"ip": "127.0.0.1", "role": "MASTER"},
-    # "SINGAPORE_SCANNER": {"ip": "100.105.139.21", "role": "SCANNER", "services": ["kibot-mesh"]},
+    "SINGAPORE_SCANNER": {"ip": "100.105.139.21", "role": "SCANNER", "services": ["kibot-mesh"]},
     "SINGAPORE_EXECUTOR": {"ip": "100.103.77.10", "role": "EXECUTOR", "services": ["kibot-mesh"]}
 }
 
@@ -232,17 +232,19 @@ class KiBotMaster:
             telemetry = await self.get_telemetry()
             
             # 1. REACTIVE: Watchman Logic (Batam/Mesh failures)
-            # Check if any critical service is down
+            # Check if critical services are down (Scanner is now considered OPTIONAL)
             critical_services = [
                 telemetry["redis"] == "OFFLINE",
                 telemetry["tailscale"] != "Running",
-                telemetry["mesh_nodes"]["SINGAPORE_SCANNER"] == "OFFLINE",
+                # telemetry["mesh_nodes"]["SINGAPORE_SCANNER"] == "OFFLINE", # [v9.5] Scanner is optional
                 telemetry["mesh_nodes"]["SINGAPORE_EXECUTOR"] == "OFFLINE"
             ]
             
             if any(critical_services):
-                logger.warning("Watchman detected an infrastructure anomaly! Triggering Council...")
+                logger.warning("Watchman detected a CRITICAL infrastructure anomaly! Triggering Council...")
                 await self.deliberate_issue("EMERGENCY", {"type": "SYSTEM_ANOMALY", "snapshot": telemetry})
+            elif telemetry["mesh_nodes"]["SINGAPORE_SCANNER"] == "OFFLINE":
+                logger.info("Watchman: Scanner is offline but system remains operational.")
             
             # 2. PROACTIVE: Oracle Mode (Every 60 iterations ~ 1 hour)
             elif iteration % 60 == 0:
