@@ -10,29 +10,44 @@ from pathlib import Path
 from typing import List, Optional
 
 # Constants
-ROOT = Path(__file__).resolve().parent.parent
-STATE_DIR = ROOT / "state"
+STATE_DIR = Path(__file__).resolve().parent.parent / "state"
 SECURITY_LOG = STATE_DIR / "security_log.jsonl"
 LEGACY_SECURITY_LOG = STATE_DIR / "security_ledger.jsonl"
 
-# Root Directory Setup
-ROOT = Path(__file__).resolve().parent.parent
+# Force load ki_vault from absolute path
+BASE_DIR = Path(__file__).resolve().parent.parent
+SUPPORT_DIR = BASE_DIR / "Support"
+VAULT_PATH = SUPPORT_DIR / "ki_vault.py"
 
-try:
-    from SERVER_BATAM.Support.ki_vault import get_vault
-except ImportError as e:
-    print(f"Failed to import vault: {e}", file=sys.stderr)
-    get_vault = lambda: None
+get_vault = lambda: None
+if VAULT_PATH.exists():
+    try:
+        import importlib.util
+        spec = importlib.util.spec_from_file_location("ki_vault", str(VAULT_PATH))
+        ki_vault = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(ki_vault)
+        get_vault = ki_vault.get_vault
+    except Exception as e:
+        print(f"⚠️ [SECURITY] Failed to load vault from path: {e}", file=sys.stderr)
+else:
+    print(f"⚠️ [SECURITY] Vault path not found: {VAULT_PATH}", file=sys.stderr)
 
 def _get_signing_key() -> bytes:
     vault = get_vault()
     if vault:
+        # If vault is a class (singleton)
+        if hasattr(vault, "instance"):
+            vault = vault.instance()
         if hasattr(vault, "_initialize"):
             vault._initialize()
         if hasattr(vault, "_key") and vault._key:
             return vault._key
-    # CRITICAL: No more hardcoded emergency keys. 
-    # System must fail-secure if vault is missing.
+    
+    # Try direct .env if vault fails (Emergency fallback for security logic)
+    env_key = os.getenv("KIBOT_SECURITY_KEY")
+    if env_key:
+        return env_key.encode()
+
     raise RuntimeError("SECURITY_FATAL: Crypto Vault is inaccessible. Unauthorized execution prevented.")
 
 def _get_last_hash() -> str:
@@ -91,6 +106,7 @@ def verify_ledger() -> bool:
     
     key = _get_signing_key()
     expected_prev_hash = "GENESIS_BLOCK_0000000000000000"
+    is_valid = True
     
     with open(SECURITY_LOG, "r", encoding="utf-8") as f:
         for i, line in enumerate(f, 1):

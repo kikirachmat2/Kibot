@@ -1,3 +1,16 @@
+import sys
+from pathlib import Path
+
+import sys
+import os
+from pathlib import Path
+
+# Setup paths (Sovereign Direct Support Fix)
+possible_roots = ["/home/ubuntu/KiBot", "/home/ubuntu/KiBot/Batam"]
+for p in possible_roots:
+    if os.path.exists(p) and p not in sys.path:
+        sys.path.insert(0, p)
+
 import json
 import os
 import time
@@ -9,9 +22,7 @@ import hashlib
 import hmac
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timedelta
-from pathlib import Path
 from typing import Dict, Optional, Tuple, List
-import sys
 import urllib.request
 
 # --- CONFIGURATION ---

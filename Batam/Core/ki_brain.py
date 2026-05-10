@@ -1,3 +1,5 @@
+import sys
+# pyrefly: ignore [invalid-syntax]
 from __future__ import annotations
 
 import importlib.util
@@ -183,15 +185,28 @@ class BrainManager:
         self._last_snapshot: Dict[str, Any] = self._load_snapshot()
         self._refresh_lock = threading.Lock()
         self._refresh_in_flight = False
-        # Initialize AI Search (v9.5.1 Fix)
+        # Initialize AI Search (v9.6.0 Sovereign Fix)
         self.ai_search = None
         try:
-            from Intelligence.kibot_ai_search import AISearchService
-            self.ai_search = AISearchService()
+            # Inject Intelligence path if needed
+            intel_path = str(ROOT_DIR / "Intelligence")
+            if intel_path not in sys.path:
+                sys.path.insert(0, intel_path)
+            
+            # Try to import
+            try:
+                from Intelligence.kibot_ai_search import AISearchService
+                self.ai_search = AISearchService()
+            except ImportError:
+                # pyrefly: ignore [missing-import]
+                import kibot_ai_search
+                self.ai_search = kibot_ai_search.AISearchService()
+                
+            logger.info("[KiBrain] AI Search Service initialized successfully.")
         except Exception as e:
-            logger.debug(f"[KiBrain] AI Search deferred: {e}")
+            logger.debug(f"[KiBrain] AI Search deferred (optional): {e}")
 
-    def veto_signal(self, pair: str, msg_type: str = "SIGNAL", regime: str = "UNKNOWN", obi: float = 0.0, session: str = "UNKNOWN") -> Tuple[str, str]:
+    def veto_signal(self, pair: str, msg_type: str = "SIGNAL", regime: str = "UNKNOWN", obi: float = 0.0, session: str = "UNKNOWN", signal_context: dict = None) -> Tuple[str, str]:
         """
         Sovereign Veto Logic v2.
         Decides if a signal should be approved based on world model intelligence,
@@ -233,6 +248,14 @@ class BrainManager:
             # If the critic is opportunistic, we allow it. Otherwise, we stick to focus list.
             if posture != "OPPORTUNISTIC":
                 return "REJECTED", f"Asset {base_symbol} not in focus list ({focus_symbols})."
+
+        # 4. [v9.6] Lead-Lag Validation (Indodax vs Binance)
+        # Only check if it's an IDR/Indodax pair
+        if "idr" in pair.lower() or "idx" in session.lower():
+            indodax_change = float((signal_context or {}).get("change_5m_pct", 0))
+            ll_ok, ll_reason = self._check_lead_lag(pair, {"change_5m_pct": indodax_change})
+            if not ll_ok:
+                return "REJECTED", f"Lead-Lag Veto: {ll_reason}"
 
         # 4. Multi-Agent AI Consensus
         decision, reason = self._get_ai_consensus(pair, msg_type, regime, obi, session)

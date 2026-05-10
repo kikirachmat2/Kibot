@@ -316,7 +316,6 @@ PROVIDERS = {
 }
 
 PROMPT_PROVIDER_ORDER = {
-    "BRAIN_CRITIC": ["ollama", "groq", "gemini", "deepseek", "sambanova", "cerebras", "together", "fireworks", "mistral", "nvidia", "openrouter", "deepinfra", "octoai", "novita", "perplexity", "cohere", "jina", "huggingface", "friendliai", "lepton"],
     "PAIR_DISCOVERY": ["ollama", "groq", "gemini", "deepseek", "sambanova", "cerebras", "together", "fireworks", "mistral", "nvidia", "openrouter", "deepinfra", "octoai", "novita", "perplexity", "cohere", "jina", "huggingface", "friendliai", "lepton"],
     "WHATIF_SIMULATION": ["ollama", "groq", "gemini", "deepseek", "sambanova", "cerebras", "together", "fireworks", "mistral", "nvidia", "openrouter", "deepinfra", "octoai", "novita", "perplexity", "cohere", "jina", "huggingface", "friendliai", "lepton"],
     "TRADE_POSTMORTEM": ["ollama", "groq", "gemini", "deepseek", "sambanova", "cerebras", "together", "fireworks", "mistral", "nvidia", "openrouter", "deepinfra", "octoai", "novita", "perplexity", "cohere", "jina", "huggingface", "friendliai", "lepton"],
@@ -637,22 +636,24 @@ def _provider_state_entry(provider: str) -> Dict[str, Any]:
     return entry if isinstance(entry, dict) else {}
 
 
-def reset_all_cooldowns(self):
+def reset_all_cooldowns() -> str:
     """Resets all provider cooldowns to zero."""
-    for provider in self.state["providers"].values():
-        provider["cooldown_until"] = 0.0
-    self._save_state()
-    print("✅ All AI provider cooldowns have been reset.")
+    state = _load_provider_state()
+    for provider in state.get("providers", {}):
+        state["providers"][provider]["cooldown_until"] = 0.0
+    _save_provider_state(state)
+    return "✅ All AI provider cooldowns reset."
 
-def get_provider_health_summary(self) -> str:
+def get_provider_health_summary() -> str:
     """Returns a string summary of all providers health."""
-    summary = "🤖 **AI Provider Health:**\n"
+    state = _load_provider_state().get("providers", {})
     now = time.time()
-    for name, data in self.state["providers"].items():
-        cd = data.get("cooldown_until", 0)
-        status = "✅ ACTIVE" if cd < now else f"⏳ COOLDOWN ({int(cd - now)}s)"
-        summary += f"- {name}: {status}\n"
-    return summary
+    lines = ["🤖 AI Provider Health:"]
+    for name, data in state.items():
+        cd = float(data.get("cooldown_until", 0))
+        status = "✅ ACTIVE" if cd < now else f"⏳ {int(cd - now)}s cooldown"
+        lines.append(f"- {name}: {status}")
+    return "\n".join(lines)
 
 
 def _provider_cooldown_remaining(provider: str) -> float:

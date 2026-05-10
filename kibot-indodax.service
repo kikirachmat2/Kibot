@@ -1,0 +1,24 @@
+[Unit]
+Description=KiBot Trinity Trading Engine (Python)
+After=network-online.target
+Wants=network-online.target
+StartLimitIntervalSec=300
+StartLimitBurst=5
+
+[Service]
+Type=simple
+User=ubuntu
+WorkingDirectory=/home/ubuntu/KiBot/Executor/Indodax
+Environment=PYTHONUNBUFFERED=1
+Environment=KIBOT_EXCHANGE_KIND=INDODAX
+# Path baru hasil restrukturisasi
+ExecStart=/usr/bin/python3 -u /home/ubuntu/KiBot/Executor/Indodax/indodax_executor.py
+Restart=always
+RestartSec=10
+MemoryMax=512M
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=kibot-indodax
+
+[Install]
+WantedBy=multi-user.target

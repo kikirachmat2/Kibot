@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+from Batam.Support.ki_vault import load_sovereign_env
 import asyncio
 import json
 import socket
@@ -9,14 +10,62 @@ import sys
 from datetime import datetime
 from pathlib import Path
 
-# Setup paths
-ROOT_DIR = Path(__file__).resolve().parent.parent.parent.parent
-sys.path.append(str(ROOT_DIR))
+# --- SOVEREIGN PATH INJECTION ---
+import sys
+import os
+from pathlib import Path
 
-# Local Imports
+# Resolve absolute root of the project
+current_file = Path(__file__).resolve()
+# We are in Executor/Indodax/, so root is 2 levels up
+project_root = current_file.parent.parent.parent
+batam_path = project_root / "Batam"
+
+# Inject paths for both Local (Mac) and Production (Linux)
+paths_to_inject = [
+    str(project_root),
+    str(batam_path),
+    "/home/ubuntu/KiBot",
+    "/home/ubuntu/KiBot/Batam"
+]
+
+for p in paths_to_inject:
+    if os.path.exists(p) and p not in sys.path:
+        sys.path.insert(0, p)
+# -------------------------------
+
+import logging
+from datetime import datetime
+from typing import Dict, Any, List
+
+# Local imports
 from indodax_gateway import IndodaxGateway
 from risk_gate import RiskGate
-from Batam.Support.ki_vault import load_sovereign_env
+
+def _load_vault():
+    """Dynamically loads ki_vault to satisfy both local IDE and remote servers."""
+    import importlib
+    
+    strategies = [
+        "Batam.Support.ki_vault",
+        "Support.ki_vault",
+        "ki_vault"
+    ]
+    
+    for strategy in strategies:
+        try:
+            module = importlib.import_module(strategy)
+            if hasattr(module, 'load_sovereign_env'):
+                module.load_sovereign_env()
+                return True
+        except ImportError:
+            continue
+    return False
+
+if not _load_vault():
+    print(f"❌ CRITICAL IMPORT ERROR: Could not find ki_vault in any known path.")
+    print(f"PYTHONPATH: {sys.path}")
+    sys.exit(1)
 
 # Logging Config
 logging.basicConfig(
