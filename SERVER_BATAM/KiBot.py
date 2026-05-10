@@ -153,49 +153,65 @@ class KiBotMaster:
             logger.warning(f"Action {action} not recognized by Master.")
 
     async def get_telemetry(self) -> Dict:
-        """Gather real-time telemetry from all system sensors."""
+        """Gather real-time telemetry from Batam and remote Singapore nodes."""
         telemetry = {
             "timestamp": time.time(),
             "os_load": os.getloadavg() if hasattr(os, "getloadavg") else "N/A",
-            "memory": "N/A", # Will be filled by shell
             "redis": "OFFLINE",
             "tailscale": "OFFLINE",
-            "heartbeat": "ACTIVE" # Default if master is running
+            "mesh_nodes": {
+                "SINGAPORE_SCANNER": "UNKNOWN",
+                "SINGAPORE_EXECUTOR": "UNKNOWN"
+            },
+            "heartbeat": "ACTIVE"
         }
         
-        # Check Redis
+        # Check Local Redis
         try:
             proc = await asyncio.create_subprocess_shell("redis-cli ping", stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)
             stdout, _ = await proc.communicate()
             if b"PONG" in stdout: telemetry["redis"] = "ONLINE"
         except: pass
 
-        # Check Tailscale
+        # Check Tailscale & Remote Nodes (Singapore)
         try:
+            # Check local TS status
             proc = await asyncio.create_subprocess_shell("tailscale status --json", stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)
             stdout, _ = await proc.communicate()
             if stdout:
                 ts_data = json.loads(stdout)
                 telemetry["tailscale"] = ts_data.get("BackendState", "ONLINE")
+                
+                # Proactive Mesh Check (Tailscale IPs for Singapore nodes)
+                # Note: Replace with actual Tailscale IPs or Hostnames of SG nodes
+                nodes = {"SINGAPORE_SCANNER": "sg-scanner", "SINGAPORE_EXECUTOR": "sg-executor"}
+                for name, host in nodes.items():
+                    ping = await asyncio.create_subprocess_shell(f"ping -c 1 -W 2 {host}", stdout=asyncio.subprocess.PIPE)
+                    await ping.wait()
+                    telemetry["mesh_nodes"][name] = "ONLINE" if ping.returncode == 0 else "OFFLINE"
         except: pass
 
         return telemetry
 
     async def mesh_monitor_loop(self):
-        """Main loop that feeds the Council with constant telemetry."""
+        """Main loop with Mesh Awareness and Oracle Mode (Proactive Scouting)."""
+        iteration = 0
         while self.is_running:
+            iteration += 1
             telemetry = await self.get_telemetry()
             
-            # Watchman Logic: Trigger Council if something is wrong
-            if telemetry["redis"] == "OFFLINE" or telemetry["tailscale"] != "Running":
-                logger.warning("Watchman detected anomaly! Triggering Council...")
-                context = {
-                    "type": "SYSTEM_ANOMALY",
-                    "snapshot": telemetry
-                }
-                await self.deliberate_issue("SYSTEM_HEALTH", context)
+            # 1. REACTIVE: Watchman Logic (Batam/Mesh failures)
+            mesh_fail = any(v == "OFFLINE" for v in telemetry["mesh_nodes"].values())
+            if telemetry["redis"] == "OFFLINE" or telemetry["tailscale"] != "Running" or mesh_fail:
+                logger.warning(f"Watchman detected { 'MESH' if mesh_fail else 'LOCAL' } anomaly! Triggering Council...")
+                await self.deliberate_issue("EMERGENCY", {"type": "SYSTEM_ANOMALY", "snapshot": telemetry})
             
-            await asyncio.sleep(60) # Scan every minute
+            # 2. PROACTIVE: Oracle Mode (Every 60 iterations ~ 1 hour)
+            elif iteration % 60 == 0:
+                logger.info("Oracle Mode: Council performing proactive market scouting...")
+                await self.deliberate_issue("SCOUTING", {"type": "PROACTIVE_ORACLE", "snapshot": telemetry})
+            
+            await asyncio.sleep(60)
 
     async def deliberate_issue(self, target: str, context: Dict):
         """Trigger Council deliberation and execute the resulting strategy."""
