@@ -136,13 +136,41 @@ class KiBotMaster:
         if decision.get('auto_execute'):
             await self.execute_action(decision['action'], target)
 
+    async def send_dashboard(self, telemetry: Dict):
+        """Generates and sends the Sovereign Dashboard to Telegram."""
+        exec_status = telemetry["mesh_nodes"].get("SINGAPORE_EXECUTOR", "OFFLINE")
+        scan_status = telemetry["mesh_nodes"].get("SINGAPORE_SCANNER", "OFFLINE")
+        
+        # Calculate Sovereign Status
+        if exec_status == "ONLINE":
+            live_status = "🟢 ACTIVE (FULL TRINITY)" if scan_status == "ONLINE" else "🟢 ACTIVE (DUAL-NODE MODE)"
+            ai_status = "🟢 ONLINE"
+        else:
+            live_status = "🔴 OFFLINE (MESH BROKEN)"
+            ai_status = "🔴 OFFLINE"
+
+        msg = (
+            f"KIBOT SOVEREIGN DASHBOARD\n"
+            f"🕒 {datetime.now().strftime('%H:%M:%S WIB')}\n"
+            f"───────────────────\n\n"
+            f"📈 Live Trading: {live_status}\n\n"
+            f"🏝️ Batam Master:\n"
+            f"cpu: {telemetry.get('os_load', ['0'])[0]}%\nram: N/A\ndisk: N/A\n\n"
+            f"⚡ Executor Engine ({'🟢 ONLINE' if exec_status == 'ONLINE' else '🔴 OFFLINE'}):\n"
+            f"📡 Scanner Senses ({'🟢 ONLINE' if scan_status == 'ONLINE' else '🔴 UNREACHABLE'}):\n\n"
+            f"🤖 AI Status: {ai_status}\n"
+            f"───────────────────\n"
+            f"🛡️ Data sourced directly from Batam Master"
+        )
+        await self.send_telegram(msg)
+
     async def send_telegram(self, message: str):
         """Helper to send alerts to Telegram."""
         if TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID:
-            # Escape single quotes for shell command
-            safe_msg = message.replace("'", "'\\''")
-            cmd = f"curl -s -X POST https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage -d chat_id={TELEGRAM_CHAT_ID} -d text='{safe_msg}' -d parse_mode=Markdown"
-            await asyncio.create_subprocess_shell(cmd)
+            import httpx
+            async with httpx.AsyncClient() as client:
+                url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
+                await client.post(url, data={"chat_id": TELEGRAM_CHAT_ID, "text": message, "parse_mode": "Markdown"})
 
     async def execute_action(self, action: str, target: str):
         """Execute autonomous actions approved by Council."""
@@ -246,7 +274,10 @@ class KiBotMaster:
             elif telemetry["mesh_nodes"]["SINGAPORE_SCANNER"] == "OFFLINE":
                 logger.info("Watchman: Scanner is offline but system remains operational.")
             
-            # 2. PROACTIVE: Oracle Mode (Every 60 iterations ~ 1 hour)
+            # 2. REPORTING: Push status to Telegram
+            await self.send_dashboard(telemetry)
+            
+            # 3. PROACTIVE: Oracle Mode (Every 60 iterations ~ 1 hour)
             elif iteration % 60 == 0:
                 logger.info("Oracle Mode (Periodic): Council performing proactive market scouting...")
                 await self.deliberate_issue("SCOUTING", {"type": "PROACTIVE_ORACLE", "snapshot": telemetry})
