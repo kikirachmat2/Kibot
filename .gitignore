@@ -1,14 +1,23 @@
-.env*
-*.pem
-*.key
-Batam/SSH/
-Shared/Ops/
-**/build/
-**/.gradle/
-gradle_home/
-state/
-logs/
-*.log
+# Byte-compiled / optimized / DLL files
 __pycache__/
-*.pyc
-.tmp/
+*.py[cod]
+*$py.class
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Environment variables
+.env
+
+# Sovereign State & Logs
+SERVER_BATAM/state/
+council_decisions.jsonl
+
+# Node modules
+node_modules/

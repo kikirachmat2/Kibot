@@ -1,0 +1,874 @@
+[KIBOT][VAULT][ERROR] Failed to decrypt CEREBRAS_API_KEY: Decryption failed. Vault key may be invalid for this hardware. Error: 
+[KIBOT][VAULT][ERROR] Failed to decrypt MISTRAL_API_KEY: Decryption failed. Vault key may be invalid for this hardware. Error: 
+[KIBOT][VAULT][ERROR] Failed to decrypt SUPABASE_URL: Decryption failed. Vault key may be invalid for this hardware. Error: 
+[KIBOT][VAULT][ERROR] Failed to decrypt SUPABASE_SERVICE_ROLE_KEY: Decryption failed. Vault key may be invalid for this hardware. Error: 
+[KIBOT][VAULT][ERROR] Failed to decrypt SUPABASE_ANON_KEY: Decryption failed. Vault key may be invalid for this hardware. Error: 
+[KIBOT][VAULT][ERROR] Failed to decrypt CEREBRAS_API_KEY: Decryption failed. Vault key may be invalid for this hardware. Error: 
+[KIBOT][VAULT][ERROR] Failed to decrypt MISTRAL_API_KEY: Decryption failed. Vault key may be invalid for this hardware. Error: 
+[KIBOT][VAULT][ERROR] Failed to decrypt CEREBRAS_API_KEY: Decryption failed. Vault key may be invalid for this hardware. Error: 
+[KIBOT][VAULT][ERROR] Failed to decrypt MISTRAL_API_KEY: Decryption failed. Vault key may be invalid for this hardware. Error: 
+[KIBOT][VAULT][ERROR] Failed to decrypt SUPABASE_URL: Decryption failed. Vault key may be invalid for this hardware. Error: 
+[KIBOT][VAULT][ERROR] Failed to decrypt SUPABASE_SERVICE_ROLE_KEY: Decryption failed. Vault key may be invalid for this hardware. Error: 
+[KIBOT][VAULT][ERROR] Failed to decrypt SUPABASE_ANON_KEY: Decryption failed. Vault key may be invalid for this hardware. Error: 
+[2026-05-09 03:23:17,811] 🎖️ KIBOT - INFO - 📡 Signal Receiver Active (Port 9998)
+[2026-05-09 03:23:17,811] 🎖️ KIBOT - INFO - 🟢 Pulse Check Mesh Active (60s loop) - SELF-HEALING ENABLED
+[2026-05-09 03:23:17,812] 🎖️ KIBOT - INFO - 🌙 Midnight Oracle Loop Waiting for 00:00...
+[2026-05-09 03:23:17,812] 🎖️ KIBOT - INFO - 📡 Feedback Listener Active (Port 9997)
+[2026-05-09 03:23:17,812] 🎖️ KIBOT - INFO - 📱 Commander API Serving on http://0.0.0.0:8080
+[2026-05-09 03:23:17,917] 🎖️ KIBOT - INFO - 🎖️ KiBot High Command is now ONLINE.
+[2026-05-09 03:23:18,466] 🎖️ KIBOT - INFO - HTTP Request: POST https://api.telegram.org/botREDACTED_TELEGRAM_TOKEN/getMe "HTTP/1.1 200 OK"
+[2026-05-09 03:23:18,649] 🎖️ KIBOT - INFO - HTTP Request: POST https://api.telegram.org/botREDACTED_TELEGRAM_TOKEN/deleteWebhook "HTTP/1.1 200 OK"
+[2026-05-09 03:23:18,652] 🎖️ KIBOT - INFO - Application started
+[2026-05-09 03:23:18,828] 🎖️ KIBOT - WARNING - 🛠️ Attempting recovery for SCANNER...
+[2026-05-09 03:23:19,845] 🎖️ KIBOT - WARNING - 🛠️ Attempting recovery for EXECUTOR...
+[2026-05-09 03:23:23,866] 🎖️ KIBOT - ERROR - ❌ Recovery failed for SCANNER: 
+[2026-05-09 03:23:24,623] 🎖️ KIBOT - INFO - HTTP Request: POST https://api.telegram.org/botREDACTED_TELEGRAM_TOKEN/getUpdates "HTTP/1.1 409 Conflict"
+[2026-05-09 03:23:24,624] 🎖️ KIBOT - ERROR - No error handlers are registered, logging exception.
+Traceback (most recent call last):
+  File "/Users/kiki/Library/Python/3.14/lib/python/site-packages/telegram/ext/_utils/networkloop.py", line 161, in network_retry_loop
+    await do_action()
+  File "/Users/kiki/Library/Python/3.14/lib/python/site-packages/telegram/ext/_utils/networkloop.py", line 154, in do_action
+    action_cb_task.result()
+    ~~~~~~~~~~~~~~~~~~~~~^^
+  File "/Users/kiki/Library/Python/3.14/lib/python/site-packages/telegram/ext/_updater.py", line 340, in polling_action_cb
+    updates = await self.bot.get_updates(
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<3 lines>...
+    )
+    ^
+  File "/Users/kiki/Library/Python/3.14/lib/python/site-packages/telegram/ext/_extbot.py", line 672, in get_updates
+    updates = await super().get_updates(
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<9 lines>...
+    )
+    ^
+  File "/Users/kiki/Library/Python/3.14/lib/python/site-packages/telegram/_bot.py", line 4865, in get_updates
+    await self._post(
+    ^^^^^^^^^^^^^^^^^
+    ...<7 lines>...
+    ),
+    ^
+  File "/Users/kiki/Library/Python/3.14/lib/python/site-packages/telegram/_bot.py", line 704, in _post
+    return await self._do_post(
+           ^^^^^^^^^^^^^^^^^^^^
+    ...<6 lines>...
+    )
+    ^
+  File "/Users/kiki/Library/Python/3.14/lib/python/site-packages/telegram/ext/_extbot.py", line 370, in _do_post
+    return await super()._do_post(
+           ^^^^^^^^^^^^^^^^^^^^^^^
+    ...<6 lines>...
+    )
+    ^
+  File "/Users/kiki/Library/Python/3.14/lib/python/site-packages/telegram/_bot.py", line 733, in _do_post
+    result = await request.post(
+             ^^^^^^^^^^^^^^^^^^^
+    ...<6 lines>...
+    )
+    ^
+  File "/Users/kiki/Library/Python/3.14/lib/python/site-packages/telegram/request/_baserequest.py", line 198, in post
+    result = await self._request_wrapper(
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<7 lines>...
+    )
+    ^
+  File "/Users/kiki/Library/Python/3.14/lib/python/site-packages/telegram/request/_baserequest.py", line 375, in _request_wrapper
+    raise exception
+telegram.error.Conflict: Conflict: terminated by other getUpdates request; make sure that only one bot instance is running
+[2026-05-09 03:23:24,886] 🎖️ KIBOT - ERROR - ❌ Recovery failed for EXECUTOR: 
+[2026-05-09 03:23:29,912] 🎖️ KIBOT - ERROR - ❌ Recovery failed for EXECUTOR: 
+[2026-05-09 03:23:31,336] 🎖️ KIBOT - INFO - HTTP Request: POST https://api.telegram.org/botREDACTED_TELEGRAM_TOKEN/getUpdates "HTTP/1.1 409 Conflict"
+[2026-05-09 03:23:31,338] 🎖️ KIBOT - ERROR - No error handlers are registered, logging exception.
+Traceback (most recent call last):
+  File "/Users/kiki/Library/Python/3.14/lib/python/site-packages/telegram/ext/_utils/networkloop.py", line 161, in network_retry_loop
+    await do_action()
+  File "/Users/kiki/Library/Python/3.14/lib/python/site-packages/telegram/ext/_utils/networkloop.py", line 154, in do_action
+    action_cb_task.result()
+    ~~~~~~~~~~~~~~~~~~~~~^^
+  File "/Users/kiki/Library/Python/3.14/lib/python/site-packages/telegram/ext/_updater.py", line 340, in polling_action_cb
+    updates = await self.bot.get_updates(
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<3 lines>...
+    )
+    ^
+  File "/Users/kiki/Library/Python/3.14/lib/python/site-packages/telegram/ext/_extbot.py", line 672, in get_updates
+    updates = await super().get_updates(
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<9 lines>...
+    )
+    ^
+  File "/Users/kiki/Library/Python/3.14/lib/python/site-packages/telegram/_bot.py", line 4865, in get_updates
+    await self._post(
+    ^^^^^^^^^^^^^^^^^
+    ...<7 lines>...
+    ),
+    ^
+  File "/Users/kiki/Library/Python/3.14/lib/python/site-packages/telegram/_bot.py", line 704, in _post
+    return await self._do_post(
+           ^^^^^^^^^^^^^^^^^^^^
+    ...<6 lines>...
+    )
+    ^
+  File "/Users/kiki/Library/Python/3.14/lib/python/site-packages/telegram/ext/_extbot.py", line 370, in _do_post
+    return await super()._do_post(
+           ^^^^^^^^^^^^^^^^^^^^^^^
+    ...<6 lines>...
+    )
+    ^
+  File "/Users/kiki/Library/Python/3.14/lib/python/site-packages/telegram/_bot.py", line 733, in _do_post
+    result = await request.post(
+             ^^^^^^^^^^^^^^^^^^^
+    ...<6 lines>...
+    )
+    ^
+  File "/Users/kiki/Library/Python/3.14/lib/python/site-packages/telegram/request/_baserequest.py", line 198, in post
+    result = await self._request_wrapper(
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<7 lines>...
+    )
+    ^
+  File "/Users/kiki/Library/Python/3.14/lib/python/site-packages/telegram/request/_baserequest.py", line 375, in _request_wrapper
+    raise exception
+telegram.error.Conflict: Conflict: terminated by other getUpdates request; make sure that only one bot instance is running
+[2026-05-09 03:23:39,059] 🎖️ KIBOT - INFO - HTTP Request: POST https://api.telegram.org/botREDACTED_TELEGRAM_TOKEN/getUpdates "HTTP/1.1 409 Conflict"
+[2026-05-09 03:23:39,061] 🎖️ KIBOT - ERROR - No error handlers are registered, logging exception.
+Traceback (most recent call last):
+  File "/Users/kiki/Library/Python/3.14/lib/python/site-packages/telegram/ext/_utils/networkloop.py", line 161, in network_retry_loop
+    await do_action()
+  File "/Users/kiki/Library/Python/3.14/lib/python/site-packages/telegram/ext/_utils/networkloop.py", line 154, in do_action
+    action_cb_task.result()
+    ~~~~~~~~~~~~~~~~~~~~~^^
+  File "/Users/kiki/Library/Python/3.14/lib/python/site-packages/telegram/ext/_updater.py", line 340, in polling_action_cb
+    updates = await self.bot.get_updates(
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<3 lines>...
+    )
+    ^
+  File "/Users/kiki/Library/Python/3.14/lib/python/site-packages/telegram/ext/_extbot.py", line 672, in get_updates
+    updates = await super().get_updates(
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<9 lines>...
+    )
+    ^
+  File "/Users/kiki/Library/Python/3.14/lib/python/site-packages/telegram/_bot.py", line 4865, in get_updates
+    await self._post(
+    ^^^^^^^^^^^^^^^^^
+    ...<7 lines>...
+    ),
+    ^
+  File "/Users/kiki/Library/Python/3.14/lib/python/site-packages/telegram/_bot.py", line 704, in _post
+    return await self._do_post(
+           ^^^^^^^^^^^^^^^^^^^^
+    ...<6 lines>...
+    )
+    ^
+  File "/Users/kiki/Library/Python/3.14/lib/python/site-packages/telegram/ext/_extbot.py", line 370, in _do_post
+    return await super()._do_post(
+           ^^^^^^^^^^^^^^^^^^^^^^^
+    ...<6 lines>...
+    )
+    ^
+  File "/Users/kiki/Library/Python/3.14/lib/python/site-packages/telegram/_bot.py", line 733, in _do_post
+    result = await request.post(
+             ^^^^^^^^^^^^^^^^^^^
+    ...<6 lines>...
+    )
+    ^
+  File "/Users/kiki/Library/Python/3.14/lib/python/site-packages/telegram/request/_baserequest.py", line 198, in post
+    result = await self._request_wrapper(
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<7 lines>...
+    )
+    ^
+  File "/Users/kiki/Library/Python/3.14/lib/python/site-packages/telegram/request/_baserequest.py", line 375, in _request_wrapper
+    raise exception
+telegram.error.Conflict: Conflict: terminated by other getUpdates request; make sure that only one bot instance is running
+[2026-05-09 03:23:45,402] 🎖️ KIBOT - INFO - HTTP Request: POST https://api.telegram.org/botREDACTED_TELEGRAM_TOKEN/getUpdates "HTTP/1.1 409 Conflict"
+[2026-05-09 03:23:45,406] 🎖️ KIBOT - ERROR - No error handlers are registered, logging exception.
+Traceback (most recent call last):
+  File "/Users/kiki/Library/Python/3.14/lib/python/site-packages/telegram/ext/_utils/networkloop.py", line 161, in network_retry_loop
+    await do_action()
+  File "/Users/kiki/Library/Python/3.14/lib/python/site-packages/telegram/ext/_utils/networkloop.py", line 154, in do_action
+    action_cb_task.result()
+    ~~~~~~~~~~~~~~~~~~~~~^^
+  File "/Users/kiki/Library/Python/3.14/lib/python/site-packages/telegram/ext/_updater.py", line 340, in polling_action_cb
+    updates = await self.bot.get_updates(
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<3 lines>...
+    )
+    ^
+  File "/Users/kiki/Library/Python/3.14/lib/python/site-packages/telegram/ext/_extbot.py", line 672, in get_updates
+    updates = await super().get_updates(
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<9 lines>...
+    )
+    ^
+  File "/Users/kiki/Library/Python/3.14/lib/python/site-packages/telegram/_bot.py", line 4865, in get_updates
+    await self._post(
+    ^^^^^^^^^^^^^^^^^
+    ...<7 lines>...
+    ),
+    ^
+  File "/Users/kiki/Library/Python/3.14/lib/python/site-packages/telegram/_bot.py", line 704, in _post
+    return await self._do_post(
+           ^^^^^^^^^^^^^^^^^^^^
+    ...<6 lines>...
+    )
+    ^
+  File "/Users/kiki/Library/Python/3.14/lib/python/site-packages/telegram/ext/_extbot.py", line 370, in _do_post
+    return await super()._do_post(
+           ^^^^^^^^^^^^^^^^^^^^^^^
+    ...<6 lines>...
+    )
+    ^
+  File "/Users/kiki/Library/Python/3.14/lib/python/site-packages/telegram/_bot.py", line 733, in _do_post
+    result = await request.post(
+             ^^^^^^^^^^^^^^^^^^^
+    ...<6 lines>...
+    )
+    ^
+  File "/Users/kiki/Library/Python/3.14/lib/python/site-packages/telegram/request/_baserequest.py", line 198, in post
+    result = await self._request_wrapper(
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<7 lines>...
+    )
+    ^
+  File "/Users/kiki/Library/Python/3.14/lib/python/site-packages/telegram/request/_baserequest.py", line 375, in _request_wrapper
+    raise exception
+telegram.error.Conflict: Conflict: terminated by other getUpdates request; make sure that only one bot instance is running
+[2026-05-09 03:23:54,489] 🎖️ KIBOT - INFO - HTTP Request: POST https://api.telegram.org/botREDACTED_TELEGRAM_TOKEN/getUpdates "HTTP/1.1 409 Conflict"
+[2026-05-09 03:23:54,490] 🎖️ KIBOT - ERROR - No error handlers are registered, logging exception.
+Traceback (most recent call last):
+  File "/Users/kiki/Library/Python/3.14/lib/python/site-packages/telegram/ext/_utils/networkloop.py", line 161, in network_retry_loop
+    await do_action()
+  File "/Users/kiki/Library/Python/3.14/lib/python/site-packages/telegram/ext/_utils/networkloop.py", line 154, in do_action
+    action_cb_task.result()
+    ~~~~~~~~~~~~~~~~~~~~~^^
+  File "/Users/kiki/Library/Python/3.14/lib/python/site-packages/telegram/ext/_updater.py", line 340, in polling_action_cb
+    updates = await self.bot.get_updates(
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<3 lines>...
+    )
+    ^
+  File "/Users/kiki/Library/Python/3.14/lib/python/site-packages/telegram/ext/_extbot.py", line 672, in get_updates
+    updates = await super().get_updates(
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<9 lines>...
+    )
+    ^
+  File "/Users/kiki/Library/Python/3.14/lib/python/site-packages/telegram/_bot.py", line 4865, in get_updates
+    await self._post(
+    ^^^^^^^^^^^^^^^^^
+    ...<7 lines>...
+    ),
+    ^
+  File "/Users/kiki/Library/Python/3.14/lib/python/site-packages/telegram/_bot.py", line 704, in _post
+    return await self._do_post(
+           ^^^^^^^^^^^^^^^^^^^^
+    ...<6 lines>...
+    )
+    ^
+  File "/Users/kiki/Library/Python/3.14/lib/python/site-packages/telegram/ext/_extbot.py", line 370, in _do_post
+    return await super()._do_post(
+           ^^^^^^^^^^^^^^^^^^^^^^^
+    ...<6 lines>...
+    )
+    ^
+  File "/Users/kiki/Library/Python/3.14/lib/python/site-packages/telegram/_bot.py", line 733, in _do_post
+    result = await request.post(
+             ^^^^^^^^^^^^^^^^^^^
+    ...<6 lines>...
+    )
+    ^
+  File "/Users/kiki/Library/Python/3.14/lib/python/site-packages/telegram/request/_baserequest.py", line 198, in post
+    result = await self._request_wrapper(
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<7 lines>...
+    )
+    ^
+  File "/Users/kiki/Library/Python/3.14/lib/python/site-packages/telegram/request/_baserequest.py", line 375, in _request_wrapper
+    raise exception
+telegram.error.Conflict: Conflict: terminated by other getUpdates request; make sure that only one bot instance is running
+[2026-05-09 03:24:05,677] 🎖️ KIBOT - INFO - HTTP Request: POST https://api.telegram.org/botREDACTED_TELEGRAM_TOKEN/getUpdates "HTTP/1.1 409 Conflict"
+[2026-05-09 03:24:05,678] 🎖️ KIBOT - ERROR - No error handlers are registered, logging exception.
+Traceback (most recent call last):
+  File "/Users/kiki/Library/Python/3.14/lib/python/site-packages/telegram/ext/_utils/networkloop.py", line 161, in network_retry_loop
+    await do_action()
+  File "/Users/kiki/Library/Python/3.14/lib/python/site-packages/telegram/ext/_utils/networkloop.py", line 154, in do_action
+    action_cb_task.result()
+    ~~~~~~~~~~~~~~~~~~~~~^^
+  File "/Users/kiki/Library/Python/3.14/lib/python/site-packages/telegram/ext/_updater.py", line 340, in polling_action_cb
+    updates = await self.bot.get_updates(
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<3 lines>...
+    )
+    ^
+  File "/Users/kiki/Library/Python/3.14/lib/python/site-packages/telegram/ext/_extbot.py", line 672, in get_updates
+    updates = await super().get_updates(
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<9 lines>...
+    )
+    ^
+  File "/Users/kiki/Library/Python/3.14/lib/python/site-packages/telegram/_bot.py", line 4865, in get_updates
+    await self._post(
+    ^^^^^^^^^^^^^^^^^
+    ...<7 lines>...
+    ),
+    ^
+  File "/Users/kiki/Library/Python/3.14/lib/python/site-packages/telegram/_bot.py", line 704, in _post
+    return await self._do_post(
+           ^^^^^^^^^^^^^^^^^^^^
+    ...<6 lines>...
+    )
+    ^
+  File "/Users/kiki/Library/Python/3.14/lib/python/site-packages/telegram/ext/_extbot.py", line 370, in _do_post
+    return await super()._do_post(
+           ^^^^^^^^^^^^^^^^^^^^^^^
+    ...<6 lines>...
+    )
+    ^
+  File "/Users/kiki/Library/Python/3.14/lib/python/site-packages/telegram/_bot.py", line 733, in _do_post
+    result = await request.post(
+             ^^^^^^^^^^^^^^^^^^^
+    ...<6 lines>...
+    )
+    ^
+  File "/Users/kiki/Library/Python/3.14/lib/python/site-packages/telegram/request/_baserequest.py", line 198, in post
+    result = await self._request_wrapper(
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<7 lines>...
+    )
+    ^
+  File "/Users/kiki/Library/Python/3.14/lib/python/site-packages/telegram/request/_baserequest.py", line 375, in _request_wrapper
+    raise exception
+telegram.error.Conflict: Conflict: terminated by other getUpdates request; make sure that only one bot instance is running
+[2026-05-09 03:24:18,068] 🎖️ KIBOT - INFO - HTTP Request: POST https://api.telegram.org/botREDACTED_TELEGRAM_TOKEN/getUpdates "HTTP/1.1 409 Conflict"
+[2026-05-09 03:24:18,070] 🎖️ KIBOT - ERROR - No error handlers are registered, logging exception.
+Traceback (most recent call last):
+  File "/Users/kiki/Library/Python/3.14/lib/python/site-packages/telegram/ext/_utils/networkloop.py", line 161, in network_retry_loop
+    await do_action()
+  File "/Users/kiki/Library/Python/3.14/lib/python/site-packages/telegram/ext/_utils/networkloop.py", line 154, in do_action
+    action_cb_task.result()
+    ~~~~~~~~~~~~~~~~~~~~~^^
+  File "/Users/kiki/Library/Python/3.14/lib/python/site-packages/telegram/ext/_updater.py", line 340, in polling_action_cb
+    updates = await self.bot.get_updates(
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<3 lines>...
+    )
+    ^
+  File "/Users/kiki/Library/Python/3.14/lib/python/site-packages/telegram/ext/_extbot.py", line 672, in get_updates
+    updates = await super().get_updates(
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<9 lines>...
+    )
+    ^
+  File "/Users/kiki/Library/Python/3.14/lib/python/site-packages/telegram/_bot.py", line 4865, in get_updates
+    await self._post(
+    ^^^^^^^^^^^^^^^^^
+    ...<7 lines>...
+    ),
+    ^
+  File "/Users/kiki/Library/Python/3.14/lib/python/site-packages/telegram/_bot.py", line 704, in _post
+    return await self._do_post(
+           ^^^^^^^^^^^^^^^^^^^^
+    ...<6 lines>...
+    )
+    ^
+  File "/Users/kiki/Library/Python/3.14/lib/python/site-packages/telegram/ext/_extbot.py", line 370, in _do_post
+    return await super()._do_post(
+           ^^^^^^^^^^^^^^^^^^^^^^^
+    ...<6 lines>...
+    )
+    ^
+  File "/Users/kiki/Library/Python/3.14/lib/python/site-packages/telegram/_bot.py", line 733, in _do_post
+    result = await request.post(
+             ^^^^^^^^^^^^^^^^^^^
+    ...<6 lines>...
+    )
+    ^
+  File "/Users/kiki/Library/Python/3.14/lib/python/site-packages/telegram/request/_baserequest.py", line 198, in post
+    result = await self._request_wrapper(
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<7 lines>...
+    )
+    ^
+  File "/Users/kiki/Library/Python/3.14/lib/python/site-packages/telegram/request/_baserequest.py", line 375, in _request_wrapper
+    raise exception
+telegram.error.Conflict: Conflict: terminated by other getUpdates request; make sure that only one bot instance is running
+[2026-05-09 03:24:34,435] 🎖️ KIBOT - INFO - HTTP Request: POST https://api.telegram.org/botREDACTED_TELEGRAM_TOKEN/getUpdates "HTTP/1.1 409 Conflict"
+[2026-05-09 03:24:34,437] 🎖️ KIBOT - ERROR - No error handlers are registered, logging exception.
+Traceback (most recent call last):
+  File "/Users/kiki/Library/Python/3.14/lib/python/site-packages/telegram/ext/_utils/networkloop.py", line 161, in network_retry_loop
+    await do_action()
+  File "/Users/kiki/Library/Python/3.14/lib/python/site-packages/telegram/ext/_utils/networkloop.py", line 154, in do_action
+    action_cb_task.result()
+    ~~~~~~~~~~~~~~~~~~~~~^^
+  File "/Users/kiki/Library/Python/3.14/lib/python/site-packages/telegram/ext/_updater.py", line 340, in polling_action_cb
+    updates = await self.bot.get_updates(
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<3 lines>...
+    )
+    ^
+  File "/Users/kiki/Library/Python/3.14/lib/python/site-packages/telegram/ext/_extbot.py", line 672, in get_updates
+    updates = await super().get_updates(
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<9 lines>...
+    )
+    ^
+  File "/Users/kiki/Library/Python/3.14/lib/python/site-packages/telegram/_bot.py", line 4865, in get_updates
+    await self._post(
+    ^^^^^^^^^^^^^^^^^
+    ...<7 lines>...
+    ),
+    ^
+  File "/Users/kiki/Library/Python/3.14/lib/python/site-packages/telegram/_bot.py", line 704, in _post
+    return await self._do_post(
+           ^^^^^^^^^^^^^^^^^^^^
+    ...<6 lines>...
+    )
+    ^
+  File "/Users/kiki/Library/Python/3.14/lib/python/site-packages/telegram/ext/_extbot.py", line 370, in _do_post
+    return await super()._do_post(
+           ^^^^^^^^^^^^^^^^^^^^^^^
+    ...<6 lines>...
+    )
+    ^
+  File "/Users/kiki/Library/Python/3.14/lib/python/site-packages/telegram/_bot.py", line 733, in _do_post
+    result = await request.post(
+             ^^^^^^^^^^^^^^^^^^^
+    ...<6 lines>...
+    )
+    ^
+  File "/Users/kiki/Library/Python/3.14/lib/python/site-packages/telegram/request/_baserequest.py", line 198, in post
+    result = await self._request_wrapper(
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<7 lines>...
+    )
+    ^
+  File "/Users/kiki/Library/Python/3.14/lib/python/site-packages/telegram/request/_baserequest.py", line 375, in _request_wrapper
+    raise exception
+telegram.error.Conflict: Conflict: terminated by other getUpdates request; make sure that only one bot instance is running
+[2026-05-09 03:24:55,381] 🎖️ KIBOT - INFO - HTTP Request: POST https://api.telegram.org/botREDACTED_TELEGRAM_TOKEN/getUpdates "HTTP/1.1 409 Conflict"
+[2026-05-09 03:24:55,382] 🎖️ KIBOT - ERROR - No error handlers are registered, logging exception.
+Traceback (most recent call last):
+  File "/Users/kiki/Library/Python/3.14/lib/python/site-packages/telegram/ext/_utils/networkloop.py", line 161, in network_retry_loop
+    await do_action()
+  File "/Users/kiki/Library/Python/3.14/lib/python/site-packages/telegram/ext/_utils/networkloop.py", line 154, in do_action
+    action_cb_task.result()
+    ~~~~~~~~~~~~~~~~~~~~~^^
+  File "/Users/kiki/Library/Python/3.14/lib/python/site-packages/telegram/ext/_updater.py", line 340, in polling_action_cb
+    updates = await self.bot.get_updates(
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<3 lines>...
+    )
+    ^
+  File "/Users/kiki/Library/Python/3.14/lib/python/site-packages/telegram/ext/_extbot.py", line 672, in get_updates
+    updates = await super().get_updates(
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<9 lines>...
+    )
+    ^
+  File "/Users/kiki/Library/Python/3.14/lib/python/site-packages/telegram/_bot.py", line 4865, in get_updates
+    await self._post(
+    ^^^^^^^^^^^^^^^^^
+    ...<7 lines>...
+    ),
+    ^
+  File "/Users/kiki/Library/Python/3.14/lib/python/site-packages/telegram/_bot.py", line 704, in _post
+    return await self._do_post(
+           ^^^^^^^^^^^^^^^^^^^^
+    ...<6 lines>...
+    )
+    ^
+  File "/Users/kiki/Library/Python/3.14/lib/python/site-packages/telegram/ext/_extbot.py", line 370, in _do_post
+    return await super()._do_post(
+           ^^^^^^^^^^^^^^^^^^^^^^^
+    ...<6 lines>...
+    )
+    ^
+  File "/Users/kiki/Library/Python/3.14/lib/python/site-packages/telegram/_bot.py", line 733, in _do_post
+    result = await request.post(
+             ^^^^^^^^^^^^^^^^^^^
+    ...<6 lines>...
+    )
+    ^
+  File "/Users/kiki/Library/Python/3.14/lib/python/site-packages/telegram/request/_baserequest.py", line 198, in post
+    result = await self._request_wrapper(
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<7 lines>...
+    )
+    ^
+  File "/Users/kiki/Library/Python/3.14/lib/python/site-packages/telegram/request/_baserequest.py", line 375, in _request_wrapper
+    raise exception
+telegram.error.Conflict: Conflict: terminated by other getUpdates request; make sure that only one bot instance is running
+[2026-05-09 03:25:27,191] 🎖️ KIBOT - INFO - HTTP Request: POST https://api.telegram.org/botREDACTED_TELEGRAM_TOKEN/getUpdates "HTTP/1.1 409 Conflict"
+[2026-05-09 03:25:27,194] 🎖️ KIBOT - ERROR - No error handlers are registered, logging exception.
+Traceback (most recent call last):
+  File "/Users/kiki/Library/Python/3.14/lib/python/site-packages/telegram/ext/_utils/networkloop.py", line 161, in network_retry_loop
+    await do_action()
+  File "/Users/kiki/Library/Python/3.14/lib/python/site-packages/telegram/ext/_utils/networkloop.py", line 154, in do_action
+    action_cb_task.result()
+    ~~~~~~~~~~~~~~~~~~~~~^^
+  File "/Users/kiki/Library/Python/3.14/lib/python/site-packages/telegram/ext/_updater.py", line 340, in polling_action_cb
+    updates = await self.bot.get_updates(
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<3 lines>...
+    )
+    ^
+  File "/Users/kiki/Library/Python/3.14/lib/python/site-packages/telegram/ext/_extbot.py", line 672, in get_updates
+    updates = await super().get_updates(
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<9 lines>...
+    )
+    ^
+  File "/Users/kiki/Library/Python/3.14/lib/python/site-packages/telegram/_bot.py", line 4865, in get_updates
+    await self._post(
+    ^^^^^^^^^^^^^^^^^
+    ...<7 lines>...
+    ),
+    ^
+  File "/Users/kiki/Library/Python/3.14/lib/python/site-packages/telegram/_bot.py", line 704, in _post
+    return await self._do_post(
+           ^^^^^^^^^^^^^^^^^^^^
+    ...<6 lines>...
+    )
+    ^
+  File "/Users/kiki/Library/Python/3.14/lib/python/site-packages/telegram/ext/_extbot.py", line 370, in _do_post
+    return await super()._do_post(
+           ^^^^^^^^^^^^^^^^^^^^^^^
+    ...<6 lines>...
+    )
+    ^
+  File "/Users/kiki/Library/Python/3.14/lib/python/site-packages/telegram/_bot.py", line 733, in _do_post
+    result = await request.post(
+             ^^^^^^^^^^^^^^^^^^^
+    ...<6 lines>...
+    )
+    ^
+  File "/Users/kiki/Library/Python/3.14/lib/python/site-packages/telegram/request/_baserequest.py", line 198, in post
+    result = await self._request_wrapper(
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<7 lines>...
+    )
+    ^
+  File "/Users/kiki/Library/Python/3.14/lib/python/site-packages/telegram/request/_baserequest.py", line 375, in _request_wrapper
+    raise exception
+telegram.error.Conflict: Conflict: terminated by other getUpdates request; make sure that only one bot instance is running
+[2026-05-09 03:26:03,341] 🎖️ KIBOT - INFO - HTTP Request: POST https://api.telegram.org/botREDACTED_TELEGRAM_TOKEN/getUpdates "HTTP/1.1 409 Conflict"
+[2026-05-09 03:26:03,343] 🎖️ KIBOT - ERROR - No error handlers are registered, logging exception.
+Traceback (most recent call last):
+  File "/Users/kiki/Library/Python/3.14/lib/python/site-packages/telegram/ext/_utils/networkloop.py", line 161, in network_retry_loop
+    await do_action()
+  File "/Users/kiki/Library/Python/3.14/lib/python/site-packages/telegram/ext/_utils/networkloop.py", line 154, in do_action
+    action_cb_task.result()
+    ~~~~~~~~~~~~~~~~~~~~~^^
+  File "/Users/kiki/Library/Python/3.14/lib/python/site-packages/telegram/ext/_updater.py", line 340, in polling_action_cb
+    updates = await self.bot.get_updates(
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<3 lines>...
+    )
+    ^
+  File "/Users/kiki/Library/Python/3.14/lib/python/site-packages/telegram/ext/_extbot.py", line 672, in get_updates
+    updates = await super().get_updates(
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<9 lines>...
+    )
+    ^
+  File "/Users/kiki/Library/Python/3.14/lib/python/site-packages/telegram/_bot.py", line 4865, in get_updates
+    await self._post(
+    ^^^^^^^^^^^^^^^^^
+    ...<7 lines>...
+    ),
+    ^
+  File "/Users/kiki/Library/Python/3.14/lib/python/site-packages/telegram/_bot.py", line 704, in _post
+    return await self._do_post(
+           ^^^^^^^^^^^^^^^^^^^^
+    ...<6 lines>...
+    )
+    ^
+  File "/Users/kiki/Library/Python/3.14/lib/python/site-packages/telegram/ext/_extbot.py", line 370, in _do_post
+    return await super()._do_post(
+           ^^^^^^^^^^^^^^^^^^^^^^^
+    ...<6 lines>...
+    )
+    ^
+  File "/Users/kiki/Library/Python/3.14/lib/python/site-packages/telegram/_bot.py", line 733, in _do_post
+    result = await request.post(
+             ^^^^^^^^^^^^^^^^^^^
+    ...<6 lines>...
+    )
+    ^
+  File "/Users/kiki/Library/Python/3.14/lib/python/site-packages/telegram/request/_baserequest.py", line 198, in post
+    result = await self._request_wrapper(
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<7 lines>...
+    )
+    ^
+  File "/Users/kiki/Library/Python/3.14/lib/python/site-packages/telegram/request/_baserequest.py", line 375, in _request_wrapper
+    raise exception
+telegram.error.Conflict: Conflict: terminated by other getUpdates request; make sure that only one bot instance is running
+[2026-05-09 03:26:39,435] 🎖️ KIBOT - INFO - HTTP Request: POST https://api.telegram.org/botREDACTED_TELEGRAM_TOKEN/getUpdates "HTTP/1.1 409 Conflict"
+[2026-05-09 03:26:39,440] 🎖️ KIBOT - ERROR - No error handlers are registered, logging exception.
+Traceback (most recent call last):
+  File "/Users/kiki/Library/Python/3.14/lib/python/site-packages/telegram/ext/_utils/networkloop.py", line 161, in network_retry_loop
+    await do_action()
+  File "/Users/kiki/Library/Python/3.14/lib/python/site-packages/telegram/ext/_utils/networkloop.py", line 154, in do_action
+    action_cb_task.result()
+    ~~~~~~~~~~~~~~~~~~~~~^^
+  File "/Users/kiki/Library/Python/3.14/lib/python/site-packages/telegram/ext/_updater.py", line 340, in polling_action_cb
+    updates = await self.bot.get_updates(
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<3 lines>...
+    )
+    ^
+  File "/Users/kiki/Library/Python/3.14/lib/python/site-packages/telegram/ext/_extbot.py", line 672, in get_updates
+    updates = await super().get_updates(
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<9 lines>...
+    )
+    ^
+  File "/Users/kiki/Library/Python/3.14/lib/python/site-packages/telegram/_bot.py", line 4865, in get_updates
+    await self._post(
+    ^^^^^^^^^^^^^^^^^
+    ...<7 lines>...
+    ),
+    ^
+  File "/Users/kiki/Library/Python/3.14/lib/python/site-packages/telegram/_bot.py", line 704, in _post
+    return await self._do_post(
+           ^^^^^^^^^^^^^^^^^^^^
+    ...<6 lines>...
+    )
+    ^
+  File "/Users/kiki/Library/Python/3.14/lib/python/site-packages/telegram/ext/_extbot.py", line 370, in _do_post
+    return await super()._do_post(
+           ^^^^^^^^^^^^^^^^^^^^^^^
+    ...<6 lines>...
+    )
+    ^
+  File "/Users/kiki/Library/Python/3.14/lib/python/site-packages/telegram/_bot.py", line 733, in _do_post
+    result = await request.post(
+             ^^^^^^^^^^^^^^^^^^^
+    ...<6 lines>...
+    )
+    ^
+  File "/Users/kiki/Library/Python/3.14/lib/python/site-packages/telegram/request/_baserequest.py", line 198, in post
+    result = await self._request_wrapper(
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<7 lines>...
+    )
+    ^
+  File "/Users/kiki/Library/Python/3.14/lib/python/site-packages/telegram/request/_baserequest.py", line 375, in _request_wrapper
+    raise exception
+telegram.error.Conflict: Conflict: terminated by other getUpdates request; make sure that only one bot instance is running
+[2026-05-09 03:27:15,533] 🎖️ KIBOT - INFO - HTTP Request: POST https://api.telegram.org/botREDACTED_TELEGRAM_TOKEN/getUpdates "HTTP/1.1 409 Conflict"
+[2026-05-09 03:27:15,535] 🎖️ KIBOT - ERROR - No error handlers are registered, logging exception.
+Traceback (most recent call last):
+  File "/Users/kiki/Library/Python/3.14/lib/python/site-packages/telegram/ext/_utils/networkloop.py", line 161, in network_retry_loop
+    await do_action()
+  File "/Users/kiki/Library/Python/3.14/lib/python/site-packages/telegram/ext/_utils/networkloop.py", line 154, in do_action
+    action_cb_task.result()
+    ~~~~~~~~~~~~~~~~~~~~~^^
+  File "/Users/kiki/Library/Python/3.14/lib/python/site-packages/telegram/ext/_updater.py", line 340, in polling_action_cb
+    updates = await self.bot.get_updates(
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<3 lines>...
+    )
+    ^
+  File "/Users/kiki/Library/Python/3.14/lib/python/site-packages/telegram/ext/_extbot.py", line 672, in get_updates
+    updates = await super().get_updates(
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<9 lines>...
+    )
+    ^
+  File "/Users/kiki/Library/Python/3.14/lib/python/site-packages/telegram/_bot.py", line 4865, in get_updates
+    await self._post(
+    ^^^^^^^^^^^^^^^^^
+    ...<7 lines>...
+    ),
+    ^
+  File "/Users/kiki/Library/Python/3.14/lib/python/site-packages/telegram/_bot.py", line 704, in _post
+    return await self._do_post(
+           ^^^^^^^^^^^^^^^^^^^^
+    ...<6 lines>...
+    )
+    ^
+  File "/Users/kiki/Library/Python/3.14/lib/python/site-packages/telegram/ext/_extbot.py", line 370, in _do_post
+    return await super()._do_post(
+           ^^^^^^^^^^^^^^^^^^^^^^^
+    ...<6 lines>...
+    )
+    ^
+  File "/Users/kiki/Library/Python/3.14/lib/python/site-packages/telegram/_bot.py", line 733, in _do_post
+    result = await request.post(
+             ^^^^^^^^^^^^^^^^^^^
+    ...<6 lines>...
+    )
+    ^
+  File "/Users/kiki/Library/Python/3.14/lib/python/site-packages/telegram/request/_baserequest.py", line 198, in post
+    result = await self._request_wrapper(
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<7 lines>...
+    )
+    ^
+  File "/Users/kiki/Library/Python/3.14/lib/python/site-packages/telegram/request/_baserequest.py", line 375, in _request_wrapper
+    raise exception
+telegram.error.Conflict: Conflict: terminated by other getUpdates request; make sure that only one bot instance is running
+[2026-05-09 03:27:51,681] 🎖️ KIBOT - INFO - HTTP Request: POST https://api.telegram.org/botREDACTED_TELEGRAM_TOKEN/getUpdates "HTTP/1.1 409 Conflict"
+[2026-05-09 03:27:51,683] 🎖️ KIBOT - ERROR - No error handlers are registered, logging exception.
+Traceback (most recent call last):
+  File "/Users/kiki/Library/Python/3.14/lib/python/site-packages/telegram/ext/_utils/networkloop.py", line 161, in network_retry_loop
+    await do_action()
+  File "/Users/kiki/Library/Python/3.14/lib/python/site-packages/telegram/ext/_utils/networkloop.py", line 154, in do_action
+    action_cb_task.result()
+    ~~~~~~~~~~~~~~~~~~~~~^^
+  File "/Users/kiki/Library/Python/3.14/lib/python/site-packages/telegram/ext/_updater.py", line 340, in polling_action_cb
+    updates = await self.bot.get_updates(
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<3 lines>...
+    )
+    ^
+  File "/Users/kiki/Library/Python/3.14/lib/python/site-packages/telegram/ext/_extbot.py", line 672, in get_updates
+    updates = await super().get_updates(
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<9 lines>...
+    )
+    ^
+  File "/Users/kiki/Library/Python/3.14/lib/python/site-packages/telegram/_bot.py", line 4865, in get_updates
+    await self._post(
+    ^^^^^^^^^^^^^^^^^
+    ...<7 lines>...
+    ),
+    ^
+  File "/Users/kiki/Library/Python/3.14/lib/python/site-packages/telegram/_bot.py", line 704, in _post
+    return await self._do_post(
+           ^^^^^^^^^^^^^^^^^^^^
+    ...<6 lines>...
+    )
+    ^
+  File "/Users/kiki/Library/Python/3.14/lib/python/site-packages/telegram/ext/_extbot.py", line 370, in _do_post
+    return await super()._do_post(
+           ^^^^^^^^^^^^^^^^^^^^^^^
+    ...<6 lines>...
+    )
+    ^
+  File "/Users/kiki/Library/Python/3.14/lib/python/site-packages/telegram/_bot.py", line 733, in _do_post
+    result = await request.post(
+             ^^^^^^^^^^^^^^^^^^^
+    ...<6 lines>...
+    )
+    ^
+  File "/Users/kiki/Library/Python/3.14/lib/python/site-packages/telegram/request/_baserequest.py", line 198, in post
+    result = await self._request_wrapper(
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<7 lines>...
+    )
+    ^
+  File "/Users/kiki/Library/Python/3.14/lib/python/site-packages/telegram/request/_baserequest.py", line 375, in _request_wrapper
+    raise exception
+telegram.error.Conflict: Conflict: terminated by other getUpdates request; make sure that only one bot instance is running
+[2026-05-09 03:28:27,857] 🎖️ KIBOT - INFO - HTTP Request: POST https://api.telegram.org/botREDACTED_TELEGRAM_TOKEN/getUpdates "HTTP/1.1 409 Conflict"
+[2026-05-09 03:28:27,859] 🎖️ KIBOT - ERROR - No error handlers are registered, logging exception.
+Traceback (most recent call last):
+  File "/Users/kiki/Library/Python/3.14/lib/python/site-packages/telegram/ext/_utils/networkloop.py", line 161, in network_retry_loop
+    await do_action()
+  File "/Users/kiki/Library/Python/3.14/lib/python/site-packages/telegram/ext/_utils/networkloop.py", line 154, in do_action
+    action_cb_task.result()
+    ~~~~~~~~~~~~~~~~~~~~~^^
+  File "/Users/kiki/Library/Python/3.14/lib/python/site-packages/telegram/ext/_updater.py", line 340, in polling_action_cb
+    updates = await self.bot.get_updates(
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<3 lines>...
+    )
+    ^
+  File "/Users/kiki/Library/Python/3.14/lib/python/site-packages/telegram/ext/_extbot.py", line 672, in get_updates
+    updates = await super().get_updates(
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<9 lines>...
+    )
+    ^
+  File "/Users/kiki/Library/Python/3.14/lib/python/site-packages/telegram/_bot.py", line 4865, in get_updates
+    await self._post(
+    ^^^^^^^^^^^^^^^^^
+    ...<7 lines>...
+    ),
+    ^
+  File "/Users/kiki/Library/Python/3.14/lib/python/site-packages/telegram/_bot.py", line 704, in _post
+    return await self._do_post(
+           ^^^^^^^^^^^^^^^^^^^^
+    ...<6 lines>...
+    )
+    ^
+  File "/Users/kiki/Library/Python/3.14/lib/python/site-packages/telegram/ext/_extbot.py", line 370, in _do_post
+    return await super()._do_post(
+           ^^^^^^^^^^^^^^^^^^^^^^^
+    ...<6 lines>...
+    )
+    ^
+  File "/Users/kiki/Library/Python/3.14/lib/python/site-packages/telegram/_bot.py", line 733, in _do_post
+    result = await request.post(
+             ^^^^^^^^^^^^^^^^^^^
+    ...<6 lines>...
+    )
+    ^
+  File "/Users/kiki/Library/Python/3.14/lib/python/site-packages/telegram/request/_baserequest.py", line 198, in post
+    result = await self._request_wrapper(
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<7 lines>...
+    )
+    ^
+  File "/Users/kiki/Library/Python/3.14/lib/python/site-packages/telegram/request/_baserequest.py", line 375, in _request_wrapper
+    raise exception
+telegram.error.Conflict: Conflict: terminated by other getUpdates request; make sure that only one bot instance is running
+[2026-05-09 03:29:03,916] 🎖️ KIBOT - INFO - HTTP Request: POST https://api.telegram.org/botREDACTED_TELEGRAM_TOKEN/getUpdates "HTTP/1.1 409 Conflict"
+[2026-05-09 03:29:03,920] 🎖️ KIBOT - ERROR - No error handlers are registered, logging exception.
+Traceback (most recent call last):
+  File "/Users/kiki/Library/Python/3.14/lib/python/site-packages/telegram/ext/_utils/networkloop.py", line 161, in network_retry_loop
+    await do_action()
+  File "/Users/kiki/Library/Python/3.14/lib/python/site-packages/telegram/ext/_utils/networkloop.py", line 154, in do_action
+    action_cb_task.result()
+    ~~~~~~~~~~~~~~~~~~~~~^^
+  File "/Users/kiki/Library/Python/3.14/lib/python/site-packages/telegram/ext/_updater.py", line 340, in polling_action_cb
+    updates = await self.bot.get_updates(
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<3 lines>...
+    )
+    ^
+  File "/Users/kiki/Library/Python/3.14/lib/python/site-packages/telegram/ext/_extbot.py", line 672, in get_updates
+    updates = await super().get_updates(
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<9 lines>...
+    )
+    ^
+  File "/Users/kiki/Library/Python/3.14/lib/python/site-packages/telegram/_bot.py", line 4865, in get_updates
+    await self._post(
+    ^^^^^^^^^^^^^^^^^
+    ...<7 lines>...
+    ),
+    ^
+  File "/Users/kiki/Library/Python/3.14/lib/python/site-packages/telegram/_bot.py", line 704, in _post
+    return await self._do_post(
+           ^^^^^^^^^^^^^^^^^^^^
+    ...<6 lines>...
+    )
+    ^
+  File "/Users/kiki/Library/Python/3.14/lib/python/site-packages/telegram/ext/_extbot.py", line 370, in _do_post
+    return await super()._do_post(
+           ^^^^^^^^^^^^^^^^^^^^^^^
+    ...<6 lines>...
+    )
+    ^
+  File "/Users/kiki/Library/Python/3.14/lib/python/site-packages/telegram/_bot.py", line 733, in _do_post
+    result = await request.post(
+             ^^^^^^^^^^^^^^^^^^^
+    ...<6 lines>...
+    )
+    ^
+  File "/Users/kiki/Library/Python/3.14/lib/python/site-packages/telegram/request/_baserequest.py", line 198, in post
+    result = await self._request_wrapper(
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<7 lines>...
+    )
+    ^
+  File "/Users/kiki/Library/Python/3.14/lib/python/site-packages/telegram/request/_baserequest.py", line 375, in _request_wrapper
+    raise exception
+telegram.error.Conflict: Conflict: terminated by other getUpdates request; make sure that only one bot instance is running

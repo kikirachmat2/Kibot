@@ -16,6 +16,7 @@ import threading
 import subprocess
 import platform
 import socket
+from typing import Dict, List, Optional
 from pathlib import Path
 from datetime import datetime
 
@@ -195,20 +196,33 @@ class KiBotMaster:
 
     async def mesh_monitor_loop(self):
         """Main loop with Mesh Awareness and Oracle Mode (Proactive Scouting)."""
+        logger.info("🛰️ Mesh Monitor Loop started.")
+        
+        # Immediate Oracle Scout on startup for validation
+        logger.info("Oracle Mode (Startup): Performing initial market scouting...")
+        await self.deliberate_issue("SCOUTING", {"type": "PROACTIVE_ORACLE", "snapshot": await self.get_telemetry()})
+        
         iteration = 0
         while self.is_running:
             iteration += 1
             telemetry = await self.get_telemetry()
             
             # 1. REACTIVE: Watchman Logic (Batam/Mesh failures)
-            mesh_fail = any(v == "OFFLINE" for v in telemetry["mesh_nodes"].values())
-            if telemetry["redis"] == "OFFLINE" or telemetry["tailscale"] != "Running" or mesh_fail:
-                logger.warning(f"Watchman detected { 'MESH' if mesh_fail else 'LOCAL' } anomaly! Triggering Council...")
+            # Check if any critical service is down
+            critical_services = [
+                telemetry["redis"] == "OFFLINE",
+                telemetry["tailscale"] != "Running",
+                telemetry["mesh_nodes"]["SINGAPORE_SCANNER"] == "OFFLINE",
+                telemetry["mesh_nodes"]["SINGAPORE_EXECUTOR"] == "OFFLINE"
+            ]
+            
+            if any(critical_services):
+                logger.warning("Watchman detected an infrastructure anomaly! Triggering Council...")
                 await self.deliberate_issue("EMERGENCY", {"type": "SYSTEM_ANOMALY", "snapshot": telemetry})
             
             # 2. PROACTIVE: Oracle Mode (Every 60 iterations ~ 1 hour)
             elif iteration % 60 == 0:
-                logger.info("Oracle Mode: Council performing proactive market scouting...")
+                logger.info("Oracle Mode (Periodic): Council performing proactive market scouting...")
                 await self.deliberate_issue("SCOUTING", {"type": "PROACTIVE_ORACLE", "snapshot": telemetry})
             
             await asyncio.sleep(60)

@@ -15,7 +15,9 @@ logger = logging.getLogger("SovereignCouncil")
 
 class SovereignCouncil:
     def __init__(self):
-        self.state_dir = Path("/Users/kiki/Documents/Web Develop/KiBot/SERVER_BATAM/state")
+        # Portable pathing: works on Mac and Linux Server
+        base_dir = Path(__file__).parent.parent
+        self.state_dir = base_dir / "state"
         self.decision_log = self.state_dir / "council_decisions.jsonl"
         self.state_dir.mkdir(parents=True, exist_ok=True)
         
@@ -140,7 +142,18 @@ class SovereignCouncil:
         return decision
 
     def _log_decision(self, decision: Dict):
-        """Audit trail for decisions"""
+        """Audit trail for decisions with automated rotation."""
+        # Log rotation check (if > 5,000 lines, archive and truncate)
+        try:
+            if self.decision_log.exists():
+                with open(self.decision_log, 'r') as f:
+                    count = sum(1 for _ in f)
+                if count > 5000:
+                    archive_name = self.state_dir / f"council_decisions_{int(time.time())}.jsonl.bak"
+                    self.decision_log.rename(archive_name)
+                    logger.info(f"🔄 Council log rotated to {archive_name}")
+        except: pass
+
         with open(self.decision_log, "a") as f:
             log_entry = {
                 "timestamp": time.time(),

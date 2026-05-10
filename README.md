@@ -1,41 +1,25 @@
-# KiBot Trinity Mesh: Sovereign Trading Intelligence
+# 🏛️ KiBot Sovereign Trinity
+**Autonomous Trading System | Adaptive Consciousness | Mesh Infrastructure**
 
-Sovereign autonomous trading ecosystem optimized for high-frequency execution and self-healing across a distributed mesh (Batam & Singapore).
+## 📜 THE MANIFESTO
+> **"Sedikit demi Sedikit, Lama-lama Menjadi Bukit."**
+>
+> KiBot adalah framework trading agentic yang beroperasi secara penuh (100% Autonomous) dengan kesadaran adaptif terhadap infrastruktur dan pasar global. Ia bukan mesin kaku; ia adalah entitas digital yang mampu berpikir kritis untuk menekan kerugian dan memaksimalkan probabilitas keuntungan.
 
-## 🛰️ Mesh Architecture (Trinity)
-- **Master Node (Batam - Ubuntu 24.04):** The Command Center. Hosts the Brain (KiBrain), Vault, and the AI Mechanic.
-- **Scanner Node (Singapore):** Global market sentiment and signal generation.
-- **Executor Node (Singapore):** High-speed exchange execution (Indodax & Polymarket).
+### 🧠 Core Philosophy
+- **Adaptif Situasional**: Membaca dunia, bertindak sesuai konteks, dan sadar akan seluruh sub-sistem di dalamnya.
+- **Tekan Kerugian**: Pertahanan adalah prioritas. Manajemen risiko otomatis yang sangat ketat (1.5% Max Daily Loss).
+- **Full Coin Rule**: Disiplin saldo. Harga 1 unit koin harus di bawah total saldo ekuitas saat ini.
+- **Self-Healing**: Mendeteksi kegagalan (Ollama down, Disk full) dan melakukan pemulihan mandiri secara instan.
 
-## 🧠 AI Operational Layers
-1. **The Sniper (Llama 3.2 1.5B):** Real-time signal gatekeeper. Low latency noise rejection.
-2. **The Scout (Llama 3.1 1B):** Background sentiment analyst. Keeps the system aligned with global market pulse.
-3. **The Mechanic (Qwen2.5-Coder 7B):** Autonomous self-healer. Diagnoses logs and patches code-level bugs using `aider`.
+### 📡 Mesh Architecture
+- **Batam (The Brain)**: Local Ollama Reasoning (Qwen 0.5b - 7b) & Council Deliberation.
+- **Singapore (The Senses)**: High-speed scrapers for Indodax & Polymarket.
+- **Singapore (The Hands)**: Low-latency execution engine via UDP signal plane.
 
-## 🛡️ Sovereign Security & Vault
-- **Hardware-Bound Encryption:** API Keys are bound to the Batam server hardware via `SovereignVault`.
-- **Auto-Fallback:** System automatically handles .env -> .env.kiv transitions for seamless deployment.
-- **Tailscale Mesh:** All inter-node communication is encrypted and isolated from the public internet.
-
-## 🛠️ Operational Commands (Batam)
-```bash
-# Start the High Command
-export PYTHONPATH=$PYTHONPATH:$(pwd)
-python3 SERVER_BATAM/KiBot.py
-
-# Check System Logs
-tail -f SERVER_BATAM/Logs/kibot_master.log
-
-# Trigger Manual AI Healing
-python3 SERVER_BATAM/Support/ki_vault.py setup
-```
-
-## 💓 Autonomous Heartbeats
-- **Resource Monitor:** Every 5 mins (RAM/Mesh Health).
-- **Global Market Pulse:** Every 30 mins (Sentiment Update).
-- **Daily Heartbeat:** Every 08:00 AM (Telegram Performance Report).
-- **Midnight Oracle:** 00:00 AM (Encrypted Backups & Audit).
+### 📱 Notification Protocol
+- **Urgent Only**: Hanya mengirim pesan darurat dan tindakan kritis ke Telegram.
+- **Midnight Report**: Laporan PnL harian otomatis setiap pukul 00:00 WIB.
 
 ---
-*Status:* **LIVE MODE ACTIVE 🟢**
-*Sovereignty:* **FULLY AUTONOMOUS 🦾**
+*Operational Status: **SOVEREIGN ACTIVE** | 2026*
