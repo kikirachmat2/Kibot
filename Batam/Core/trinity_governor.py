@@ -53,7 +53,9 @@ def ask_ollama(prompt):
 
 def deploy_and_verify(name, fix_cmd):
     if not is_command_safe(fix_cmd):
-        telegram_send(f"⚠️ *SECURITY BLOCK*\nTrinity attempted unsafe command:\n`{fix_cmd}`\n*BLOCKED*")
+        # Throttle security blocks? Or just log them. User said "Urgent trouble"
+        print(f"⚠️ SECURITY BLOCK: {fix_cmd}", flush=True)
+        telegram_send(f"🛡️ **Sovereign Block**: Trinity attempted an unsafe command.\n`{fix_cmd}`")
         return False
     try:
         if "|" in fix_cmd or "&&" in fix_cmd:
@@ -75,13 +77,17 @@ def tail_thread(name, path):
             line = proc.stdout.readline().decode('utf-8')
             if not line: break
             if any(x in line for x in ['ERROR', 'CRITICAL', 'Exception', 'Traceback']):
-                telegram_send(f"🔍 *LOG ALERT ({name})*:\n`{line.strip()}`")
+                # Log to console instead of Telegram to prevent spam
+                print(f"🔍 [LOG ALERT ({name})] {line.strip()}", flush=True)
+                # telegram_send(f"🔍 *LOG ALERT ({name})*:\n`{line.strip()}`")
     except Exception as e:
         print(f"[TRINITY][TAIL][ERROR] {name}: {e}", flush=True)
 
 if __name__ == '__main__':
     time.sleep(10)
-    telegram_send('🛡️ *TRINITY GOVERNOR v3.1 ACTIVE*\n(Secure Monitoring & Log Watch Enabled)')
+    # SILENT STARTUP
+    print('🛡️ TRINITY GOVERNOR ACTIVE (Secure Monitoring Enabled)', flush=True)
+    # telegram_send('🛡️ *TRINITY GOVERNOR v3.1 ACTIVE*\n(Secure Monitoring & Log Watch Enabled)')
     for name, path in LOGS_TO_WATCH.items():
         if os.path.exists(path):
             threading.Thread(target=tail_thread, args=(name, path), daemon=True).start()

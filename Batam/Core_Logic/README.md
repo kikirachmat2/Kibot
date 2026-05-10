@@ -10,13 +10,13 @@ The Trading Council operates as a multi-tier auditing and decision-making system
 The first layer of accountability. It records every single signal evaluated by the bot's Fast Path.
 - **Responsibility**: Logs `APPROVED`, `VETOED`, and `MATH_SKIP` decisions.
 - **Data Capture**: Symbol, Price, Decision, and the specific reason (e.g., "Vetoed: RSI Overbought").
-- **Storage**: `SERVER_BATAM/Logs/fast_path_signals.jsonl`.
+- **Storage**: `Batam/Logs/fast_path_signals.jsonl`.
 
 ### 2. `what_if_tracker.py` (The Opportunity Scout)
 Monitors the "Path Not Taken." This component watches rejected signals to see if they would have been profitable.
 - **Responsibility**: Tracks rejected coins for up to 12 hours, fetching real-time price updates.
 - **Metrics**: Calculates `max_gain_pct` and `max_drawdown` for hypothetical trades.
-- **Storage**: `SERVER_BATAM/Logs/what_if_analysis.json`.
+- **Storage**: `Batam/Logs/what_if_analysis.json`.
 
 ### 3. `council_data_aggregator.py` (The Librarian)
 Synthesizes data from across the system to provide a high-fidelity context for the AI agents.
@@ -51,7 +51,7 @@ python3 SERVER_BATAM/scratch/test_aggregator.py
 ```
 
 ### Logs Directory
-All persistent data is stored in `SERVER_BATAM/Logs/`:
+All persistent data is stored in `Batam/Logs/`:
 - `fast_path_signals.jsonl`: Raw signal logs.
 - `what_if_analysis.json`: Hypo-PnL analysis.
 - `council_directives.json`: Strategic history.

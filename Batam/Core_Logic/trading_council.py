@@ -3,7 +3,7 @@ import httpx
 import asyncio
 from pathlib import Path
 from datetime import datetime
-from SERVER_BATAM.Core_Logic.council_data_aggregator import CouncilDataAggregator
+from Core_Logic.council_data_aggregator import CouncilDataAggregator
 
 class TradingCouncil:
     """
@@ -19,6 +19,7 @@ class TradingCouncil:
         self.master = master_node
         self.aggregator = CouncilDataAggregator(master_node)
         self.model = "qwen2.5:1.5b" # Use stable 1.5B model
+        self.ollama_url = "http://127.0.0.1:11434"
         
         base_dir = Path(__file__).resolve().parent.parent
         self.directive_log = base_dir / "Logs" / "council_directives.json"
@@ -41,8 +42,8 @@ class TradingCouncil:
         # 3. Log and Dispatch
         self._log_directive(directive)
         
-        # 4. Notify Telegram
-        await self._notify_council_result(directive)
+        # 4. Notify Telegram (SILENT BY DEFAULT)
+        # await self._notify_council_result(directive)
         
         return directive
 
@@ -57,7 +58,8 @@ class TradingCouncil:
             f"- Regime: {context['market_context']['regime']}\n"
             f"- Portfolio PnL: {context['portfolio_state'].get('daily_pnl', '0%')}\n"
             f"- Recent Rejections: {context['audit_data']['rejection_analysis']['total']}\n"
-            f"- Missed Opportunities: {len(context['audit_data']['missed_opportunities'])}\n\n"
+            f"- Missed Opportunities: {len(context['audit_data']['missed_opportunities'])}\n"
+            f"- System Health: {context.get('system_health', 'STABLE')}\n\n"
             f"Analyze this data from your persona's perspective. Be concise (max 2 sentences)."
         )
         

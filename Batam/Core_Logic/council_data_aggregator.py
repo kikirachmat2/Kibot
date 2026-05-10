@@ -51,7 +51,8 @@ class CouncilDataAggregator:
                 "missed_opportunities": missed_opps
             },
             "pair_memory": self._get_pair_memory(list(unique_pairs)),
-            "council_history": self._get_council_history()
+            "council_history": self._get_council_history(),
+            "system_health": self.master.last_state.get("mesh_nodes", {})
         }
         return context
 

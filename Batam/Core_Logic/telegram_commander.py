@@ -37,6 +37,89 @@ logging.basicConfig(
 )
 logger = logging.getLogger("TelegramCommander")
 
+def format_status_report(data: dict) -> str:
+    """Formats the telemetry data into the user's preferred template."""
+    # 1. Mesh Topology & Stats
+    mesh = data.get("mesh_nodes", {})
+    sys_stats = data.get("system_stats", {})
+    
+    def get_node_info(node_key):
+        status = mesh.get(node_key, "OFFLINE")
+        stats = sys_stats.get(node_key, {"cpu": 0, "ram": 0, "disk": 0})
+        
+        if node_key == "BATAM_MASTER":
+            emoji = "🟢" if status == "ONLINE" else "🔴"
+            return f"🏝️ Batam Master:({emoji} {status})\ncpu: {stats.get('cpu', 0)}%\nram: {stats.get('ram', 0)}%\ndisk: {stats.get('disk', 0)}%"
+        
+        if node_key == "SINGAPORE_EXECUTOR":
+            emoji = "🟢" if status == "ONLINE" else "🔴"
+            return f"⚡ Executor Engine ({emoji} {status}):\ncpu: {stats.get('cpu', 0)}%\nram: {stats.get('ram', 0)}%\ndisk: {stats.get('disk', 0)}%"
+
+        if node_key == "SINGAPORE_SCANNER":
+            # Template uses "UNREACHABLE" for scanner
+            display_status = "ONLINE" if status == "ONLINE" else "UNREACHABLE"
+            emoji = "🟢" if status == "ONLINE" else "🔴"
+            return f"📡 Scanner Senses ({emoji} {display_status}):\ncpu: {stats.get('cpu', 0)}%\nram: {stats.get('ram', 0)}%\ndisk: {stats.get('disk', 0)}%"
+
+    # 2. Portfolio Metrics (Indodax)
+    portfolio = data.get("portfolio", {})
+    equity = portfolio.get("equity_idr", 0)
+    pnl_val = portfolio.get("pnl_idr", 0)
+    ret_pct = portfolio.get("return_pct", 0.0)
+    wl_ratio = portfolio.get("wl_ratio", "0W / 0L")
+    
+    # 3. System Status Text
+    status_text = data.get("status_text", {})
+    activity = status_text.get("activity", "System is idle/stopped.")
+    difficulty = status_text.get("difficulty", "None")
+
+    # 4. AI & Mesh Status
+    is_mesh_broken = "OFFLINE" in [mesh.get("BATAM_MASTER"), mesh.get("SINGAPORE_EXECUTOR"), mesh.get("SINGAPORE_SCANNER")]
+    live_status = "🔴 OFFLINE (MESH BROKEN)" if is_mesh_broken else "🟢 ONLINE"
+    ai_status = "🟢 ONLINE" if data.get("ai_online", True) and not is_mesh_broken else "🔴 OFFLINE (MESH BROKEN)"
+    
+    # Current Time WIB
+    now_wib = datetime.now().strftime("%H:%M:%S")
+
+    return (
+        f"KIBOT \n"
+        f"🕒 {now_wib} WIB\n"
+        f"───────────────────\n\n"
+        f"📈 Live Trading: {live_status}\n\n"
+        f"{get_node_info('BATAM_MASTER')}\n\n"
+        f"{get_node_info('SINGAPORE_EXECUTOR')}\n\n"
+        f"{get_node_info('SINGAPORE_SCANNER')}\n\n"
+        f"🧠 Sistem Status:\n"
+        f"• Lagi ngapain: {activity}\n"
+        f"• Kesulitannya: {difficulty}\n\n"
+        f"🤖 AI Status: {ai_status}\n"
+        f"───────────────────\n"
+        f"Indodax\n\n"
+        f"💰 Total Saldo: Rp {equity:,.0f}\n"
+        f"💹 Return: {ret_pct:+.2f}%\n"
+        f"💵 PnL: Rp {pnl_val:,.0f}\n"
+        f"📊 Trade W/L: {wl_ratio}\n\n"
+        f"📂 Portofolio:\n"
+        f"• PnL Today: {portfolio.get('pnl_today', '+0.00%')}\n"
+        f"• PnL 7d: {portfolio.get('pnl_7d', '+0.00%')}\n"
+        f"• PnL 30d: {portfolio.get('pnl_30d', '+0.00%')}\n\n"
+        f"📦 Asset Holdings:\n"
+        f"{'No active positions' if not portfolio.get('active_positions') else '\\n'.join(portfolio.get('active_positions'))}\n"
+        f"───────────────────\n"
+        f"Polymarket\n\n"
+        f"💰 Total Saldo: Rp 0\n"
+        f"💹 Return: +0.00%\n"
+        f"💵 PnL: Rp 0\n"
+        f"📊 Trade W/L: 0W / 0L\n\n"
+        f"📂 Portofolio:\n"
+        f"• PnL Today: +0.00%\n"
+        f"• PnL 7d: +0.00%\n"
+        f"• PnL 30d: +0.00%\n\n"
+        f"📦 Asset Holdings:\n"
+        f"No active positions\n"
+        f"───────────────────"
+    )
+
 async def status(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handles the /status command."""
     chat_id = str(update.effective_chat.id)
@@ -53,53 +136,7 @@ async def status(update: Update, context: ContextTypes.DEFAULT_TYPE):
         with open(SNAP_PATH, "r") as f:
             data = json.load(f)
         
-        # 1. Mesh Topology Formatting
-        mesh = data.get("mesh_nodes", {})
-        def get_status_emoji(node_name):
-            status = mesh.get(node_name, "UNKNOWN")
-            return "🟢" if status == "ONLINE" else ("🔴" if status == "OFFLINE" else "⚪")
-
-        # 2. Portfolio Metrics
-        portfolio = data.get("portfolio", {})
-        equity = portfolio.get("equity_idr", 0)
-        pnl = portfolio.get("daily_pnl", "0.0%")
-        positions = portfolio.get("active_positions", [])
-
-        # 3. Intelligence Context
-        market = data.get("market", {})
-        mood = market.get("mood", "NEUTRAL")
-        regime = market.get("regime", "UNKNOWN")
-        bias = data.get("council", {}).get("core", "CAUTIOUS")
-
-        # 4. Stats
-        stats = data.get("stats", {})
-
-        report = (
-            f"🛡️ **KIBOT SOVEREIGN STATUS REPORT**\n"
-            f"━━━━━━━━━━━━━━━━━━━━━━━━\n"
-            f"📍 **Mesh Network Status**\n"
-            f"- `BATAM_MASTER`: 🟢 ONLINE\n"
-            f"- `SG_SCANNER`:   {get_status_emoji('SINGAPORE_SCANNER')} {mesh.get('SINGAPORE_SCANNER', 'UNKNOWN')}\n"
-            f"- `SG_EXECUTOR`:  {get_status_emoji('SINGAPORE_EXECUTOR')} {mesh.get('SINGAPORE_EXECUTOR', 'UNKNOWN')}\n"
-            f"━━━━━━━━━━━━━━━━━━━━━━━━\n"
-            f"📊 **Market Intelligence**\n"
-            f"- Mood: **{mood}**\n"
-            f"- Regime: `{regime}`\n"
-            f"- AI Directive: _{bias}_\n"
-            f"━━━━━━━━━━━━━━━━━━━━━━━━\n"
-            f"💰 **Sovereign Portfolio**\n"
-            f"- Equity: `Rp{equity:,.0f}`\n"
-            f"- Daily PnL: **{pnl}**\n"
-            f"- Active Trades: `{len(positions)}` positions\n"
-            f"━━━━━━━━━━━━━━━━━━━━━━━━\n"
-            f"⚙️ **System Performance (24h)**\n"
-            f"- Signals Scanned: `{stats.get('total', 0)}` \n"
-            f"- Approved: `{stats.get('approved', 0)}` ✅\n"
-            f"- Vetoed/Skipped: `{stats.get('vetoed', 0) + stats.get('math_skipped', 0)}` 🛡️\n"
-            f"━━━━━━━━━━━━━━━━━━━━━━━━\n"
-            f"🕒 _Last Updated: {data.get('last_update', 'N/A')}_"
-        )
-        
+        report = format_status_report(data)
         await update.message.reply_text(report, parse_mode='Markdown')
         logger.info(f"Status report dispatched to {chat_id}")
         

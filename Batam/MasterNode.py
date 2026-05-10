@@ -70,6 +70,7 @@ class KiBotMaster:
             "EXECUTOR": CircuitBreaker("EXECUTOR", max_failures=3, reset_after_sec=600),
             "OLLAMA": CircuitBreaker("OLLAMA", max_failures=5, reset_after_sec=120)
         }
+        self._emergency_cooldown = {}
         self.is_running = True
         self.last_state = {"portfolio": {"equity_idr": 0, "daily_pnl": "0.0%", "active_positions": []}}
         self.market_mood = "NEUTRAL"
@@ -94,7 +95,7 @@ class KiBotMaster:
         
         # Immediate Oracle Scout on startup
         logger.info("Oracle Mode (Startup): Performing initial market scouting...")
-        await self.deliberate_issue("SCOUTING", {"type": "PROACTIVE_ORACLE", "snapshot": await self.get_telemetry()})
+        await self.deliberate_issue("SCOUTING", {"type": "PROACTIVE_ORACLE", "snapshot": await self.get_telemetry()}, alert=False)
         
         iteration = 0
         last_dashboard_time = 0
@@ -150,25 +151,62 @@ class KiBotMaster:
             
             if any(critical_services):
                 logger.warning("Watchman: CRITICAL infrastructure anomaly detected!")
-                await self.deliberate_issue("EMERGENCY", {"type": "SYSTEM_ANOMALY", "snapshot": telemetry})
+                
+                # Throttle emergency alerts to once per hour per type
+                now_ts = time.time()
+                last_alert = self._emergency_cooldown.get("INFRASTRUCTURE", 0)
+                if now_ts - last_alert > 3600: # 1 hour cooldown
+                    await self.deliberate_issue("EMERGENCY", {"type": "SYSTEM_ANOMALY", "snapshot": telemetry}, alert=True)
+                    self._emergency_cooldown["INFRASTRUCTURE"] = now_ts
+                else:
+                    # Deliberate silently if still in cooldown
+                    await self.deliberate_issue("EMERGENCY", {"type": "SYSTEM_ANOMALY", "snapshot": telemetry}, alert=False)
             elif telemetry["mesh_nodes"]["SINGAPORE_SCANNER"] == "OFFLINE":
                 logger.info("Watchman: Scanner is offline but system remains operational.")
-            elif iteration % 60 == 0:
-                logger.info("Oracle Mode (Periodic): Council performing proactive market scouting...")
-                await self.deliberate_issue("SCOUTING", {"type": "PROACTIVE_ORACLE", "snapshot": telemetry})
-            
-            # 3. REPORTING
-            await self.send_dashboard(telemetry)
+            # 3. PERSISTENCE & REPORTING
+            try:
+                # Always persist for manual /status command
+                snap_path = "/Users/kiki/Documents/Web Develop/KiBot/Batam/State/telemetry_snapshot.json"
+                os.makedirs(os.path.dirname(snap_path), exist_ok=True)
+                with open(snap_path, "w") as f:
+                    json.dump(telemetry, f, indent=4)
+                
+                now = datetime.now()
+                # A. Midnight Report (00:00 WIB)
+                if now.hour == 0 and now.minute == 0:
+                    if not hasattr(self, '_midnight_sent') or self._midnight_sent != now.day:
+                        logger.info("Midnight reached. Sending Sovereign Daily Report...")
+                        await self.send_dashboard(telemetry)
+                        self._midnight_sent = now.day
+                
+                # B. Periodic Council Deliberation (Scouting) - SILENT (No Telegram)
+                if iteration % 60 == 0:
+                    logger.info("Oracle Mode: Periodic scouting (Silent)...")
+                    await self.deliberate_issue("SCOUTING", {"type": "PROACTIVE_ORACLE", "snapshot": telemetry}, alert=False)
+                    
+            except Exception as e:
+                logger.error(f"Failed to process telemetry: {e}")
+
+            # Guaranteed sleep
             await asyncio.sleep(60)
 
-    async def deliberate_issue(self, target: str, context: Dict):
+    async def deliberate_issue(self, target: str, context: Dict, alert: bool = True):
         """Trigger Council deliberation and execute the resulting strategy."""
         decision = await self.council.deliberate(context)
         
         # Only execute if confidence is high and action is valid
         if decision.get("action") and decision.get("confidence", 0) >= 0.8:
+            if alert:
+                msg = (
+                    f"🚨 **Urgent Trouble Detected**\n"
+                    f"Node: {target}\n"
+                    f"Action: `{decision['action']}`\n"
+                    f"Reasoning: {decision['reasoning']}"
+                )
+                await self.send_telegram(msg)
+            
             logger.info(f"Council approved action: {decision['action']}. Executing...")
-            await self.execute_action(decision["action"], target)
+            await self.execute_action(decision["action"], target, notify=alert)
         else:
             logger.info(f"Council decision: {decision.get('action', 'NONE')} (Confidence: {decision.get('confidence', 0)*100:.1f}%). No action taken.")
 
@@ -200,32 +238,13 @@ class KiBotMaster:
             await self.execute_action(decision['action'], target)
 
     async def send_dashboard(self, telemetry: Dict):
-        """Generates and sends the Sovereign Dashboard to Telegram."""
-        exec_status = telemetry["mesh_nodes"].get("SINGAPORE_EXECUTOR", "OFFLINE")
-        scan_status = telemetry["mesh_nodes"].get("SINGAPORE_SCANNER", "OFFLINE")
-        
-        # Calculate Sovereign Status
-        if exec_status == "ONLINE":
-            live_status = "🟢 ACTIVE (FULL TRINITY)" if scan_status == "ONLINE" else "🟢 ACTIVE (DUAL-NODE MODE)"
-            ai_status = "🟢 ONLINE"
-        else:
-            live_status = "🔴 OFFLINE (MESH BROKEN)"
-            ai_status = "🔴 OFFLINE"
-
-        msg = (
-            f"KIBOT SOVEREIGN DASHBOARD\n"
-            f"🕒 {datetime.now().strftime('%H:%M:%S WIB')}\n"
-            f"───────────────────\n\n"
-            f"📈 Live Trading: {live_status}\n\n"
-            f"🏝️ Batam Master:\n"
-            f"cpu: {telemetry.get('os_load', ['0'])[0]}%\nram: N/A\ndisk: N/A\n\n"
-            f"⚡ Executor Engine ({'🟢 ONLINE' if exec_status == 'ONLINE' else '🔴 OFFLINE'}):\n"
-            f"📡 Scanner Senses ({'🟢 ONLINE' if scan_status == 'ONLINE' else '🔴 UNREACHABLE'}):\n\n"
-            f"🤖 AI Status: {ai_status}\n"
-            f"───────────────────\n"
-            f"🛡️ Data sourced directly from Batam Master"
-        )
-        await self.send_telegram(msg)
+        """Generates and sends the Sovereign Dashboard to Telegram (Heartbeat)."""
+        try:
+            from Core_Logic.telegram_commander import format_status_report
+            report = format_status_report(telemetry)
+            await self.send_telegram(report)
+        except Exception as e:
+            logger.error(f"Failed to send dashboard: {e}")
 
     async def send_telegram(self, message: str):
         """Helper to send alerts to Telegram."""
@@ -234,45 +253,50 @@ class KiBotMaster:
                 url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
                 await client.post(url, data={"chat_id": TELEGRAM_CHAT_ID, "text": message, "parse_mode": "Markdown"})
 
-    async def execute_action(self, action: str, target: str = "SYSTEM"):
-        """Execute autonomous actions approved by Council."""
-        logger.info(f"Executing Council Action: {action} on {target}")
+    async def execute_action(self, action: str, target: str, notify: bool = True):
+        """Executes a recovery action (restart service, reboot, etc)."""
+        logger.info(f"Executing recovery action: {action} on {target}")
         
-        # Mapping Council actions to System commands
-        actions_map = {
-            "RESTART_MESH": "sudo systemctl restart kibot-mesh",
-            "RESTART_SERVICE": f"sudo systemctl restart {target.lower()}",
-            "RECONNECT_ADB": "/Users/kiki/Documents/Web\\ Develop/KiBot/Batam/Infrastructure/Automation/adb_bridge.sh",
-            "CLEAN_CACHE": "rm -rf /Users/kiki/Documents/Web\\ Develop/KiBot/Batam/state/*.tmp",
-            "SELF_HEAL_CODE": f"aider --message 'Fix the bug reported in {target}'"
+        # Mapping actions to shell commands
+        commands = {
+            "RESTART_SERVICE": "systemctl restart kibot-high-command",
+            "CLEAN_CACHE": "rm -rf /tmp/kibot_cache/*",
+            "REBOOT_NODE": "sudo reboot",
+            "OLLAMA_PULL": "ollama pull qwen2.5:1.5b",
+            "LOG_ROTATE": "logrotate -f /etc/logrotate.d/kibot"
         }
         
-        cmd = actions_map.get(action.upper())
+        cmd = commands.get(action)
         if cmd:
             try:
-                # Use subprocess to run system commands
-                process = await asyncio.create_subprocess_shell(
-                    cmd,
-                    stdout=asyncio.subprocess.PIPE,
-                    stderr=asyncio.subprocess.PIPE
-                )
-                stdout, stderr = await process.communicate()
-                if process.returncode == 0:
-                    logger.info(f"✅ Action {action} SUCCESSFUL")
-                    await self.send_telegram(f"✅ **Auto-Fix Success**: `{action}` executed on `{target}`")
+                proc = await asyncio.create_subprocess_shell(cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)
+                stdout, stderr = await proc.communicate()
+                
+                if proc.returncode == 0:
+                    logger.info(f"Successfully executed {action}")
+                    if notify:
+                        await self.send_telegram(f"✅ **Urgent Fix Applied**: `{action}` on `{target}`")
                 else:
-                    logger.error(f"❌ Action {action} FAILED: {stderr.decode()}")
-                    await self.send_telegram(f"❌ **Auto-Fix Failed**: `{action}` on `{target}`\nError: `{stderr.decode()[:100]}`")
+                    logger.error(f"Failed to execute {action}: {stderr.decode()}")
+                    if notify:
+                        await self.send_telegram(f"❌ **Urgent Fix Failed**: `{action}` on `{target}`\nError: `{stderr.decode()[:100]}`")
             except Exception as e:
-                logger.error(f"Execution error: {e}")
+                logger.error(f"Error during action execution: {e}")
         else:
             logger.warning(f"Action {action} not recognized by Master.")
 
     async def get_telemetry(self) -> Dict:
         """Gather real-time telemetry from Batam and remote Singapore nodes."""
         import shutil
+        import psutil
         
         # 1. Base Infrastructure Stats
+        local_stats = {
+            "cpu": psutil.cpu_percent(),
+            "ram": psutil.virtual_memory().percent,
+            "disk": psutil.disk_usage('/').percent
+        }
+        
         telemetry = {
             "timestamp": time.time(),
             "last_update": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
@@ -280,8 +304,18 @@ class KiBotMaster:
             "redis": "OFFLINE",
             "tailscale": "OFFLINE",
             "mesh_nodes": {
+                "BATAM_MASTER": "ONLINE",
                 "SINGAPORE_SCANNER": "UNKNOWN",
                 "SINGAPORE_EXECUTOR": "UNKNOWN"
+            },
+            "system_stats": {
+                "BATAM_MASTER": local_stats,
+                "SINGAPORE_SCANNER": {"cpu": 0, "ram": 0, "disk": 0},
+                "SINGAPORE_EXECUTOR": {"cpu": 0, "ram": 0, "disk": 0}
+            },
+            "status_text": {
+                "activity": "Monitoring Trinity Mesh",
+                "difficulty": "No active issues"
             },
             "heartbeat": "ACTIVE"
         }
@@ -328,6 +362,31 @@ class KiBotMaster:
         else:
             logger.debug("tailscale not found in PATH")
 
+        # 3. Intelligent Status Text (For Sovereign Dashboard)
+        mesh_broken = "OFFLINE" in [telemetry["mesh_nodes"]["SINGAPORE_EXECUTOR"], telemetry["mesh_nodes"]["SINGAPORE_SCANNER"]]
+        
+        activity = "Monitoring Trinity Mesh."
+        if mesh_broken:
+            activity = "System is degraded/waiting for mesh recovery."
+        
+        difficulty = "None"
+        problems = []
+        if telemetry["mesh_nodes"]["SINGAPORE_EXECUTOR"] == "OFFLINE":
+            problems.append("Executor Engine Offline")
+        if telemetry["mesh_nodes"]["SINGAPORE_SCANNER"] == "OFFLINE":
+            problems.append("Scanner Senses Unreachable")
+        if telemetry["ram"] > 90:
+            problems.append("High Memory Pressure")
+        
+        if problems:
+            difficulty = ", ".join(problems)
+        
+        telemetry["status_text"] = {
+            "activity": activity,
+            "difficulty": difficulty
+        }
+        telemetry["ai_online"] = True # Assuming Ollama is reachable
+        
         return telemetry
 
 

@@ -11,7 +11,7 @@ class FastPathLogger:
     """
     def __init__(self, log_path=None):
         if log_path is None:
-            # Default to SERVER_BATAM/Logs/fast_path_signals.jsonl
+            # Default to Batam/Logs/fast_path_signals.jsonl
             base_dir = Path(__file__).resolve().parent.parent
             self.log_path = base_dir / "Logs" / "fast_path_signals.jsonl"
         else:
