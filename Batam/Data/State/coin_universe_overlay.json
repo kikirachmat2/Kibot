@@ -1,0 +1,21 @@
+{
+  "permanent": {
+    "indodax_only": {},
+    "lead_lag": {},
+    "metadata": {},
+    "pair_sectors": {}
+  },
+  "probation": {
+    "indodax_only": [],
+    "lead_lag": {},
+    "metadata": {}
+  },
+  "review": {
+    "last_batch_fingerprint": "",
+    "last_result_count": 0,
+    "last_review_at_epoch": 0.0,
+    "last_review_reason": ""
+  },
+  "updated_at": "2026-05-03T09:08:14Z",
+  "version": 1
+}
