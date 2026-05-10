@@ -3,7 +3,7 @@ import subprocess
 import time
 import os
 
-MODEL_NAME = "qwen2.5-coder:7b"
+MODEL_NAME = "qwen3-coder:7b"
 
 def is_model_ready():
     res = subprocess.run(["ollama", "list"], capture_output=True, text=True)

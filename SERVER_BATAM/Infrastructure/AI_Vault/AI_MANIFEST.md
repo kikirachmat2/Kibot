@@ -3,10 +3,10 @@
 Dilarang keras mengubah jalur AI tanpa mengupdate manifest ini. Folder ini adalah otak koordinasi intelijen KiBot.
 
 ## 1. 🤖 Core Intelligence (Trinity Pulse)
-- **The Commander**: `qwen2.5:7b` (Trigger: Wake-on-Consensus)
-- **The Sniper**: `qwen2.5:1.5b` (Trigger: Always-On / 24/7 Filter)
+- **The Commander**: `qwen3:7b` (Trigger: Wake-on-Consensus)
+- **The Sniper**: `qwen3:1.5b` (Trigger: Always-On / 24/7 Filter)
 - **The Scout**: `llama3.2:1b` (Trigger: Pulse-Check / Every 30m)
-- **The Mechanic**: `qwen2.5-coder:7b` (Trigger: Event-Driven / Repair)
+- **The Mechanic**: `qwen3-coder:7b` (Trigger: Event-Driven / Repair)
 - **The Librarian**: `nomic-embed-text` (Trigger: Auto-Index Memory)
 - **Embedding**: nomic-embed-text (Context Retrieval)
 - **Port**: 11434 (Direct Connection)

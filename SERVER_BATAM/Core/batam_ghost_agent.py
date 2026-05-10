@@ -25,7 +25,7 @@ OLLAMA_AUTH_TOKEN = os.getenv("KIBOT_OLLAMA_GATEWAY_TOKEN", os.getenv("OLLAMA_AP
 
 class GhostAgent:
     def __init__(self, model=None):
-        self.model = model or os.getenv("KIBOT_GHOST_AGENT_MODEL", "qwen2.5-coder:7b")
+        self.model = model or os.getenv("KIBOT_GHOST_AGENT_MODEL", "qwen3-coder:7b")
         self.knowledge_base = self._load_knowledge()
 
     def _load_knowledge(self):

@@ -343,7 +343,7 @@ class BrainManager:
         )
         try:
             payload = {
-                "model": "qwen2.5:1.5b",
+                "model": "qwen3:1.5b",
                 "prompt": prompt,
                 "stream": False,
                 "format": "json",
