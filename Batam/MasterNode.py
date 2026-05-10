@@ -19,6 +19,10 @@ import socket
 from typing import Dict, List, Optional
 from pathlib import Path
 from datetime import datetime
+from dotenv import load_dotenv
+
+# Load Environment Variables
+load_dotenv()
 
 # Configure Logging
 logging.basicConfig(
