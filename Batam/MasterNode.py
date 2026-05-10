@@ -123,10 +123,21 @@ class KiBotMaster:
         msg = (
             f"🧠 **Council Decision: {target}**\n"
             f"Action: `{decision['action']}`\n"
+            f"Confidence: `{decision['confidence']*100:.1f}%`\n"
+            f"Risk: `{decision['risk']}`\n"
+            f"Reasoning: {decision['reasoning']}"
+        )
+        await self.send_telegram(msg)
+        
+        if decision.get('auto_execute'):
+            await self.execute_action(decision['action'], target)
+
     async def send_telegram(self, message: str):
         """Helper to send alerts to Telegram."""
         if TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID:
-            cmd = f"curl -s -X POST https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage -d chat_id={TELEGRAM_CHAT_ID} -d text='{message}' -d parse_mode=Markdown"
+            # Escape single quotes for shell command
+            safe_msg = message.replace("'", "'\\''")
+            cmd = f"curl -s -X POST https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage -d chat_id={TELEGRAM_CHAT_ID} -d text='{safe_msg}' -d parse_mode=Markdown"
             await asyncio.create_subprocess_shell(cmd)
 
     async def execute_action(self, action: str, target: str):
