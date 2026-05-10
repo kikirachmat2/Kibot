@@ -1,8 +1,8 @@
 # ⚡ EXECUTOR ACCESS
-- IP: `TBD` (Via SSH Alias)
+- IP: `213.35.118.26`
 - User: `ubuntu`
 - Role: Order Execution (Indodax & Polymarket)
-- SSH: `ssh executor`
+- SSH: `ssh -i ~/.ssh/kibot/ssh-key-executor.pem ubuntu@213.35.118.26`
 - Main Services: `kibot-indodax.service`, `kibot-polymarket.service`
 
 ## 🛡️ SOVEREIGN SYNC RULES

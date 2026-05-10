@@ -1,27 +1,41 @@
-# Byte-compiled / optimized / DLL files
+# 🛡️ KIBOT SOVEREIGN PROTECTION
+
+# Infrastructure & Secrets (STRICT)
+Infrastructure/
+Security/Vault/
+*.pem
+*.key
+*.kiv
+.env
+.env*
+!Batam/Security/README.md
+
+# AI & Data State
+**/Logs/
+**/State/
+**/backups/
+**/.tmp/
+*.log
+*.pid
+
+# Python Metadata
 __pycache__/
 *.py[cod]
 *$py.class
+.pytest_cache/
+.venv/
+venv/
 
-# OS generated files
+# OS Metadata
 .DS_Store
-.DS_Store?
-._*
-.Spotlight-V100
-.Trashes
-ehthumbs.db
 Thumbs.db
 
-# Environment variables
-.env
-
-# Sovereign State & Logs
-SERVER_BATAM/state/
-council_decisions.jsonl
-
-# Node modules
-node_modules/
-*.pem
-*.key
-ssh-key-*
-Infrastructure/
+# Deployment Waste
+deploy_all.sh
+readyecho
+kibot-node.service
+SERVER_BATAM/
+SERVER_EXECUTOR/
+SERVER_SCANNER/
+Shared/
+SHARED_INTELLIGENCE/
