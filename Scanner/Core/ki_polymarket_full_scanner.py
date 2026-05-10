@@ -105,14 +105,16 @@ class PolymarketFullScanner:
         
         spread_score = max(0.0, 1.0 - (spread / 0.15))
         
-        # Composite Weighted Score
+        # Composite Weighted Score (Balanced v9.5.1)
         score = (
-            (float(vol_score) * 0.40) +
-            (float(liquidity_score) * 0.30) +
-            (float(time_score) * 0.15) +
-            (float(spread_score) * 0.15)
+            (float(vol_score) * 0.25) +
+            (float(liq_score) * 0.20) +
+            (float(time_score) * 0.18) +
+            (float(spread_score) * 0.15) +
+            (float(prob_score) * 0.12) +
+            (float(momentum_score) * 0.10)
         )
-        return round(score, 3)
+        return round(min(1.0, score), 4)
 
     def scan(self):
         markets = self.fetch_all_markets()
