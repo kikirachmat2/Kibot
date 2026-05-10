@@ -45,8 +45,8 @@ TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
 
 NODES = {
     "BATAM": {"ip": "127.0.0.1", "role": "MASTER"},
-    "SINGAPORE_SCANNER": {"ip": "152.69.218.198", "role": "SCANNER", "services": ["kibot-mesh"]},
-    "SINGAPORE_EXECUTOR": {"ip": "168.110.201.228", "role": "EXECUTOR", "services": ["kibot-mesh"]}
+    "SINGAPORE_SCANNER": {"ip": "100.105.139.21", "role": "SCANNER", "services": ["kibot-mesh"]},
+    "SINGAPORE_EXECUTOR": {"ip": "100.103.77.10", "role": "EXECUTOR", "services": ["kibot-mesh"]}
 }
 
 class KiBotMaster:

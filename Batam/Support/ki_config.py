@@ -43,7 +43,7 @@ class KiConfig:
     SCALPING_SL_PERCENT = 0.3         # Strict stop loss to maintain 2:1 RR approx
     
     # --- MESH TOPOLOGY ---
-    BATAM_MASTER = "168.110.201.228"
+    BATAM_MASTER = "100.103.77.10"
     SCANNER_NODE = "100.105.139.21"   # Tokyo (Tailscale)
     EXECUTOR_NODE = "100.122.1.109"  # Singapore (Tailscale)
     
@@ -61,9 +61,9 @@ class KiConfig:
         return os.getenv("KIBOT_NODE_NAME", "UNKNOWN_NODE")
 
 # --- CLUSTER NODES (Mesh-First) ---
-BATAM_HOST = os.getenv("KIBOT_BATAM_HOST", "168.110.201.228") # Batam Node
+BATAM_HOST = os.getenv("KIBOT_BATAM_HOST", "100.103.77.10") # Batam Node
 EXECUTOR_HOST = os.getenv("KIBOT_EXECUTOR_HOST", "100.122.1.109") # Tailscale Mesh (Singapore Executor)
-SCANNER_HOST = os.getenv("KIBOT_SCANNER_HOST", "152.69.218.198")  # Scanner Node
+SCANNER_HOST = os.getenv("KIBOT_SCANNER_HOST", "100.105.139.21")  # Scanner Node
 SCANNER_MESH_HOST = os.getenv("KIBOT_SCANNER_MESH_HOST", SCANNER_HOST)
 
 # --- TIMEZONE ---
