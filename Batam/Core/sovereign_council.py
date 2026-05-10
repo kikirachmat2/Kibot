@@ -8,8 +8,8 @@ from typing import Dict, List, Optional, Any
 from pathlib import Path
 
 # Load core modules
-from SERVER_BATAM.Core.circuit_breaker import CircuitBreaker
-from SERVER_BATAM.Intelligence.kibot_ai_search import AISearchService
+from Core.circuit_breaker import CircuitBreaker
+from Intelligence.kibot_ai_search import AISearchService
 
 logger = logging.getLogger("SovereignCouncil")
 

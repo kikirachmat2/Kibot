@@ -11,7 +11,7 @@ import json
 import time
 from pathlib import Path
 from typing import Dict, List, Any
-from SERVER_BATAM.Core.circuit_breaker import CircuitBreaker
+from Core.circuit_breaker import CircuitBreaker
 
 # Path resolution
 ROOT_DIR = Path(__file__).resolve().parent.parent
@@ -20,11 +20,11 @@ WORLD_MODEL_FILE = STATE_DIR / "world_model.json"
 
 # Lazy imports to avoid circular dependency
 def get_ai_search():
-    from SERVER_BATAM.Intelligence.kibot_ai_search import AISearchService
+    from Intelligence.kibot_ai_search import AISearchService
     return AISearchService()
 
 def get_ai_coordinator():
-    from SERVER_BATAM.Intelligence import kibot_ai_coordinator
+    from Intelligence import kibot_ai_coordinator
     return kibot_ai_coordinator
 
 class WorldScout:

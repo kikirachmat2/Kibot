@@ -9,7 +9,7 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - GHOST - %(message)
 
 ROOT_DIR = Path(os.getenv("KIBOT_RUNTIME_ROOT", Path(__file__).resolve().parents[2]))
 try:
-    from SERVER_BATAM.Intelligence.kibot_rag import get_rag_context
+    from Intelligence.kibot_rag import get_rag_context
 except Exception:
     get_rag_context = None
 
@@ -32,9 +32,9 @@ class GhostAgent:
         """Membaca semua file penting Batam untuk dipelajari."""
         knowledge = ""
         critical_files = [
-            ROOT_DIR / "SERVER_BATAM" / "Core" / "kibot_manager.py",
-            ROOT_DIR / "SERVER_BATAM" / "Core" / "sovereign_arbitrator.py",
-            ROOT_DIR / "SERVER_BATAM" / "Support" / "ki_config.py",
+            ROOT_DIR / "Batam" / "Core" / "kibot_manager.py",
+            ROOT_DIR / "Batam" / "Core" / "sovereign_arbitrator.py",
+            ROOT_DIR / "Batam" / "Support" / "ki_config.py",
         ]
         for f in critical_files:
             if f.exists():

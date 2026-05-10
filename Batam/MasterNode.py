@@ -148,8 +148,8 @@ class KiBotMaster:
         actions_map = {
             "RESTART_MESH": "sudo systemctl restart kibot-mesh",
             "RESTART_SERVICE": f"sudo systemctl restart {target.lower()}",
-            "RECONNECT_ADB": "/Users/kiki/Documents/Web\\ Develop/KiBot/SERVER_BATAM/Infrastructure/Automation/adb_bridge.sh",
-            "CLEAN_CACHE": "rm -rf /Users/kiki/Documents/Web\\ Develop/KiBot/SERVER_BATAM/state/*.tmp",
+            "RECONNECT_ADB": "/Users/kiki/Documents/Web\\ Develop/KiBot/Batam/Infrastructure/Automation/adb_bridge.sh",
+            "CLEAN_CACHE": "rm -rf /Users/kiki/Documents/Web\\ Develop/KiBot/Batam/state/*.tmp",
             "SELF_HEAL_CODE": f"aider --message 'Fix the bug reported in {target}'"
         }
         

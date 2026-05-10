@@ -20,8 +20,8 @@ from ki_config import OLLAMA_URL, TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID
 
 # CONFIGURATION
 LOGS_TO_WATCH = {
-    "MASTER": "/home/ubuntu/KiBot/SERVER_BATAM/Logs/kibot_master.log",
-    "ORCHESTRATOR": "/home/ubuntu/KiBot/SERVER_BATAM/Logs/orchestrator.log",
+    "MASTER": "/home/ubuntu/KiBot/Batam/Logs/kibot_master.log",
+    "ORCHESTRATOR": "/home/ubuntu/KiBot/Batam/Logs/orchestrator.log",
 }
 
 SAFE_COMMAND_PATTERNS = [

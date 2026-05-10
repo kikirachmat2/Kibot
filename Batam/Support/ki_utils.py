@@ -10,7 +10,7 @@ from typing import Any, Optional
 root = Path(__file__).resolve().parent.parent.parent
 
 try:
-    from SERVER_BATAM.Support.ki_config import WIB, TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID
+    from Support.ki_config import WIB, TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID
 except ImportError:
     # Fallback to local import if run as a script in the Support directory
     try:

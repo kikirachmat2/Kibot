@@ -164,7 +164,7 @@ def _get_signing_key() -> bytes:
     # Use the same root of trust as kibot_security
     secret = os.getenv("KIBOT_SECRET", "SOVEREIGN_DEFAULT_SECRET").encode()
     try:
-        from SERVER_BATAM.Support.ki_vault import get_vault
+        from Support.ki_vault import get_vault
         vault = get_vault()
         if vault and hasattr(vault, "_key") and vault._key:
             return vault._key
@@ -518,7 +518,7 @@ if __name__ == "__main__":
     
     # [VAULT] Load Sovereign Secrets
     try:
-        from SERVER_BATAM.Support.ki_vault import load_sovereign_env
+        from Support.ki_vault import load_sovereign_env
         load_sovereign_env()
     except Exception as ve:
         print(f"[BOOT][VAULT][WARN] Could not load vaulted env: {ve}")

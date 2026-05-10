@@ -44,9 +44,9 @@ _load_env_file(".env.kiv") # Load vaulted env as well
 
 _root = Path(__file__).resolve().parent.parent
 
-from SERVER_BATAM.Support.ki_config import *
-from SERVER_BATAM.Support.ki_utils import _env_first
-from SERVER_BATAM.Support.ki_utils import telegram_send, load_json, save_json
+from Support.ki_config import *
+from Support.ki_utils import _env_first
+from Support.ki_utils import telegram_send, load_json, save_json
 
 
 

@@ -22,7 +22,7 @@ class CircuitBreaker:
                 
                 # Report to Sovereign Council if possible
                 try:
-                    from SERVER_BATAM.Core.sovereign_council import SovereignCouncil
+                    from Core.sovereign_council import SovereignCouncil
                     import asyncio
                     council = SovereignCouncil()
                     # Trigger async deliberation in a non-blocking way

@@ -16,7 +16,7 @@ sys.path.append(str(ROOT_DIR))
 # Local Imports
 from indodax_gateway import IndodaxGateway
 from risk_gate import RiskGate
-from SERVER_BATAM.Support.ki_vault import load_sovereign_env
+from Batam.Support.ki_vault import load_sovereign_env
 
 # Logging Config
 logging.basicConfig(

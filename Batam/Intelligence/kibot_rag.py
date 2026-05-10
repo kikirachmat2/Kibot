@@ -9,7 +9,7 @@ class KiBotRAG:
     Lightweight Sovereign RAG Engine for KiBot Trinity.
     Replaces Dify with a fast, local, keyword-based context retriever.
     """
-    def __init__(self, bundle_path: str = "/home/ubuntu/KiBot/SERVER_BATAM/data/intelligence_bundle.json"):
+    def __init__(self, bundle_path: str = "/home/ubuntu/KiBot/Batam/data/intelligence_bundle.json"):
         self.bundle_path = Path(bundle_path)
         self.knowledge = {}
         self.chunks = []
