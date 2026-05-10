@@ -183,7 +183,13 @@ class BrainManager:
         self._last_snapshot: Dict[str, Any] = self._load_snapshot()
         self._refresh_lock = threading.Lock()
         self._refresh_in_flight = False
+        # Initialize AI Search (v9.5.1 Fix)
         self.ai_search = None
+        try:
+            from Intelligence.kibot_ai_search import AISearchService
+            self.ai_search = AISearchService()
+        except Exception as e:
+            logger.debug(f"[KiBrain] AI Search deferred: {e}")
 
     def veto_signal(self, pair: str, msg_type: str = "SIGNAL", regime: str = "UNKNOWN", obi: float = 0.0, session: str = "UNKNOWN") -> Tuple[str, str]:
         """
@@ -348,14 +354,6 @@ class BrainManager:
             return str(res_json.get("decision", "APPROVE")).upper(), str(res_json.get("reason", ""))
         except Exception as e:
             raise RuntimeError(f"Sniper call failed: {e}")
-
-        # AI Search Service (Dynamic Integration)
-        self.ai_search = None
-        try:
-            from SERVER_BATAM.Intelligence.kibot_ai_search import AISearchService
-            self.ai_search = AISearchService()
-        except Exception as e:
-            logger.debug(f"[KiBrain] AI Search Service integration deferred: {e}")
 
     def _gemini_api_key(self) -> str:
         return (
