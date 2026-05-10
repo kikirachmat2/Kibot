@@ -18,8 +18,7 @@ class TradingCouncil:
     def __init__(self, master_node):
         self.master = master_node
         self.aggregator = CouncilDataAggregator(master_node)
-        self.ollama_url = getattr(master_node, "ollama_url", "http://127.0.0.1:11434")
-        self.model = "qwen3:1.7b" # Use 3B for reasoning if available, fallback to 1B
+        self.model = "qwen2.5:1.5b" # Use stable 1.5B model
         
         base_dir = Path(__file__).resolve().parent.parent
         self.directive_log = base_dir / "Logs" / "council_directives.json"

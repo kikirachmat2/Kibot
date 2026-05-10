@@ -7,14 +7,15 @@ Wants=network-online.target kibot-trinity.service
 Type=simple
 User=ubuntu
 WorkingDirectory=/home/ubuntu/KiBot
+EnvironmentFile=-/home/ubuntu/KiBot/.env
 EnvironmentFile=-/home/ubuntu/KiBot/.env.server
 EnvironmentFile=-/home/ubuntu/KiBot/.env.kibot
 EnvironmentFile=-/home/ubuntu/KiBot/.env.kibot_manager
 Environment=PYTHONUNBUFFERED=1
 Environment=PYTHONPATH=.
-Environment=KIBOT_OLLAMA_FAST_MODEL=qwen3:0.6b
-Environment=KIBOT_OLLAMA_MODEL=qwen3:1.7b
-Environment=KIBOT_OLLAMA_DEEP_MODEL=qwen3:4b
+Environment=KIBOT_OLLAMA_FAST_MODEL=qwen2.5:0.5b
+Environment=KIBOT_OLLAMA_MODEL=qwen2.5:1.5b
+Environment=KIBOT_OLLAMA_DEEP_MODEL=qwen2.5:3b
 Environment=KIBOT_OLLAMA_FAST_TIMEOUT_SEC=60
 Environment=KIBOT_OLLAMA_TELEGRAM_TIMEOUT_SEC=45
 ExecStart=/usr/bin/python3 -u Batam/Core_Logic/telegram_commander.py

@@ -147,7 +147,10 @@ class CouncilDataAggregator:
         # Attempt to get deeper context from Brain snapshot if available
         brain_snap = {}
         if hasattr(self.master, "brain") and self.master.brain:
-            brain_snap = self.master.brain.snapshot()
+            if hasattr(self.master.brain, "snapshot") and callable(self.master.brain.snapshot):
+                brain_snap = self.master.brain.snapshot()
+            elif isinstance(self.master.brain, dict):
+                brain_snap = self.master.brain
             
         return {
             "mood": mood,

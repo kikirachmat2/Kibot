@@ -8,16 +8,21 @@ from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
 
 class KiVault:
     def __init__(self, secret_key: str = None):
-        self.secret = secret_key or os.getenv("KIBOT_NODE_AGENT_SECRET", "SOVEREIGN_DEFAULT_SECRET")
+        # Support multiple legacy and current secret keys
+        self.secret = secret_key or \
+                      os.getenv("KIBOT_SECRET") or \
+                      os.getenv("KIBOT_NODE_AGENT_SECRET") or \
+                      "SOVEREIGN_DEFAULT_SECRET"
+        
+        self.salt = os.getenv("KIBOT_VAULT_SALT", "kibot_sovereign_salt").encode()
         self._key = self._derive_key(self.secret)
         self.fernet = Fernet(self._key)
 
     def _derive_key(self, secret: str) -> bytes:
-        salt = b"kibot_sovereign_salt" # Standardized salt for Trinity
         kdf = PBKDF2HMAC(
             algorithm=hashes.SHA256(),
             length=32,
-            salt=salt,
+            salt=self.salt,
             iterations=100000,
         )
         return base64.urlsafe_b64encode(kdf.derive(secret.encode()))
@@ -46,9 +51,14 @@ def load_sovereign_env(path: str = ".env.kiv"):
                         decrypted_val = vault.decrypt(val)
                         os.environ[key] = decrypted_val
                     except Exception:
-                        # If decryption fails, maybe it's not encrypted or key mismatch
-                        print(f"[VAULT][ERROR] Failed to decrypt {key}: Decryption failed.")
-                        os.environ[key] = val # Fallback to raw
+                        # If decryption fails, check if it was supposed to be encrypted
+                        if val.startswith("ENC("):
+                            print(f"[VAULT][ERROR] Failed to decrypt {key}: Key mismatch or missing secret.")
+                            # DO NOT set the environment variable to the raw ENC string, 
+                            # as it will cause crashes later in config (e.g. int() conversion)
+                        else:
+                            # Not an ENC string, maybe just a normal value in the vault
+                            os.environ[key] = val
     except Exception as e:
         print(f"[VAULT][ERROR] Could not read vault: {e}")
 
