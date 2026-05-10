@@ -43,10 +43,14 @@ sys.path.append(str(ROOT_DIR))
 # Core Imports
 from Core.circuit_breaker import CircuitBreaker
 from Core.sovereign_council import SovereignCouncil
+from Core_Logic.council_data_aggregator import CouncilDataAggregator
 
-# Global Config (Formerly in Manager)
-TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
-TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
+# Global Config
+try:
+    from Support.ki_config import TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID
+except ImportError:
+    TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
+    TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
 
 NODES = {
     "BATAM": {"ip": "127.0.0.1", "role": "MASTER"},
@@ -57,6 +61,10 @@ NODES = {
 class KiBotMaster:
     def __init__(self):
         self.council = SovereignCouncil()
+        self.aggregator = CouncilDataAggregator(self)
+        self.last_state = {}
+        self.market_mood = "NEUTRAL"
+        self.is_running = True
         self.breakers = {
             "SCANNER": CircuitBreaker("SCANNER", max_failures=3, reset_after_sec=600),
             "EXECUTOR": CircuitBreaker("EXECUTOR", max_failures=3, reset_after_sec=600),
@@ -89,9 +97,25 @@ class KiBotMaster:
         await self.deliberate_issue("SCOUTING", {"type": "PROACTIVE_ORACLE", "snapshot": await self.get_telemetry()})
         
         iteration = 0
+        last_dashboard_time = 0
+        dashboard_interval = 60
         while self.is_running:
             iteration += 1
-            telemetry = await self.get_telemetry()
+            
+            # 3. Telemetry Update & Snapshot
+            try:
+                telemetry = await self.get_telemetry()
+                snapshot_path = ROOT_DIR / "State" / "telemetry_snapshot.json"
+                with open(snapshot_path, "w") as f:
+                    json.dump(telemetry, f, indent=2)
+                logger.debug("Telemetry snapshot updated.")
+            except Exception as e:
+                logger.error(f"Telemetry snapshot failed: {e}")
+
+            # 4. Dashboard (Telegram)
+            if self.is_running and (time.time() - last_dashboard_time > dashboard_interval):
+                await self.send_dashboard(telemetry)
+                last_dashboard_time = time.time()
             
             # 1. CIRCUIT BREAKER CHECK (Physical Node Health)
             for name, cfg in NODES.items():
@@ -247,8 +271,11 @@ class KiBotMaster:
     async def get_telemetry(self) -> Dict:
         """Gather real-time telemetry from Batam and remote Singapore nodes."""
         import shutil
+        
+        # 1. Base Infrastructure Stats
         telemetry = {
             "timestamp": time.time(),
+            "last_update": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
             "os_load": os.getloadavg() if hasattr(os, "getloadavg") else "N/A",
             "redis": "OFFLINE",
             "tailscale": "OFFLINE",
@@ -258,6 +285,16 @@ class KiBotMaster:
             },
             "heartbeat": "ACTIVE"
         }
+        
+        # 2. Add Council & Portfolio Context
+        try:
+            context = self.aggregator.get_debate_context()
+            telemetry["portfolio"] = context.get("portfolio_state", {})
+            telemetry["market"] = context.get("market_context", {})
+            telemetry["stats"] = context.get("audit_data", {}).get("rejection_analysis", {})
+            telemetry["council"] = context.get("philosophy", {})
+        except Exception as e:
+            logger.error(f"Failed to aggregate council data: {e}")
         
         # Check Local Redis
         redis_path = shutil.which("redis-cli")
