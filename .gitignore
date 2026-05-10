@@ -21,3 +21,6 @@ council_decisions.jsonl
 
 # Node modules
 node_modules/
+*.pem
+*.key
+ssh-key-*

@@ -58,7 +58,7 @@ class CouncilDataAggregator:
     def _get_pair_memory(self, signal_pairs: list) -> dict:
         memory = {}
         try:
-            from SERVER_BATAM.Intelligence.kibot_learning_engine import get_engine
+            from Intelligence.kibot_learning_engine import get_engine
             engine = get_engine()
             for pair in signal_pairs:
                 # Basic health and stats

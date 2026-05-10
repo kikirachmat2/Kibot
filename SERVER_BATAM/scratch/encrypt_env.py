@@ -4,7 +4,7 @@ import sys
 from pathlib import Path
 
 # Add project root to sys.path
-project_root = Path("/Users/kiki/Documents/Web Develop/KiBot/SERVER_BATAM")
+project_root = Path("/home/ubuntu/KiBot/SERVER_BATAM/SERVER_BATAM")
 sys.path.append(str(project_root))
 
 from Support.ki_vault import SovereignVault

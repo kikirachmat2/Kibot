@@ -36,8 +36,8 @@ ROOT_DIR = Path(__file__).resolve().parent
 sys.path.append(str(ROOT_DIR))
 
 # Core Imports
-from SERVER_BATAM.Core.circuit_breaker import CircuitBreaker
-from SERVER_BATAM.Core.sovereign_council import SovereignCouncil
+from Core.circuit_breaker import CircuitBreaker
+from Core.sovereign_council import SovereignCouncil
 
 # Global Config (Formerly in Manager)
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
@@ -58,6 +58,20 @@ class KiBotMaster:
             "OLLAMA": CircuitBreaker("OLLAMA", max_failures=5, reset_after_sec=120)
         }
         self.is_running = True
+        self.last_state = {"portfolio": {"equity_idr": 0, "daily_pnl": "0.0%", "active_positions": []}}
+        self.market_mood = "NEUTRAL"
+        self.brain = None
+        
+        # Self-Healing: Reset AI Provider Cooldowns on start
+        provider_cache = ROOT_DIR / "Data" / "AI" / "ai_coordinator_providers.json"
+        if provider_cache.exists():
+            try:
+                provider_cache.unlink()
+                logger.info("🔥 AI Provider Cooldowns Reset Successfully.")
+            except Exception as e:
+                logger.error(f"❌ Failed to reset AI cooldowns: {e}")
+        
+        self.brain = {"status": "IDLE", "memory": []}
         logger.info("Initializing KiBot Sovereign Master...")
 
     # --- Mesh Monitoring ---
