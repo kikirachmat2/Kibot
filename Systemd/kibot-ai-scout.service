@@ -1,0 +1,20 @@
+[Unit]
+Description=KiBot AI World Scout (Intelligence Scanner)
+After=network-online.target kibot-master.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=ubuntu
+WorkingDirectory=/home/ubuntu/KiBot
+Environment=PYTHONUNBUFFERED=1
+Environment=PYTHONPATH=.
+ExecStart=/usr/bin/python3 -u Core/Intelligence/kibot_ai_scout.py
+Restart=always
+RestartSec=30
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=kibot-ai-scout
+
+[Install]
+WantedBy=multi-user.target

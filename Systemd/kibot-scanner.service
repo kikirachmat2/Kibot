@@ -1,0 +1,20 @@
+[Unit]
+Description=KiBot Centralized Scanner Engine
+After=network-online.target kibot-master.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=ubuntu
+WorkingDirectory=/home/ubuntu/KiBot
+Environment=PYTHONUNBUFFERED=1
+Environment=PYTHONPATH=.
+ExecStart=/usr/bin/python3 -u Core/Scanner/engine.py
+Restart=always
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=kibot-scanner
+
+[Install]
+WantedBy=multi-user.target

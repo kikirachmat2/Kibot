@@ -1,0 +1,21 @@
+[Unit]
+Description=KiBot Sovereign Master Node (Batam)
+After=network-online.target redis.service ollama.service
+Wants=network-online.target redis.service ollama.service
+
+[Service]
+Type=simple
+User=ubuntu
+WorkingDirectory=/home/ubuntu/KiBot
+Environment=PYTHONUNBUFFERED=1
+Environment=PYTHONPATH=.
+ExecStart=/usr/bin/python3 -u MasterNode.py
+Restart=always
+RestartSec=10
+MemoryMax=2000M
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=kibot-master
+
+[Install]
+WantedBy=multi-user.target
