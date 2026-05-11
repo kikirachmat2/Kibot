@@ -104,6 +104,8 @@ class IndodaxExecutor:
                     "active_trades": len(self.active_trades)
                 }
                 sock.sendto(json.dumps(status).encode(), (self.batam_ip, REPORT_PORT))
+            except Exception as e:
+                logger.error(f"Heartbeat failed: {e}")
             await asyncio.sleep(10)
 
     async def monitor_positions(self):

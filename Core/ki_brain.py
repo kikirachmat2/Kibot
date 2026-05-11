@@ -16,6 +16,8 @@ import time
 from pathlib import Path
 import httpx
 import asyncio
+from urllib.request import Request, urlopen
+from urllib.parse import urlencode
 from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
 
 
@@ -349,7 +351,7 @@ class BrainManager:
         try:
             # Use the 7-agent consensus for critical decisions
             symbol = pair.split('_')[0] if '_' in pair else pair
-            result = await _coordinator_query_ai_consensus_fn(context, symbol=symbol)
+            result = await _coordinator_query_ai_consensus_fn(context, ticker=symbol)
             
             if not result:
                 return "APPROVE", "Consensus returned empty; default approval."
