@@ -48,9 +48,9 @@ class SovereignCouncil:
         decision = {
             "type": "SYSTEM_ACTION",
             "issue": issue_context.get("type"),
-            "action": strat_res.get("action", "NONE") if strat_res else "NONE",
-            "reasoning": strat_res.get("reasoning", "No AI response") if strat_res else "ERROR",
-            "confidence": strat_res.get("confidence", 0.0) if strat_res else 0.0,
+            "action": strat_res.get("action", "NONE") if isinstance(strat_res, dict) else "NONE",
+            "reasoning": strat_res.get("reasoning", "No AI response") if isinstance(strat_res, dict) else "ERROR",
+            "confidence": strat_res.get("confidence", 0.0) if isinstance(strat_res, dict) else 0.0,
             "timestamp": time.time()
         }
         self._log_decision(decision)
@@ -115,6 +115,10 @@ class SovereignCouncil:
             "philosophy": "ORGANIZED_GREED" # Never satisfied
         })
 
+        if not isinstance(dean_res, dict):
+            logger.error(f"❌ [FATAL] AI Strategy Dean returned invalid response type: {type(dean_res)}")
+            return {"status": "FAILED", "reason": "AI strategy generation failed - invalid type"}
+
         if dean_res:
             new_strategy = {
                 "version": "3.0.0",
@@ -156,9 +160,9 @@ class SovereignCouncil:
             "is_midnight_approaching": is_midnight
         })
         
-        if not decision or decision.get("is_fallback"):
-            logger.warning("⚠️ Council failed to reach consensus or returned fallback.")
-            return {"status": "REJECTED", "reason": "No AI consensus"}
+        if not decision or not isinstance(decision, dict) or decision.get("is_fallback"):
+            logger.warning(f"⚠️ Council failed to reach consensus or returned fallback/invalid: {type(decision)}")
+            return {"status": "REJECTED", "reason": "No AI consensus or malformed response"}
 
         # 2. Add metadata and match source signal
         decision["timestamp"] = time.time()

@@ -84,6 +84,11 @@ class KiBotMaster:
         }
         self._emergency_cooldown = {}
         self.notifier = SovereignNotifier()
+        self.procs: Dict[str, asyncio.subprocess.Process] = {}
+        
+        # [OPTIMIZATION] Reuse Gateway instances
+        from Core.Exchange.indodax import IndodaxGateway
+        self.indodax = IndodaxGateway()
         
         # Self-Healing: Reset AI Provider Cooldowns on start
         provider_cache = ROOT_DIR / "Core" / "state" / "ai_coordinator_providers.json"
@@ -413,9 +418,7 @@ class KiBotMaster:
 
         # 2. Add Indodax Portfolio Context
         try:
-            from Core.Exchange.indodax import IndodaxGateway
-            gw = IndodaxGateway()
-            info = await gw.get_info()
+            info = await self.indodax.get_info()
             if info.get("success") == 1:
                 balances = info["return"]["balance"]
                 # Filter non-zero balances
@@ -497,6 +500,60 @@ class KiBotMaster:
         return telemetry
 
 
+    async def process_manager_loop(self):
+        """Self-healing process manager for child services."""
+        python_cmd = sys.executable
+        # Ensure we use absolute paths or paths relative to ROOT_DIR
+        services = {
+            "scanner": [python_cmd, "Core/Scanner/engine.py"],
+            "executor": [python_cmd, "Core/Executors/indodax_executor.py"],
+            "scout": [python_cmd, "Core/Intelligence/kibot_ai_scout.py"],
+            "learning": [python_cmd, "Core/Intelligence/kibot_learning_engine.py"]
+        }
+        
+        while self.is_running:
+            for name, cmd in services.items():
+                proc = self.procs.get(name)
+                
+                # Check if process is alive
+                is_alive = False
+                if proc:
+                    if proc.returncode is None:
+                        is_alive = True
+                    else:
+                        logger.warning(f"⚠️ Service {name} exited with code {proc.returncode}. Restarting...")
+                
+                if not is_alive:
+                    logger.info(f"🚀 Starting service {name}...")
+                    try:
+                        self.procs[name] = await asyncio.create_subprocess_exec(
+                            *cmd,
+                            cwd=str(ROOT_DIR),
+                            stdout=asyncio.subprocess.PIPE,
+                            stderr=asyncio.subprocess.STDOUT
+                        )
+                        # Pipe logs from child to master
+                        asyncio.create_task(self._log_pipe(name, self.procs[name]))
+                    except Exception as e:
+                        logger.error(f"Failed to start {name}: {e}")
+            
+            await asyncio.sleep(15)
+
+    async def _log_pipe(self, name: str, proc: asyncio.subprocess.Process):
+        """Pipes child process output to main log."""
+        if not proc.stdout: return
+        try:
+            while True:
+                line = await proc.stdout.readline()
+                if not line: break
+                decoded = line.decode().strip()
+                if decoded:
+                    # Avoid recursive logging if possible, but for child procs it's fine
+                    logger.info(f"[{name.upper()}] {decoded}")
+        except Exception:
+            pass
+
+
     def handle_sigterm(self, signum, frame):
         """Graceful shutdown for Master Node."""
         logger.info(f"👋 Received signal {signum}. Shutting down Sovereign Master...")
@@ -520,6 +577,7 @@ class KiBotMaster:
 
         # Add tasks
         loop.create_task(self.mesh_monitor_loop())
+        loop.create_task(self.process_manager_loop())
         
         logger.info("🎖️ KiBot Sovereign Master is fully OPERATIONAL.")
         try:
@@ -534,6 +592,19 @@ class KiBotMaster:
         """Async shutdown handler."""
         logger.info("👋 Initiating graceful shutdown...")
         self.is_running = False
+        
+        # Kill child processes
+        for name, proc in self.procs.items():
+            if proc.returncode is None:
+                logger.info(f"Stopping service {name}...")
+                try:
+                    proc.terminate()
+                except: pass
+        
+        # Wait for them to finish (briefly)
+        if self.procs:
+            await asyncio.gather(*[proc.wait() for proc in self.procs.values()], return_exceptions=True)
+
         # Cancel all running tasks
         tasks = [t for t in asyncio.all_tasks() if t is not asyncio.current_task()]
         for t in tasks: t.cancel()

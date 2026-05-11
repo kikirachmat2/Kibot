@@ -1,4 +1,6 @@
 from __future__ import annotations
+import nest_asyncio
+import asyncio
 from Core.Intelligence.kibot_ai_search import ROOT_DIR
 import sys
 # pyrefly: ignore [invalid-syntax]
@@ -125,6 +127,12 @@ except Exception:
     _coordinator_query_ai_fn = None
     _coordinator_query_ai_consensus_fn = None
     _coordinator_query_ai_debate_fn = None
+    
+    # Initialize nest_asyncio to allow nested event loops in sync contexts
+    try:
+        nest_asyncio.apply()
+    except:
+        pass
 
 
 class BrainManager:
@@ -652,7 +660,7 @@ class BrainManager:
                     "world_model": world_model,
                     "ai_critic": critic
                 }
-                self._save_snapshot()
+                self._write_snapshot(self._last_snapshot)
                 logger.info("[KiBrain] World Model updated successfully.")
             except Exception as e:
                 logger.error(f"[KiBrain] Critical Refresh Failure: {e}")
@@ -660,6 +668,9 @@ class BrainManager:
                 self._refresh_in_flight = False
 
     async def _get_market_pulse_async(self, symbols: Sequence[str]) -> Dict[str, Any]:
+        if not self.ai_search:
+            return {"risk_bias": "NEUTRAL", "top_headlines": []}
+        
         finnhub_news = await self.ai_search.finnhub_news_async()
         tavily_brief = await self.ai_search.tavily_search_async("crypto market sentiment today")
         ddg_brief = await self.ai_search.ddg_search_async("latest crypto market update")
@@ -1060,15 +1071,18 @@ class BrainManager:
         }
 
         def loader() -> Dict[str, Any]:
-            if self.ai_coordinator_enabled and _coordinator_query_ai_debate_fn is not None:
-                critic = _coordinator_query_ai_debate_fn(
+            try:
+                # In sync context, we use asyncio.run because query_ai_debate is async
+                critic = asyncio.run(_coordinator_query_ai_debate_fn(
                     "BRAIN_CRITIC",
                     critic_context,
                     cache_ttl_minutes=max(1, int(self.gemini_ttl_sec / 60)),
-                )
+                ))
                 if isinstance(critic, dict) and critic:
                     return critic
-
+            except Exception as e:
+                logger.error(f"[KiBrain] AI Critic Error (Sync Path): {e}")
+            
             if not self._gemini_api_key():
                 return {}
             payload = {

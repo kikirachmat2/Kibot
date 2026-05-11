@@ -116,7 +116,7 @@ class IndodaxGateway:
             "price": int(price) if "_idr" in pair else self.round_step(price, "0.00000001")
         }
         
-        if amount_coin:
+        if amount_coin is not None and amount_coin > 0:
             coin_symbol = pair.split('_')[0]
             params[coin_symbol] = self.round_step(amount_coin, "0.00000001")
         elif amount_idr and type.lower() == 'buy':

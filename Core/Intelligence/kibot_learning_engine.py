@@ -209,6 +209,15 @@ class LearningEngine:
         self._today_trades: List[dict] = [] # In-memory track for manager compatibility
         self._load_from_json()
 
+    def _atomic_write(self, path: Path, content: str):
+        tmp = path.with_name(f"{path.name}.tmp.{os.getpid()}")
+        try:
+            tmp.write_text(content)
+            os.replace(tmp, path)
+        finally:
+            if tmp.exists():
+                tmp.unlink()
+
     def _load_from_json(self):
         if STATE_PATH.exists():
             try:
@@ -260,7 +269,7 @@ class LearningEngine:
             payload = json.dumps({k: v.to_dict() for k, v in self._cache.items()}, indent=2)
             key = _get_signing_key()
             signature = hmac.new(key, payload.encode(), hashlib.sha256).hexdigest()
-            STATE_PATH.write_text(f"{payload}|{signature}")
+            self._atomic_write(STATE_PATH, f"{payload}|{signature}")
 
     def record_entry(self, pair: str, entry_price: float, budget: float, **kwargs) -> str:
         # --- REPLAY PROTECTION (TTL Check) ---
@@ -477,7 +486,10 @@ class LearningEngine:
     def save_daily_summary(self):
         # Save current state to JSON
         try:
-            STATE_PATH.write_text(json.dumps({k: v.to_dict() for k, v in self._cache.items()}, indent=2))
+            payload = json.dumps({k: v.to_dict() for k, v in self._cache.items()}, indent=2)
+            key = _get_signing_key()
+            signature = hmac.new(key, payload.encode(), hashlib.sha256).hexdigest()
+            self._atomic_write(STATE_PATH, f"{payload}|{signature}")
         except: pass
 
     def patrol_and_audit(self):

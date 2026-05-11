@@ -11,6 +11,7 @@ import json
 import time
 from pathlib import Path
 from typing import Dict, List, Any
+import asyncio
 from Core.circuit_breaker import CircuitBreaker
 
 # Path resolution
@@ -37,17 +38,17 @@ class WorldScout:
     def _log(self, msg: str):
         print(f"[SCOUT][{time.strftime('%Y-%m-%d %H:%M:%S')}] {msg}", flush=True)
 
-    def perform_scouting(self):
+    async def perform_scouting(self):
         self._log("Initiating global scouting mission...")
         
         # 1. Gather Raw Data from multiple sources
         scouting_data = {
-            "security_threats": self.search_service.ddg_search("crypto protocol exploit hack vulnerability latest", max_results=3),
-            "market_catalysts": self.search_service.tavily_search("top crypto market catalysts today bitcoin eth regulation", search_depth="advanced") or self.search_service.jina_search("top crypto market catalysts today"),
-            "trending_narratives": self.search_service.gdelt_news("crypto trending AI meme RWA layer2"),
-            "news_pulse": (self.search_service.finnhub_news("crypto") or [])[:5],
-            "indodax_intel": self.search_service.get_market_consensus("Indodax latest listing rumors IDR premium"),
-            "polymarket_intel": self.search_service.get_market_consensus("Polymarket trending events crypto prediction odds")
+            "security_threats": await self.search_service.ddg_search_async("crypto protocol exploit hack vulnerability latest", max_results=3),
+            "market_catalysts": await self.search_service.tavily_search_async("top crypto market catalysts today bitcoin eth regulation", search_depth="advanced") or await self.search_service.jina_search_async("top crypto market catalysts today"),
+            "trending_narratives": await self.search_service.gdelt_news_async("crypto trending AI meme RWA layer2"),
+            "news_pulse": (await self.search_service.finnhub_news_async("crypto") or [])[:5],
+            "indodax_intel": await self.search_service.get_market_consensus_async("Indodax latest listing rumors IDR premium"),
+            "polymarket_intel": await self.search_service.get_market_consensus_async("Polymarket trending events crypto prediction odds")
         }
 
         # 2. Synthesize using Cloud AI (Non-Ollama preferred for global context)
@@ -59,7 +60,7 @@ class WorldScout:
         }
         
         # We use a specific prompt type for intelligence synthesis
-        analysis = self.coordinator.query_ai(
+        analysis = await self.coordinator.query_ai(
             prompt_type="INTELLIGENCE_SYNTHESIS",
             context=prompt_context,
             cache_ttl_minutes=4 # Always fresh
@@ -67,7 +68,7 @@ class WorldScout:
 
         # 2b. Specialized Possibility Mining (Using Multi-Agent Debate for higher confidence)
         self._log("Mining for high-performance possibilities (Indodax & Polymarket) using AI Debate...")
-        possibilities = self.coordinator.query_ai_debate(
+        possibilities = await self.coordinator.query_ai_debate(
             prompt_type="POSSIBILITY_MINING",
             context=prompt_context,
             debate_rounds=1
@@ -100,16 +101,16 @@ class WorldScout:
             if self.breaker.record_failure() == "ESCALATE":
                 self._log("[CRITICAL] Scout circuit opened. Escalating to Council/Human.")
 
-    def perform_targeted_scouting(self, pair: str):
+    async def perform_targeted_scouting(self, pair: str):
         self._log(f"Initiating URGENT targeted scouting for {pair}...")
         
         # 1. Gather Targeted Data
         symbol = pair.split("_")[0]
         scouting_data = {
             "pair": pair,
-            "specific_catalyst": self.search_service.tavily_search(f"latest news catalyst pump reason for {symbol} crypto {pair}", search_depth="advanced") or self.search_service.jina_search(f"latest news catalyst for {symbol}"),
-            "social_pulse": self.search_service.serper_search(f"{symbol} crypto price pump news twitter reddit") or self.search_service.jina_search(f"{symbol} crypto social trending news"),
-            "news_pulse": (self.search_service.finnhub_news(symbol) or [])[:3]
+            "specific_catalyst": await self.search_service.tavily_search_async(f"latest news catalyst pump reason for {symbol} crypto {pair}", search_depth="advanced") or await self.search_service.jina_search_async(f"latest news catalyst for {symbol}"),
+            "social_pulse": await self.search_service.serper_search_async(f"{symbol} crypto price pump news twitter reddit") or await self.search_service.jina_search_async(f"{symbol} crypto social trending news"),
+            "news_pulse": (await self.search_service.finnhub_news_async(symbol) or [])[:3]
         }
 
         # 2. Validate using AI
@@ -120,7 +121,7 @@ class WorldScout:
             "current_time": time.ctime()
         }
         
-        validation = self.coordinator.query_ai(
+        validation = await self.coordinator.query_ai(
             prompt_type="TARGETED_VALIDATION",
             context=prompt_context,
             cache_ttl_minutes=1 # Instant validation, no cache
@@ -153,7 +154,7 @@ class WorldScout:
         else:
             self._log(f"[WARN] Targeted validation for {pair} failed (no AI response).")
 
-def run_scout_loop():
+async def run_scout_loop():
     print("[SCOUT] Starting World Scout service with Fast-Poll (5s) for urgent requests...", flush=True)
     scout = WorldScout()
     last_global_scout = 0
@@ -168,7 +169,7 @@ def run_scout_loop():
                 data = json.loads(urgent_file.read_text(encoding="utf-8"))
                 pair = data.get("pair")
                 if pair:
-                    scout.perform_targeted_scouting(pair)
+                    await scout.perform_targeted_scouting(pair)
                 urgent_file.unlink() # Delete after processing
             except Exception as e:
                 scout._log(f"[ERROR] Urgent scouting processing failed: {e}")
@@ -176,13 +177,13 @@ def run_scout_loop():
         # 2. Global Scouting every 5 minutes (300s)
         if (now - last_global_scout) >= 300:
             try:
-                scout.perform_scouting()
+                await scout.perform_scouting()
                 last_global_scout = now
             except Exception as e:
                 import traceback
                 scout._log(f"[ERROR] Global scouting failed: {e}\n{traceback.format_exc()}")
         
-        time.sleep(5) # Fast poll interval
+        await asyncio.sleep(5) # Fast poll interval
 
 if __name__ == "__main__":
-    run_scout_loop()
+    asyncio.run(run_scout_loop())

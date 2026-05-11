@@ -62,13 +62,19 @@ def _get_last_hash() -> str:
         return "ERROR_OR_TAMPERED"
     try:
         with open(source, "rb") as f:
-            f.seek(-2, os.SEEK_END)
-            while f.read(1) != b"\n":
-                f.seek(-2, os.SEEK_CUR)
+            try:
+                f.seek(-2, os.SEEK_END)
+                while f.read(1) != b"\n":
+                    f.seek(-2, os.SEEK_CUR)
+            except (OSError, ValueError):
+                # File too small or single line, read from start
+                f.seek(0)
             last_line = f.readline().decode()
+            if not last_line:
+                return "GENESIS_BLOCK_0000000000000000"
             data = json.loads(last_line)
             return str(data.get("h") or data.get("s") or "ERROR_OR_TAMPERED")
-    except:
+    except Exception:
         return "ERROR_OR_TAMPERED"
 
 def append_secure_log(event_type: str, message: str, severity: str = "INFO"):

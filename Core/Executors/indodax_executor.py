@@ -51,6 +51,7 @@ class IndodaxExecutor:
         self.running = False
         self.batam_ip = os.environ.get("KIBOT_MASTER_IP", "127.0.0.1")
         self.state_file = Path(ROOT_DIR) / "Core" / "state" / "active_trades.json"
+        self.lock = asyncio.Lock()
         self._load_active_trades()
 
     def _load_active_trades(self):
@@ -103,66 +104,61 @@ class IndodaxExecutor:
                     "active_trades": len(self.active_trades)
                 }
                 sock.sendto(json.dumps(status).encode(), (self.batam_ip, REPORT_PORT))
-            except Exception as e:
-                logger.error(f"Heartbeat failed: {e}")
             await asyncio.sleep(10)
 
     async def monitor_positions(self):
         """Pure script-based monitoring for fast Exit/Trailing-Stop."""
         while self.running:
             try:
-                # Throttled monitoring to 5s as per plan
-                await asyncio.sleep(5)
                 strategy = load_strategy()
                 indo_strat = strategy.get("indodax", {})
                 urgency = check_urgency()
 
                 if urgency.get("flag") == "EMERGENCY_PAUSE":
                     logger.warning(f"🚨 EMERGENCY PAUSE DETECTED: {urgency.get('reason')}")
-                    await asyncio.sleep(5)
-                    continue
+                else:
+                    for symbol, data in list(self.active_trades.items()):
+                        current_price_data = await self.indodax.get_ticker(symbol.lower().replace("/", "_"))
+                        last_price = float(current_price_data.get("last", 0))
+                        entry_price = data.get("price")
+                        
+                        if last_price <= 0: continue
 
-                for symbol, data in list(self.active_trades.items()):
-                    current_price_data = await self.indodax.get_ticker(symbol.lower().replace("/", "_"))
-                    last_price = float(current_price_data.get("last", 0))
-                    entry_price = data.get("price")
-                    
-                    if last_price <= 0: continue
+                        change = (last_price - entry_price) / entry_price * 100
+                        
+                        # 1. Hard Stop Loss
+                        if change <= -indo_strat.get("hard_stop_pct", 1.5):
+                            logger.warning(f"🛑 HARD STOP TRIGGERED: {symbol} @ {change:.2f}%")
+                            await self.execute_exit(symbol, last_price, "HARD_STOP")
+                            continue
+                        
+                        # 2. Trailing Stop
+                        high_price = data.get("high_price", entry_price)
+                        if last_price > high_price:
+                            self.active_trades[symbol]["high_price"] = last_price
+                            high_price = last_price
+                        
+                        from_high = (high_price - last_price) / high_price * 100
+                        if from_high >= indo_strat.get("trailing_stop_pct", 0.25) and change > 0:
+                            logger.info(f"📉 TRAILING STOP TRIGGERED: {symbol} @ {from_high:.2f}% from high")
+                            await self.execute_exit(symbol, last_price, "TRAILING_STOP")
+                            continue
 
-                    change = (last_price - entry_price) / entry_price * 100
-                    
-                    # 1. Hard Stop Loss
-                    if change <= -indo_strat.get("hard_stop_pct", 1.5):
-                        logger.warning(f"🛑 HARD STOP TRIGGERED: {symbol} @ {change:.2f}%")
-                        await self.execute_exit(symbol, last_price, "HARD_STOP")
-                        continue
-                    
-                    # 2. Trailing Stop
-                    high_price = data.get("high_price", entry_price)
-                    if last_price > high_price:
-                        self.active_trades[symbol]["high_price"] = last_price
-                        high_price = last_price
-                    
-                    from_high = (high_price - last_price) / high_price * 100
-                    if from_high >= indo_strat.get("trailing_stop_pct", 0.25) and change > 0:
-                        logger.info(f"📉 TRAILING STOP TRIGGERED: {symbol} @ {from_high:.2f}% from high")
-                        await self.execute_exit(symbol, last_price, "TRAILING_STOP")
-                        continue
+                        # 3. Dynamic Take Profit (V3.2 fallback)
+                        if change >= indo_strat.get("take_profit_pct", 0.5):
+                            logger.info(f"💰 TAKE PROFIT HIT: {symbol} @ {change:.2f}%")
+                            await self.execute_exit(symbol, last_price, "TAKE_PROFIT")
+                            continue
 
-                    # 3. Dynamic Take Profit (V3.2 fallback)
-                    if change >= indo_strat.get("take_profit_pct", 0.5):
-                        logger.info(f"💰 TAKE PROFIT HIT: {symbol} @ {change:.2f}%")
-                        await self.execute_exit(symbol, last_price, "TAKE_PROFIT")
-                        continue
-
-                    # 4. Midnight Oracle Exit
-                    if strategy.get("global_mode") == "EXIT_ALL":
-                        logger.info(f"🌑 MIDNIGHT DEADLINE: Liquidating {symbol} for Daily Report.")
-                        await self.execute_exit(symbol, last_price, "MIDNIGHT_DEADLINE")
+                        # 4. Midnight Oracle Exit
+                        if strategy.get("global_mode") == "EXIT_ALL":
+                            logger.info(f"🌑 MIDNIGHT DEADLINE: Liquidating {symbol} for Daily Report.")
+                            await self.execute_exit(symbol, last_price, "MIDNIGHT_DEADLINE")
 
             except Exception as e:
                 logger.error(f"Monitor loop error: {e}")
-            await asyncio.sleep(1)
+            finally:
+                await asyncio.sleep(5)
 
     async def execute_exit(self, symbol, price, reason):
         """Unified exit logic with reporting to Batam."""
@@ -205,10 +201,16 @@ class IndodaxExecutor:
         change_pct = abs(signal.get("change_pct", 0))
 
         # --- SCRIPT LOGIC (V3.2) ---
-        # 1. Max Slots Check
-        if len(self.active_trades) >= indo_strat.get("max_slots", 4):
-            logger.debug(f"🛡️ Slots full ({len(self.active_trades)}/4). Ignoring {symbol}.")
-            return
+        async with self.lock:
+            # 1. Max Slots Check
+            if len(self.active_trades) >= indo_strat.get("max_slots", 4):
+                logger.debug(f"🛡️ Slots full ({len(self.active_trades)}/4). Ignoring {symbol}.")
+                return
+            
+            # Check if already in trade
+            if symbol in self.active_trades:
+                logger.debug(f"🛡️ Already in trade for {symbol}. Ignoring.")
+                return
 
         # 1. Get Balance
         current_balance = await self.indodax.get_balance("idr")

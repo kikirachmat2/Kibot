@@ -493,6 +493,33 @@ PROMPT_TEMPLATES = {
         "Provide a final trading mandate (BUY/SELL/NONE).\n"
         "Return strict compact JSON: {\"action\":\"BUY|SELL|NONE\", \"ticker\":\"SYMBOL/IDR\", \"confidence\":0.0, \"logic\":\"...\"}"
     ),
+    "MOMENTUM_HAWK": (
+        "You are MomentumHawk (Technical Analyst). Model: qwen2.5:1.5b.\n"
+        "Analyze the price action for {symbol}.\n"
+        "Instruction: Identify if the current pump is supported by volume or if it is a low-liquidity trap.\n"
+        "Return strict JSON: {\"is_trap\":false, \"momentum_score\":0.0, \"regime\":\"BULL|BEAR|CHOP\"}"
+    ),
+    "RISK_SENTINEL": (
+        "You are RiskSentinel (Security & Risk). Model: qwen2.5:1.5b.\n"
+        "Evaluate the risk for {symbol} based on context {context}.\n"
+        "Instruction: Check for black-swan warnings or excessive volatility.\n"
+        "Return strict JSON: {\"is_safe\":true, \"risk_score\":0.0, \"warnings\":[]}"
+    ),
+    "WHALE_WATCHER": (
+        "You are KiBot's Whale Watcher. Detect large order movements and manipulation.\n"
+        "Orderbook snapshot: {orderbook_snapshot}\n"
+        "Identify: whale buy walls, hidden sell walls, spoofing patterns.\n"
+        "Return strict JSON: {\"whale_detected\":false,\"side\":\"BUY|SELL|NONE\","
+        "\"estimated_size_idr\":0,\"manipulation_risk\":\"LOW|MED|HIGH\","
+        "\"recommendation\":\"PROCEED|WAIT|ABORT\"}"
+    ),
+    "CROSS_BRIDGE_STRATEGIST": (
+        "You are KiBot's Cross-Bridge Strategist. Find alpha between Indodax and Polymarket.\n"
+        "Indodax data: {indodax_data}\nPolymarket data: {poly_data}\n"
+        "Philosophy: 'Tekan Kerugian' — only recommend if cross-market edge is CLEAR.\n"
+        "Return strict JSON: {\"cross_signal\":false,\"direction\":\"IDR_LEADS|POLY_LEADS|NONE\","
+        "\"target_pair\":\"...\",\"edge_confidence\":0.0,\"action\":\"BUY|SELL|NONE\"}"
+    ),
 }
 
 PROMPT_OLLAMA_MODEL = {
@@ -513,6 +540,8 @@ PROMPT_OLLAMA_MODEL = {
     "BRAIN_CRITIC": OLLAMA_FAST_MODEL,
     "OPS_CHAT": OLLAMA_FAST_MODEL,
     "SOVEREIGN_DAILY_REVIEW": OLLAMA_DEEP_MODEL,
+    "MOMENTUM_HAWK": OLLAMA_FAST_MODEL,
+    "RISK_SENTINEL": OLLAMA_FAST_MODEL,
 }
 
 PROMPT_OLLAMA_TIMEOUT = {
@@ -527,6 +556,8 @@ PROMPT_OLLAMA_TIMEOUT = {
     "WHALE_WATCHER": OLLAMA_DEFAULT_TIMEOUT_SEC,
     "CROSS_BRIDGE_STRATEGIST": OLLAMA_DEEP_TIMEOUT_SEC,
     "SOVEREIGN_DAILY_REVIEW": OLLAMA_DEEP_TIMEOUT_SEC,
+    "MOMENTUM_HAWK": OLLAMA_FAST_TIMEOUT_SEC,
+    "RISK_SENTINEL": OLLAMA_FAST_TIMEOUT_SEC,
 }
 
 PROMPT_OLLAMA_KEEP_ALIVE = {
@@ -1083,6 +1114,15 @@ async def _execute_query_logic(prompt_type: str, context: Dict[str, Any], cache_
         return parsed
     if force_refresh:
         return AI_SAFE_FALLBACK
+    
+    # Emergency Fallback: If all candidates failed, try a final local lightweight poll
+    if "OLLAMA" not in candidates:
+        response = await _call_provider("OLLAMA", prompt, prompt_type=prompt_type)
+        if response:
+            parsed = _extract_json_object(response)
+            if isinstance(parsed, dict):
+                return parsed
+
     return _latest_prompt_cache(prompt_type) or AI_SAFE_FALLBACK
 
 

@@ -72,6 +72,8 @@ class ScannerEngine:
         return {"signals": signals}
 
     def run_once(self) -> None:
+        """Single scanning cycle."""
+        self.universal_signals = []
         self.seq_id += 1
         started_at = time.time()
         
