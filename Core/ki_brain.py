@@ -189,7 +189,7 @@ class BrainManager:
         self._indodax_pairs_cache: Dict[str, str] = {}
         self._indodax_pairs_cache_at: float = 0.0
         self._indodax_pairs_cooldown_until: float = 0.0
-        self._indodax_pairs_cache_file = state_root / "brain_indodax_pairs.json"
+        self._indodax_pairs_cache_file = STATE_DIR / "brain_indodax_pairs.json"
         self._indodax_pairs_cache = self._load_indodax_pairs_cache()
         self._last_snapshot: Dict[str, Any] = self._load_snapshot()
         self._refresh_lock = asyncio.Lock()
