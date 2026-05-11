@@ -64,7 +64,7 @@ class AISearchService:
         # Keep for backward compatibility if needed, but internally it's now blocking call to async
         return asyncio.run(self._get_json_async(url, params, headers))
 
-    async def _cached_async(self, key: str, ttl: int, coro) -> Any:
+    async def _cached_async(self, key: str, ttl: int, loader) -> Any:
         now = time.time()
         cache = {}
         if self.cache_file.exists():
@@ -77,7 +77,15 @@ class AISearchService:
             if now - entry.get("at", 0) < ttl:
                 return entry.get("data")
         
-        data = await coro
+        # Only execute loader if cache miss
+        if asyncio.iscoroutinefunction(loader):
+            data = await loader()
+        elif callable(loader):
+            data = loader()
+        else:
+            # If it's already a coroutine (legacy support), await it
+            data = await loader
+            
         if data:
             cache[key] = {"at": now, "data": data}
             try:
@@ -107,7 +115,7 @@ class AISearchService:
             except: pass
             return {}
             
-        return await self._cached_async(f"tavily:{hashlib.md5(query.encode()).hexdigest()}", 3600, loader())
+        return await self._cached_async(f"tavily:{hashlib.md5(query.encode()).hexdigest()}", 3600, loader)
 
     def tavily_search(self, query: str, search_depth: str = "basic") -> Dict:
         return asyncio.run(self.tavily_search_async(query, search_depth))
@@ -127,7 +135,7 @@ class AISearchService:
             except: pass
             return {}
             
-        return await self._cached_async(f"serper:{hashlib.md5(query.encode()).hexdigest()}", 3600, loader())
+        return await self._cached_async(f"serper:{hashlib.md5(query.encode()).hexdigest()}", 3600, loader)
 
     def serper_search(self, query: str) -> Dict:
         return asyncio.run(self.serper_search_async(query))
@@ -138,7 +146,7 @@ class AISearchService:
             async def loader():
                 with DDGS() as ddgs:
                     return list(ddgs.text(query, max_results=max_results))
-            return await self._cached_async(f"ddg:{hashlib.md5(query.encode()).hexdigest()}", 1800, loader())
+            return await self._cached_async(f"ddg:{hashlib.md5(query.encode()).hexdigest()}", 1800, loader)
         except ImportError:
             return []
 
@@ -174,7 +182,7 @@ class AISearchService:
                     return content
             except: return ""
             
-        return await self._cached_async(f"jina:{hashlib.md5(query.encode()).hexdigest()}", 3600, loader())
+        return await self._cached_async(f"jina:{hashlib.md5(query.encode()).hexdigest()}", 3600, loader)
 
     def jina_search(self, query: str) -> str:
         return asyncio.run(self.jina_search_async(query))
@@ -195,7 +203,7 @@ class AISearchService:
                 return await self._get_json_async(url, params=params, headers=headers)
             except: return {}
             
-        return await self._cached_async(f"brave:{hashlib.md5(query.encode()).hexdigest()}", 3600, loader())
+        return await self._cached_async(f"brave:{hashlib.md5(query.encode()).hexdigest()}", 3600, loader)
 
     def brave_search(self, query: str) -> Dict:
         return asyncio.run(self.brave_search_async(query))
@@ -218,7 +226,7 @@ class AISearchService:
                 return res.get("results", [])
             except: return []
             
-        return await self._cached_async(f"cryptopanic:{filter}", 600, loader())
+        return await self._cached_async(f"cryptopanic:{filter}", 600, loader)
 
     def cryptopanic_news(self, filter: str = "hot") -> List[Dict]:
         return asyncio.run(self.cryptopanic_news_async(filter))
@@ -316,7 +324,7 @@ class AISearchService:
                 "https://finnhub.io/api/v1/news",
                 params={"category": category, "token": api_key}
             )
-        return await self._cached_async(f"finnhub:{category}", 900, loader())
+        return await self._cached_async(f"finnhub:{category}", 900, loader)
 
     def finnhub_news(self, category: str = "crypto") -> List[Dict]:
         return asyncio.run(self.finnhub_news_async(category))
@@ -333,7 +341,7 @@ class AISearchService:
                 }
             )
             return payload.get("articles", []) if isinstance(payload, dict) else []
-        return await self._cached_async(f"gdelt:{hashlib.md5(query.encode()).hexdigest()}", 1800, loader())
+        return await self._cached_async(f"gdelt:{hashlib.md5(query.encode()).hexdigest()}", 1800, loader)
 
     def gdelt_news(self, query: str = "crypto") -> List[Dict]:
         return asyncio.run(self.gdelt_news_async(query))

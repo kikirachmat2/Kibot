@@ -84,7 +84,7 @@ class KiBotMaster:
         self.breakers = {
             "SCANNER": CircuitBreaker("SCANNER", max_failures=3, reset_after_sec=600),
             "EXECUTOR": CircuitBreaker("EXECUTOR", max_failures=3, reset_after_sec=600),
-            "OLLAMA": CircuitBreaker("OLLAMA", max_failures=5, reset_after_sec=120)
+            "ollama": CircuitBreaker("ollama", max_failures=5, reset_after_sec=120)
         }
         self._emergency_cooldown = {}
         self.notifier = SovereignNotifier()
@@ -141,6 +141,7 @@ class KiBotMaster:
         
         logger.info("📡 Council Signal Listener active on UDP:9991")
         sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         sock.bind(("0.0.0.0", 9991))
         sock.setblocking(False)
         
@@ -539,11 +540,15 @@ class KiBotMaster:
                         logger.warning(f"⚠️ Service {name} exited with code {proc.returncode}. Restarting...")
                 
                 if not is_alive:
-                    logger.info(f"🚀 Starting service {name}...")
                     try:
+                        # Ensure child processes can see the 'Core' package
+                        env = os.environ.copy()
+                        env["PYTHONPATH"] = str(ROOT_DIR)
+                        
                         self.procs[name] = await asyncio.create_subprocess_exec(
                             *cmd,
                             cwd=str(ROOT_DIR),
+                            env=env,
                             stdout=asyncio.subprocess.PIPE,
                             stderr=asyncio.subprocess.STDOUT
                         )

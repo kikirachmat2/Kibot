@@ -13,23 +13,23 @@ STRATEGY_FILE = STATE_DIR / "active_strategy.json"
 URGENCY_FILE = STATE_DIR / "urgency_flag.json"
 
 DEFAULT_STRATEGY = {
-    "version": "3.0.0",
+    "version": "3.1.0",
     "last_updated": 0,
-    "global_mode": "NEUTRAL", # AGGRESSIVE | NEUTRAL | DEFENSIVE | FULL_ATTACK | EMERGENCY_PAUSE
+    "global_mode": "FULL_ATTACK", # Switched to FULL_ATTACK as per user request for aggressive trading
     "indodax": {
-        "buy_threshold_pct": 0.8,         # Hunt pumps >= 0.8% momentum
-        "trailing_stop_pct": 0.35,        # Lock in pump profit
-        "hard_stop_pct": 1.2,             # Tight exit
-        "max_exposure_idr": 1000000,
-        "max_slots": 4,                   # [NEW] Strictly max 4 coins
-        "min_confidence": 0.88,           # Only high-conviction pumps
-        "allowed_pairs": ["BTC_IDR", "ETH_IDR", "SOL_IDR", "XRP_IDR", "DOGE_IDR", "PEPE_IDR"]
+        "buy_threshold_pct": 0.5,         # More aggressive momentum entry
+        "trailing_stop_pct": 0.25,        # Tighter trailing stop
+        "hard_stop_pct": 2.0,             # Wider stop loss for volatility
+        "max_exposure_idr": 0,            # 0 means "Use full available balance"
+        "max_slots": 100,                  # Allow up to 100 parallel trades
+        "min_confidence": 0.65,           # Hyper-aggressive threshold
+        "allowed_pairs": ["*"]            # ["*"] means all coins are allowed
     },
     "polymarket": {
-        "min_liquidity_usd": 1000,
-        "max_bet_usd": 50,
-        "min_confidence": 0.90,
-        "risk_limit": "CONSERVATIVE"
+        "min_liquidity_usd": 500,
+        "max_bet_usd": 0,                 # 0 means "Use available USDC balance"
+        "min_confidence": 0.75,
+        "risk_limit": "AGGRESSIVE"
     }
 }
 

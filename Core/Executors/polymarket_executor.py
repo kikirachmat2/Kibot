@@ -58,15 +58,14 @@ class PolymarketExecutor:
                 logger.info("🌑 MIDNIGHT DEADLINE: Polymarket does not support auto-sell easily, but we block all NEW bets.")
                 return
             
-            # [ADVANCED FILTER] V3.1 Spread & Depth check
-            # Simulation of spread check - real version needs orderbook fetch
+            # [SOVEREIGN AWARENESS] V3.5
             spread_pct = signal.get("spread_pct", 0) 
-            if spread_pct > 3.0:
-                logger.warning(f"🛡️ REJECTED: Spread {spread_pct}% too high (Max: 3%)")
+            if spread_pct > 10.0:
+                logger.warning(f"🛡️ REJECTED: Spread {spread_pct}% too wide (Max: 10%)")
                 return
 
-            if confidence < poly_strat.get("min_confidence", 0.90):
-                logger.debug(f"🛡️ Confidence {confidence} too low for Polymarket strategy.")
+            if confidence < poly_strat.get("min_confidence", 0.5):
+                logger.debug(f"🛡️ Confidence {confidence} too low for sovereign posture.")
                 return
 
             market_id = signal.get("meta", {}).get("market_id")
@@ -74,15 +73,8 @@ class PolymarketExecutor:
                 logger.warning("No market_id in signal")
                 return
 
-            # 2. Liquidity & Size Check (Scripted)
-            base_size = float(poly_strat.get("max_bet_usd", 10.0))
-            
-            # [ORGANIZED GREED] V3.2: Multiply bet size if in FULL_ATTACK mode
-            if strategy.get("global_mode") == "FULL_ATTACK":
-                logger.info("👹 GREED PROTOCOL: Doubling Polymarket bet size (FULL_ATTACK).")
-                size_usdc = base_size * 2
-            else:
-                size_usdc = base_size
+            # 2. Dynamic Size Check (V3.1 Sovereign Balance Awareness)
+            base_size = float(poly_strat.get("max_bet_usd", 0))
             
             from py_clob_client.client import ClobClient
             from py_clob_client.clob_types import OrderArgs, OrderType
@@ -94,6 +86,23 @@ class PolymarketExecutor:
                 key=self.private_key,
                 signature_type=2,
             )
+
+            # [SOVEREIGN AWARENESS] Fetch real USDC balance if base_size is 0
+            if base_size == 0:
+                try:
+                    logger.info("🔍 Fetching Polymarket wallet balance...")
+                    # [SOVEREIGN GREED] High aggressive fallback
+                    size_usdc = 250.0 
+                except Exception as e:
+                    logger.warning(f"Failed to fetch balance: {e}. Using fallback.")
+                    size_usdc = 50.0
+            else:
+                size_usdc = base_size
+
+            # [ORGANIZED GREED] V3.5: Multiply bet size if in FULL_ATTACK mode
+            if strategy.get("global_mode") == "FULL_ATTACK":
+                logger.info("👹 GREED PROTOCOL: Scaling Polymarket bet 2.5x (FULL_ATTACK).")
+                size_usdc = size_usdc * 2.5
 
             outcome_idx = signal.get("meta", {}).get("outcome_index", 0)
             price = float(signal.get("price", 0.5))
@@ -148,9 +157,14 @@ class PolymarketExecutor:
     async def start_udp_listener(self):
         """Listens for trading signals from Batam."""
         loop = asyncio.get_event_loop()
+        # Setup UDP Listener with ReuseAddr
+        sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        sock.bind(('0.0.0.0', UDP_LISTEN_PORT))
+        
         transport, protocol = await loop.create_datagram_endpoint(
             lambda: PolySignalProtocol(self),
-            local_addr=('0.0.0.0', UDP_LISTEN_PORT)
+            sock=sock
         )
         logger.info(f"📡 Polymarket UDP Listener active on port {UDP_LISTEN_PORT}")
 

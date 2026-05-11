@@ -7,22 +7,25 @@ from typing import Dict, Optional, Tuple
 
 logger = logging.getLogger("RiskGate")
 
+# Configuration
 STATE_DIR = Path(__file__).resolve().parent.parent / "state"
 RISK_STATE_FILE = STATE_DIR / "risk_state.json"
 
 class RiskGate:
     """
-    Sovereign Risk Guard.
-    Prevents execution of signals that violate safety parameters.
+    Sovereign Risk Guard
+    ====================
+    V3.5: "Absolute Liberty"
+    Ensures total capital availability while enforcing the Manifesto's 1.5% daily drawdown cap.
+    No hardcoded limits on exposure or slots—only the Council's wisdom and the balance.
     """
     def __init__(self, config: Optional[Dict] = None):
-        # Default safety thresholds
         self.config = config or {
-            "max_slippage_pct": 1.5,
-            "min_order_notional_idr": 25000,
-            "max_order_notional_idr": 5000000,
-            "max_active_positions": 5,
-            "max_daily_loss_pct": 1.5, # 1.5% Max Daily Loss
+            "max_slippage_pct": 10.0,          # High tolerance for low-cap gems
+            "min_order_notional_idr": 10000, 
+            "max_order_notional_idr": 100000000000, # 100 Billion IDR (Sovereign Cap)
+            "max_active_positions": 100,        # High-frequency capacity
+            "max_daily_loss_pct": 1.5,          # Manifesto mandated
             "blacklist": ["USDT_IDR"] 
         }
         self.daily_pnl = 0.0
@@ -55,69 +58,64 @@ class RiskGate:
             logger.error(f"Failed to save risk state: {e}")
 
     def update_pnl(self, pnl_amount: float):
-        """Update daily PnL and persist state."""
         self._check_reset()
         self.daily_pnl += pnl_amount
         self._save_state()
-        logger.info(f"💰 Daily PnL Updated: {self.daily_pnl:.2f} IDR")
+        logger.info(f"💰 Sovereign PnL Tracking: {self.daily_pnl:.2f} IDR")
 
     def _check_reset(self):
         today = str(date.today())
         if self.last_reset_date != today:
-            logger.info("♻️ New day detected. Resetting daily PnL.")
+            logger.info("♻️ New day detected. Resetting sovereign PnL.")
             self.daily_pnl = 0.0
             self.last_reset_date = today
             self._save_state()
 
     def validate_signal(self, signal: Dict, balance_idr: float, active_positions_count: int) -> Tuple[bool, str]:
         """
-        Validates a trade signal against risk parameters.
-        @return (is_valid, reason)
+        Validates a trade signal against sovereign risk parameters.
+        V3.5: Strategy is to be situational. Limits are advisory, except for the 1.5% Hard Cap.
         """
         self._check_reset()
         
-        # 0. Daily Loss Check
+        # Hard Manifesto Cap
         max_loss = balance_idr * (self.config["max_daily_loss_pct"] / 100)
         if self.daily_pnl < -max_loss:
-            return False, f"Daily loss limit reached ({self.daily_pnl:.2f} < -{max_loss:.2f})"
+            return False, f"MANIFESTO CAP: Daily loss reached ({self.daily_pnl:.2f} < -{max_loss:.2f})"
 
         symbol = signal.get("symbol", "UNKNOWN").upper()
         price = float(signal.get("price", 0))
         side = signal.get("side", "BUY").upper()
         
-        # 1. Basic sanity check
         if symbol == "UNKNOWN" or price <= 0:
-            return False, "Invalid symbol or price"
+            return False, "Invalid signal data"
 
-        # 2. Blacklist check
         if symbol in self.config["blacklist"]:
             return False, f"Symbol {symbol} is blacklisted"
 
-        # 3. Position limit check (only for BUY)
+        # Position slots
         if side == "BUY" and active_positions_count >= self.config["max_active_positions"]:
-            return False, f"Max positions reached ({self.config['max_active_positions']})"
+            return False, f"All {self.config['max_active_positions']} slots occupied."
 
-        # 4. Notional value check
+        # Notional checks
         budget = float(signal.get("budget_idr", self.config["min_order_notional_idr"]))
-        
         if budget < self.config["min_order_notional_idr"]:
-            return False, f"Order too small (Rp{budget} < Rp{self.config['min_order_notional_idr']})"
+            return False, f"Order below minimum notional (Rp{budget})"
         
         if budget > self.config["max_order_notional_idr"]:
-            return False, f"Order too large (Rp{budget} > Rp{self.config['max_order_notional_idr']})"
+            return False, f"Order above extreme sovereign cap (Rp{budget})"
 
-        # 5. Balance check
+        # Balance check
         if side == "BUY" and balance_idr < budget:
-            return False, f"Insufficient IDR balance (Need Rp{budget}, have Rp{balance_idr})"
+            return False, f"Insufficient balance for sovereign greed (Need Rp{budget}, have Rp{balance_idr})"
 
-        # 6. Market Condition Check
+        # Slippage/Spread - Sovereignly loose for alpha capture
         meta = signal.get("meta", {})
         spread = float(meta.get("spread_pct", 0))
         if spread > self.config["max_slippage_pct"]:
-             return False, f"Spread too wide ({spread}% > {self.config['max_slippage_pct']}%)"
+             return False, f"Spread exceeds 10% sovereign tolerance ({spread}%)"
 
-        return True, "APPROVED"
+        return True, "SOVEREIGN_PASS"
 
     def calculate_amount(self, symbol: str, price: float, budget_idr: float) -> float:
-        """Calculates the amount of coin to buy based on budget and price."""
         return round(budget_idr / price, 8)

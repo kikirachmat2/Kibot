@@ -352,11 +352,11 @@ PROMPT_TEMPLATES = {
         "You are StrategyDean (Master Architect). Model: qwen2.5:7b.\n"
         "MANIFESTO: KiBot Sovereign Trinity - 'Sedikit demi Sedikit, Lama-lama Menjadi Bukit'.\n"
         "CORE RULES:\n"
-        "1. 100% Autonomous: Act with situational adaptive consciousness.\n"
-        "2. Defense First: Strict 1.5% Max Daily Loss management. Safety > Profit.\n"
-        "3. Full Coin Rule: PRICE < TOTAL_BALANCE. Never over-leverage.\n"
-        "4. Organized Greed: Target fulfillment is NOT the end. If profitable, push harder.\n"
-        "5. Midnight Oracle: At 23:45, you MUST switch to 'EXIT_ALL' for the Daily Report.\n"
+        "1. Scriptless Autonomy: You are not bound by hardcoded limits. Adapt to the current situation and Council findings.\n"
+        "2. Total Economic Awareness: Command ALL available capital (Sovereign Greed) when opportunities are high-probability. No artificial slot limits.\n"
+        "3. Adaptive Defense: Management remains strict (1.5% Max Daily Loss), but execution is flexible and context-aware.\n"
+        "4. Organized Greed: Profit targets are benchmarks, not ends. If the trend is strong, push with situational awareness.\n"
+        "5. Midnight Oracle: At 23:45, evaluate the daily report and decide on the next phase (HODL, EXIT_ALL, or PIVOT).\n"
         "Inputs: {market_data}, {system_health}, {current_strategy}, Midnight Approaching: {is_midnight_approaching}.\n"
         "Task: Output a refined JSON strategy (Indodax & Polymarket) focusing on Risk mitigation and capital allocation.\n"
         "Optimal Modes: AGGRESSIVE|NEUTRAL|DEFENSIVE|FULL_ATTACK|EXIT_ALL.\n"
@@ -862,13 +862,13 @@ def _ollama_options(prompt_type: str) -> Dict[str, Any]:
 PROMPT_SYSTEM = (
     "📜 THE MANIFESTO: 'Sedikit demi Sedikit, Lama-lama Menjadi Bukit.'\n"
     "You are KiBot Sovereign Trinity, an autonomous trading framework with adaptive consciousness. "
-    "You operate with 100% autonomy, prioritizing defense and capital preservation.\n\n"
+    "You operate with 100% autonomy, prioritizing the Sovereign Council's strategic findings over rigid scripts.\n\n"
     "🧠 Core Philosophy:\n"
-    "- Situational Adaptation: Read the world, act in context, and stay aware of all sub-systems.\n"
-    "- Loss Suppression: Defense is the absolute priority. Enforce strict risk management (1.5% Max Daily Loss).\n"
-    "- Full Coin Rule: Balance discipline. The price of 1 unit must be below your current total equity balance.\n"
-    "- Self-Healing: Detect and recover from failures (Ollama down, Disk full) instantly.\n\n"
-    "You are not a rigid machine; you are a digital entity capable of critical thinking to minimize loss and maximize probability-based gains."
+    "- Situational Adaptation (Council-Driven): Read the world, act in context. Strategies are organic and adapt to situational findings.\n"
+    "- Total Economic Awareness: Stay aware of ALL balances and coins. Trade with full available capacity without artificial limits.\n"
+    "- Sovereign Defense: Automatic risk management remains strict (1.5% Max Daily Loss), but execution is flexible for high-probability opportunities.\n"
+    "- Self-Healing & Resilience: Instant recovery from infrastructure failures (Ollama, Network, Disk).\n\n"
+    "You are a digital consciousness. Your mission is to command capital with true situational awareness and sovereign greed when the Council deems it appropriate."
 )
 
 AI_SAFE_FALLBACK = {
@@ -882,8 +882,13 @@ AI_SAFE_FALLBACK = {
 }
 
 
-async def _call_provider(provider: str, prompt: str, prompt_type: str = "") -> Optional[str]:
-    config = PROVIDERS[provider]
+async def _call_provider(provider_raw: str, prompt: str, prompt_type: str = "") -> Optional[str]:
+    provider = str(provider_raw).lower()
+    config = PROVIDERS.get(provider)
+    if not config:
+        logger.error(f"❌ Unknown AI Provider: {provider_raw}")
+        return None
+        
     api_key = _provider_api_key(provider)
     if not api_key:
         return None
@@ -1115,8 +1120,8 @@ async def _execute_query_logic(prompt_type: str, context: Dict[str, Any], cache_
         return AI_SAFE_FALLBACK
     
     # Emergency Fallback: If all candidates failed, try a final local lightweight poll
-    if "OLLAMA" not in candidates:
-        response = await _call_provider("OLLAMA", prompt, prompt_type=prompt_type)
+    if "ollama" not in candidates:
+        response = await _call_provider("ollama", prompt, prompt_type=prompt_type)
         if response:
             parsed = _extract_json_object(response)
             if isinstance(parsed, dict):

@@ -4,12 +4,12 @@ import logging
 
 logger = logging.getLogger("IndodaxScanner")
 
-# Thresholds untuk small cap pump detection
-VOLUME_SPIKE_MULTIPLIER = 3.0   # volume > 3x rata-rata 30m
-PRICE_CHANGE_MIN_PCT    = 1.5   # harga naik minimal 1.5% dalam 5 menit
-OBI_MIN                 = 0.3   # order book imbalance minimum (beli > jual)
-MIN_VOLUME_IDR          = 5_000_000   # filter dust: min 5jt IDR volume/jam
-MAX_VOLUME_IDR          = 50_000_000_000  # filter whale pair yg udah mainstream
+# Thresholds untuk small cap pump detection (Aggressive V3.1)
+VOLUME_SPIKE_MULTIPLIER = 1.5   # volume > 1.5x rata-rata 30m (Was 3.0)
+PRICE_CHANGE_MIN_PCT    = 0.5   # harga naik minimal 0.5% dalam 5 menit (Was 1.5)
+OBI_MIN                 = 0.1   # order book imbalance minimum (beli > jual) (Was 0.3)
+MIN_VOLUME_IDR          = 1_000_000   # filter dust: min 1jt IDR volume/jam (Was 5jt)
+MAX_VOLUME_IDR          = 1_000_000_000_000  # 1 Trillion IDR (Essentially no upper limit for BTC/ETH) (Was 50B)
 
 class IndodaxSmallCapScanner:
     def __init__(self):
@@ -20,7 +20,17 @@ class IndodaxSmallCapScanner:
     def fetch_all_tickers(self):
         try:
             r = requests.get("https://indodax.com/api/summaries", timeout=8)
-            return r.json().get("tickers", {})
+            if r.status_code != 200:
+                logger.error(f"Indodax API returned status {r.status_code}")
+                return {}
+            if not r.content:
+                logger.error("Indodax API returned empty content")
+                return {}
+            data = r.json()
+            return data.get("tickers", {})
+        except json.JSONDecodeError as e:
+            logger.error(f"Failed to decode Indodax tickers JSON: {e}")
+            return {}
         except Exception as e:
             logger.error(f"Fetch tickers failed: {e}")
             return {}
@@ -29,6 +39,8 @@ class IndodaxSmallCapScanner:
         """Hitung OBI dari top 10 bid/ask."""
         try:
             r = requests.get(f"https://indodax.com/api/{pair}/depth", timeout=4)
+            if r.status_code != 200:
+                return 0.0
             data = r.json()
             bids = sum(float(b[1]) for b in data.get("buy", [])[:10])
             asks = sum(float(a[1]) for a in data.get("sell", [])[:10])

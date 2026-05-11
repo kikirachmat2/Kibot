@@ -38,11 +38,11 @@ class KiConfig:
     PHILOSOPHY = "Sedikit Demi Sedikit, Lama-Lama Jadi Bukit"
     MOTTO = "Tekan Kerugian, Maksimalkan Probabilitas Keuntungan"
     
-    # Strict Risk Parameters (Sovereign Level)
-    MAX_DAILY_LOSS_PERCENT = 1.5      # "Tekan Kerugian" - Hard cap per day
-    MIN_SIGNAL_PROBABILITY = 0.85     # "Maksimalkan Probabilitas" - Only 85%+ high-conviction
-    SCALPING_TP_PERCENT = 0.5         # "Sedikit Demi Sedikit" - Take profit early
-    SCALPING_SL_PERCENT = 0.3         # Strict stop loss to maintain 2:1 RR approx
+    # Strict Risk Parameters (Sovereign Level - Aggressive V3.1)
+    MAX_DAILY_LOSS_PERCENT = 10.0      # 10% Max Daily Loss
+    MIN_SIGNAL_PROBABILITY = 0.65     # Lowered to 65% for high-aggression
+    SCALPING_TP_PERCENT = 1.0         # Increased for more room
+    SCALPING_SL_PERCENT = 2.0         # Matches RiskGate SL
     
     # --- EXCHANGE RATES ---
     KRW_USD_RATE = 1350.0             # Default conversion, can be updated via env

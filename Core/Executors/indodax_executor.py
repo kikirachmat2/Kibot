@@ -78,10 +78,15 @@ class IndodaxExecutor:
         self.running = True
         logger.info(f"🚀 Indodax Engine active on port {LISTEN_PORT}...")
         
-        # Setup UDP Listener
-        transport, protocol = await asyncio.get_event_loop().create_datagram_endpoint(
+        # Setup UDP Listener with ReuseAddr
+        loop = asyncio.get_event_loop()
+        sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        sock.bind(('0.0.0.0', LISTEN_PORT))
+        
+        transport, protocol = await loop.create_datagram_endpoint(
             lambda: SignalProtocol(self),
-            local_addr=('0.0.0.0', LISTEN_PORT)
+            sock=sock
         )
         
         # Start Heartbeat
@@ -204,13 +209,15 @@ class IndodaxExecutor:
         change_pct = abs(signal.get("change_pct", 0))
 
         # --- SCRIPT LOGIC (V3.2) ---
+        max_exposure = float(indo_strat.get("max_exposure_idr", 0))
+        max_slots = indo_strat.get("max_slots", 100)
+        
         total_slots = 0
         async with self.lock:
             # Check total slots (Active + Reserved)
             total_slots = len(self.active_trades) + len(self.reservations)
-            max_slots = indo_strat.get("max_slots", 4)
             
-            if total_slots >= max_slots and symbol not in self.active_trades and symbol not in self.reservations:
+            if max_exposure > 0 and total_slots >= max_slots and symbol not in self.active_trades and symbol not in self.reservations:
                 logger.debug(f"🛡️ Slots full ({total_slots}/{max_slots}). Ignoring {symbol}.")
                 return
             
@@ -228,7 +235,17 @@ class IndodaxExecutor:
             current_balance = await self.indodax.get_balance("idr")
             
             # 2. Risk Validation
-            budget = float(indo_strat.get("max_exposure_idr", 25000) / 4) # Split budget
+            # 2. Dynamic Budget Allocation (V3.1 Sovereign Balance Awareness)
+            remaining_slots = max_slots - len(self.active_trades)
+            
+            if max_exposure == 0:
+                # [SOVEREIGN GREED] Use all available balance divided by remaining slots
+                budget = current_balance / max(1, remaining_slots)
+            else:
+                budget = max_exposure / max_slots
+            
+            # Ensure it doesn't exceed current balance and meets minimums
+            budget = min(budget, current_balance)
             signal["budget_idr"] = budget
             
             is_valid, reason = self.risk.validate_signal(signal, current_balance, total_slots)
@@ -253,7 +270,9 @@ class IndodaxExecutor:
                 logger.error(f"Slippage check failed: {e}")
 
             # 4. Filter by Council Strategy
-            if symbol not in indo_strat.get("allowed_pairs", []):
+            # 4. Filter by Council Strategy (V3.1: "*" wildcard support)
+            allowed = indo_strat.get("allowed_pairs", [])
+            if "*" not in allowed and symbol not in allowed:
                 logger.debug(f"🛡️ Symbol {symbol} not in allowed_pairs.")
                 return
 
