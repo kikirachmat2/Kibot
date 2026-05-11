@@ -1,8 +1,14 @@
-#!/usr/bin/env python3
 import logging
+import json
+import os
+from datetime import date
+from pathlib import Path
 from typing import Dict, Optional, Tuple
 
 logger = logging.getLogger("RiskGate")
+
+STATE_DIR = Path(__file__).resolve().parent.parent / "state"
+RISK_STATE_FILE = STATE_DIR / "risk_state.json"
 
 class RiskGate:
     """
@@ -16,14 +22,65 @@ class RiskGate:
             "min_order_notional_idr": 25000,
             "max_order_notional_idr": 5000000,
             "max_active_positions": 5,
-            "blacklist": ["USDT_IDR"] # Prevent accidental recursive stablecoin loops
+            "max_daily_loss_pct": 1.5, # 1.5% Max Daily Loss
+            "blacklist": ["USDT_IDR"] 
         }
+        self.daily_pnl = 0.0
+        self.last_reset_date = str(date.today())
+        self._load_state()
+
+    def _load_state(self):
+        if RISK_STATE_FILE.exists():
+            try:
+                with open(RISK_STATE_FILE, "r") as f:
+                    state = json.load(f)
+                    if state.get("last_reset_date") == str(date.today()):
+                        self.daily_pnl = state.get("daily_pnl", 0.0)
+                    else:
+                        self.daily_pnl = 0.0
+                        self.last_reset_date = str(date.today())
+                        self._save_state()
+            except Exception as e:
+                logger.error(f"Failed to load risk state: {e}")
+
+    def _save_state(self):
+        STATE_DIR.mkdir(parents=True, exist_ok=True)
+        try:
+            with open(RISK_STATE_FILE, "w") as f:
+                json.dump({
+                    "daily_pnl": self.daily_pnl,
+                    "last_reset_date": self.last_reset_date
+                }, f)
+        except Exception as e:
+            logger.error(f"Failed to save risk state: {e}")
+
+    def update_pnl(self, pnl_amount: float):
+        """Update daily PnL and persist state."""
+        self._check_reset()
+        self.daily_pnl += pnl_amount
+        self._save_state()
+        logger.info(f"💰 Daily PnL Updated: {self.daily_pnl:.2f} IDR")
+
+    def _check_reset(self):
+        today = str(date.today())
+        if self.last_reset_date != today:
+            logger.info("♻️ New day detected. Resetting daily PnL.")
+            self.daily_pnl = 0.0
+            self.last_reset_date = today
+            self._save_state()
 
     def validate_signal(self, signal: Dict, balance_idr: float, active_positions_count: int) -> Tuple[bool, str]:
         """
         Validates a trade signal against risk parameters.
         @return (is_valid, reason)
         """
+        self._check_reset()
+        
+        # 0. Daily Loss Check
+        max_loss = balance_idr * (self.config["max_daily_loss_pct"] / 100)
+        if self.daily_pnl < -max_loss:
+            return False, f"Daily loss limit reached ({self.daily_pnl:.2f} < -{max_loss:.2f})"
+
         symbol = signal.get("symbol", "UNKNOWN").upper()
         price = float(signal.get("price", 0))
         side = signal.get("side", "BUY").upper()
@@ -41,7 +98,6 @@ class RiskGate:
             return False, f"Max positions reached ({self.config['max_active_positions']})"
 
         # 4. Notional value check
-        # For now, we assume a fixed budget if not specified
         budget = float(signal.get("budget_idr", self.config["min_order_notional_idr"]))
         
         if budget < self.config["min_order_notional_idr"]:
@@ -54,8 +110,7 @@ class RiskGate:
         if side == "BUY" and balance_idr < budget:
             return False, f"Insufficient IDR balance (Need Rp{budget}, have Rp{balance_idr})"
 
-        # 6. Market Condition Check (Simulated for now)
-        # We can add more advanced checks like bid/ask spread if provided in the signal meta
+        # 6. Market Condition Check
         meta = signal.get("meta", {})
         spread = float(meta.get("spread_pct", 0))
         if spread > self.config["max_slippage_pct"]:
@@ -65,5 +120,4 @@ class RiskGate:
 
     def calculate_amount(self, symbol: str, price: float, budget_idr: float) -> float:
         """Calculates the amount of coin to buy based on budget and price."""
-        # Simple division. In production, we'd adjust for decimal precision per coin.
         return round(budget_idr / price, 8)

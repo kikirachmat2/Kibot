@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+from __future__ import annotations
 """
 KiBot Sovereign Master Node (Batam)
 ===================================
@@ -21,6 +22,7 @@ from pathlib import Path
 from datetime import datetime
 from dotenv import load_dotenv
 import httpx
+import signal
 
 # Load Environment Variables
 load_dotenv()
@@ -69,22 +71,20 @@ class KiBotMaster:
     def __init__(self):
         self.council = SovereignCouncil()
         self.aggregator = CouncilDataAggregator(self)
-        self.last_state = {}
-        self.market_mood = "NEUTRAL"
         self.is_running = True
+        self.last_state = {"portfolio": {"equity_idr": 0, "daily_pnl": "0.0%", "active_positions": []}}
+        self.market_mood = "NEUTRAL"
         self.breakers = {
             "SCANNER": CircuitBreaker("SCANNER", max_failures=3, reset_after_sec=600),
             "EXECUTOR": CircuitBreaker("EXECUTOR", max_failures=3, reset_after_sec=600),
             "OLLAMA": CircuitBreaker("OLLAMA", max_failures=5, reset_after_sec=120)
         }
         self._emergency_cooldown = {}
-        self.is_running = True
-        self.last_state = {"portfolio": {"equity_idr": 0, "daily_pnl": "0.0%", "active_positions": []}}
-        self.market_mood = "NEUTRAL"
-        self.brain = None
+        self.brain = {"status": "IDLE", "memory": []}
+        self.notifier = SovereignNotifier()
         
         # Self-Healing: Reset AI Provider Cooldowns on start
-        provider_cache = ROOT_DIR / "Data" / "AI" / "ai_coordinator_providers.json"
+        provider_cache = ROOT_DIR / "Core" / "state" / "ai_coordinator_providers.json"
         if provider_cache.exists():
             try:
                 provider_cache.unlink()
@@ -92,8 +92,6 @@ class KiBotMaster:
             except Exception as e:
                 logger.error(f"❌ Failed to reset AI cooldowns: {e}")
         
-        self.brain = {"status": "IDLE", "memory": []}
-        self.notifier = SovereignNotifier()
         logger.info("Initializing KiBot Sovereign Master...")
 
     def is_command_safe(self, cmd: str) -> bool:
@@ -149,7 +147,13 @@ class KiBotMaster:
                         logger.info(f"🏛️ Received {len(signals)} signed signals from {addr}. Deliberating...")
                         
                         async def deliberate_and_dispatch(sigs):
-                            decision = await self.council.deliberate_trading({"signals": sigs, "source": addr[0]})
+                            now = datetime.now()
+                            is_midnight = (now.hour == 23 and now.minute >= 45)
+                            decision = await self.council.deliberate_trading({
+                                "signals": sigs, 
+                                "source": addr[0],
+                                "is_midnight_approaching": is_midnight
+                            })
                             
                             if not decision or not isinstance(decision, dict):
                                 logger.warning("⚠️ Council returned invalid or empty decision.")
@@ -481,20 +485,48 @@ class KiBotMaster:
         return telemetry
 
 
+    def handle_sigterm(self, signum, frame):
+        """Graceful shutdown for Master Node."""
+        logger.info(f"👋 Received signal {signum}. Shutting down Sovereign Master...")
+        self.is_running = False
+        # In a real async app, we'd trigger loop.stop() or similar
+        # For now, setting is_running=False will break loops
+        sys.exit(0)
+
     def start(self):
         # Start core loops
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
         
+        # Register signal handlers
+        for sig in (signal.SIGTERM, signal.SIGINT):
+            try:
+                loop.add_signal_handler(sig, lambda: asyncio.create_task(self.shutdown()))
+            except NotImplementedError:
+                # Fallback for Windows or environments where add_signal_handler fails
+                signal.signal(sig, self.handle_sigterm)
+
         # Add tasks
         loop.create_task(self.mesh_monitor_loop())
         
         logger.info("🎖️ KiBot Sovereign Master is fully OPERATIONAL.")
         try:
             loop.run_forever()
-        except KeyboardInterrupt:
-            self.is_running = False
-            logger.info("Shutting down Sovereign Node...")
+        except (KeyboardInterrupt, SystemExit):
+            pass
+        finally:
+            loop.close()
+            logger.info("Sovereign Node offline.")
+
+    async def shutdown(self):
+        """Async shutdown handler."""
+        logger.info("👋 Initiating graceful shutdown...")
+        self.is_running = False
+        # Cancel all running tasks
+        tasks = [t for t in asyncio.all_tasks() if t is not asyncio.current_task()]
+        for t in tasks: t.cancel()
+        await asyncio.gather(*tasks, return_exceptions=True)
+        asyncio.get_event_loop().stop()
 
 if __name__ == "__main__":
     master = KiBotMaster()

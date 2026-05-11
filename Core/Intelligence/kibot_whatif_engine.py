@@ -18,7 +18,7 @@ dan di-serve via /api/state.whatIfSimulation
 
 import json, time, math, os
 from datetime import datetime
-from Intelligence.kibot_learning_engine import get_engine, ROUND_TRIP_MAKER, ROUND_TRIP_TAKER
+from Core.Intelligence.kibot_learning_engine import get_engine, ROUND_TRIP_MAKER, ROUND_TRIP_TAKER
 
 WHATIF_PATH =  "Data/State/whatif_results.json"
 

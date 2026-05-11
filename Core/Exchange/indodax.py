@@ -104,38 +104,42 @@ class IndodaxGateway:
         except:
             return amount
 
+    def _normalize_pair(self, pair: str) -> str:
+        """Normalizes symbol to indodax format (e.g. BTC/IDR -> btc_idr)."""
+        return pair.lower().replace("/", "_")
+
     async def trade(self, pair, type, price, amount_coin=None, amount_idr=None):
+        pair = self._normalize_pair(pair)
         params = {
-            "pair": pair.lower(),
+            "pair": pair,
             "type": type.lower(),
-            "price": int(price)
+            "price": int(price) if "_idr" in pair else self.round_step(price, "0.00000001")
         }
         
-        # Indodax precision handles: IDR usually int, Crypto usually 8 decimals
         if amount_coin:
             coin_symbol = pair.split('_')[0]
-            # Use standard 8 decimal precision for crypto if not specified
             params[coin_symbol] = self.round_step(amount_coin, "0.00000001")
         elif amount_idr and type.lower() == 'buy':
             params['idr'] = int(amount_idr)
         
-        # Clear cache after trade to ensure next check is fresh
         IndodaxGateway._info_cache = None
         return await self._post_private("trade", params)
 
     async def get_ticker(self, pair):
+        pair = self._normalize_pair(pair)
         async with httpx.AsyncClient() as client:
             try:
-                resp = await client.get(f"{self.public_url}/{pair.lower()}/ticker")
+                resp = await client.get(f"{self.public_url}/{pair}/ticker")
                 return resp.json().get("ticker", {})
             except:
                 return {}
 
     async def get_orderbook(self, pair):
         """Fetch orderbook depth for slippage protection."""
+        pair = self._normalize_pair(pair)
         async with httpx.AsyncClient() as client:
             try:
-                resp = await client.get(f"{self.public_url}/{pair.lower()}/depth")
+                resp = await client.get(f"{self.public_url}/{pair}/depth")
                 return resp.json()
             except Exception as e:
                 logger.error(f"❌ Orderbook Fetch Error: {e}")

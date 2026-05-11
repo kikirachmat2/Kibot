@@ -1,3 +1,4 @@
+from __future__ import annotations
 import os, json, time, asyncio, logging
 from pathlib import Path
 from typing import Dict, List, Optional, Any
@@ -33,13 +34,13 @@ class SovereignCouncil:
         snapshot = issue_context.get("snapshot", {})
         
         # 1. OBSERVATION (Watchman)
-        obs_res = query_ai("COUNCIL_WATCHMAN", {"snapshot": snapshot})
+        obs_res = await query_ai("COUNCIL_WATCHMAN", {"snapshot": snapshot})
         if not obs_res or obs_res.get("status") == "NORMAL":
             if issue_context.get("type") != "EMERGENCY":
                 return {"action": "NONE", "confidence": 1.0}
 
         # 2. STRATEGY (Strategist)
-        strat_res = query_ai("COUNCIL_STRATEGIST", {
+        strat_res = await query_ai("COUNCIL_STRATEGIST", {
             "context": issue_context,
             "diagnosis": obs_res
         })
@@ -65,18 +66,18 @@ class SovereignCouncil:
         
         # 1. Gather Intelligence
         # We call System Engineer first for health check
-        health = query_ai("SYSTEM_ENGINEER", {"netdata_snapshot": "CPU: 20%, MEM: 40%"}) # Mock data
+        health = await query_ai("SYSTEM_ENGINEER", {"netdata_snapshot": "CPU: 20%, MEM: 40%"}) # Mock data
         if health and health.get("action") == "PAUSE":
             set_urgency("EMERGENCY_PAUSE", health.get("reason"))
             return
 
         # 2. Market Synthesis
-        scout_res = query_ai("MARKET_SCOUT", {"raw_scan_results": market_snapshot})
-        sentiment = query_ai("SENTIMENT_SYNTHESIZER", {"news_context": "Global Crypto Trends"})
+        scout_res = await query_ai("MARKET_SCOUT", {"raw_scan_results": market_snapshot})
+        sentiment = await query_ai("SENTIMENT_SYNTHESIZER", {"news_context": "Global Crypto Trends"})
         
         # [NEW V3.1] Forensic and Cross-Market Intelligence
-        whale_intel = query_ai("WHALE_WATCHER", {"orderbook_snapshot": market_snapshot.get("indodax")})
-        bridge_alpha = query_ai("CROSS_BRIDGE_STRATEGIST", {
+        whale_intel = await query_ai("WHALE_WATCHER", {"orderbook_snapshot": market_snapshot.get("indodax")})
+        bridge_alpha = await query_ai("CROSS_BRIDGE_STRATEGIST", {
             "indodax_data": market_snapshot.get("indodax"),
             "poly_data": market_snapshot.get("polymarket")
         })
@@ -91,7 +92,7 @@ class SovereignCouncil:
         # If between 23:45 and 00:00, force 'EXIT_ALL' mode
         is_midnight_approaching = (now.hour == 23 and now.minute >= 45)
         
-        dean_res = query_ai("STRATEGY_DEAN", {
+        dean_res = await query_ai("STRATEGY_DEAN", {
             "market_data": scout_res,
             "system_health": health,
             "current_strategy": current,
@@ -119,16 +120,55 @@ class SovereignCouncil:
         War Room mode for active trades.
         """
         logger.info(f"🛡️ Active Guardian: Protecting {ticker}...")
-        res = query_ai("ACTIVE_GUARDIAN", {"ticker": ticker, "entry_price": entry_price})
+        res = await query_ai("ACTIVE_GUARDIAN", {"ticker": ticker, "entry_price": entry_price})
         
         if res and res.get("status") == "EXIT":
             # Force emergency exit by updating strategy or sending urgency
             logger.warning(f"🚨 GUARDIAN ORDERED EXIT: {ticker} - {res.get('reasoning')}")
             set_urgency("FORCE_EXIT", f"Guardian: {res.get('reasoning')}")
 
-    async def deliberate_trading(self, context: Dict) -> Dict:
-        """Legacy wrapper for compatibility, redirects to Strategy loop."""
-        return await self.run_strategic_planning(context)
+    async def deliberate_trading(self, signals_context: Dict) -> Dict:
+        """
+        [NEW V3.2] Trading Deliberation for MasterNode.
+        Analyzes incoming signals and returns a formal mandate for execution.
+        """
+        logger.info(f"🏛️ Council Deliberating Trading Signals...")
+        
+        # 1. Council Consensus
+        # We use COUNCIL_SPEAKER to synthesize the final verdict from signals
+        is_midnight = signals_context.get("is_midnight_approaching", False)
+        decision = await query_ai("COUNCIL_SPEAKER", {
+            **signals_context,
+            "is_midnight_approaching": is_midnight
+        })
+        
+        if not decision or decision.get("is_fallback"):
+            logger.warning("⚠️ Council failed to reach consensus or returned fallback.")
+            return {"status": "REJECTED", "reason": "No AI consensus"}
+
+        # 2. Add metadata and match source signal
+        decision["timestamp"] = time.time()
+        
+        # Find matching signal from context for price/metadata parity
+        signals = signals_context.get("signals", [])
+        target_ticker = decision.get("ticker", "UNKNOWN").upper()
+        
+        source_signal = {}
+        for s in signals:
+            if s.get("ticker", "").upper() == target_ticker:
+                source_signal = s
+                break
+        
+        decision["source_signal"] = source_signal
+
+        # 3. Determine Execution Status
+        if decision.get("action") in ["BUY", "SELL"] and decision.get("confidence", 0) >= 0.8:
+            decision["status"] = "EXECUTING"
+        else:
+            decision["status"] = "REJECTED"
+
+        self._log_decision(decision)
+        return decision
 
     def _log_decision(self, decision: Dict):
         try:

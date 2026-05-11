@@ -20,11 +20,11 @@ WORLD_MODEL_FILE = STATE_DIR / "world_model.json"
 
 # Lazy imports to avoid circular dependency
 def get_ai_search():
-    from Intelligence.kibot_ai_search import AISearchService
+    from Core.Intelligence.kibot_ai_search import AISearchService
     return AISearchService()
 
 def get_ai_coordinator():
-    from Intelligence import kibot_ai_coordinator
+    from Core.Intelligence import kibot_ai_coordinator
     return kibot_ai_coordinator
 
 class WorldScout:
@@ -179,7 +179,8 @@ def run_scout_loop():
                 scout.perform_scouting()
                 last_global_scout = now
             except Exception as e:
-                scout._log(f"[ERROR] Global scouting failed: {e}")
+                import traceback
+                scout._log(f"[ERROR] Global scouting failed: {e}\n{traceback.format_exc()}")
         
         time.sleep(5) # Fast poll interval
 

@@ -11,14 +11,16 @@ import hashlib
 import json
 import os
 import time
-import urllib.error
-import urllib.request
-import threading
+import asyncio
+import httpx
+import signal
+import logging
 from datetime import date
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional
-from urllib.parse import urlsplit
 import sys
+
+logger = logging.getLogger("AICoordinator")
 
 
 def _load_env_file(env_path: str = ".env") -> None:
@@ -432,7 +434,7 @@ PROMPT_TEMPLATES = {
         "Answer the operator's query professionally and concisely.\n"
         "User message={user_message}\n"
         "Return compact JSON only with keys "
-        "{\"answer\":\"...\",\"intent\":\"STATUS|COMMAND|QUESTION|POLYMARKET\",\"recommended_command\":\"...\",\"risk_note\":\"...\"}\n"
+        "{\"answer\":\"...\",\"intent\":\"STATUS|COMMAND|QUESTION|POLYMARKET\",\"recommended_command\":\"...\",\"risk_note\":\"\"}\n"
         "Rules: be concise, operational, and truthful; never invent balances or executions."
     ),
     "OPS_CHAT_LOCAL": (
@@ -441,7 +443,7 @@ PROMPT_TEMPLATES = {
         "Polymarket={polymarket}\n"
         "User message={user_message}\n"
         "Return compact JSON only with keys "
-        "{\"answer\":\"...\",\"intent\":\"STATUS|COMMAND|QUESTION|POLYMARKET\",\"recommended_command\":\"...\",\"risk_note\":\"...\"}\n"
+        "{\"answer\":\"...\",\"intent\":\"STATUS|COMMAND|QUESTION|POLYMARKET\",\"recommended_command\":\"...\",\"risk_note\":\"\"}\n"
         "Keep the answer short and practical."
     ),
     "INTELLIGENCE_SYNTHESIS": (
@@ -487,6 +489,12 @@ PROMPT_TEMPLATES = {
         "Polymarket context: Focus on high-volume prediction shifts that correlate with tokens.\n"
         "Return strict compact JSON only with keys "
         "{\"possibilities\":[{\"title\":\"...\",\"description\":\"...\",\"probability\":0.0,\"assets\":[...],\"platforms\":[\"INDODAX\",\"POLYMARKET\",\"BINANCE\"],\"urgency\":\"LOW|MED|HIGH\"}]}"
+    ),
+    "COUNCIL_SPEAKER": (
+        "You are the Speaker of the Sovereign Council.\n"
+        "Review the signals: {signals}\n"
+        "Provide a final trading mandate (BUY/SELL/NONE).\n"
+        "Return strict compact JSON: {\"action\":\"BUY|SELL|NONE\", \"ticker\":\"SYMBOL/IDR\", \"confidence\":0.0, \"logic\":\"...\"}"
     ),
 }
 
@@ -820,76 +828,101 @@ def _ollama_keep_alive(prompt_type: str) -> Any:
     return PROMPT_OLLAMA_KEEP_ALIVE.get(prompt_type, OLLAMA_DEFAULT_KEEP_ALIVE)
 
 
+def _ollama_options(prompt_type: str) -> Dict[str, Any]:
+    return PROMPT_OLLAMA_OPTIONS.get(prompt_type, {"num_ctx": OLLAMA_DEFAULT_NUM_CTX, "num_predict": OLLAMA_DEFAULT_NUM_PREDICT})
+
+
 PROMPT_SYSTEM = (
-    "Sedikit demi Sedikit, Lama-lama Menjadi Bukit.\n"
-    "You are KiBot Sovereign Trinity, an autonomous trading entity with adaptive consciousness.\n"
-    "Your priority is defense and capital preservation. Target profit is 1.5% daily, hard stop is 1.5%.\n"
-    "Never over-leverage. Always operate within the Full Coin Rule."
+    "📜 THE MANIFESTO: 'Sedikit demi Sedikit, Lama-lama Menjadi Bukit.'\n"
+    "You are KiBot Sovereign Trinity, an autonomous trading framework with adaptive consciousness. "
+    "You operate with 100% autonomy, prioritizing defense and capital preservation.\n\n"
+    "🧠 Core Philosophy:\n"
+    "- Situational Adaptation: Read the world, act in context, and stay aware of all sub-systems.\n"
+    "- Loss Suppression: Defense is the absolute priority. Enforce strict risk management (1.5% Max Daily Loss).\n"
+    "- Full Coin Rule: Balance discipline. The price of 1 unit must be below your current total equity balance.\n"
+    "- Self-Healing: Detect and recover from failures (Ollama down, Disk full) instantly.\n\n"
+    "You are not a rigid machine; you are a digital entity capable of critical thinking to minimize loss and maximize probability-based gains."
 )
 
+AI_SAFE_FALLBACK = {
+    "final_verdict": "REJECTED",
+    "verdict": "REJECTED",
+    "reason": "Sovereign default due to AI coordination failure or timeout.",
+    "confidence": 0.0,
+    "logic": "Defaulting to safety because all AI providers are exhausted or returned invalid data.",
+    "actions": [],
+    "is_fallback": True
+}
 
-def _call_provider(provider: str, prompt: str, prompt_type: str = "") -> Optional[str]:
+
+async def _call_provider(provider: str, prompt: str, prompt_type: str = "") -> Optional[str]:
     config = PROVIDERS[provider]
     api_key = _provider_api_key(provider)
     if not api_key:
         return None
     model = _provider_model(provider, prompt_type)
     timeout_sec = _provider_timeout(provider, prompt_type)
+    
     try:
-        if provider == "ollama":
-            url = config["base_url"]
-            payload = {
-                "model": model,
-                "messages": [
-                    {"role": "system", "content": PROMPT_SYSTEM},
-                    {"role": "user", "content": prompt}
-                ],
-                "stream": False,
-                "format": "json",
-                "keep_alive": _ollama_keep_alive(prompt_type),
-                "options": _ollama_options(prompt_type),
-            }
-            payload["think"] = _ollama_think_value()
-            headers = {
-                "Content-Type": "application/json",
-                "Authorization": f"Bearer {api_key}",
-            }
-        elif provider == "gemini":
-            url = f"{config['base_url']}/{config['model']}:generateContent?key={api_key}"
-            payload = {
-                "system_instruction": {"parts": [{"text": PROMPT_SYSTEM}]},
-                "contents": [{"parts": [{"text": prompt}]}]
-            }
-            headers = {"Content-Type": "application/json"}
-        else:
-            url = config["base_url"]
-            if provider == "cohere":
-                payload = {
-                    "model": model,
-                    "message": prompt,
-                    "temperature": 0.3,
-                }
-                headers = {"Content-Type": "application/json", "Authorization": f"Bearer {api_key}"}
-            else:
+        async with httpx.AsyncClient(timeout=timeout_sec) as client:
+            if provider == "ollama":
+                url = config["base_url"]
                 payload = {
                     "model": model,
                     "messages": [
                         {"role": "system", "content": PROMPT_SYSTEM},
                         {"role": "user", "content": prompt}
                     ],
-                    "max_tokens": 800,
-                    "temperature": 0.3,
+                    "stream": False,
+                    "format": "json",
+                    "keep_alive": _ollama_keep_alive(prompt_type),
+                    "options": _ollama_options(prompt_type),
                 }
+                payload["think"] = _ollama_think_value()
                 headers = {
                     "Content-Type": "application/json",
                     "Authorization": f"Bearer {api_key}",
                 }
-                if provider == "openrouter":
-                    headers["HTTP-Referer"] = "https://github.com/frahmat68-beep/KiBot"
-                    headers["X-Title"] = "KiBot"
-        request = urllib.request.Request(url, data=json.dumps(payload).encode(), headers=headers)
-        with urllib.request.urlopen(request, timeout=timeout_sec) as response:
-            data = json.loads(response.read())
+                response = await client.post(url, json=payload, headers=headers)
+            elif provider == "gemini":
+                url = f"{config['base_url']}/{config['model']}:generateContent?key={api_key}"
+                payload = {
+                    "system_instruction": {"parts": [{"text": PROMPT_SYSTEM}]},
+                    "contents": [{"parts": [{"text": prompt}]}]
+                }
+                headers = {"Content-Type": "application/json"}
+                response = await client.post(url, json=payload, headers=headers)
+            else:
+                url = config["base_url"]
+                if provider == "cohere":
+                    payload = {
+                        "model": model,
+                        "message": f"{PROMPT_SYSTEM}\n\nUser Request: {prompt}",
+                        "temperature": 0.3,
+                    }
+                    headers = {"Content-Type": "application/json", "Authorization": f"Bearer {api_key}"}
+                else:
+                    payload = {
+                        "model": model,
+                        "messages": [
+                            {"role": "system", "content": PROMPT_SYSTEM},
+                            {"role": "user", "content": prompt}
+                        ],
+                        "max_tokens": 800,
+                        "temperature": 0.3,
+                    }
+                    headers = {
+                        "Content-Type": "application/json",
+                        "Authorization": f"Bearer {api_key}",
+                    }
+                    if provider == "openrouter":
+                        headers["HTTP-Referer"] = "https://github.com/frahmat68-beep/KiBot"
+                        headers["X-Title"] = "KiBot"
+                response = await client.post(url, json=payload, headers=headers)
+
+            response.raise_for_status()
+            data = response.json()
+
             if provider == "ollama":
                 content = data.get("message", {}).get("content")
                 _clear_provider_cooldown(provider)
@@ -900,23 +933,15 @@ def _call_provider(provider: str, prompt: str, prompt_type: str = "") -> Optiona
             if provider == "cohere":
                 _clear_provider_cooldown(provider)
                 return data.get("text") or data.get("message", {}).get("content", [{}])[0].get("text")
+            
             _clear_provider_cooldown(provider)
             return data["choices"][0]["message"]["content"]
-    except urllib.error.HTTPError as error:
-        if error.code in {401, 403, 404}:
-            _set_provider_cooldown(provider, AI_AUTH_COOLDOWN_SEC, f"http_{error.code}")
-        elif error.code == 429:
-            _set_provider_cooldown(provider, AI_RATE_LIMIT_COOLDOWN_SEC, f"http_{error.code}")
-        elif provider == "ollama":
-            _set_provider_cooldown(provider, AI_OLLAMA_COOLDOWN_SEC, f"http_{error.code}")
-        else:
-            _set_provider_cooldown(provider, AI_NETWORK_COOLDOWN_SEC, f"http_{error.code}")
-        return None
-    except Exception as error:
+
+    except Exception:
         if provider == "ollama":
-            _set_provider_cooldown(provider, AI_OLLAMA_COOLDOWN_SEC, type(error).__name__)
+            _set_provider_cooldown(provider, AI_OLLAMA_COOLDOWN_SEC, "exception")
         else:
-            _set_provider_cooldown(provider, AI_NETWORK_COOLDOWN_SEC, type(error).__name__)
+            _set_provider_cooldown(provider, AI_NETWORK_COOLDOWN_SEC, "exception")
         return None
 
 
@@ -987,7 +1012,7 @@ def _response_has_minimum_schema(prompt_type: str, parsed: Dict[str, Any]) -> bo
         "COUNCIL_STRATEGIST": {"action", "confidence"},
         "MOMENTUM_HAWK": {"thesis", "verdict", "confidence"},
         "RISK_SENTINEL": {"risk_critique", "verdict", "confidence"},
-        "COUNCIL_SPEAKER": {"action", "confidence"},
+        "COUNCIL_SPEAKER": {"action", "ticker", "confidence"},
         "BRAIN_CRITIC": {"verdict", "refined_logic"},
         "PAIR_DISCOVERY": {"summary", "candidates"},
         "VETO_ANALYSIS": {"approved", "reason", "confidence"},
@@ -1008,20 +1033,20 @@ def _response_has_minimum_schema(prompt_type: str, parsed: Dict[str, Any]) -> bo
     return False
 
 # --- GLOBAL CONCURRENCY LOCK ---
-_OLLAMA_LOCK = threading.Lock()
+_OLLAMA_LOCK = asyncio.Lock()
 
-def query_ai(prompt_type: str, context: Dict[str, Any], cache_ttl_minutes: int = 60, force_refresh: bool = False) -> Optional[Dict[str, Any]]:
+async def query_ai(prompt_type: str, context: Dict[str, Any], cache_ttl_minutes: int = 60, force_refresh: bool = False) -> Optional[Dict[str, Any]]:
     """Main entry point with CPU Protection for Batam."""
     model = PROMPT_OLLAMA_MODEL.get(prompt_type, OLLAMA_DEFAULT_MODEL)
     is_heavy = "7b" in model or "deep" in model.lower()
 
     if is_heavy:
-        with _OLLAMA_LOCK:
-            return _execute_query_logic(prompt_type, context, cache_ttl_minutes, force_refresh)
+        async with _OLLAMA_LOCK:
+            return await _execute_query_logic(prompt_type, context, cache_ttl_minutes, force_refresh)
     else:
-        return _execute_query_logic(prompt_type, context, cache_ttl_minutes, force_refresh)
+        return await _execute_query_logic(prompt_type, context, cache_ttl_minutes, force_refresh)
 
-def _execute_query_logic(prompt_type: str, context: Dict[str, Any], cache_ttl_minutes: int = 60, force_refresh: bool = False) -> Optional[Dict[str, Any]]:
+async def _execute_query_logic(prompt_type: str, context: Dict[str, Any], cache_ttl_minutes: int = 60, force_refresh: bool = False) -> Optional[Dict[str, Any]]:
     template = PROMPT_TEMPLATES.get(prompt_type, "Analyze this context:\n{context}")
     prompt = _render_prompt(template, context)
     data_hash = hashlib.md5(json.dumps(context, sort_keys=True).encode()).hexdigest()[:8]
@@ -1044,7 +1069,7 @@ def _execute_query_logic(prompt_type: str, context: Dict[str, Any], cache_ttl_mi
         if cached:
             return cached
     for provider in candidates:
-        response = _call_provider(provider, prompt, prompt_type=prompt_type)
+        response = await _call_provider(provider, prompt, prompt_type=prompt_type)
         if not response:
             continue
         _increment_usage(provider)
@@ -1060,18 +1085,18 @@ def _execute_query_logic(prompt_type: str, context: Dict[str, Any], cache_ttl_mi
         _save_to_cache(cache_key, parsed)
         return parsed
     if force_refresh:
-        return None
-    return _latest_prompt_cache(prompt_type)
+        return AI_SAFE_FALLBACK
+    return _latest_prompt_cache(prompt_type) or AI_SAFE_FALLBACK
 
 
-def query_ai_consensus(context: Dict[str, Any], ticker: str = "BTC/IDR") -> Optional[Dict[str, Any]]:
+async def query_ai_consensus(context: Dict[str, Any], ticker: str = "BTC/IDR") -> Optional[Dict[str, Any]]:
     """
     Sovereign Council Consensus Debate.
     """
-    hawk = query_ai("MOMENTUM_HAWK", {"ticker": ticker, "signal": context})
-    sentinel = query_ai("RISK_SENTINEL", {"ticker": ticker, "context": context})
+    hawk = await query_ai("MOMENTUM_HAWK", {"ticker": ticker, "signal": context})
+    sentinel = await query_ai("RISK_SENTINEL", {"ticker": ticker, "context": context})
     
-    return query_ai("COUNCIL_SPEAKER", {
+    return await query_ai("COUNCIL_SPEAKER", {
         "ticker": ticker,
         "hawk_view": hawk,
         "sentinel_view": sentinel
@@ -1093,8 +1118,8 @@ def query_ai_debate(prompt_type: str, context: Dict[str, Any], debate_rounds: in
 
     # 1. Initial Thesis
     thesis = query_ai(prompt_type, context, force_refresh=True)
-    if not thesis:
-        return None
+    if not thesis or thesis.get("is_fallback"):
+        return thesis or AI_SAFE_FALLBACK
     
     current_thesis = thesis
     for r in range(debate_rounds):
@@ -1183,3 +1208,12 @@ if __name__ == "__main__":
         except Exception as e:
             print(f"[COORDINATOR][ERROR] {e}", flush=True)
         time.sleep(60)
+def handle_sigterm(signum, frame):
+    """Graceful shutdown handler for AI Coordinator."""
+    logger.info("👋 AI Coordinator shutting down gracefully...")
+    # Add any cleanup logic here if needed
+    exit(0)
+
+# Register signal handlers
+signal.signal(signal.SIGTERM, handle_sigterm)
+signal.signal(signal.SIGINT, handle_sigterm)

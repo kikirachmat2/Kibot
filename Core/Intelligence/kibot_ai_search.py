@@ -229,13 +229,19 @@ class AISearchService:
         
         # Format CryptoPanic results
         panic_snippet = ""
-        for p in panic[:5]:
-            panic_snippet += f"- [{p.get('votes', {}).get('positive', 0)}+] {p.get('title')}\n"
+        if isinstance(panic, list):
+            for p in panic[:5]:
+                panic_snippet += f"- [{p.get('votes', {}).get('positive', 0)}+] {p.get('title')}\n"
+        else:
+            panic_snippet = "- No data available (CryptoPanic)\n"
 
         # Format Finnhub results
         finnhub_snippet = ""
-        for n in finnhub[:3]:
-            finnhub_snippet += f"- {n.get('headline')} ({n.get('source')})\n"
+        if isinstance(finnhub, list):
+            for n in finnhub[:3]:
+                finnhub_snippet += f"- {n.get('headline')} ({n.get('source')})\n"
+        else:
+            finnhub_snippet = "- No data available (Finnhub)\n"
             
         return (
             f"### Market Consensus for: {topic}\n\n"

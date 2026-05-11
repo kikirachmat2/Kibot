@@ -1,13 +1,14 @@
 #!/usr/bin/env python3
+from __future__ import annotations
 # from Batam.Support.ki_vault import load_sovereign_env (Removed to allow dynamic loading below)
+import sys
+import os
 import asyncio
 import json
 import socket
 import logging
 import time
-import os
-import sys
-from datetime import datetime
+import signal
 from pathlib import Path
 
 # Resolve absolute root
@@ -49,6 +50,25 @@ class IndodaxExecutor:
         self.active_trades = {} 
         self.running = False
         self.batam_ip = os.environ.get("KIBOT_MASTER_IP", "127.0.0.1")
+        self.state_file = Path(ROOT_DIR) / "Core" / "state" / "active_trades.json"
+        self._load_active_trades()
+
+    def _load_active_trades(self):
+        if self.state_file.exists():
+            try:
+                with open(self.state_file, "r") as f:
+                    self.active_trades = json.load(f)
+                logger.info(f"📂 Loaded {len(self.active_trades)} active trades from state.")
+            except Exception as e:
+                logger.error(f"Failed to load active trades: {e}")
+
+    def _save_active_trades(self):
+        self.state_file.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            with open(self.state_file, "w") as f:
+                json.dump(self.active_trades, f, indent=2)
+        except Exception as e:
+            logger.error(f"Failed to save active trades: {e}")
 
     async def start(self):
         print(f"🚀 {self.__class__.__name__} Starting...")
@@ -91,6 +111,8 @@ class IndodaxExecutor:
         """Pure script-based monitoring for fast Exit/Trailing-Stop."""
         while self.running:
             try:
+                # Throttled monitoring to 5s as per plan
+                await asyncio.sleep(5)
                 strategy = load_strategy()
                 indo_strat = strategy.get("indodax", {})
                 urgency = check_urgency()
@@ -157,8 +179,13 @@ class IndodaxExecutor:
         res = await self.indodax.trade(pair=pair, type="sell", price=price, amount_coin=amount)
         
         if res.get("success") == 1:
+            # Calculate PnL for RiskGate
+            pnl_amount = (price - trade.get("price", 0)) * amount
+            self.risk.update_pnl(pnl_amount)
+            
             logger.info(f"✅ EXIT SUCCESS: {symbol} via {reason} @ {price}")
             self.active_trades.pop(symbol, None)
+            self._save_active_trades()
             self.report_to_batam(symbol, reason, f"Exit @ {price}")
         else:
             logger.error(f"❌ EXIT FAILED: {symbol} - {res.get('error')}")
@@ -183,12 +210,13 @@ class IndodaxExecutor:
             logger.debug(f"🛡️ Slots full ({len(self.active_trades)}/4). Ignoring {symbol}.")
             return
 
-        # 2. Price vs Balance Guard (Strict Sovereign Rule)
-        # Price must be LESS THAN current total balance (FULL COIN RULE)
-        # We fetch balance before buying
+        # 1. Get Balance
         current_balance = await self.indodax.get_balance("idr")
-        if price >= current_balance:
-            logger.warning(f"🛡️ REJECTED: Price {price} >= Balance {current_balance}. Too expensive for {symbol}.")
+        
+        # 2. Risk Validation
+        is_valid, reason = self.risk.validate_signal(signal, current_balance, len(self.active_trades))
+        if not is_valid:
+            logger.warning(f"🛡️ REJECTED: {reason} for {symbol}.")
             return
 
         # 3. Minimum Spread Check (V3.2 Slippage Protection)
@@ -259,8 +287,11 @@ class IndodaxExecutor:
             sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
             sock.sendto(json.dumps(report).encode(), (self.batam_ip, REPORT_PORT))
         except: pass
-
-
+    def handle_sigterm(self, signum, frame):
+        logger.info("👋 IndodaxExecutor shutting down gracefully...")
+        self._save_active_trades()
+        self.running = False
+        sys.exit(0)
 
 class SignalProtocol(asyncio.DatagramProtocol):
     def __init__(self, executor):
@@ -292,9 +323,14 @@ class SignalProtocol(asyncio.DatagramProtocol):
             logger.error(f"UDP Parse/Verify Error: {e}")
 
 if __name__ == "__main__":
-    # load_sovereign_env() # Already called in _load_vault() above
     executor = IndodaxExecutor()
+    
+    # Register signal handlers
+    signal.signal(signal.SIGTERM, executor.handle_sigterm)
+    signal.signal(signal.SIGINT, executor.handle_sigterm)
+    
     try:
         asyncio.run(executor.start())
     except KeyboardInterrupt:
+        executor._save_active_trades()
         logger.info("🛑 Stopped.")

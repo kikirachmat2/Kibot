@@ -1,28 +1,32 @@
-import sys
-from pathlib import Path
-
+from __future__ import annotations
 import sys
 import os
+import json
+import time
+import re
+import logging
+import asyncio
+import hashlib
+import hmac
+import signal
+import uuid
+import threading
+from datetime import datetime, date, timedelta
 from pathlib import Path
+from typing import Dict, List, Any, Optional, Tuple
 
 # Setup paths (Sovereign Unified Support)
 ROOT = Path(__file__).resolve().parent.parent.parent
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-import json
-import os
-import time
-import redis
-import re
-import uuid
-import threading
-import hashlib
-import hmac
+try:
+    import redis
+except ImportError:
+    redis = None
+
+import httpx
 from dataclasses import asdict, dataclass, field
-from datetime import datetime, timedelta
-from typing import Dict, Optional, Tuple, List
-import urllib.request
 
 # --- CONFIGURATION ---
 STATE_ROOT = Path(os.getenv("KIBOT_RUNTIME_ROOT", ".")) / "state"
@@ -63,6 +67,9 @@ class PairStats:
     last_trade_ts: float = 0.0
     cooldown_until_ts: float = 0.0
     max_drawdown: float = 0.0
+    peak_pnl: float = 0.0
+    current_drawdown: float = 0.0
+    cumulative_pnl: float = 0.0
     pnl_variance: float = 0.0
     consecutive_losses: int = 0
     regime_stats: Dict[str, Dict[str, float]] = field(default_factory=dict)
@@ -154,12 +161,17 @@ class PairStats:
         self.ema_pnl = (0.8 * self.ema_pnl) + (0.2 * pnl)
         self.pnl_variance = (0.8 * self.pnl_variance) + 0.2 * (pnl - prev_ema)**2
         
-        # Max Drawdown (simplified)
+        # Proper Max Drawdown Tracking
+        self.cumulative_pnl += pnl
+        if self.cumulative_pnl > self.peak_pnl:
+            self.peak_pnl = self.cumulative_pnl
+            self.current_drawdown = 0.0
+        else:
+            self.current_drawdown = self.peak_pnl - self.cumulative_pnl
+            self.max_drawdown = max(self.max_drawdown, self.current_drawdown)
+
         if pnl < 0:
             self.consecutive_losses += 1
-            # Very basic drawdown tracker: if consecutive losses exceed a threshold, we peak-to-trough it
-            if self.consecutive_losses > 1:
-                self.max_drawdown = max(self.max_drawdown, abs(pnl * self.consecutive_losses))
         else:
             self.consecutive_losses = 0
 
@@ -184,12 +196,14 @@ def _get_signing_key() -> bytes:
 
 class LearningEngine:
     def __init__(self):
-        try:
-            self.redis = redis.Redis(host=REDIS_HOST, port=REDIS_PORT, db=0, decode_responses=True)
-            self.redis.ping()
-            self.use_redis = True
-        except Exception:
-            self.use_redis = False
+        self.use_redis = False
+        if redis:
+            try:
+                self.redis = redis.Redis(host=REDIS_HOST, port=REDIS_PORT, db=0, decode_responses=True)
+                self.redis.ping()
+                self.use_redis = True
+            except Exception:
+                self.use_redis = False
         
         self._cache: Dict[str, PairStats] = {}
         self._today_trades: List[dict] = [] # In-memory track for manager compatibility
@@ -475,6 +489,12 @@ class LearningEngine:
             print(f"[LEARNING] Patrol completed at {datetime.now()}")
         except Exception as e:
             print(f"[LEARNING] Patrol Error: {e}")
+    def handle_sigterm(self, signum, frame):
+        """Graceful shutdown for Learning Engine."""
+        print("👋 Learning Engine shutting down gracefully...")
+        # Final save
+        self.save_daily_summary()
+        sys.exit(0)
 
 class VWAPRegimeDetector:
     def detect(self, candles: list) -> str:
@@ -534,6 +554,11 @@ if __name__ == "__main__":
         print(f"[BOOT][VAULT][WARN] Could not load vaulted env: {ve}")
 
     engine = get_engine()
+    
+    # Register signal handlers
+    signal.signal(signal.SIGTERM, engine.handle_sigterm)
+    signal.signal(signal.SIGINT, engine.handle_sigterm)
+    
     while True:
         engine.patrol_and_audit()
         time.sleep(300)

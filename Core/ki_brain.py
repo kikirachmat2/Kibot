@@ -1,5 +1,5 @@
 from __future__ import annotations
-from Intelligence.kibot_ai_search import ROOT_DIR
+from Core.Intelligence.kibot_ai_search import ROOT_DIR
 import sys
 # pyrefly: ignore [invalid-syntax]
 
