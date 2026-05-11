@@ -50,8 +50,7 @@ load_sovereign_env()
 
 
 
-ROOT = Path(os.getenv("KIBOT_RUNTIME_ROOT", Path(__file__).resolve().parent.parent))
-STATE_DIR = ROOT / "state"
+from Core.Support.ki_config import STATE_DIR, PROJECT_ROOT as ROOT
 RATE_STATE_FILE = STATE_DIR / "ai_coordinator_rate.json"
 RESPONSE_CACHE = STATE_DIR / "ai_coordinator_cache.json"
 PROVIDER_STATE_FILE = STATE_DIR / "ai_coordinator_providers.json"

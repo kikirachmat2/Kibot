@@ -14,9 +14,7 @@ from typing import Dict, List, Any
 import asyncio
 from Core.circuit_breaker import CircuitBreaker
 
-# Path resolution
-ROOT_DIR = Path(__file__).resolve().parent.parent
-STATE_DIR = ROOT_DIR / "state"
+from Core.Support.ki_config import STATE_DIR
 WORLD_MODEL_FILE = STATE_DIR / "world_model.json"
 
 # Lazy imports to avoid circular dependency

@@ -27,26 +27,29 @@ import signal
 # Load Sovereign Environment (Decrypted)
 load_sovereign_env()
 
+# Core Imports (Unified Structure)
+from Core.Support.ki_config import STATE_DIR, LOGS_DIR, PROJECT_ROOT as ROOT_DIR
+from Core.circuit_breaker import CircuitBreaker
+from Core.sovereign_council import SovereignCouncil
+from Core.sovereign_notifier import SovereignNotifier
+from Core.Intelligence.aggregator import CouncilDataAggregator
+
 # Configure Logging
+LOGS_DIR.mkdir(parents=True, exist_ok=True)
+STATE_DIR.mkdir(parents=True, exist_ok=True)
+
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s [%(levelname)s] %(name)s: %(message)s',
     handlers=[
-        logging.FileHandler("kibot_sovereign.log"),
+        logging.FileHandler(LOGS_DIR / "kibot_sovereign.log"),
         logging.StreamHandler()
     ]
 )
 logger = logging.getLogger("KiBotMaster")
 
 # Path Setup
-ROOT_DIR = Path(__file__).resolve().parent
 sys.path.append(str(ROOT_DIR))
-
-# Core Imports (Unified Structure)
-from Core.circuit_breaker import CircuitBreaker
-from Core.sovereign_council import SovereignCouncil
-from Core.sovereign_notifier import SovereignNotifier
-from Core.Intelligence.aggregator import CouncilDataAggregator
 
 import re
 import shlex
@@ -55,6 +58,7 @@ SAFE_COMMAND_PATTERNS = [
     r'^systemctl (status|is-active|restart|start|stop) kibot-\w+(\.service)?$',
     r'^systemctl (status|is-active|restart|start|stop) lazarus-ampere(\.service)?$',
     r'^find /home/ubuntu/KiBot/logs/ -name ".*\.log" -mtime \+\d+ -delete$',
+    r'^find ' + str(LOGS_DIR) + r'/ -name ".*\.log" -mtime \+\d+ -delete$',
     r'^sudo sync && echo 3 \| sudo tee /proc/sys/vm/drop_caches$',
     r'^df -h .*$',
     r'^free -h$',
@@ -91,7 +95,7 @@ class KiBotMaster:
         self.indodax = IndodaxGateway()
         
         # Self-Healing: Reset AI Provider Cooldowns on start
-        provider_cache = ROOT_DIR / "Core" / "state" / "ai_coordinator_providers.json"
+        provider_cache = STATE_DIR / "ai_coordinator_providers.json"
         if provider_cache.exists():
             try:
                 provider_cache.unlink()

@@ -10,13 +10,12 @@ from pathlib import Path
 from typing import List, Optional
 
 # Constants
-STATE_DIR = Path(__file__).resolve().parent.parent / "state"
+from Core.Support.ki_config import STATE_DIR, BASE_PATH
 SECURITY_LOG = STATE_DIR / "security_log.jsonl"
 LEGACY_SECURITY_LOG = STATE_DIR / "security_ledger.jsonl"
 
 # Force load ki_vault from absolute path
-BASE_DIR = Path(__file__).resolve().parent.parent.parent  # Go up 2 levels to root
-SUPPORT_DIR = BASE_DIR / "Support"
+SUPPORT_DIR = BASE_PATH / "Support"
 VAULT_PATH = SUPPORT_DIR / "ki_vault.py"
 
 get_vault = lambda: None

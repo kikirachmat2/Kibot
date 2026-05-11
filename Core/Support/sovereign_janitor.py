@@ -11,9 +11,10 @@ logger = logging.getLogger("SovereignJanitor")
 
 class SovereignJanitor:
     def __init__(self, threshold_pct=90.0):
+        from Core.Support.ki_config import LOGS_DIR
         self.threshold = threshold_pct
         self.log_paths = [
-            Path("/Users/kiki/Documents/Web Develop/KiBot/Logs"),
+            LOGS_DIR,
             Path("/var/log/journal")
         ]
 

@@ -15,8 +15,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Union
 import hashlib
 
-# Path resolution for .env
-ROOT_DIR = Path(__file__).resolve().parent.parent
+from Core.Support.ki_config import PROJECT_ROOT as ROOT_DIR
 
 def _load_dotenv() -> None:
     """Search for .env in current and parent directories."""

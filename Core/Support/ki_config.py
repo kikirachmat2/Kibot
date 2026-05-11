@@ -19,10 +19,12 @@ def _load_sovereign_env():
 _load_sovereign_env()
 
 # --- PATHS ---
-BASE_PATH = Path(__file__).resolve().parent.parent
-REPO_PATH = BASE_PATH.parent if (BASE_PATH / ".env.kiv").exists() else BASE_PATH
-PROJECT_ROOT = Path(os.getenv("KIBOT_RUNTIME_ROOT", BASE_PATH.parent))
-STATE_DIR = Path(os.getenv("KIBOT_STATE_DIR", PROJECT_ROOT / "state"))
+BASE_PATH = Path(__file__).resolve().parent.parent  # Points to Core/
+PROJECT_ROOT = BASE_PATH.parent                     # Points to KiBot root
+STATE_DIR = PROJECT_ROOT / "data" / "state"
+LOGS_DIR = PROJECT_ROOT / "logs"
+RAW_DATA_DIR = PROJECT_ROOT / "data" / "raw"
+CONFIG_DIR = PROJECT_ROOT / "config"
 
 # --- CLUSTER NODES ---
 # ==============================================================================

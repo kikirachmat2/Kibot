@@ -8,7 +8,7 @@ from typing import Dict, Any
 logger = logging.getLogger("SovereignState")
 
 # Strategy State Path
-STATE_DIR = Path(__file__).resolve().parent.parent / "state"
+from Core.Support.ki_config import STATE_DIR
 STRATEGY_FILE = STATE_DIR / "active_strategy.json"
 URGENCY_FILE = STATE_DIR / "urgency_flag.json"
 

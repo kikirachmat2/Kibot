@@ -148,9 +148,8 @@ class BrainManager:
     """
 
     def __init__(self) -> None:
-        state_root = Path(os.getenv("KIBOT_MANAGER_STATE_DIR", "state"))
-        state_root.mkdir(parents=True, exist_ok=True)
-        self.state_file = state_root / "brain_status.json"
+        from Core.Support.ki_config import STATE_DIR
+        self.state_file = STATE_DIR / "brain_status.json"
         self.request_timeout = (
             float(os.getenv("KIBOT_BRAIN_CONNECT_TIMEOUT_SEC", "5.0")),
             float(os.getenv("KIBOT_BRAIN_READ_TIMEOUT_SEC", "30.0")),
@@ -2468,7 +2467,8 @@ class BrainManager:
 
     def _load_external_world_model(self) -> Dict[str, Any]:
         """Loads the proactive intelligence model from WorldScout."""
-        path = ROOT_DIR / "state" / "world_model.json"
+        from Core.Support.ki_config import STATE_DIR
+        path = STATE_DIR / "world_model.json"
         if not path.exists():
             return {}
         try:
