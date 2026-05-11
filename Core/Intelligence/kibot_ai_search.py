@@ -259,6 +259,53 @@ class AISearchService:
             f"**Deep Jina Context:**\n{jina[:2000]}\n"
         )
 
+    async def get_market_consensus_async(self, topic: str) -> str:
+        """Combines multiple search signals into a single consensus string (Async)."""
+        # Run independent queries in parallel
+        is_crypto = "crypto" in topic.lower()
+        tasks = [
+            self.jina_search_async(topic),
+            self.brave_search_async(topic),
+            self.cryptopanic_news_async() if is_crypto else asyncio.sleep(0),
+            self.finnhub_news_async() if is_crypto else asyncio.sleep(0)
+        ]
+        
+        results = await asyncio.gather(*tasks)
+        jina = results[0]
+        brave = results[1]
+        panic = results[2] if is_crypto else []
+        finnhub = results[3] if is_crypto else []
+        
+        # Format Brave results
+        brave_snippet = ""
+        if isinstance(brave, dict) and brave.get("web", {}).get("results"):
+            for res in brave["web"]["results"][:3]:
+                brave_snippet += f"- {res.get('title')}: {res.get('description')}\n"
+        
+        # Format CryptoPanic
+        panic_snippet = ""
+        if isinstance(panic, list):
+            for p in panic[:5]:
+                panic_snippet += f"- [{p.get('votes', {}).get('positive', 0)}+] {p.get('title')}\n"
+        else:
+            panic_snippet = "- No data available (CryptoPanic)\n"
+
+        # Format Finnhub results
+        finnhub_snippet = ""
+        if isinstance(finnhub, list):
+            for n in finnhub[:3]:
+                finnhub_snippet += f"- {n.get('headline')} ({n.get('source')})\n"
+        else:
+            finnhub_snippet = "- No data available (Finnhub)\n"
+            
+        return (
+            f"### Market Consensus for: {topic}\n\n"
+            f"**Institutional (Finnhub):**\n{finnhub_snippet}\n"
+            f"**Brave Web Results:**\n{brave_snippet}\n"
+            f"**CryptoPanic Hot News:**\n{panic_snippet}\n"
+            f"**Deep Jina Context:**\n{str(jina)[:2000]}\n"
+        )
+
     async def finnhub_news_async(self, category: str = "crypto") -> List[Dict]:
         api_key = os.getenv("FINNHUB_API_KEY")
         if not api_key: return []
