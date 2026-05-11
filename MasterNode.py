@@ -223,7 +223,7 @@ class KiBotMaster:
             # 3. Telemetry Update & Snapshot
             try:
                 telemetry = await self.get_telemetry()
-                snapshot_path = ROOT_DIR / "State" / "telemetry_snapshot.json"
+                snapshot_path = ROOT_DIR / "state" / "telemetry_snapshot.json"
                 with open(snapshot_path, "w") as f:
                     json.dump(telemetry, f, indent=2)
                 logger.debug("Telemetry snapshot updated.")
@@ -472,16 +472,27 @@ class KiBotMaster:
         
         # Telemetry is now purely local for the Sovereign Node
         telemetry["mesh_nodes"]["BATAM_MASTER"] = "ONLINE"
-        telemetry["redis"] = "OFFLINE" # Default
 
-        # Check Local Redis
+        # Check Local Redis via redis-cli as final authority
         redis_path = shutil.which("redis-cli")
         if redis_path:
             try:
-                proc = await asyncio.create_subprocess_shell(f"{redis_path} ping", stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)
+                proc = await asyncio.create_subprocess_shell(
+                    f"{redis_path} ping", 
+                    stdout=asyncio.subprocess.PIPE, 
+                    stderr=asyncio.subprocess.PIPE
+                )
                 stdout, _ = await proc.communicate()
-                if b"PONG" in stdout: telemetry["redis"] = "ONLINE"
-            except: pass
+                if b"PONG" in stdout: 
+                    telemetry["redis"] = "ONLINE"
+                else:
+                    telemetry["redis"] = "OFFLINE"
+            except: 
+                # Fallback to port check if redis-cli fails
+                telemetry["redis"] = "ONLINE" if self._check_local_port(6379) else "OFFLINE"
+        else:
+            # Fallback to port check if redis-cli missing
+            telemetry["redis"] = "ONLINE" if self._check_local_port(6379) else "OFFLINE"
 
         # 3. Intelligent Status Text (For Sovereign Dashboard)
         activity = "Monitoring Sovereign Batam Node."
@@ -562,8 +573,12 @@ class KiBotMaster:
         """Graceful shutdown for Master Node."""
         logger.info(f"👋 Received signal {signum}. Shutting down Sovereign Master...")
         self.is_running = False
-        # In a real async app, we'd trigger loop.stop() or similar
-        # For now, setting is_running=False will break loops
+        # Kill all child processes
+        for name, proc in self.procs.items():
+            try:
+                logger.info(f"🛑 Terminating child: {name}")
+                proc.terminate()
+            except: pass
         sys.exit(0)
 
     def start(self):

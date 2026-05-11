@@ -179,35 +179,33 @@ class AISearchService:
     def jina_search(self, query: str) -> str:
         return asyncio.run(self.jina_search_async(query))
 
-    def brave_search(self, query: str) -> Dict:
+    async def brave_search_async(self, query: str) -> Dict:
+        """Async version of Brave search."""
         api_key = os.getenv("BRAVE_API_KEY")
         if not api_key: return {}
         
-        def loader():
-            req = urllib.request.Request(
-                "https://api.search.brave.com/res/v1/web/search",
-                headers={
-                    "X-Subscription-Token": api_key,
-                    "Accept": "application/json"
-                }
-            )
-            # Add query param
-            url = f"https://api.search.brave.com/res/v1/web/search?q={urllib.parse.quote(query)}"
-            req.full_url = url
+        async def loader():
+            url = "https://api.search.brave.com/res/v1/web/search"
+            headers = {
+                "X-Subscription-Token": api_key,
+                "Accept": "application/json"
+            }
+            params = {"q": query}
             try:
-                with urllib.request.urlopen(req, timeout=self.timeout) as resp:
-                    return json.loads(resp.read().decode("utf-8"))
-            except Exception as e:
-                print(f"[BRAVE] Error: {e}")
-                return {}
+                return await self._get_json_async(url, params=params, headers=headers)
+            except: return {}
             
-        return self._cached(f"brave:{hashlib.md5(query.encode()).hexdigest()}", 3600, loader)
+        return await self._cached_async(f"brave:{hashlib.md5(query.encode()).hexdigest()}", 3600, loader())
 
-    def cryptopanic_news(self, filter: str = "hot") -> List[Dict]:
+    def brave_search(self, query: str) -> Dict:
+        return asyncio.run(self.brave_search_async(query))
+
+    async def cryptopanic_news_async(self, filter: str = "hot") -> List[Dict]:
+        """Async version of CryptoPanic news."""
         api_key = os.getenv("CRYPTOPANIC_API_KEY")
         if not api_key: return []
         
-        def loader():
+        async def loader():
             url = "https://cryptopanic.com/api/v1/posts/"
             params = {
                 "auth_token": api_key,
@@ -216,11 +214,14 @@ class AISearchService:
                 "kind": "news"
             }
             try:
-                res = self._get_json(url, params=params)
+                res = await self._get_json_async(url, params=params)
                 return res.get("results", [])
             except: return []
             
-        return self._cached(f"cryptopanic:{filter}", 600, loader)
+        return await self._cached_async(f"cryptopanic:{filter}", 600, loader())
+
+    def cryptopanic_news(self, filter: str = "hot") -> List[Dict]:
+        return asyncio.run(self.cryptopanic_news_async(filter))
 
     def get_market_consensus(self, topic: str) -> str:
         """Combines multiple search signals into a single consensus string."""

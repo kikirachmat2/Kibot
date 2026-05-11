@@ -21,9 +21,9 @@ _load_sovereign_env()
 # --- PATHS ---
 BASE_PATH = Path(__file__).resolve().parent.parent  # Points to Core/
 PROJECT_ROOT = BASE_PATH.parent                     # Points to KiBot root
-STATE_DIR = PROJECT_ROOT / "data" / "state"
+STATE_DIR = PROJECT_ROOT / "state"
 LOGS_DIR = PROJECT_ROOT / "logs"
-RAW_DATA_DIR = PROJECT_ROOT / "data" / "raw"
+RAW_DATA_DIR = PROJECT_ROOT / "data"
 CONFIG_DIR = PROJECT_ROOT / "config"
 
 # --- CLUSTER NODES ---

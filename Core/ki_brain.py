@@ -936,7 +936,7 @@ class BrainManager:
                 summary = deduped_headlines[0]
 
             # --- Sovereign Integration: Pulse Override ---
-            sentiment_file = ROOT_DIR /  "Data/State/sentiment_pulse.json"
+            sentiment_file = ROOT_DIR / "state/sentiment_pulse.json"
             sentiment_score = 0.5
             if sentiment_file.exists():
                 try:

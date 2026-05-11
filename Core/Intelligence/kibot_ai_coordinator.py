@@ -708,7 +708,7 @@ def _provider_api_key(provider: str) -> str:
     envs = config.get("api_key_envs") or []
     key = _env_first(*[str(item) for item in envs])
     # Survival Bypass: Ollama doesn't strictly need a key
-    if provider == "ollama" and not key:
+    if str(provider).lower() == "ollama" and not key:
         return "ollama_local"
     return key
 
@@ -892,7 +892,7 @@ async def _call_provider(provider: str, prompt: str, prompt_type: str = "") -> O
     
     try:
         async with httpx.AsyncClient(timeout=timeout_sec) as client:
-            if provider == "ollama":
+            if str(provider).lower() == "ollama":
                 url = config["base_url"]
                 payload = {
                     "model": model,
@@ -950,7 +950,7 @@ async def _call_provider(provider: str, prompt: str, prompt_type: str = "") -> O
             response.raise_for_status()
             data = response.json()
 
-            if provider == "ollama":
+            if str(provider).lower() == "ollama":
                 content = data.get("message", {}).get("content")
                 _clear_provider_cooldown(provider)
                 return content
@@ -965,7 +965,7 @@ async def _call_provider(provider: str, prompt: str, prompt_type: str = "") -> O
             return data["choices"][0]["message"]["content"]
 
     except Exception:
-        if provider == "ollama":
+        if str(provider).lower() == "ollama":
             _set_provider_cooldown(provider, AI_OLLAMA_COOLDOWN_SEC, "exception")
         else:
             _set_provider_cooldown(provider, AI_NETWORK_COOLDOWN_SEC, "exception")
@@ -1208,7 +1208,7 @@ def get_provider_status() -> Dict[str, Dict[str, Any]]:
             "last_failure_at": str(runtime_state.get("last_failure_at") or ""),
             "last_success_at": str(runtime_state.get("last_success_at") or ""),
         }
-        if name == "ollama":
+        if str(name).lower() == "ollama":
             summary[name]["profiles"] = {
                 "fast_model": OLLAMA_FAST_MODEL,
                 "default_model": OLLAMA_DEFAULT_MODEL,

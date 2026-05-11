@@ -52,6 +52,7 @@ class IndodaxExecutor:
         self.batam_ip = os.environ.get("KIBOT_MASTER_IP", "127.0.0.1")
         self.state_file = Path(ROOT_DIR) / "Core" / "state" / "active_trades.json"
         self.lock = asyncio.Lock()
+        self.reservations = {} # To prevent race conditions
         self._load_active_trades()
 
     def _load_active_trades(self):
@@ -203,95 +204,106 @@ class IndodaxExecutor:
         change_pct = abs(signal.get("change_pct", 0))
 
         # --- SCRIPT LOGIC (V3.2) ---
+        total_slots = 0
         async with self.lock:
-            # 1. Max Slots Check
-            if len(self.active_trades) >= indo_strat.get("max_slots", 4):
-                logger.debug(f"🛡️ Slots full ({len(self.active_trades)}/4). Ignoring {symbol}.")
+            # Check total slots (Active + Reserved)
+            total_slots = len(self.active_trades) + len(self.reservations)
+            max_slots = indo_strat.get("max_slots", 4)
+            
+            if total_slots >= max_slots and symbol not in self.active_trades and symbol not in self.reservations:
+                logger.debug(f"🛡️ Slots full ({total_slots}/{max_slots}). Ignoring {symbol}.")
                 return
             
-            # Check if already in trade
-            if symbol in self.active_trades:
-                logger.debug(f"🛡️ Already in trade for {symbol}. Ignoring.")
+            # Check if already in trade or being processed
+            if symbol in self.active_trades or symbol in self.reservations:
+                logger.debug(f"🛡️ Already active or reserved for {symbol}. Ignoring.")
                 return
+            
+            # 1. RESERVE SLOT
+            self.reservations[symbol] = time.time()
+            logger.info(f"📝 RESERVED slot for {symbol} (Total: {total_slots + 1})")
 
-        # 1. Get Balance
-        current_balance = await self.indodax.get_balance("idr")
-        
-        # 2. Risk Validation
-        # Pass budget to signal for risk gate validation
-        budget = float(indo_strat.get("max_exposure_idr", 25000) / 4) # Split budget
-        signal["budget_idr"] = budget
-        
-        is_valid, reason = self.risk.validate_signal(signal, current_balance, len(self.active_trades))
-        if not is_valid:
-            logger.warning(f"🛡️ REJECTED: {reason} for {symbol}.")
-            return
-
-        # 3. Minimum Spread Check (V3.2 Slippage Protection)
         try:
-            spread_res = await self.indodax.get_orderbook(symbol)
-            bids = spread_res.get("bids", [])
-            asks = spread_res.get("asks", [])
-            if bids and asks:
-                best_bid = float(bids[0][0])
-                best_ask = float(asks[0][0])
-                spread_pct = ((best_ask - best_bid) / best_bid) * 100
-                max_spread = indo_strat.get("max_spread_pct", 0.5)
-                if spread_pct > max_spread:
-                    logger.warning(f"🛡️ REJECTED: Spread {spread_pct:.2f}% > limit {max_spread}% for {symbol}")
-                    return
-        except Exception as e:
-            logger.error(f"Slippage check failed: {e}")
-            # Fallback: continue if orderbook fetch fails but log it
-
-        # 4. Filter by Council Strategy
-        if symbol not in indo_strat.get("allowed_pairs", []):
-            logger.debug(f"🛡️ Symbol {symbol} not in allowed_pairs.")
-            return
-
-        if confidence < indo_strat.get("min_confidence", 0.88):
-            logger.debug(f"🛡️ Confidence {confidence} too low for Pump Hunter.")
-            return
-        
-        # 4. Pump Intensity Check
-        if change_pct < indo_strat.get("buy_threshold_pct", 0.8):
-             logger.debug(f"🛡️ Momentum {change_pct}% too weak for Pump Hunter.")
-             return
-
-        # 2. Execution
-        logger.info(f"⚡ SCRIPT EXECUTION: {side} {symbol} @ {price}")
-        amount = self.risk.calculate_amount(symbol, price, budget)
-        
-        pair = symbol.lower().replace("/", "_")
-        if "_" not in pair: pair = f"{pair}_idr"
-
-        res = await self.indodax.trade(
-            pair=pair,
-            type=side.lower(),
-            price=price,
-            amount_idr=budget if side.lower() == "buy" else None,
-            amount_coin=amount if side.lower() == "sell" else None
-        )
-
-        if res.get("success") == 1:
-            # Trade Verification: Parse actual filled data
-            trade_data = res.get("return", {})
-            filled_rp = float(trade_data.get("filled_rp", budget))
-            filled_coin = float(trade_data.get("filled_coin", amount))
-            actual_price = float(trade_data.get("price", price))
+            # 1. Get Balance
+            current_balance = await self.indodax.get_balance("idr")
             
-            logger.info(f"✅ SUCCESS: {symbol} (Filled: Rp{filled_rp}, Coin: {filled_coin})")
-            self.active_trades[symbol] = {
-                "price": actual_price, 
-                "amount": filled_coin,
-                "high_price": actual_price,
-                "time": time.time(),
-                "cost": filled_rp
-            }
-            self._save_active_trades()
-            self.report_to_batam(symbol, "OPEN", f"Buy @ {actual_price}")
-        else:
-            logger.error(f"❌ EXECUTION FAILED: {symbol} - {res.get('error')}")
+            # 2. Risk Validation
+            budget = float(indo_strat.get("max_exposure_idr", 25000) / 4) # Split budget
+            signal["budget_idr"] = budget
+            
+            is_valid, reason = self.risk.validate_signal(signal, current_balance, total_slots)
+            if not is_valid:
+                logger.warning(f"🛡️ REJECTED: {reason} for {symbol}.")
+                return
+
+            # 3. Minimum Spread Check (V3.2 Slippage Protection)
+            try:
+                spread_res = await self.indodax.get_orderbook(symbol)
+                bids = spread_res.get("bids", [])
+                asks = spread_res.get("asks", [])
+                if bids and asks:
+                    best_bid = float(bids[0][0])
+                    best_ask = float(asks[0][0])
+                    spread_pct = ((best_ask - best_bid) / best_bid) * 100
+                    max_spread = indo_strat.get("max_spread_pct", 0.5)
+                    if spread_pct > max_spread:
+                        logger.warning(f"🛡️ REJECTED: Spread {spread_pct:.2f}% > limit {max_spread}% for {symbol}")
+                        return
+            except Exception as e:
+                logger.error(f"Slippage check failed: {e}")
+
+            # 4. Filter by Council Strategy
+            if symbol not in indo_strat.get("allowed_pairs", []):
+                logger.debug(f"🛡️ Symbol {symbol} not in allowed_pairs.")
+                return
+
+            if confidence < indo_strat.get("min_confidence", 0.88):
+                logger.debug(f"🛡️ Confidence {confidence} too low for Pump Hunter.")
+                return
+            
+            # 4. Pump Intensity Check
+            if change_pct < indo_strat.get("buy_threshold_pct", 0.8):
+                logger.debug(f"🛡️ Momentum {change_pct}% too weak for Pump Hunter.")
+                return
+
+            # 2. Execution
+            logger.info(f"⚡ SCRIPT EXECUTION: {side} {symbol} @ {price}")
+            amount = self.risk.calculate_amount(symbol, price, budget)
+            
+            pair = symbol.lower().replace("/", "_")
+            if "_" not in pair: pair = f"{pair}_idr"
+
+            res = await self.indodax.trade(
+                pair=pair,
+                type=side.lower(),
+                price=price,
+                amount_idr=budget if side.lower() == "buy" else None,
+                amount_coin=amount if side.lower() == "sell" else None
+            )
+
+            if res.get("success") == 1:
+                trade_data = res.get("return", {})
+                filled_rp = float(trade_data.get("filled_rp", budget))
+                filled_coin = float(trade_data.get("filled_coin", amount))
+                actual_price = float(trade_data.get("price", price))
+                
+                logger.info(f"✅ SUCCESS: {symbol} (Filled: Rp{filled_rp}, Coin: {filled_coin})")
+                self.active_trades[symbol] = {
+                    "price": actual_price, 
+                    "amount": filled_coin,
+                    "high_price": actual_price,
+                    "time": time.time(),
+                    "cost": filled_rp
+                }
+                self._save_active_trades()
+                self.report_to_batam(symbol, "OPEN", f"Buy @ {actual_price}")
+            else:
+                logger.error(f"❌ EXECUTION FAILED: {symbol} - {res.get('error')}")
+
+        finally:
+            async with self.lock:
+                self.reservations.pop(symbol, None)
+                logger.info(f"🔓 RELEASED reservation for {symbol}")
 
     def report_to_batam(self, symbol, status, msg):
         try:
