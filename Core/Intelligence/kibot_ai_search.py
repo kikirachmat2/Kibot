@@ -14,6 +14,7 @@ import asyncio
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Union
 import hashlib
+import urllib.parse
 
 from Core.Support.ki_config import PROJECT_ROOT as ROOT_DIR
 
