@@ -16,10 +16,10 @@ if str(ROOT) not in sys.path:
     sys.path.append(str(ROOT))
 
 try:
-    from Core.Support.ki_config import TELEGRAM_TOKEN, TELEGRAM_CHAT_ID
+    from Core.Support.ki_config import TELEGRAM_BOT_TOKEN as TELEGRAM_TOKEN, TELEGRAM_CHAT_ID
 except ImportError:
-    TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN", "REDACTED_TELEGRAM_TOKEN")
-    TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID", "1346696386")
+    TELEGRAM_TOKEN = os.getenv("KIBOT_TELEGRAM_TOKEN")
+    TELEGRAM_CHAT_ID = os.getenv("KIBOT_TELEGRAM_CHAT_ID")
 
 STATE_FILE = ROOT / "Data" / "State" / "notifier_throttle.json"
 

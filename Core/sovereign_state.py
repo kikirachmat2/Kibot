@@ -110,6 +110,15 @@ def extract_json_safe(response: str):
 
     # 3. Sliding Window Brace Matcher
     start = response.find("{")
+    end = response.rfind("}")
+    if start != -1 and end != -1 and end > start:
+        try:
+            content = response[start:end+1]
+            parsed = json.loads(content)
+            return parsed if isinstance(parsed, dict) else None
+        except Exception:
+            pass
+    
     return None
 
 def save_trade_result(symbol: str, profit_pct: float, reason: str):

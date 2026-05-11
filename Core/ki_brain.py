@@ -1,7 +1,7 @@
+from __future__ import annotations
 from Intelligence.kibot_ai_search import ROOT_DIR
 import sys
 # pyrefly: ignore [invalid-syntax]
-from __future__ import annotations
 
 import importlib.util
 import calendar

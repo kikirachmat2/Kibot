@@ -70,3 +70,17 @@ def _env_first(*keys: str, default: str = "") -> str:
         if value:
             return value
     return default
+
+def sign_payload(payload_dict: dict, secret: str) -> str:
+    """Generate HMAC-SHA256 signature for a dictionary."""
+    import hmac, hashlib
+    payload_str = json.dumps(payload_dict, sort_keys=True)
+    return hmac.new(secret.encode(), payload_str.encode(), hashlib.sha256).hexdigest()
+
+def verify_signature(payload_dict: dict, signature: str, secret: str) -> bool:
+    """Verify HMAC-SHA256 signature for a dictionary."""
+    import hmac, hashlib
+    if not signature: return False
+    payload_str = json.dumps(payload_dict, sort_keys=True)
+    expected = hmac.new(secret.encode(), payload_str.encode(), hashlib.sha256).hexdigest()
+    return hmac.compare_digest(expected, signature)

@@ -94,14 +94,28 @@ class IndodaxGateway:
             return float(balances.get(coin.lower(), 0.0))
         return 0.0
 
+    def round_step(self, amount, step_size):
+        """Standard exchange precision rounding."""
+        import decimal
+        try:
+            d = decimal.Decimal(str(amount))
+            s = decimal.Decimal(str(step_size))
+            return float(d.quantize(s, rounding=decimal.ROUND_DOWN))
+        except:
+            return amount
+
     async def trade(self, pair, type, price, amount_coin=None, amount_idr=None):
         params = {
             "pair": pair.lower(),
             "type": type.lower(),
             "price": int(price)
         }
+        
+        # Indodax precision handles: IDR usually int, Crypto usually 8 decimals
         if amount_coin:
-            params[pair.split('_')[0]] = amount_coin
+            coin_symbol = pair.split('_')[0]
+            # Use standard 8 decimal precision for crypto if not specified
+            params[coin_symbol] = self.round_step(amount_coin, "0.00000001")
         elif amount_idr and type.lower() == 'buy':
             params['idr'] = int(amount_idr)
         
@@ -116,3 +130,13 @@ class IndodaxGateway:
                 return resp.json().get("ticker", {})
             except:
                 return {}
+
+    async def get_orderbook(self, pair):
+        """Fetch orderbook depth for slippage protection."""
+        async with httpx.AsyncClient() as client:
+            try:
+                resp = await client.get(f"{self.public_url}/{pair.lower()}/depth")
+                return resp.json()
+            except Exception as e:
+                logger.error(f"❌ Orderbook Fetch Error: {e}")
+                return {"bids": [], "asks": []}

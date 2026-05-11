@@ -101,8 +101,8 @@ class IndodaxExecutor:
                     continue
 
                 for symbol, data in list(self.active_trades.items()):
-                    current_price = await self.indodax.get_ticker(symbol.lower().replace("/", "_"))
-                    last_price = float(current_price.get("last", 0))
+                    current_price_data = await self.indodax.get_ticker(symbol.lower().replace("/", "_"))
+                    last_price = float(current_price_data.get("last", 0))
                     entry_price = data.get("price")
                     
                     if last_price <= 0: continue
@@ -113,17 +113,27 @@ class IndodaxExecutor:
                     if change <= -indo_strat.get("hard_stop_pct", 1.5):
                         logger.warning(f"🛑 HARD STOP TRIGGERED: {symbol} @ {change:.2f}%")
                         await self.execute_exit(symbol, last_price, "HARD_STOP")
+                        continue
                     
                     # 2. Trailing Stop
                     high_price = data.get("high_price", entry_price)
                     if last_price > high_price:
                         self.active_trades[symbol]["high_price"] = last_price
+                        high_price = last_price
                     
                     from_high = (high_price - last_price) / high_price * 100
                     if from_high >= indo_strat.get("trailing_stop_pct", 0.25) and change > 0:
                         logger.info(f"📉 TRAILING STOP TRIGGERED: {symbol} @ {from_high:.2f}% from high")
                         await self.execute_exit(symbol, last_price, "TRAILING_STOP")
-                    # 3. Midnight Oracle Exit
+                        continue
+
+                    # 3. Dynamic Take Profit (V3.2 fallback)
+                    if change >= indo_strat.get("take_profit_pct", 0.5):
+                        logger.info(f"💰 TAKE PROFIT HIT: {symbol} @ {change:.2f}%")
+                        await self.execute_exit(symbol, last_price, "TAKE_PROFIT")
+                        continue
+
+                    # 4. Midnight Oracle Exit
                     if strategy.get("global_mode") == "EXIT_ALL":
                         logger.info(f"🌑 MIDNIGHT DEADLINE: Liquidating {symbol} for Daily Report.")
                         await self.execute_exit(symbol, last_price, "MIDNIGHT_DEADLINE")
@@ -133,15 +143,23 @@ class IndodaxExecutor:
             await asyncio.sleep(1)
 
     async def execute_exit(self, symbol, price, reason):
+        """Unified exit logic with reporting to Batam."""
         pair = symbol.lower().replace("/", "_")
         if "_" not in pair: pair = f"{pair}_idr"
         
-        amount = self.active_trades[symbol].get("amount")
+        trade = self.active_trades.get(symbol, {})
+        amount = trade.get("amount", 0)
+        
+        if amount <= 0:
+            logger.warning(f"⚠️ EXIT SKIPPED: No amount for {symbol}")
+            return
+
         res = await self.indodax.trade(pair=pair, type="sell", price=price, amount_coin=amount)
         
         if res.get("success") == 1:
-            logger.info(f"✅ EXIT SUCCESS: {symbol} via {reason}")
-            del self.active_trades[symbol]
+            logger.info(f"✅ EXIT SUCCESS: {symbol} via {reason} @ {price}")
+            self.active_trades.pop(symbol, None)
+            self.report_to_batam(symbol, reason, f"Exit @ {price}")
         else:
             logger.error(f"❌ EXIT FAILED: {symbol} - {res.get('error')}")
 
@@ -166,10 +184,9 @@ class IndodaxExecutor:
             return
 
         # 2. Price vs Balance Guard (Strict Sovereign Rule)
-        # Price must be LESS THAN current total balance
+        # Price must be LESS THAN current total balance (FULL COIN RULE)
         # We fetch balance before buying
-        balance_res = await self.indodax.get_balance("idr")
-        current_balance = float(balance_res.get("available", 0))
+        current_balance = await self.indodax.get_balance("idr")
         if price >= current_balance:
             logger.warning(f"🛡️ REJECTED: Price {price} >= Balance {current_balance}. Too expensive for {symbol}.")
             return
@@ -243,50 +260,36 @@ class IndodaxExecutor:
             sock.sendto(json.dumps(report).encode(), (self.batam_ip, REPORT_PORT))
         except: pass
 
-    async def monitor_positions(self):
-        """Monitor open positions for auto TP/SL."""
-        TP_PCT = 0.5  # Target Profit 0.5%
-        SL_PCT = -0.3 # Stop Loss -0.3%
-        while self.running:
-            for symbol, trade in list(self.active_trades.items()):
-                try:
-                    pair = symbol.lower().replace("/", "_")
-                    if "_" not in pair: pair = f"{pair}_idr"
-                    ticker = await self.indodax.get_ticker(pair)
-                    current = float(ticker.get("last", 0))
-                    if not current: continue
-                    entry = trade["price"]
-                    change = (current - entry) / entry * 100
-                    if change >= TP_PCT:
-                        await self._execute_exit(symbol, current, "TP_HIT")
-                    elif change <= SL_PCT:
-                        await self._execute_exit(symbol, current, "SL_HIT")
-                except Exception as e:
-                    logger.debug(f"Monitor error {symbol}: {e}")
-            await asyncio.sleep(5)
 
-    async def _execute_exit(self, symbol, price, reason):
-        pair = symbol.lower().replace("/", "_")
-        if "_" not in pair: pair = f"{pair}_idr"
-        trade = self.active_trades.get(symbol, {})
-        amount = trade.get("amount", 0)
-        if amount > 0:
-            await self.indodax.trade(pair=pair, type="sell", 
-                                   price=price, amount_coin=amount)
-        self.active_trades.pop(symbol, None)
-        self.report_to_batam(symbol, reason, f"Exit @ {price}")
-        logger.info(f"{'✅ TP' if reason == 'TP_HIT' else '🔴 SL'}: {symbol} @ {price}")
 
 class SignalProtocol(asyncio.DatagramProtocol):
     def __init__(self, executor):
         self.executor = executor
 
     def datagram_received(self, data, addr):
+        from Core.Support.ki_utils import verify_signature
+        secret = os.environ.get("KIBOT_SECRET")
+        if not secret:
+            logger.error("❌ CRITICAL: KIBOT_SECRET missing! Rejecting all signals.")
+            return
+
         try:
-            payload = json.loads(data.decode())
-            asyncio.create_task(self.executor.process_signal(payload))
+            envelope = json.loads(data.decode())
+            payload = envelope.get("data", {})
+            signature = envelope.get("signature", "")
+            
+            if verify_signature(payload, signature, secret):
+                # Check for list of signals (new format) or single signal
+                signals = payload.get("signals", [])
+                if not signals and "symbol" in payload:
+                    signals = [payload]
+                
+                for s in signals:
+                    asyncio.create_task(self.executor.process_signal(s))
+            else:
+                logger.warning(f"🛡️ REJECTED: Invalid HMAC signature from {addr}")
         except Exception as e:
-            logger.error(f"UDP Parse Error: {e}")
+            logger.error(f"UDP Parse/Verify Error: {e}")
 
 if __name__ == "__main__":
     # load_sovereign_env() # Already called in _load_vault() above

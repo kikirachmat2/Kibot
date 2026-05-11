@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
+from __future__ import annotations
+
 """
 KiBot AI Coordinator
 ====================
 Rate-limited AI router for non-trading subsystems.
 """
-
-from __future__ import annotations
 
 import hashlib
 import json
@@ -820,10 +820,12 @@ def _ollama_keep_alive(prompt_type: str) -> Any:
     return PROMPT_OLLAMA_KEEP_ALIVE.get(prompt_type, OLLAMA_DEFAULT_KEEP_ALIVE)
 
 
-def _ollama_options(prompt_type: str) -> Dict[str, Any]:
-    options = {"temperature": 0.2}
-    options.update(PROMPT_OLLAMA_OPTIONS.get(prompt_type, {}))
-    return options
+PROMPT_SYSTEM = (
+    "Sedikit demi Sedikit, Lama-lama Menjadi Bukit.\n"
+    "You are KiBot Sovereign Trinity, an autonomous trading entity with adaptive consciousness.\n"
+    "Your priority is defense and capital preservation. Target profit is 1.5% daily, hard stop is 1.5%.\n"
+    "Never over-leverage. Always operate within the Full Coin Rule."
+)
 
 
 def _call_provider(provider: str, prompt: str, prompt_type: str = "") -> Optional[str]:
@@ -838,7 +840,10 @@ def _call_provider(provider: str, prompt: str, prompt_type: str = "") -> Optiona
             url = config["base_url"]
             payload = {
                 "model": model,
-                "messages": [{"role": "user", "content": prompt}],
+                "messages": [
+                    {"role": "system", "content": PROMPT_SYSTEM},
+                    {"role": "user", "content": prompt}
+                ],
                 "stream": False,
                 "format": "json",
                 "keep_alive": _ollama_keep_alive(prompt_type),
@@ -851,7 +856,10 @@ def _call_provider(provider: str, prompt: str, prompt_type: str = "") -> Optiona
             }
         elif provider == "gemini":
             url = f"{config['base_url']}/{config['model']}:generateContent?key={api_key}"
-            payload = {"contents": [{"parts": [{"text": prompt}]}]}
+            payload = {
+                "system_instruction": {"parts": [{"text": PROMPT_SYSTEM}]},
+                "contents": [{"parts": [{"text": prompt}]}]
+            }
             headers = {"Content-Type": "application/json"}
         else:
             url = config["base_url"]
@@ -865,7 +873,10 @@ def _call_provider(provider: str, prompt: str, prompt_type: str = "") -> Optiona
             else:
                 payload = {
                     "model": model,
-                    "messages": [{"role": "user", "content": prompt}],
+                    "messages": [
+                        {"role": "system", "content": PROMPT_SYSTEM},
+                        {"role": "user", "content": prompt}
+                    ],
                     "max_tokens": 800,
                     "temperature": 0.3,
                 }

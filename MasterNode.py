@@ -126,7 +126,10 @@ class KiBotMaster:
 
     # --- Signal & Command Plane ---
     async def signal_listener_loop(self):
-        """Listens for high-priority signals from all 20+ scanner sources."""
+        """Listens for HMAC-signed high-priority signals from all scanner sources."""
+        from Core.Support.ki_utils import verify_signature, sign_payload
+        secret = os.environ.get("KIBOT_SECRET", "default_sovereign_secret")
+        
         logger.info("📡 Council Signal Listener active on UDP:9991")
         sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         sock.bind(("0.0.0.0", 9991))
@@ -135,36 +138,49 @@ class KiBotMaster:
         loop = asyncio.get_event_loop()
         while self.is_running:
             try:
-                data, addr = await loop.sock_recvfrom(sock, 4096)
-                payload = json.loads(data.decode())
+                data, addr = await loop.sock_recvfrom(sock, 8192)
+                envelope = json.loads(data.decode())
+                payload = envelope.get("data", {})
+                signature = envelope.get("signature", "")
                 
-                if payload.get("type") == "COUNCIL_SIGNAL_DATA":
-                    signals = payload.get("signals", [])
-                    logger.info(f"🏛️ Received {len(signals)} signals from {addr}. Triggering Fast Deliberation...")
-                    
-                    # ASYNC DELIBERATION: Don't block the listener
-                    async def deliberate_and_dispatch():
-                        decision = await self.council.deliberate_trading({"signals": signals, "source": addr[0]})
+                if verify_signature(payload, signature, secret):
+                    if payload.get("type") == "COUNCIL_SIGNAL_DATA":
+                        signals = payload.get("signals", [])
+                        logger.info(f"🏛️ Received {len(signals)} signed signals from {addr}. Deliberating...")
                         
-                        # If Council mandates execution, send to Executor
-                        if decision.get("status") == "EXECUTING":
-                            logger.info(f"🚀 [MANDATE] Council decided to {decision['action']} {decision['ticker']}. Dispatching to Executor...")
+                        async def deliberate_and_dispatch(sigs):
+                            decision = await self.council.deliberate_trading({"signals": sigs, "source": addr[0]})
                             
-                            # Prepare command for Executor (Port 9998)
-                            cmd = {
-                                "type": "COUNCIL_MANDATE",
-                                "symbol": decision["ticker"],
-                                "side": decision["action"],
-                                "price": decision["source_signal"].get("price", 0),
-                                "confidence": decision["confidence"],
-                                "reason": decision["logic"][:100] # Brief reason
-                            }
-                            
-                            # Send via UDP to Indodax Executor
-                            sock_out = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-                            sock_out.sendto(json.dumps(cmd).encode(), ("127.0.0.1", 9998))
-                            
-                    asyncio.create_task(deliberate_and_dispatch())
+                            if not decision or not isinstance(decision, dict):
+                                logger.warning("⚠️ Council returned invalid or empty decision.")
+                                return
+
+                            if decision.get("status") == "EXECUTING":
+                                action = decision.get("action", "UNKNOWN")
+                                ticker = decision.get("ticker", "UNKNOWN")
+                                logger.info(f"🚀 [MANDATE] Council approved {action} {ticker}.")
+                                
+                                # Prepare mandate for Executor
+                                mandate_data = {
+                                    "type": "COUNCIL_MANDATE",
+                                    "symbol": decision["ticker"],
+                                    "side": decision["action"],
+                                    "price": decision.get("source_signal", {}).get("price", 0),
+                                    "confidence": decision.get("confidence", 0),
+                                    "reason": decision.get("logic", "Council Mandate")[:100]
+                                }
+                                
+                                # Send HMAC-signed mandate to Indodax Executor (Port 9998)
+                                envelope_out = {
+                                    "data": mandate_data,
+                                    "signature": sign_payload(mandate_data, secret)
+                                }
+                                sock_out = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+                                sock_out.sendto(json.dumps(envelope_out).encode(), ("127.0.0.1", 9998))
+                                
+                        asyncio.create_task(deliberate_and_dispatch(signals))
+                else:
+                    logger.warning(f"🛡️ REJECTED: Invalid HMAC signature from {addr}")
                     
             except Exception as e:
                 if self.is_running:
@@ -245,6 +261,9 @@ class KiBotMaster:
     async def deliberate_issue(self, target: str, context: Dict, alert: bool = True):
         """Trigger Council deliberation and execute the resulting strategy."""
         decision = await self.council.deliberate(context)
+        if not decision or not isinstance(decision, dict):
+             logger.warning(f"⚠️ Council returned invalid decision for {target}")
+             return
         
         # Only execute if confidence is high and action is valid
         if decision.get("action") and decision.get("confidence", 0) >= 0.8:
@@ -275,14 +294,17 @@ class KiBotMaster:
         }
         
         decision = await self.council.deliberate(context)
+        if not decision or not isinstance(decision, dict):
+            logger.warning(f"⚠️ Council failed to return a valid decision for {target}")
+            return
         
         # Execute Decision
         msg = (
             f"🧠 **Council Decision: {target}**\n"
-            f"Action: `{decision['action']}`\n"
-            f"Confidence: `{decision['confidence']*100:.1f}%`\n"
-            f"Risk: `{decision['risk']}`\n"
-            f"Reasoning: {decision['reasoning']}"
+            f"Action: `{decision.get('action', 'NONE')}`\n"
+            f"Confidence: `{decision.get('confidence', 0)*100:.1f}%`\n"
+            f"Risk: `{decision.get('risk', 'UNKNOWN')}`\n"
+            f"Reasoning: {decision.get('reasoning', 'No reasoning provided.')}"
         )
         await self.notifier.send_urgent_alert(msg, f"COUNCIL_DECISION_{target}")
         
@@ -375,7 +397,7 @@ class KiBotMaster:
 
         # 2. Add Indodax Portfolio Context
         try:
-            from Executor.Indodax.indodax_gateway import IndodaxGateway
+            from Core.Exchange.indodax import IndodaxGateway
             gw = IndodaxGateway()
             info = await gw.get_info()
             if info.get("success") == 1:

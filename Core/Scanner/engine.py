@@ -95,37 +95,52 @@ class ScannerEngine:
                     if not hasattr(self, 'universal_signals'): self.universal_signals = []
                     self.universal_signals.append(s)
 
+        from Core.Support.ki_utils import sign_payload
+        secret = os.environ.get("KIBOT_SECRET", "default_sovereign_secret")
+
         # Dispatch Indodax
         if indo_signals:
-            payload = json.dumps({
+            data = {
                 "seq_id": self.seq_id,
                 "ts": int(started_at * 1000),
                 "signals": indo_signals
+            }
+            payload = json.dumps({
+                "data": data,
+                "signature": sign_payload(data, secret)
             }).encode("utf-8")
             self.udp_sock.sendto(payload, (self.target_host, KiConfig.INDO_SIGNAL_PORT))
-            logger.debug(f"[SCANNER] Seq:{self.seq_id} | Dispatched {len(indo_signals)} INDO signals.")
+            logger.debug(f"[SCANNER] Seq:{self.seq_id} | Dispatched {len(indo_signals)} HMAC-signed INDO signals.")
 
         # Dispatch Polymarket
         if poly_signals:
-            payload = json.dumps({
+            data = {
                 "seq_id": self.seq_id,
                 "ts": int(started_at * 1000),
                 "signals": poly_signals
+            }
+            payload = json.dumps({
+                "data": data,
+                "signature": sign_payload(data, secret)
             }).encode("utf-8")
             self.udp_sock.sendto(payload, (self.target_host, KiConfig.POLY_SIGNAL_PORT))
-            logger.debug(f"[SCANNER] Seq:{self.seq_id} | Dispatched {len(poly_signals)} POLY signals.")
+            logger.debug(f"[SCANNER] Seq:{self.seq_id} | Dispatched {len(poly_signals)} HMAC-signed POLY signals.")
 
         # NEW: Dispatch to MasterNode (Council) for high-level deliberation
         all_signals = indo_signals + poly_signals + getattr(self, 'universal_signals', [])
         if all_signals:
-            payload = json.dumps({
+            data = {
                 "type": "COUNCIL_SIGNAL_DATA",
                 "signals": all_signals,
                 "ts": int(started_at * 1000)
+            }
+            payload = json.dumps({
+                "data": data,
+                "signature": sign_payload(data, secret)
             }).encode("utf-8")
             # Port 9991 is the Command Plane / Council Egress
             self.udp_sock.sendto(payload, ("127.0.0.1", 9991))
-            logger.info(f"🧠 Dispatched {len(all_signals)} signals to Sovereign Council for deliberation.")
+            logger.info(f"🧠 Dispatched {len(all_signals)} HMAC-signed signals to Sovereign Council.")
 
     def run(self) -> None:
         logger.info("🚀 KiBot Centralized Scanner Engine Started.")

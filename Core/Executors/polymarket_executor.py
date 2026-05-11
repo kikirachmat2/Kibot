@@ -159,11 +159,24 @@ class PolySignalProtocol(asyncio.DatagramProtocol):
         self.executor = executor
 
     def datagram_received(self, data, addr):
+        from Core.Support.ki_utils import verify_signature
+        secret = os.environ.get("KIBOT_SECRET", "default_sovereign_secret")
         try:
-            payload = json.loads(data.decode())
-            asyncio.create_task(self.executor.execute_order(payload))
+            envelope = json.loads(data.decode())
+            payload = envelope.get("data", {})
+            signature = envelope.get("signature", "")
+            
+            if verify_signature(payload, signature, secret):
+                signals = payload.get("signals", [])
+                if not signals and "symbol" in payload:
+                    signals = [payload]
+                
+                for s in signals:
+                    asyncio.create_task(self.executor.execute_order(s))
+            else:
+                logger.warning(f"🛡️ REJECTED: Invalid HMAC signature for Polymarket from {addr}")
         except Exception as e:
-            logger.error(f"UDP Error: {e}")
+            logger.error(f"UDP Parse/Verify Error: {e}")
 
 async def main():
     load_sovereign_env()
