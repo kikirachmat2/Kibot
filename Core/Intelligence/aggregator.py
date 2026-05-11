@@ -19,14 +19,14 @@ class CouncilDataAggregator:
         self.fast_path_log = base_dir / "Logs" / "fast_path_signals.jsonl"
         self.what_if_log = base_dir / "Logs" / "what_if_analysis.json"
 
-    def get_debate_context(self, tier="TIER_1_SYNC"):
+    async def get_debate_context(self, tier="TIER_1_SYNC"):
         """
         Builds a comprehensive data snapshot for a council session.
         """
         rejection_stats = self._get_fast_path_stats()
         missed_opps = self._get_missed_opportunities()
         portfolio = self._get_portfolio_snapshot()
-        market = self._get_market_context()
+        market = await self._get_market_context()
         
         # Collect unique pairs from audit
         unique_pairs = set()
@@ -142,14 +142,19 @@ class CouncilDataAggregator:
             "active_positions": []
         })
 
-    def _get_market_context(self):
+    async def _get_market_context(self):
         """Gets market mood and global regime."""
         mood = getattr(self.master, "market_mood", "NEUTRAL")
         # Attempt to get deeper context from Brain snapshot if available
         brain_snap = {}
         if hasattr(self.master, "brain") and self.master.brain:
             if hasattr(self.master.brain, "snapshot") and callable(self.master.brain.snapshot):
-                brain_snap = self.master.brain.snapshot()
+                # Check if it's async
+                import inspect
+                if inspect.iscoroutinefunction(self.master.brain.snapshot):
+                    brain_snap = await self.master.brain.snapshot()
+                else:
+                    brain_snap = self.master.brain.snapshot()
             elif isinstance(self.master.brain, dict):
                 brain_snap = self.master.brain
             

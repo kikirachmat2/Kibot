@@ -42,7 +42,10 @@ class UniversalLeadLagScanner:
                     data = await response.json()
                     price = 0.0
                     if "binance" in url: price = float(data.get("price", 0))
-                    elif "upbit" in url: price = float(data[0].get("trade_price", 0)) / 1350.0 
+                    elif "upbit" in url: 
+                        from Core.Support.ki_config import KiConfig
+                        rate = getattr(KiConfig, "KRW_USD_RATE", 1350.0)
+                        price = float(data[0].get("trade_price", 0)) / rate
                     elif "bybit" in url: price = float(data.get("result", {}).get("list", [{}])[0].get("lastPrice", 0))
                     elif "okx" in url: price = float(data.get("data", [{}])[0].get("last", 0))
                     elif "gate" in url: price = float(data[0].get("last", 0))
@@ -99,7 +102,21 @@ class UniversalLeadLagScanner:
         return {"signals": signals}
 
 if __name__ == "__main__":
+    logging.basicConfig(
+        level=logging.INFO,
+        format='%(asctime)s [%(levelname)s] %(name)s: %(message)s'
+    )
     scanner = UniversalLeadLagScanner()
-    while True:
-        print(f"Scanning 18+ sources: {scanner.collect_signals()}")
-        time.sleep(2)
+    logger.info("🚀 Starting Universal Lead-Lag Scanner...")
+    
+    async def main():
+        while True:
+            signals = scanner.collect_signals()
+            if signals.get("signals"):
+                logger.info(f"Detected Signals: {signals['signals']}")
+            await asyncio.sleep(2)
+            
+    try:
+        asyncio.run(main())
+    except KeyboardInterrupt:
+        logger.info("Scanner stopped.")

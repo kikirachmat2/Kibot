@@ -9,9 +9,8 @@ Provides unified access to Tavily, Serper, DuckDuckGo, Finnhub, and GDELT.
 import os
 import json
 import time
-import urllib.request
-import urllib.parse
-import urllib.error
+import httpx
+import asyncio
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Union
 import hashlib
@@ -51,17 +50,21 @@ class AISearchService:
         self.state_dir.mkdir(parents=True, exist_ok=True)
         self.cache_file = self.state_dir / "ai_search_cache.json"
 
-    def _get_json(self, url: str, params: Dict = None, headers: Dict = None) -> Any:
+    async def _get_json_async(self, url: str, params: Dict = None, headers: Dict = None) -> Any:
         try:
-            if params:
-                url += "?" + urllib.parse.urlencode(params)
-            req = urllib.request.Request(url, headers=headers or {})
-            with urllib.request.urlopen(req, timeout=self.timeout) as resp:
-                return json.loads(resp.read().decode("utf-8"))
+            async with httpx.AsyncClient(timeout=self.timeout) as client:
+                resp = await client.get(url, params=params, headers=headers)
+                if resp.status_code == 200:
+                    return resp.json()
         except Exception:
-            return {}
+            pass
+        return {}
 
-    def _cached(self, key: str, ttl: int, fn) -> Any:
+    def _get_json(self, url: str, params: Dict = None, headers: Dict = None) -> Any:
+        # Keep for backward compatibility if needed, but internally it's now blocking call to async
+        return asyncio.run(self._get_json_async(url, params, headers))
+
+    async def _cached_async(self, key: str, ttl: int, coro) -> Any:
         now = time.time()
         cache = {}
         if self.cache_file.exists():
@@ -74,7 +77,7 @@ class AISearchService:
             if now - entry.get("at", 0) < ttl:
                 return entry.get("data")
         
-        data = fn()
+        data = await coro
         if data:
             cache[key] = {"at": now, "data": data}
             try:
@@ -82,94 +85,99 @@ class AISearchService:
             except: pass
         return data
 
-    def tavily_search(self, query: str, search_depth: str = "basic") -> Dict:
+    def _cached(self, key: str, ttl: int, fn) -> Any:
+        return asyncio.run(self._cached_async(key, ttl, asyncio.to_thread(fn)))
+
+    async def tavily_search_async(self, query: str, search_depth: str = "basic") -> Dict:
         api_key = os.getenv("TAVILY_API_KEY")
         if not api_key: return {}
         
-        def loader():
-            # Tavily API v1
-            data = json.dumps({
+        async def loader():
+            data = {
                 "api_key": api_key,
                 "query": query,
                 "search_depth": search_depth,
                 "include_answer": True
-            }).encode("utf-8")
-            req = urllib.request.Request(
-                "https://api.tavily.com/search",
-                data=data,
-                headers={"Content-Type": "application/json"}
-            )
+            }
             try:
-                with urllib.request.urlopen(req, timeout=self.timeout) as resp:
-                    return json.loads(resp.read().decode("utf-8"))
-            except: return {}
+                async with httpx.AsyncClient(timeout=self.timeout) as client:
+                    resp = await client.post("https://api.tavily.com/search", json=data)
+                    if resp.status_code == 200:
+                        return resp.json()
+            except: pass
+            return {}
             
-        return self._cached(f"tavily:{hashlib.md5(query.encode()).hexdigest()}", 3600, loader)
+        return await self._cached_async(f"tavily:{hashlib.md5(query.encode()).hexdigest()}", 3600, loader())
 
-    def serper_search(self, query: str) -> Dict:
+    def tavily_search(self, query: str, search_depth: str = "basic") -> Dict:
+        return asyncio.run(self.tavily_search_async(query, search_depth))
+
+    async def serper_search_async(self, query: str) -> Dict:
         api_key = os.getenv("SERPER_API_KEY")
         if not api_key: return {}
         
-        def loader():
-            req = urllib.request.Request(
-                "https://google.serper.dev/search",
-                data=json.dumps({"q": query, "gl": "id", "hl": "id"}).encode("utf-8"),
-                headers={"X-API-KEY": api_key, "Content-Type": "application/json"}
-            )
+        async def loader():
+            headers = {"X-API-KEY": api_key, "Content-Type": "application/json"}
+            data = {"q": query, "gl": "id", "hl": "id"}
             try:
-                with urllib.request.urlopen(req, timeout=self.timeout) as resp:
-                    return json.loads(resp.read().decode("utf-8"))
-            except: return {}
+                async with httpx.AsyncClient(timeout=self.timeout) as client:
+                    resp = await client.post("https://google.serper.dev/search", json=data, headers=headers)
+                    if resp.status_code == 200:
+                        return resp.json()
+            except: pass
+            return {}
             
-        return self._cached(f"serper:{hashlib.md5(query.encode()).hexdigest()}", 3600, loader)
+        return await self._cached_async(f"serper:{hashlib.md5(query.encode()).hexdigest()}", 3600, loader())
 
-    def ddg_search(self, query: str, max_results: int = 5) -> List[Dict]:
+    def serper_search(self, query: str) -> Dict:
+        return asyncio.run(self.serper_search_async(query))
+
+    async def ddg_search_async(self, query: str, max_results: int = 5) -> List[Dict]:
         try:
             from duckduckgo_search import DDGS
-            def loader():
+            async def loader():
                 with DDGS() as ddgs:
                     return list(ddgs.text(query, max_results=max_results))
-            return self._cached(f"ddg:{hashlib.md5(query.encode()).hexdigest()}", 1800, loader)
+            return await self._cached_async(f"ddg:{hashlib.md5(query.encode()).hexdigest()}", 1800, loader())
         except ImportError:
             return []
 
-    def jina_search(self, query: str) -> str:
+    def ddg_search(self, query: str, max_results: int = 5) -> List[Dict]:
+        return asyncio.run(self.ddg_search_async(query, max_results))
+
+    async def jina_search_async(self, query: str) -> str:
         api_key = os.getenv("JINA_API_KEY")
         if not api_key: return ""
         
-        def loader():
-            # Jina Reader API - using the recommended r.jina.ai prefix
+        async def loader():
             search_url = f"https://r.jina.ai/{urllib.parse.quote(query)}"
-            req = urllib.request.Request(
-                search_url,
-                headers={
-                    "Authorization": f"Bearer {api_key}",
-                    "Accept": "application/json",
-                    "X-No-Cache": "true",
-                    "X-With-Links-Summary": "true",
-                    "User-Agent": "KiBot-Sovereign-Council/1.0"
-                }
-            )
+            headers = {
+                "Authorization": f"Bearer {api_key}",
+                "Accept": "application/json",
+                "X-No-Cache": "true",
+                "X-With-Links-Summary": "true",
+                "User-Agent": "KiBot-Sovereign-Council/1.0"
+            }
             try:
-                with urllib.request.urlopen(req, timeout=20) as resp:
-                    if resp.status != 200:
-                        print(f"[JINA] HTTP Error: {resp.status}")
+                async with httpx.AsyncClient(timeout=20.0) as client:
+                    resp = await client.get(search_url, headers=headers)
+                    if resp.status_code != 200:
                         return ""
-                    data = json.loads(resp.read().decode("utf-8"))
-                    # Jina returns a list of results in 'data' or 'content'
+                    data = resp.json()
                     results = data.get("data", []) if isinstance(data, dict) else []
                     if not results and "content" in data:
                         return data["content"]
                     
                     content = ""
-                    for res in results[:5]: # Top 5
+                    for res in results[:5]:
                         content += f"Source: {res.get('url')}\nContent: {res.get('content', '')[:1000]}\n\n"
                     return content
-            except Exception as e:
-                print(f"[JINA] Connection Error: {e}")
-                return ""
+            except: return ""
             
-        return self._cached(f"jina:{hashlib.md5(query.encode()).hexdigest()}", 3600, loader)
+        return await self._cached_async(f"jina:{hashlib.md5(query.encode()).hexdigest()}", 3600, loader())
+
+    def jina_search(self, query: str) -> str:
+        return asyncio.run(self.jina_search_async(query))
 
     def brave_search(self, query: str) -> Dict:
         api_key = os.getenv("BRAVE_API_KEY")
@@ -251,20 +259,23 @@ class AISearchService:
             f"**Deep Jina Context:**\n{jina[:2000]}\n"
         )
 
-    def finnhub_news(self, category: str = "crypto") -> List[Dict]:
+    async def finnhub_news_async(self, category: str = "crypto") -> List[Dict]:
         api_key = os.getenv("FINNHUB_API_KEY")
         if not api_key: return []
         
-        def loader():
-            return self._get_json(
+        async def loader():
+            return await self._get_json_async(
                 "https://finnhub.io/api/v1/news",
                 params={"category": category, "token": api_key}
             )
-        return self._cached(f"finnhub:{category}", 900, loader)
+        return await self._cached_async(f"finnhub:{category}", 900, loader())
 
-    def gdelt_news(self, query: str = "crypto") -> List[Dict]:
-        def loader():
-            payload = self._get_json(
+    def finnhub_news(self, category: str = "crypto") -> List[Dict]:
+        return asyncio.run(self.finnhub_news_async(category))
+
+    async def gdelt_news_async(self, query: str = "crypto") -> List[Dict]:
+        async def loader():
+            payload = await self._get_json_async(
                 "https://api.gdeltproject.org/api/v2/doc/doc",
                 params={
                     "query": query,
@@ -274,7 +285,10 @@ class AISearchService:
                 }
             )
             return payload.get("articles", []) if isinstance(payload, dict) else []
-        return self._cached(f"gdelt:{hashlib.md5(query.encode()).hexdigest()}", 1800, loader)
+        return await self._cached_async(f"gdelt:{hashlib.md5(query.encode()).hexdigest()}", 1800, loader())
+
+    def gdelt_news(self, query: str = "crypto") -> List[Dict]:
+        return asyncio.run(self.gdelt_news_async(query))
 
 def search_web(query: str, max_results: int = 5) -> List[Dict]:
     """Helper function for quick web search using DDG/Tavily."""

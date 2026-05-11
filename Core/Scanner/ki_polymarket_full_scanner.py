@@ -10,6 +10,8 @@ class PolymarketFullScanner:
     def __init__(self):
         self.exchange = "POLYMARKET"
         self.seen_markets = {}  # market_id → last_prob untuk deteksi pergeseran
+        self.spread_cache = {}  # market_id -> (spread, ts)
+        self.SPREAD_CACHE_TTL = 300 # 5 minutes
 
     def fetch_all_markets(self, limit=500):
         """Ambil semua market aktif dari Gamma API."""
@@ -26,13 +28,21 @@ class PolymarketFullScanner:
             return []
 
     def get_market_spread(self, condition_id: str) -> float:
-        """Ambil spread dari CLOB (best ask - best bid)."""
+        """Ambil spread dari CLOB (best ask - best bid) dengan caching."""
+        now = time.time()
+        if condition_id in self.spread_cache:
+            spread, ts = self.spread_cache[condition_id]
+            if now - ts < self.SPREAD_CACHE_TTL:
+                return spread
+
         try:
             r = requests.get(f"{CLOB_API}/book?token_id={condition_id}", timeout=4)
             data = r.json()
             best_bid = float(data["bids"][0]["price"]) if data.get("bids") else 0
             best_ask = float(data["asks"][0]["price"]) if data.get("asks") else 1
-            return round(best_ask - best_bid, 4)
+            spread = round(best_ask - best_bid, 4)
+            self.spread_cache[condition_id] = (spread, now)
+            return spread
         except:
             return 1.0  # Spread max = tidak tradeable
 
@@ -44,12 +54,22 @@ class PolymarketFullScanner:
 
         # Ambil best outcome probability
         best_prob = 0.5
-        if outcomes and isinstance(outcomes, list):
+        # Priority 1: outcomePrices (Usually list of strings)
+        outcome_prices = market.get("outcomePrices", [])
+        if outcome_prices:
+            try:
+                probs = [float(p) for p in outcome_prices]
+                best_prob = max(probs) if probs else 0.5
+            except: pass
+        
+        # Priority 2: outcomes list (List of dicts)
+        if best_prob == 0.5 and outcomes and isinstance(outcomes, list):
             try:
                 probs = [float(o.get("price", 0.5)) for o in outcomes if isinstance(o, dict)]
-                best_prob = max(probs) if probs else 0.5
-            except:
-                pass
+                if probs: best_prob = max(probs)
+            except: pass
+        
+        market["_best_prob"] = best_prob
 
         # Time to resolution
         end_date = market.get("endDate") or market.get("endDateIso")
@@ -81,8 +101,8 @@ class PolymarketFullScanner:
 
         market_id = market.get("conditionId") or market.get("id", "")
         prev_prob  = self.seen_markets.get(market_id, best_prob)
-        prob_shift = abs(best_prob - prev_prob)
-        momentum_score = min(1.0, prob_shift * 20)
+        prob_shift = best_prob - prev_prob
+        momentum_score = max(0.0, min(1.0, prob_shift * 20))
         self.seen_markets[market_id] = best_prob
 
         spread = self.get_market_spread(market_id)
@@ -116,8 +136,13 @@ class PolymarketFullScanner:
             market_id = m.get("conditionId") or m.get("id", "")
             question  = m.get("question", "Unknown")[:80]
             
-            prices = m.get("outcomePrices", [])
-            best_yes = max([float(p) for p in prices]) if prices else 0.5
+            # Use already calculated best_prob if available
+            best_yes = m.get("_best_prob", 0.5)
+            if best_yes == 0.5:
+                prices = m.get("outcomePrices", [])
+                try:
+                    best_yes = max([float(p) for p in prices]) if prices else 0.5
+                except: best_yes = 0.5
 
             sig = {
                 "type": "POLYMARKET_OPPORTUNITY",

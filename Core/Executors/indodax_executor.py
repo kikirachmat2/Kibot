@@ -214,6 +214,10 @@ class IndodaxExecutor:
         current_balance = await self.indodax.get_balance("idr")
         
         # 2. Risk Validation
+        # Pass budget to signal for risk gate validation
+        budget = float(indo_strat.get("max_exposure_idr", 25000) / 4) # Split budget
+        signal["budget_idr"] = budget
+        
         is_valid, reason = self.risk.validate_signal(signal, current_balance, len(self.active_trades))
         if not is_valid:
             logger.warning(f"🛡️ REJECTED: {reason} for {symbol}.")
@@ -252,7 +256,6 @@ class IndodaxExecutor:
 
         # 2. Execution
         logger.info(f"⚡ SCRIPT EXECUTION: {side} {symbol} @ {price}")
-        budget = float(indo_strat.get("max_exposure_idr", 25000) / 4) # Split budget
         amount = self.risk.calculate_amount(symbol, price, budget)
         
         pair = symbol.lower().replace("/", "_")
@@ -267,13 +270,24 @@ class IndodaxExecutor:
         )
 
         if res.get("success") == 1:
-            logger.info(f"✅ SUCCESS: {symbol}")
+            # Trade Verification: Parse actual filled data
+            trade_data = res.get("return", {})
+            filled_rp = float(trade_data.get("filled_rp", budget))
+            filled_coin = float(trade_data.get("filled_coin", amount))
+            actual_price = float(trade_data.get("price", price))
+            
+            logger.info(f"✅ SUCCESS: {symbol} (Filled: Rp{filled_rp}, Coin: {filled_coin})")
             self.active_trades[symbol] = {
-                "price": price, 
-                "amount": amount,
-                "high_price": price,
-                "time": time.time()
+                "price": actual_price, 
+                "amount": filled_coin,
+                "high_price": actual_price,
+                "time": time.time(),
+                "cost": filled_rp
             }
+            self._save_active_trades()
+            self.report_to_batam(symbol, "OPEN", f"Buy @ {actual_price}")
+        else:
+            logger.error(f"❌ EXECUTION FAILED: {symbol} - {res.get('error')}")
 
     def report_to_batam(self, symbol, status, msg):
         try:

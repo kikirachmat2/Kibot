@@ -42,6 +42,9 @@ class KiConfig:
     SCALPING_TP_PERCENT = 0.5         # "Sedikit Demi Sedikit" - Take profit early
     SCALPING_SL_PERCENT = 0.3         # Strict stop loss to maintain 2:1 RR approx
     
+    # --- EXCHANGE RATES ---
+    KRW_USD_RATE = 1350.0             # Default conversion, can be updated via env
+    
     # --- MESH TOPOLOGY ---
     BATAM_MASTER = "127.0.0.1"
     SCANNER_NODE = "127.0.0.1"

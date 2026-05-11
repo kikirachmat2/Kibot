@@ -34,33 +34,47 @@ class KiVault:
         return self.fernet.decrypt(token.encode()).decode()
 
 def load_sovereign_env(path: str = ".env.kiv"):
-    """Loads and decrypts environment variables from a .kiv vault file."""
-    vault_path = Path(path)
-    if not vault_path.exists():
-        print(f"[VAULT][WARN] Vault file {path} not found.")
-        return
-
-    vault = KiVault()
-    print(f"[VAULT] Loading sovereign environment from {path}")
+    """Loads and decrypts environment variables from a .kiv vault file or directly from os.environ."""
+    # Always try to load plain .env first if available
     try:
-        with open(vault_path, "r") as f:
-            for line in f:
-                if "=" in line:
-                    key, val = line.strip().split("=", 1)
-                    try:
-                        decrypted_val = vault.decrypt(val)
-                        os.environ[key] = decrypted_val
-                    except Exception:
-                        # If decryption fails, check if it was supposed to be encrypted
+        from dotenv import load_dotenv
+        load_dotenv()
+    except ImportError:
+        pass
+        
+    vault = KiVault()
+    
+    # 1. First, scan all existing environment variables for ENC() patterns
+    for key, val in list(os.environ.items()):
+        if isinstance(val, str) and val.startswith("ENC("):
+            try:
+                # Strip ENC( and )
+                token = val[4:-1]
+                decrypted_val = vault.decrypt(token)
+                os.environ[key] = decrypted_val
+            except Exception:
+                print(f"[VAULT][ERROR] Failed to decrypt {key} from os.environ.")
+
+    # 2. Then load .env.kiv if it exists
+    vault_path = Path(path)
+    if vault_path.exists():
+        print(f"[VAULT] Loading sovereign environment from {path}")
+        try:
+            with open(vault_path, "r") as f:
+                for line in f:
+                    if "=" in line:
+                        key, val = line.strip().split("=", 1)
                         if val.startswith("ENC("):
-                            print(f"[VAULT][ERROR] Failed to decrypt {key}: Key mismatch or missing secret.")
-                            # DO NOT set the environment variable to the raw ENC string, 
-                            # as it will cause crashes later in config (e.g. int() conversion)
+                            try:
+                                token = val[4:-1]
+                                decrypted_val = vault.decrypt(token)
+                                os.environ[key] = decrypted_val
+                            except Exception:
+                                print(f"[VAULT][ERROR] Failed to decrypt {key} from {path}.")
                         else:
-                            # Not an ENC string, maybe just a normal value in the vault
                             os.environ[key] = val
-    except Exception as e:
-        print(f"[VAULT][ERROR] Could not read vault: {e}")
+        except Exception as e:
+            print(f"[VAULT][ERROR] Could not read vault: {e}")
 
 def get_vault():
     return KiVault()

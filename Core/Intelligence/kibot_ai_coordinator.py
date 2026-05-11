@@ -40,18 +40,13 @@ def _load_env_file(env_path: str = ".env") -> None:
                     os.environ[key] = value
 
 
-# Load .env files
-_load_env_file(".env")
-_load_env_file(".env.kiv") # Load vaulted env as well
-
-_root = Path(__file__).resolve().parent.parent
-# Ensure Support is in path
-if str(_root.parent) not in sys.path:
-    sys.path.append(str(_root.parent))
-
+from Core.Support.ki_vault import load_sovereign_env
 from Core.Support.ki_config import *
 from Core.Support.ki_utils import _env_first
 from Core.Support.ki_utils import telegram_send, load_json, save_json
+
+# Load Sovereign Environment (Decrypted)
+load_sovereign_env()
 
 
 
@@ -386,7 +381,9 @@ PROMPT_TEMPLATES = {
         "You are SystemEngineer (Hardware Sentinel). Model: qwen2.5:0.5b.\n"
         "Monitoring Netdata: {netdata_snapshot}.\n"
         "Task: Ensure CPU, Memory, and Connectivity are optimal.\n"
-        "If hardware limits reached, trigger EMERGENCY_PAUSE.\n"
+        "Rules:\n"
+        "1. LOW usage (e.g. CPU < 10%, RAM < 30%) is STABLE and GOOD. Do NOT pause.\n"
+        "2. Only if hardware limits are CRITICAL (CPU > 95%, RAM > 95%) trigger EMERGENCY_PAUSE.\n"
         "Return strict JSON: {\"health_status\":\"STABLE|DEGRADED|CRITICAL\", \"action\":\"NONE|PAUSE\", \"reason\":\"...\"}"
     ),
     "COUNCIL_ORACLE": (
@@ -1103,7 +1100,7 @@ async def query_ai_consensus(context: Dict[str, Any], ticker: str = "BTC/IDR") -
     }, force_refresh=True)
 
 
-def query_ai_debate(prompt_type: str, context: Dict[str, Any], debate_rounds: int = 1, cache_ttl_minutes: int = 60) -> Optional[Dict[str, Any]]:
+async def query_ai_debate(prompt_type: str, context: Dict[str, Any], debate_rounds: int = 1, cache_ttl_minutes: int = 60) -> Optional[Dict[str, Any]]:
     """
     Enhanced Multi-turn Debate with Hallucination Check.
     """
@@ -1117,7 +1114,7 @@ def query_ai_debate(prompt_type: str, context: Dict[str, Any], debate_rounds: in
         return cached
 
     # 1. Initial Thesis
-    thesis = query_ai(prompt_type, context, force_refresh=True)
+    thesis = await query_ai(prompt_type, context, force_refresh=True)
     if not thesis or thesis.get("is_fallback"):
         return thesis or AI_SAFE_FALLBACK
     
@@ -1129,7 +1126,7 @@ def query_ai_debate(prompt_type: str, context: Dict[str, Any], debate_rounds: in
             "thesis_to_critique": current_thesis,
             "instruction": f"Round {r+1}: Critically analyze this thesis for logical gaps, overconfidence, or missing market risks."
         }
-        critique = query_ai("BRAIN_CRITIC", critique_context, force_refresh=True)
+        critique = await query_ai("BRAIN_CRITIC", critique_context, force_refresh=True)
         
         if not critique or critique.get("verdict") == "APPROVE":
             break
@@ -1141,7 +1138,7 @@ def query_ai_debate(prompt_type: str, context: Dict[str, Any], debate_rounds: in
             "critique": critique,
             "instruction": "Integrate the critique to produce a more robust, battle-hardened decision."
         }
-        current_thesis = query_ai(prompt_type, refined_context, force_refresh=True)
+        current_thesis = await query_ai(prompt_type, refined_context, force_refresh=True)
         
     if current_thesis:
         _save_to_cache(cache_key, current_thesis)

@@ -11,7 +11,7 @@ from datetime import datetime
 from pathlib import Path
 import sys
 
-ROOT = Path(__file__).resolve().parent.parent.parent
+ROOT = Path(__file__).resolve().parent.parent
 if str(ROOT) not in sys.path:
     sys.path.append(str(ROOT))
 
@@ -154,40 +154,35 @@ class SovereignNotifier:
         ret_pct = portfolio.get("return_pct", 0.0)
         wl_ratio = portfolio.get("wl_ratio", "0W / 0L")
         pnl_emoji = get_fin_emoji(pnl_val)
+        ret_emoji = get_fin_emoji(ret_pct)
+        wl_emoji = "📊"
 
-        indodax_str = (
-            f"💰 INDODAX PORTFOLIO\n"
-            f"{get_fin_emoji(equity)} Equity: Rp {equity:,.0f}\n"
-            f"{pnl_emoji} PnL   : Rp {pnl_val:,.0f} ({ret_pct:+.2f}%)\n"
-            f"📊 W/L   : {wl_ratio}\n"
-        )
-        
-        # 3.1 Active Positions Indodax
+        pnl_today = portfolio.get("pnl_today", "+0.00%")
+        pnl_7d = portfolio.get("pnl_7d", "+0.00%")
+        pnl_30d = portfolio.get("pnl_30d", "+0.00%")
+
         active_pos = portfolio.get("active_positions", [])
+        asset_str = ""
         if active_pos:
-            indodax_str += "\n📦 ACTIVE POSITIONS\n"
             for pos in active_pos:
-                indodax_str += f"- {pos.get('coin', '???').upper()}: {float(pos.get('amount', 0)):.4f}\n"
+                asset_str += f"• {pos.get('coin', '???').upper()}: {float(pos.get('amount', 0)):.4f}\n"
+        else:
+            asset_str = "• No active positions"
 
         # 4. Polymarket Financials
         poly = data.get("polymarket", {})
-        p_equity = poly.get("equity_idr", 0)
-        p_ret = poly.get("return_pct", 0.0)
-        p_wl = poly.get("wl_ratio", "0W / 0L")
-        
-        poly_str = (
-            f"🔮 POLYMARKET PERF\n"
-            f"{get_fin_emoji(p_equity)} Equity: Rp {p_equity:,.0f}\n"
-            f"{get_fin_emoji(p_ret)} Return: {p_ret:+.2f}%\n"
-            f"📊 W/L   : {p_wl}\n"
-        )
-        
-        # 4.1 Active Positions Polymarket
+        poly_equity = poly.get("equity_idr", 0)
+        poly_ret = poly.get("return_pct", 0.0)
+        poly_pnl = poly.get("pnl_idr", 0)
+        poly_wl = poly.get("wl_ratio", "0W / 0L")
+
         p_active = poly.get("active_positions", [])
+        poly_asset_str = ""
         if p_active:
-            poly_str += "\n🎲 ACTIVE BETS\n"
             for pos in p_active:
-                poly_str += f"- {pos.get('market', '???')}: {pos.get('outcome', '???')}\n"
+                poly_asset_str += f"• {pos.get('market', '???')[:20]}: {pos.get('outcome', '???')}\n"
+        else:
+            poly_asset_str = "• No active bets"
 
         template = f"""🤖 KiBot Sovereign
 🕒 {now_wib} WIB

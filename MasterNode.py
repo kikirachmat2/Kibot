@@ -20,12 +20,12 @@ import socket
 from typing import Dict, List, Optional
 from pathlib import Path
 from datetime import datetime
-from dotenv import load_dotenv
+from Core.Support.ki_vault import load_sovereign_env
 import httpx
 import signal
 
-# Load Environment Variables
-load_dotenv()
+# Load Sovereign Environment (Decrypted)
+load_sovereign_env()
 
 # Configure Logging
 logging.basicConfig(
@@ -69,7 +69,10 @@ NODES = {
 
 class KiBotMaster:
     def __init__(self):
+        from Core.ki_brain import BrainManager
+        self.brain = BrainManager()
         self.council = SovereignCouncil()
+        self.council.brain = self.brain # Inject brain
         self.aggregator = CouncilDataAggregator(self)
         self.is_running = True
         self.last_state = {"portfolio": {"equity_idr": 0, "daily_pnl": "0.0%", "active_positions": []}}
@@ -80,7 +83,6 @@ class KiBotMaster:
             "OLLAMA": CircuitBreaker("OLLAMA", max_failures=5, reset_after_sec=120)
         }
         self._emergency_cooldown = {}
-        self.brain = {"status": "IDLE", "memory": []}
         self.notifier = SovereignNotifier()
         
         # Self-Healing: Reset AI Provider Cooldowns on start
@@ -364,6 +366,16 @@ class KiBotMaster:
             pass
         return None
 
+    def _check_local_port(self, port: int) -> bool:
+        """Check if a local port is listening."""
+        import socket
+        try:
+            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+                s.settimeout(0.5)
+                return s.connect_ex(('127.0.0.1', port)) == 0
+        except:
+            return False
+
     async def get_telemetry(self) -> Dict:
         """Gather real-time telemetry from Batam and remote Singapore nodes."""
         import shutil
@@ -379,9 +391,9 @@ class KiBotMaster:
         telemetry = {
             "timestamp": time.time(),
             "last_update": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-            "os_load": os.getloadavg() if hasattr(os, "getloadavg") else "N/A",
-            "redis": "OFFLINE",
-            "tailscale": "OFFLINE",
+            "os_load": os.getloadavg() if hasattr(os, "getloadavg") else (0, 0, 0),
+            "redis": "ONLINE" if self._check_local_port(6379) else "OFFLINE",
+            "tailscale": "ONLINE" if self._check_local_port(41641) or os.path.exists("/dev/net/tun") else "OFFLINE",
             "mesh_nodes": {
                 "BATAM_MASTER": "ONLINE",
                 "SINGAPORE_SCANNER": "UNKNOWN",
@@ -443,7 +455,7 @@ class KiBotMaster:
 
         # 4. Add Council & Market Context
         try:
-            context = self.aggregator.get_debate_context()
+            context = await self.aggregator.get_debate_context()
             telemetry["portfolio"] = context.get("portfolio_state", {})
             telemetry["market"] = context.get("market_context", {})
             telemetry["stats"] = context.get("audit_data", {}).get("rejection_analysis", {})

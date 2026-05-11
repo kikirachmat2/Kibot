@@ -66,10 +66,21 @@ class SovereignCouncil:
         
         # 1. Gather Intelligence
         # We call System Engineer first for health check
-        health = await query_ai("SYSTEM_ENGINEER", {"netdata_snapshot": "CPU: 20%, MEM: 40%"}) # Mock data
+        sys_stats = market_snapshot.get("system_stats", {}).get("BATAM_MASTER", {})
+        cpu = sys_stats.get('cpu', 0)
+        ram = sys_stats.get('ram', 0)
+        
+        # [SAFEGUARD] If usage is low, skip AI deliberation to avoid hallucinations
+        if cpu < 80 and ram < 85:
+            logging.info("🛡️ [SAFEGUARD] System resources low. Skipping AI health deliberation.")
+            health = {"health_status": "STABLE", "action": "NONE", "reason": "System resources within safe limits (Auto-Stable)"}
+        else:
+            health_context = f"CPU: {cpu}%, MEM: {ram}%"
+            health = await query_ai("SYSTEM_ENGINEER", {"netdata_snapshot": health_context})
+        
         if health and health.get("action") == "PAUSE":
             set_urgency("EMERGENCY_PAUSE", health.get("reason"))
-            return
+            return {"status": "PAUSED", "reason": health.get("reason")}
 
         # 2. Market Synthesis
         scout_res = await query_ai("MARKET_SCOUT", {"raw_scan_results": market_snapshot})
@@ -114,6 +125,9 @@ class SovereignCouncil:
             }
             save_strategy(new_strategy)
             logger.info(f"✅ Strategic Posture Updated: {new_strategy['global_mode']}")
+            return {"status": "SUCCESS", "mode": new_strategy['global_mode']}
+        
+        return {"status": "FAILED", "reason": "AI strategy generation failed"}
         
     async def monitor_active_position(self, ticker: str, entry_price: float):
         """
@@ -185,5 +199,7 @@ class SovereignCouncil:
             logger.error(f"Failed to save directive: {e}")
 
     async def deliberate(self, issue_context: Dict) -> Dict:
-        """Backward compatibility for deliberate_system."""
+        """Centralized deliberation entry point."""
+        if issue_context.get("type") == "PROACTIVE_ORACLE":
+             return await self.run_strategic_planning(issue_context.get("snapshot", {}))
         return await self.deliberate_system(issue_context)
