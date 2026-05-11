@@ -12,11 +12,6 @@
 - **Full Coin Rule**: Disiplin saldo. Harga 1 unit koin harus di bawah total saldo ekuitas saat ini.
 - **Self-Healing**: Mendeteksi kegagalan (Ollama down, Disk full) dan melakukan pemulihan mandiri secara instan.
 
-### 📡 Mesh Architecture
-- **Batam (The Brain)**: Local Ollama Reasoning (Qwen 0.5b - 7b) & Council Deliberation.
-- **Singapore (The Senses)**: High-speed scrapers for Indodax & Polymarket.
-- **Singapore (The Hands)**: Low-latency execution engine via UDP signal plane.
-
 ### 📱 Notification Protocol
 - **Urgent Only**: Hanya mengirim pesan darurat dan tindakan kritis ke Telegram.
 - **Midnight Report**: Laporan PnL harian otomatis setiap pukul 00:00 WIB.
