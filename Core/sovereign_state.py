@@ -11,6 +11,8 @@ logger = logging.getLogger("SovereignState")
 from Core.Support.ki_config import STATE_DIR
 STRATEGY_FILE = STATE_DIR / "active_strategy.json"
 URGENCY_FILE = STATE_DIR / "urgency_flag.json"
+URGENT_FLAG_TTL_SEC = int(os.getenv("KIBOT_URGENCY_TTL_SEC", "3600"))
+URGENT_FLAG_GRACE_SEC = int(os.getenv("KIBOT_URGENCY_GRACE_SEC", "300"))
 
 DEFAULT_STRATEGY = {
     "version": "4.0.0",
@@ -82,7 +84,27 @@ def check_urgency() -> Dict[str, Any]:
         return {"flag": "NORMAL"}
     try:
         with open(URGENCY_FILE, "r") as f:
-            return json.load(f)
+            data = json.load(f)
+        if not isinstance(data, dict):
+            return {"flag": "NORMAL"}
+
+        flag = str(data.get("flag", "NORMAL")).upper()
+        reason = str(data.get("reason", "")).strip()
+        timestamp = float(data.get("timestamp", 0) or 0)
+        age = time.time() - timestamp if timestamp else 0
+
+        if flag in {"EMERGENCY_PAUSE", "FORCE_EXIT"}:
+            if timestamp and age > URGENT_FLAG_TTL_SEC:
+                logger.warning("🚦 Stale urgency flag expired automatically.")
+                clear_urgency()
+                return {"flag": "NORMAL"}
+            if not reason and timestamp and age > URGENT_FLAG_GRACE_SEC:
+                logger.warning("🚦 Empty urgency flag expired automatically.")
+                clear_urgency()
+                return {"flag": "NORMAL"}
+
+        data.setdefault("flag", "NORMAL")
+        return data
     except:
         return {"flag": "NORMAL"}
 

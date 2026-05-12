@@ -87,6 +87,8 @@
 | `COHERE_API_KEY` | SET | AI fallback |
 | `POLYMARKET_WALLET_ADDRESS` | SET | Wallet EVM untuk Polymarket |
 | `POLYMARKET_PRIVATE_KEY` | SET | Private key Phantom/EVM untuk eksekusi Polymarket |
+| `KIBOT_LIVE_TRADING_ENABLED` | SET / TRUE | Gate entry real-money |
+| `KIBOT_TRADING_MODE` | live | Explicit operator mode |
 
 ---
 
