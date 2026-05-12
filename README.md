@@ -9,6 +9,8 @@
 - [`Core/Intelligence/SERVER_INVENTORY.md`](./Core/Intelligence/SERVER_INVENTORY.md): snapshot runtime server, AI models, API keys, dan artefak server-only.
 - [`Core/Security/README.md`](./Core/Security/README.md): HMAC, vault, dan audit security.
 - [`Core/Support/README.md`](./Core/Support/README.md): config, utilities, dan tooling.
+- [`bin/`](./bin): shell utilities canonical untuk backup dan dependency bootstrap.
+- [`state/`](./state): runtime JSON snapshot yang dipakai engine saat berjalan.
 
 ## 📜 THE MANIFESTO
 > **"Sedikit demi Sedikit, Lama-lama Menjadi Bukit."**

@@ -50,7 +50,8 @@ class IndodaxExecutor:
         self.active_trades = {} 
         self.running = False
         self.batam_ip = os.environ.get("KIBOT_MASTER_IP", "127.0.0.1")
-        self.state_file = Path(ROOT_DIR) / "Core" / "state" / "active_trades.json"
+        # Canonical runtime state lives in the top-level state/ directory.
+        self.state_file = Path(ROOT_DIR) / "state" / "active_trades.json"
         self.lock = asyncio.Lock()
         self.reservations = {} # To prevent race conditions
         self._load_active_trades()

@@ -24,7 +24,7 @@
 | Service | Status | Catatan |
 |---------|--------|---------|
 | `kibot-master` | active | MasterNode / council supervisor |
-| `kibot-executor` | active | Executor Indodax |
+| `kibot-executor` | active | Executor Indodax (canonical unit name) |
 | `kibot-executor-polymarket` | active | Executor Polymarket |
 | `kibot-ai-scout` | active | Intel / scouting loop |
 | `ollama` | active | Local AI server |
@@ -33,10 +33,10 @@
 ### Legacy / Auxiliary
 | Service | Status | Catatan |
 |---------|--------|---------|
-| `kibot-trinity` | legacy / audit | Service tambahan, perlu dicek apakah masih diperlukan |
-| `kibot-commander` | inactive | Helper service lama |
-| `kibot-notifier` | inactive | Helper service lama |
-| `ki-telegram-monitor` | inactive | Helper service lama |
+| `kibot-trinity` | retired / masked | Service tambahan lama, tidak lagi dipakai sebagai jalur runtime |
+| `kibot-commander` | retired / masked | Helper service lama |
+| `kibot-notifier` | retired / masked | Helper service lama |
+| `ki-telegram-monitor` | retired / masked | Helper service lama |
 
 ### Ports
 | Port | Service | Protokol | Fungsi |
@@ -172,6 +172,7 @@ These exist on the server but are easy to miss if you only inspect the code tree
 4. `CEREBRAS_API_KEY` / `MISTRAL_API_KEY` raw blobs may still live in `.env`, but they are not usable until re-encrypted or replaced.
 5. `POLYMARKET_*` is still missing, so Phantom-driven Polymarket automation is not fully armed yet.
 6. 401 / 429 failures from upstream AI providers should be treated as provider-health/rate-limit signals, not immediate bot crashes.
+7. `kibot-executor.service` is the canonical Indodax systemd unit; the older `kibot-executor-indodax` naming is retired.
 
 ---
 
@@ -181,4 +182,3 @@ This file is kept in GitHub so Claude and other agents can see what the server a
 - what is running,
 - what is missing,
 - what is server-only and not visible in code review.
-

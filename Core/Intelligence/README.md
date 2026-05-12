@@ -24,7 +24,7 @@ Snapshot singkat yang paling penting:
 - Native `TA-Lib` tidak terpasang; repo memakai fallback `ta`/`pandas` shim.
 
 Server-only artifacts yang tidak kelihatan dari code tree biasa:
-- `state/` runtime JSON, cache, ledger, dan strategi aktif.
+- `state/` runtime JSON, cache, ledger, dan strategi aktif. Ini canonical runtime state; `Core/state` adalah jejak lama yang sudah dipreteli.
 - `logs/` aplikasi dan notifikasi.
 - `config/systemd/` untuk unit file service.
 - `~/.cache`, `~/.local`, `~/.copilot`, `~/.npm`, `~/.ssh`, `~/.oci`, `~/.aider` di akun `ubuntu`.

@@ -584,9 +584,12 @@ class KiBotMaster:
 
         monitored = [
             "kibot-scanner",
-            "kibot-executor-indodax",
+            "kibot-executor",
             "kibot-executor-polymarket",
             "kibot-ai-scout",
+            "kibot-janitor",
+            "ollama",
+            "redis-server",
         ]
         logger.info("🛡️ Service monitor active (systemd mode).")
         while self.is_running:
