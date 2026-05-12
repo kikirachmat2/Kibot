@@ -323,7 +323,7 @@ class IndodaxExecutor:
                 logger.debug(f"🛡️ Symbol {symbol} not in allowed_pairs.")
                 return
 
-            min_confidence = float(indo_strat.get("min_confidence", 0.88))
+            min_confidence = float(indo_strat.get("min_confidence", 0.78))
             probe_confidence_floor = float(signal.get("probe_confidence_floor", max(0.60, min_confidence - 0.10)))
             required_confidence = probe_confidence_floor if learning_probe else min_confidence
 

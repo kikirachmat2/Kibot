@@ -30,7 +30,7 @@ DEFAULT_STRATEGY = {
         "hard_stop_pct": 2.0,
         "max_exposure_idr": 0,
         "max_slots": 100,
-        "min_confidence": 0.65,
+        "min_confidence": 0.62,
         "allowed_pairs": ["*"],
         "take_profit_pct": 1.5,
         "min_profit_after_fee_pct": 0.3,
@@ -45,7 +45,7 @@ DEFAULT_STRATEGY = {
     "polymarket": {
         "min_liquidity_usd": 500,
         "max_bet_usd": 0,                 # 0 means "Use available USDC balance"
-        "min_confidence": 0.75,
+        "min_confidence": 0.60,
         "risk_limit": "AGGRESSIVE"
     }
 }

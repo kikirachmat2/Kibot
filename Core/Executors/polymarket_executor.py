@@ -149,7 +149,7 @@ class PolymarketExecutor:
                 logger.warning(f"🛡️ REJECTED: Spread {spread_pct}% too wide (Max: 10%)")
                 return
 
-            if confidence < poly_strat.get("min_confidence", 0.5):
+            if confidence < poly_strat.get("min_confidence", 0.45):
                 logger.debug(f"🛡️ Confidence {confidence} too low for sovereign posture.")
                 return
 
