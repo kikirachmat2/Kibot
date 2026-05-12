@@ -40,6 +40,8 @@ Server-only artifacts yang tidak kelihatan dari code tree biasa:
 - `gh`, `copilot`, dan `aider` tersedia di server Batam; gunakan `bin/kibotctl tools` untuk cek apakah toolchain ini benar-benar siap dipakai.
 - Council tidak lagi buta skenario: hasil `whatif_results.json` ikut dibaca saat deliberasi strategis dan trading.
 - Council juga tidak buta web: evidence bundle menghitung coverage, catalyst hit, risk flags, dan track-record proxy sebelum action `EXECUTING`.
+- Indodax pump hunting kini menganggap 24h run-up, jarak ke high harian, dan volume persistence sebagai sinyal valid untuk continuation, bukan hanya lonjakan 5m.
+- Jika depth/OBI Indodax tidak tersedia dari server, scanner memakai proxy struktural agar pump hunting tetap berjalan alih-alih mati di hard gate.
 - Daily learning probe dipertimbangkan jika belum ada trade hari itu, tetapi tetap dibatasi evidence bundle dan hard loss rules.
 - Recovery posture dipakai hanya ketika PnL merah, waktu masih cukup, dan evidence masih kuat. Itu bukan revenge trading, melainkan controlled re-entry / de-risking.
 - Deadline pressure dan antagonistic debate sekarang aktif di council planning, jadi sistem terus mencari opsi terbaik sampai menjelang midnight.

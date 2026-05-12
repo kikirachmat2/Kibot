@@ -12,6 +12,7 @@ Executor layer menerima sinyal yang sudah divalidasi lalu mengeksekusi order sec
 ## Catatan Operasional
 - Budget dihitung dari saldo aktif dan slot yang tersedia.
 - Trade ditolak jika harga 1 koin terlalu besar terhadap budget efektif setelah fee.
+- Untuk Indodax pump continuation, executor sekarang bisa melonggarkan momentum/confidence floor secara terkontrol jika scanner menandai `trend_continuation` atau `mature_pump`.
 - Order real-money hanya dibuka jika `KIBOT_LIVE_TRADING_ENABLED=true` atau `KIBOT_TRADING_MODE=live`.
 - Council sekarang punya confidence floor adaptif, jadi entry yang terlalu lemah akan masuk `WAIT` bukan dipaksa eksekusi.
 - Hindari double-start service jika node dijalankan via `systemd`.

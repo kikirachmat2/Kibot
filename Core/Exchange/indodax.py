@@ -5,6 +5,7 @@ import time
 import hashlib
 import hmac
 import json
+import re
 import urllib.parse
 from pathlib import Path
 import httpx
@@ -86,7 +87,33 @@ class IndodaxGateway:
 
         return nonce
 
-    async def _post_private(self, method, params=None):
+    def _bump_nonce_floor(self, floor: int) -> None:
+        """Force the persisted nonce floor above the exchange-reported value."""
+        if floor <= 0:
+            return
+        import fcntl
+
+        self._nonce_file.parent.mkdir(parents=True, exist_ok=True)
+        with IndodaxGateway._nonce_lock:
+            with open(self._nonce_file, "a+", encoding="utf-8") as fp:
+                fcntl.flock(fp, fcntl.LOCK_EX)
+                fp.seek(0)
+                last_nonce = 0
+                try:
+                    payload = json.loads(fp.read() or "{}")
+                    last_nonce = int(payload.get("last_nonce", 0))
+                except Exception:
+                    last_nonce = 0
+
+                nonce = max(last_nonce, floor)
+                fp.seek(0)
+                fp.truncate()
+                fp.write(json.dumps({"last_nonce": nonce}))
+                fp.flush()
+                os.fsync(fp.fileno())
+                fcntl.flock(fp, fcntl.LOCK_UN)
+
+    async def _post_private(self, method, params=None, *, _nonce_retry: bool = False):
         if not self.api_key:
             return {"success": 0, "error": "Missing API Key"}
 
@@ -110,7 +137,22 @@ class IndodaxGateway:
                 resp = await client.post(self.base_url, content=payload_str, headers=headers)
                 data = resp.json()
                 if data.get("success") != 1:
-                    logger.warning(f"⚠️ Indodax {method} Error: {data.get('error')}")
+                    error_text = str(data.get("error", ""))
+                    nonce_match = re.search(
+                        r"Nonce must be greater than\s+(\d+)\.?\s*You provided\s+(\d+)",
+                        error_text,
+                        re.IGNORECASE,
+                    )
+                    if nonce_match:
+                        required_nonce = int(nonce_match.group(1))
+                        provided_nonce = int(nonce_match.group(2))
+                        self._bump_nonce_floor(max(required_nonce + 1, provided_nonce + 1, int(time.time_ns() // 1000)))
+                        if not _nonce_retry:
+                            logger.info(
+                                f"🔁 Indodax {method} nonce bumped after exchange hint; retrying once."
+                            )
+                            return await self._post_private(method, params=params, _nonce_retry=True)
+                    logger.warning(f"⚠️ Indodax {method} Error: {error_text}")
                 return data
             except Exception as e:
                 logger.error(f"❌ Indodax Connection Error ({method}): {e}")

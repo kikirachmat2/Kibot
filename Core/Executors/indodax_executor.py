@@ -228,7 +228,10 @@ class IndodaxExecutor:
         side = signal.get("side", "BUY")
         price = float(signal.get("price", 0))
         confidence = signal.get("confidence", 0)
-        change_pct = abs(signal.get("change_pct", 0))
+        change_pct = abs(signal.get("change_5m_pct", signal.get("change_pct", 0)))
+        pump_stage = str(signal.get("pump_stage", "IGNITION") or "IGNITION").upper()
+        trend_continuation = bool(signal.get("trend_continuation", False))
+        mature_pump = bool(signal.get("mature_pump", False))
         learning_probe = bool(signal.get("learning_probe", False))
 
         # --- SCRIPT LOGIC (V3.2) ---
@@ -309,7 +312,11 @@ class IndodaxExecutor:
                     best_bid = float(bids[0][0])
                     best_ask = float(asks[0][0])
                     spread_pct = ((best_ask - best_bid) / best_bid) * 100
-                    max_spread = indo_strat.get("max_spread_pct", 0.5)
+                    max_spread = float(indo_strat.get("max_spread_pct", 0.45))
+                    if trend_continuation:
+                        max_spread = max(max_spread, 0.50)
+                    if mature_pump:
+                        max_spread = max(max_spread, 0.60)
                     if spread_pct > max_spread:
                         logger.warning(f"🛡️ REJECTED: Spread {spread_pct:.2f}% > limit {max_spread}% for {symbol}")
                         return
@@ -323,16 +330,26 @@ class IndodaxExecutor:
                 logger.debug(f"🛡️ Symbol {symbol} not in allowed_pairs.")
                 return
 
-            min_confidence = float(indo_strat.get("min_confidence", 0.78))
+            min_confidence = float(indo_strat.get("min_confidence", 0.68))
             probe_confidence_floor = float(signal.get("probe_confidence_floor", max(0.60, min_confidence - 0.10)))
             required_confidence = probe_confidence_floor if learning_probe else min_confidence
+            if trend_continuation:
+                required_confidence = max(0.58 if not learning_probe else 0.55, required_confidence - 0.06)
+            elif mature_pump:
+                required_confidence = max(0.56 if not learning_probe else 0.54, required_confidence - 0.08)
 
             if confidence < required_confidence:
                 logger.debug(f"🛡️ Confidence {confidence} too low for Pump Hunter.")
                 return
             
             # 4. Pump Intensity Check
-            if change_pct < indo_strat.get("buy_threshold_pct", 0.8):
+            momentum_floor = float(indo_strat.get("buy_threshold_pct", 0.35))
+            if trend_continuation:
+                momentum_floor = max(0.20, momentum_floor - 0.15)
+            elif mature_pump:
+                momentum_floor = max(0.15, momentum_floor - 0.20)
+
+            if change_pct < momentum_floor:
                 logger.debug(f"🛡️ Momentum {change_pct}% too weak for Pump Hunter.")
                 return
 

@@ -25,12 +25,12 @@ DEFAULT_STRATEGY = {
         "reason": "default",
     },
     "indodax": {
-        "buy_threshold_pct": 0.5,
+        "buy_threshold_pct": 0.35,
         "trailing_stop_pct": 0.3,
         "hard_stop_pct": 2.0,
         "max_exposure_idr": 0,
         "max_slots": 100,
-        "min_confidence": 0.62,
+        "min_confidence": 0.60,
         "allowed_pairs": ["*"],
         "take_profit_pct": 1.5,
         "min_profit_after_fee_pct": 0.3,
@@ -39,7 +39,7 @@ DEFAULT_STRATEGY = {
         "fee_pph_sell_pct": 0.21,
         "fee_roundtrip_pct": 1.02,
         "prefer_limit_order": True,
-        "max_spread_pct": 0.3,
+        "max_spread_pct": 0.45,
         "green_hold_tp_multiplier": 1.0,
     },
     "polymarket": {

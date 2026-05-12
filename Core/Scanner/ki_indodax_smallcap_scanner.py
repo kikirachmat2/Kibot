@@ -4,12 +4,21 @@ import logging
 
 logger = logging.getLogger("IndodaxScanner")
 
-# Thresholds untuk small cap pump detection (Aggressive V3.1)
-VOLUME_SPIKE_MULTIPLIER = 1.5   # volume > 1.5x rata-rata 30m (Was 3.0)
-PRICE_CHANGE_MIN_PCT    = 0.5   # harga naik minimal 0.5% dalam 5 menit (Was 1.5)
-OBI_MIN                 = 0.1   # order book imbalance minimum (beli > jual) (Was 0.3)
-MIN_VOLUME_IDR          = 1_000_000   # filter dust: min 1jt IDR volume/jam (Was 5jt)
-MAX_VOLUME_IDR          = 1_000_000_000_000  # 1 Trillion IDR (Essentially no upper limit for BTC/ETH) (Was 50B)
+# Thresholds untuk small cap pump detection (Aggressive V4.0)
+# Fokus: coins yang sedang naik kuat, dekat high harian, dan masih punya volume persistence.
+VOLUME_SPIKE_MULTIPLIER = 1.35
+PRICE_CHANGE_MIN_PCT    = 0.35  # 5m momentum minimum untuk ignition kecil
+OBI_MIN                 = 0.1   # order book imbalance minimum (beli > jual)
+MIN_VOLUME_IDR          = 1_000_000
+MAX_VOLUME_IDR          = 1_000_000_000_000  # Praktis no upper limit untuk major pairs
+CONTINUATION_MIN_RUNUP_PCT = 10.0
+CONTINUATION_MIN_RANGE_POSITION = 0.65
+CONTINUATION_MAX_DIST_TO_HIGH_PCT = 12.5
+MATURE_MIN_RUNUP_PCT = 22.0
+MATURE_MIN_RANGE_POSITION = 0.50
+MATURE_MAX_DIST_TO_HIGH_PCT = 20.0
+MATURE_MIN_VOLUME_RATIO = 1.05
+CONTINUATION_MIN_VOLUME_RATIO = 1.15
 
 class IndodaxSmallCapScanner:
     def __init__(self):
@@ -40,19 +49,21 @@ class IndodaxSmallCapScanner:
         try:
             r = requests.get(f"https://indodax.com/api/{pair}/depth", timeout=4)
             if r.status_code != 200:
-                return 0.0
+                return None
             data = r.json()
             bids = sum(float(b[1]) for b in data.get("buy", [])[:10])
             asks = sum(float(a[1]) for a in data.get("sell", [])[:10])
             total = bids + asks
-            return (bids - asks) / total if total > 0 else 0.0
+            return (bids - asks) / total if total > 0 else None
         except Exception as e:
             logger.error(f"Fetch orderbook failed for {pair}: {e}")
-            return 0.0
+            return None
 
     def detect_pump(self, pair: str, ticker: dict) -> dict | None:
         now = time.time()
         price = float(ticker.get("last", 0))
+        day_low = float(ticker.get("low", price) or price)
+        day_high = float(ticker.get("high", price) or price)
         vol_idr = float(ticker.get("vol_idr", 0))
 
         if price <= 0 or vol_idr < MIN_VOLUME_IDR or vol_idr > MAX_VOLUME_IDR:
@@ -97,20 +108,65 @@ class IndodaxSmallCapScanner:
         if len(volume_window) >= 4:
             vol_acceleration = (volume_window[-1] - volume_window[-4]) / max(volume_window[-4], 1.0)
 
-        if price_change_pct < PRICE_CHANGE_MIN_PCT or vol_ratio < VOLUME_SPIKE_MULTIPLIER:
-            return None
+        # 24h proxy: how far the pair has already run from day low, and how close it sits to day high.
+        day_range = max(day_high - day_low, 0.0)
+        runup_from_low_pct = ((price - day_low) / day_low * 100) if day_low > 0 else 0.0
+        distance_to_high_pct = ((day_high - price) / day_high * 100) if day_high > 0 else 100.0
+        range_position = ((price - day_low) / day_range) if day_range > 0 else 0.0
+        range_position = max(0.0, min(1.0, range_position))
 
-        # Konfirmasi OBI (fetch orderbook hanya jika threshold price+volume terpenuhi)
-        obi = self.fetch_orderbook(pair)
-        if obi < OBI_MIN:
-            return None  # Pump palsu, order book condong ke jual
+        trend_continuation = (
+            runup_from_low_pct >= CONTINUATION_MIN_RUNUP_PCT
+            and range_position >= CONTINUATION_MIN_RANGE_POSITION
+            and distance_to_high_pct <= CONTINUATION_MAX_DIST_TO_HIGH_PCT
+            and vol_ratio >= CONTINUATION_MIN_VOLUME_RATIO
+            and persistence >= 0.55
+        )
+        mature_pump = (
+            runup_from_low_pct >= MATURE_MIN_RUNUP_PCT
+            and range_position >= MATURE_MIN_RANGE_POSITION
+            and distance_to_high_pct <= MATURE_MAX_DIST_TO_HIGH_PCT
+            and vol_ratio >= MATURE_MIN_VOLUME_RATIO
+        )
+
+        price_floor = PRICE_CHANGE_MIN_PCT
+        volume_floor = VOLUME_SPIKE_MULTIPLIER
+        if trend_continuation:
+            price_floor = 0.25
+            volume_floor = min(volume_floor, CONTINUATION_MIN_VOLUME_RATIO)
+        if mature_pump:
+            price_floor = min(price_floor, 0.15)
+            volume_floor = min(volume_floor, MATURE_MIN_VOLUME_RATIO)
+
+        if price_change_pct < price_floor or vol_ratio < volume_floor:
+            return None
 
         # Confidence score yang lebih berani tapi tetap data-driven
         momentum_score = min(1.0, max(0.0, price_change_pct / 4.0))
         volume_score = min(1.0, max(0.0, (vol_ratio - 1.0) / 3.0))
-        obi_score = min(1.0, max(0.0, (obi + 1.0) / 2.0))
         persistence_score = min(1.0, max(0.0, persistence))
         acceleration_score = min(1.0, max(0.0, vol_acceleration))
+        trend_score = min(1.0, max(0.0, runup_from_low_pct / 35.0))
+        range_score = min(1.0, max(0.0, range_position))
+        near_high_score = max(0.0, min(1.0, 1.0 - (distance_to_high_pct / 12.0)))
+        stage_bonus = 0.06 if trend_continuation else 0.03 if mature_pump else 0.0
+        obi = self.fetch_orderbook(pair)
+        obi_available = obi is not None
+        if obi_available and obi < OBI_MIN:
+            return None  # Pump palsu, order book condong ke jual
+        obi_proxy = max(
+            0.0,
+            min(
+                1.0,
+                0.22
+                + (trend_score * 0.20)
+                + (range_score * 0.18)
+                + (persistence_score * 0.16)
+                + (volume_score * 0.12)
+                + (0.06 if trend_continuation else 0.0)
+            ),
+        )
+        obi_score = min(1.0, max(0.0, ((obi + 1.0) / 2.0) if obi_available else obi_proxy))
         confidence = round(
             min(
                 0.96,
@@ -123,6 +179,17 @@ class IndodaxSmallCapScanner:
             ),
             4,
         )
+        confidence = round(
+            min(
+                0.98,
+                confidence
+                + (trend_score * 0.06)
+                + (range_score * 0.04)
+                + (near_high_score * 0.05)
+                + stage_bonus,
+            ),
+            4,
+        )
 
         return {
             "type": "SMALLCAP_PUMP",
@@ -130,19 +197,32 @@ class IndodaxSmallCapScanner:
             "base_symbol": pair.split("_")[0].upper(),
             "price": price,
             "price_idr": price,
+            "change_pct": round(price_change_pct, 2),
             "change_5m_pct": round(price_change_pct, 2),
+            "runup_24h_proxy_pct": round(runup_from_low_pct, 2),
+            "distance_to_high_pct": round(distance_to_high_pct, 2),
+            "range_position": round(range_position, 3),
             "vol_ratio": round(vol_ratio, 1),
-            "obi": round(obi, 3),
+            "obi": round(obi if obi_available else obi_proxy * 2 - 1, 3),
+            "obi_source": "ORDERBOOK" if obi_available else "PROXY",
             "confidence": confidence,
             "momentum_score": round(momentum_score, 3),
             "volume_score": round(volume_score, 3),
             "persistence_score": round(persistence_score, 3),
             "acceleration_score": round(acceleration_score, 3),
+            "trend_score": round(trend_score, 3),
+            "range_score": round(range_score, 3),
+            "near_high_score": round(near_high_score, 3),
+            "trend_continuation": trend_continuation,
+            "mature_pump": mature_pump,
             "track_record": {
                 "persistence": round(persistence, 3),
                 "vol_acceleration": round(vol_acceleration, 3),
                 "window_points": len(price_window),
+                "day_low": round(day_low, 8),
+                "day_high": round(day_high, 8),
             },
+            "pump_stage": "CONTINUATION" if trend_continuation else "MATURE" if mature_pump else "IGNITION",
             "regime": "PUMP_DETECTED",
             "exchange": "INDODAX",
             "ts": int(now * 1000)

@@ -365,6 +365,7 @@ PROMPT_TEMPLATES = {
         "Scanning Indodax Lead-Lag and Polymarket anomalies.\n"
         "Context: {raw_scan_results}.\n"
         "Task: Identify high-probability opportunities and filter out social media noise/fake-pumps.\n"
+        "For Indodax, prefer coins with strong 24h run-up, volume persistence, near-high structure, and trend continuation; do not dismiss a valid pump just because the 5m move is small if the continuation evidence is strong.\n"
         "Return strict JSON: {\"candidates\":[...], \"priority_level\":\"LOW|MED|HIGH\", \"scout_notes\":\"...\"}"
     ),
     "ACTIVE_GUARDIAN": (
@@ -482,6 +483,7 @@ PROMPT_TEMPLATES = {
         "Context: {raw_data}\n"
         "Daily state: {daily_state}\n"
         "Indodax context: Focus on IDR premiums and local Indonesian listing rumors.\n"
+        "For pump hunting, favor coins with 24h run-up, near-high price action, and persistent volume rather than isolated one-candle spikes.\n"
         "Polymarket context: Focus on high-volume prediction shifts that correlate with tokens.\n"
         "Return strict compact JSON only with keys "
         "{\"possibilities\":[{\"title\":\"...\",\"description\":\"...\",\"probability\":0.0,\"assets\":[...],\"platforms\":[\"INDODAX\",\"POLYMARKET\",\"BINANCE\"],\"urgency\":\"LOW|MED|HIGH\"}]}"
@@ -498,6 +500,7 @@ PROMPT_TEMPLATES = {
         "Minutes to midnight: {minutes_to_midnight}\n"
         "Deadline pressure: {deadline_pressure}\n"
         "Provide a final trading mandate (BUY/SELL/NONE). Prefer decisive action when evidence converges, but refuse weak or noisy setups.\n"
+        "Pump continuation rule: if a coin is already far above its day low, is still near the day high, and volume persistence stays strong, treat it as a valid continuation candidate even if the latest 5m change is modest.\n"
         "Do not sit idle just because the market is ugly. Search the supplied signals for the best available edge, but never force a low-quality trade.\n"
         "The target is GREEN, not a percentage threshold. If the day is already green and the edge still remains strong, prefer to stay with winners and exit only when the exit edge, risk, or deadline becomes stronger.\n"
         "If evidence is insufficient, choose NONE rather than force a trade.\n"
