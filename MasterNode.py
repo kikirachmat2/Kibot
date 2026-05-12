@@ -551,7 +551,7 @@ class KiBotMaster:
         
         # 1. Base Infrastructure Stats
         local_stats = {
-            "cpu": psutil.cpu_percent(),
+            "cpu": psutil.cpu_percent(interval=0.2),
             "ram": psutil.virtual_memory().percent,
             "disk": psutil.disk_usage('/').percent
         }

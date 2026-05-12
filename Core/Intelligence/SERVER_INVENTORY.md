@@ -185,6 +185,7 @@ These exist on the server but are easy to miss if you only inspect the code tree
 15. `SovereignCouncil` now also queries an antagonist / devil's-advocate view and `POSSIBILITY_MINING` so it can challenge its own thesis and avoid one-direction consensus drift.
 16. Daily objective is now represented as `GREEN` state rather than a fixed numeric target, so profitable winners can stay open longer when the edge remains strong.
 17. Scanner delta filtering now uses stable per-signal UIDs, so Polymarket signals are keyed by market ID instead of a generic `base_symbol` that can collapse distinct opportunities.
+18. `EXIT_ALL` is clamped so it only applies in the midnight window or a genuine emergency; CPU-only spikes are downgraded to DEGRADED instead of a full trading shutdown when RAM/disk are still healthy.
 
 ---
 

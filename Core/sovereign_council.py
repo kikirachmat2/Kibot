@@ -562,18 +562,33 @@ class SovereignCouncil:
         sys_stats = market_snapshot.get("system_stats", {}).get("BATAM_MASTER", {})
         cpu = sys_stats.get('cpu', 0)
         ram = sys_stats.get('ram', 0)
+        disk = sys_stats.get('disk', 0)
         
         # [SAFEGUARD] If usage is low, skip AI deliberation to avoid hallucinations
         if cpu < 80 and ram < 85:
             logging.info("🛡️ [SAFEGUARD] System resources low. Skipping AI health deliberation.")
             health = {"health_status": "STABLE", "action": "NONE", "reason": "System resources within safe limits (Auto-Stable)"}
         else:
-            health_context = f"CPU: {cpu}%, MEM: {ram}%"
+            health_context = f"CPU: {cpu}%, MEM: {ram}%, DISK: {disk}%"
             health = await query_ai("SYSTEM_ENGINEER", {"netdata_snapshot": health_context})
         
         if health and health.get("action") == "PAUSE":
-            set_urgency("EMERGENCY_PAUSE", health.get("reason"))
-            return {"status": "PAUSED", "reason": health.get("reason")}
+            cpu_critical = float(cpu) >= 95.0
+            ram_critical = float(ram) >= 90.0
+            disk_critical = float(disk) >= 95.0
+            if not ((cpu_critical and ram_critical) or disk_critical):
+                logger.warning(
+                    "🛡️ [SAFEGUARD] SystemEngineer requested PAUSE on CPU-only spike; "
+                    "overriding to DEGRADED/NONE so trading can continue under guardrails."
+                )
+                health = {
+                    "health_status": "DEGRADED",
+                    "action": "NONE",
+                    "reason": "CPU spike without memory/disk exhaustion; continue with guardrails.",
+                }
+            else:
+                set_urgency("EMERGENCY_PAUSE", health.get("reason"))
+                return {"status": "PAUSED", "reason": health.get("reason")}
 
         # 2. Market Synthesis
         scout_res = await query_ai("MARKET_SCOUT", {"raw_scan_results": market_snapshot})
@@ -643,9 +658,23 @@ class SovereignCouncil:
             return {"status": "FAILED", "reason": "AI strategy generation failed - invalid type"}
 
         if dean_res:
+            raw_mode = str(dean_res.get("global_mode", "NEUTRAL")).upper().strip()
+            if raw_mode == "EXIT_ALL" and not is_midnight_approaching:
+                current_mode = str(current.get("global_mode", "NEUTRAL")).upper().strip()
+                daily_color = str(runtime_daily_state.get("color", "FLAT")).upper().strip()
+                if daily_color == "GREEN":
+                    raw_mode = "CONTROLLED_AGGRESSIVE"
+                elif daily_color == "RECOVERY":
+                    raw_mode = current_mode if current_mode not in {"EXIT_ALL", ""} else "NEUTRAL"
+                else:
+                    raw_mode = current_mode if current_mode not in {"EXIT_ALL", ""} else "NEUTRAL"
+                logger.warning(
+                    "🛡️ Premature EXIT_ALL overridden outside midnight window; "
+                    f"using {raw_mode} instead."
+                )
             new_strategy = {
                 "version": "3.0.0",
-                "global_mode": dean_res.get("global_mode", "NEUTRAL"),
+                "global_mode": raw_mode,
                 "indodax": dean_res.get("indodax", current["indodax"]),
                 "polymarket": dean_res.get("polymarket", current["polymarket"]),
                 "antagonist_view": antagonist_view,
