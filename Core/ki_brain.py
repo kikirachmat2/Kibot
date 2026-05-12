@@ -725,8 +725,9 @@ class BrainManager:
             },
             "daily_target": {
                 "status": daily_target.get("status"),
-                "gap_pct": daily_target.get("gap_pct"),
+                "green_state": daily_target.get("green_state"),
                 "strategy_next": daily_target.get("strategy_next"),
+                "green_hold_mode": daily_target.get("green_hold_mode"),
                 "capital_profile": (
                     {
                         "mode": (daily_target.get("capital_profile") or {}).get("mode"),
@@ -1021,8 +1022,9 @@ class BrainManager:
             },
             "daily_target": {
                 "status": daily_target.get("status"),
-                "gap_pct": daily_target.get("gap_pct"),
+                "green_state": daily_target.get("green_state"),
                 "strategy_next": daily_target.get("strategy_next"),
+                "green_hold_mode": daily_target.get("green_hold_mode"),
                 "capital_profile": (
                     {
                         "mode": (daily_target.get("capital_profile") or {}).get("mode"),
@@ -2062,23 +2064,29 @@ class BrainManager:
         daily_pnl_pct = self._safe_float(context.get("daily_pnl_pct"))
         target_gap_pct = max(self.green_target_daily_pct - daily_pnl_pct, 0.0)
         capital_profile = context.get("capital_profile") if isinstance(context.get("capital_profile"), dict) else {}
-        if daily_pnl_pct >= self.green_target_daily_pct:
-            status = "AHEAD"
-        elif daily_pnl_pct >= 0.0:
-            status = "CHASING_GREEN"
+        green_state = "GREEN" if daily_pnl_pct > 0 else "FLAT" if daily_pnl_pct == 0.0 else "RECOVERY"
+        if green_state == "GREEN":
+            status = "GREEN"
+        elif green_state == "FLAT":
+            status = "PURSUING_GREEN"
         else:
             status = "RECOVERY_MODE"
         mode = str(capital_profile.get("mode") or "UNKNOWN")
-        if mode in {"MICRO", "BUILDUP"}:
+        if green_state == "GREEN":
+            strategy = "Protect the green state, let winners run while the edge remains strong, and exit only when momentum weakens or the deadline/risk demands it."
+        elif mode in {"MICRO", "BUILDUP"}:
             strategy = "Trade smaller, favor liquid high-trust pairs, and require cleaner scanner confirmation."
         elif mode == "RECOVERY":
             strategy = "Freeze aggressive rotation, demand strong veto alignment, and prioritize capital protection."
         elif mode == "EXPANSION":
             strategy = "Keep discipline, but allow normal rotation when scanner and local flow confirm."
         else:
-            strategy = "Stay selective and let market pulse decide whether to press or wait."
+            strategy = "Stay selective, keep searching for the best available edge, and let market pulse decide whether to press or wait."
         return {
             "daily_pnl_pct": round(daily_pnl_pct, 4),
+            "green_state": green_state,
+            "green_hold_mode": green_state == "GREEN",
+            "target_mode": "GREEN",
             "target_pct": round(self.green_target_daily_pct, 4),
             "gap_pct": round(target_gap_pct, 4),
             "status": status,

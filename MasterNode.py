@@ -33,7 +33,7 @@ from Core.circuit_breaker import CircuitBreaker
 from Core.sovereign_council import SovereignCouncil
 from Core.sovereign_notifier import SovereignNotifier
 from Core.Intelligence.aggregator import CouncilDataAggregator
-from Core.sovereign_state import load_strategy
+from Core.sovereign_state import load_strategy, save_strategy
 from Core.Intelligence.kibot_whatif_engine import run_simulation
 
 # Configure Logging
@@ -163,21 +163,46 @@ class KiBotMaster:
                 pnl_idr = combined_equity_idr - self._pnl_session_start_balance
                 pnl_pct = (pnl_idr / self._pnl_session_start_balance * 100) if self._pnl_session_start_balance > 0 else 0
                 risk_daily = getattr(getattr(self, "council", None), "risk", None)
+                green_color = "GREEN" if pnl_idr > 0 else "RECOVERY" if pnl_idr < 0 else "FLAT"
+                daily_state = {
+                    "color": green_color,
+                    "hold_winners": green_color == "GREEN",
+                    "take_profit_multiplier": 1.75 if green_color == "GREEN" else 1.0,
+                    "reason": "green_state" if green_color == "GREEN" else "recovery_state" if green_color == "RECOVERY" else "flat_state",
+                }
                 logger.info(
                     f"💰 [PNL-5M] IDR Rp{current_idr:,.0f} | USDC ${usdc_balance:.2f} | "
-                    f"Combined Rp{combined_equity_idr:,.0f} | PnL Rp{pnl_idr:+,.0f} ({pnl_pct:+.2f}%)"
+                    f"Combined Rp{combined_equity_idr:,.0f} | PnL Rp{pnl_idr:+,.0f} ({pnl_pct:+.2f}%) | "
+                    f"State {green_color}"
                 )
 
-                if pnl_pct >= float(os.getenv("KIBOT_DAILY_TARGET_PCT", "1.0")):
-                    key = "target_hit"
+                if green_color == "GREEN":
+                    key = "green_state"
                     if key not in self._pnl_last_milestone:
                         self._pnl_last_milestone[key] = time.time()
-                        logger.info("🎯 Daily target reached.")
+                        logger.info("🟢 Daily state GREEN reached. Preserve winners; exit only on weaker edge.")
                 if pnl_pct <= -1.2:
                     key = "loss_warning"
                     if key not in self._pnl_last_milestone:
                         self._pnl_last_milestone[key] = time.time()
                         logger.warning("⚠️ Approaching loss limit.")
+                if isinstance(self.last_state, dict):
+                    portfolio_state = dict(self.last_state.get("portfolio", {}) or {})
+                    portfolio_state["daily_state"] = {
+                        **daily_state,
+                        "pnl_idr": round(pnl_idr, 2),
+                        "pnl_pct": round(pnl_pct, 4),
+                        "equity_idr": round(combined_equity_idr, 2),
+                    }
+                    self.last_state["portfolio"] = portfolio_state
+
+                strategy = load_strategy()
+                strategy_daily_state = strategy.get("daily_state") if isinstance(strategy.get("daily_state"), dict) else {}
+                if strategy_daily_state != daily_state:
+                    strategy["daily_state"] = daily_state
+                    strategy.setdefault("indodax", {})
+                    strategy["indodax"]["green_hold_tp_multiplier"] = daily_state["take_profit_multiplier"]
+                    save_strategy(strategy)
             except Exception as e:
                 logger.error(f"PnL Watchdog error: {e}")
             await asyncio.sleep(300)
@@ -314,6 +339,7 @@ class KiBotMaster:
                                     "learning_probe": bool(decision.get("learning_probe", False)),
                                     "probe_confidence_floor": float(decision.get("probe_confidence_floor", 0.0) or 0.0),
                                     "trade_profile": decision.get("trade_profile", "STANDARD"),
+                                    "daily_state": dict(self.last_state.get("portfolio", {}).get("daily_state", {}) or {}),
                                 }
                                 
                                 # Send HMAC-signed mandate to Indodax Executor (Port 9998)
@@ -597,6 +623,9 @@ class KiBotMaster:
         try:
             context = await self.aggregator.get_debate_context()
             portfolio_state = context.get("portfolio_state", {})
+            existing_portfolio_state = dict(self.last_state.get("portfolio", {}) or {})
+            if "daily_state" not in portfolio_state and existing_portfolio_state.get("daily_state"):
+                portfolio_state["daily_state"] = existing_portfolio_state.get("daily_state")
             telemetry["portfolio"] = portfolio_state
             telemetry["market"] = context.get("market_context", {})
             telemetry["stats"] = context.get("audit_data", {}).get("rejection_analysis", {})

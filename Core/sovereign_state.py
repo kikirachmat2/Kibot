@@ -18,6 +18,12 @@ DEFAULT_STRATEGY = {
     "version": "4.0.0",
     "last_updated": 0,
     "global_mode": "FULL_ATTACK",
+    "daily_state": {
+        "color": "RECOVERY",
+        "hold_winners": False,
+        "take_profit_multiplier": 1.0,
+        "reason": "default",
+    },
     "indodax": {
         "buy_threshold_pct": 0.5,
         "trailing_stop_pct": 0.3,
@@ -33,7 +39,8 @@ DEFAULT_STRATEGY = {
         "fee_pph_sell_pct": 0.21,
         "fee_roundtrip_pct": 1.02,
         "prefer_limit_order": True,
-        "max_spread_pct": 0.3
+        "max_spread_pct": 0.3,
+        "green_hold_tp_multiplier": 1.0,
     },
     "polymarket": {
         "min_liquidity_usd": 500,

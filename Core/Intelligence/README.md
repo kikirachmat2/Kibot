@@ -12,6 +12,7 @@ AI Orchestration, Learning, and Market Intelligence models.
 - `SovereignCouncil` membaca `whatif_results.json` dan evidence web sebelum memberi mandat trading.
 - `SovereignCouncil` sekarang juga memberi posture eksplisit `ENTER / WAIT / EXIT`, plus recovery mode terkontrol saat equity harian merah dan masih ada waktu sebelum midnight.
 - `SovereignCouncil` juga menjalankan `COUNCIL_ANTAGONIST` dan `POSSIBILITY_MINING` supaya council tidak berpikir satu arah saja.
+- Target harian sekarang dipahami sebagai state `GREEN` bukan angka persen statis, jadi council dan executor bisa menahan winner lebih lama kalau edge masih kuat.
 
 ## Live Server Atlas
 Source of truth untuk keadaan server yang sebenarnya:
@@ -41,6 +42,7 @@ Server-only artifacts yang tidak kelihatan dari code tree biasa:
 - Daily learning probe dipertimbangkan jika belum ada trade hari itu, tetapi tetap dibatasi evidence bundle dan hard loss rules.
 - Recovery posture dipakai hanya ketika PnL merah, waktu masih cukup, dan evidence masih kuat. Itu bukan revenge trading, melainkan controlled re-entry / de-risking.
 - Deadline pressure dan antagonistic debate sekarang aktif di council planning, jadi sistem terus mencari opsi terbaik sampai menjelang midnight.
+- Daily state dikirim ke planner dan executor supaya posisi pemenang tidak dipotong terlalu cepat hanya karena target angka lama sudah tercapai.
 
 ## Responsibility
 - **AI Veto**: Validating signals using local LLMs (Ollama/Dify).

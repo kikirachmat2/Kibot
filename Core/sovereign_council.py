@@ -103,6 +103,15 @@ class SovereignCouncil:
         daily_pnl_pct = float(portfolio.get("daily_pnl_pct") or portfolio.get("return_pct") or 0.0)
         if daily_pnl_pct == 0.0 and combined_equity_idr > 0 and daily_pnl_idr:
             daily_pnl_pct = (daily_pnl_idr / combined_equity_idr) * 100.0
+        green_state = "GREEN" if daily_pnl_idr > 0 else "FLAT" if daily_pnl_idr == 0 else "RECOVERY"
+        daily_state = dict(portfolio.get("daily_state") or {})
+        if not daily_state:
+            daily_state = {
+                "color": green_state,
+                "hold_winners": green_state == "GREEN",
+                "take_profit_multiplier": 1.75 if green_state == "GREEN" else 1.0,
+                "reason": "green_state" if green_state == "GREEN" else "recovery_state" if green_state == "RECOVERY" else "flat_state",
+            }
         position_symbols = {
             str(pos.get("coin") or "").upper().replace("/IDR", "").replace("_IDR", "")
             for pos in open_positions
@@ -115,6 +124,8 @@ class SovereignCouncil:
             "indodax_equity_idr": indodax_equity_idr,
             "daily_pnl_idr": daily_pnl_idr,
             "daily_pnl_pct": daily_pnl_pct,
+            "green_state": green_state,
+            "daily_state": daily_state,
             "open_positions": open_positions,
             "open_bets": open_bets,
             "position_symbols": position_symbols,
@@ -182,6 +193,8 @@ class SovereignCouncil:
         combined_equity_idr = float(portfolio_ctx.get("combined_equity_idr") or 0.0)
         daily_pnl_idr = float(portfolio_ctx.get("daily_pnl_idr") or 0.0)
         daily_pnl_pct = float(portfolio_ctx.get("daily_pnl_pct") or 0.0)
+        green_state = str(portfolio_ctx.get("green_state") or ("GREEN" if daily_pnl_idr > 0 else "RECOVERY" if daily_pnl_idr < 0 else "FLAT")).upper()
+        daily_state = dict(portfolio_ctx.get("daily_state") or {})
         has_positions = bool(portfolio_ctx.get("has_positions"))
         position_symbols = set(portfolio_ctx.get("position_symbols") or set())
         target_symbol = str(decision.get("ticker") or "").upper().split("/")[0].strip()
@@ -231,6 +244,22 @@ class SovereignCouncil:
                 + (0.18 * loss_pressure)
             ),
         )
+        green_hold_mode = (
+            green_state == "GREEN"
+            and daily_pnl_idr > 0
+            and not late_window
+            and confidence >= max(confidence_floor, 0.72)
+            and whatif_edge > 0.0
+        )
+        green_hold_reason = ""
+        if green_hold_mode:
+            hold_bonus = min(0.08, 0.02 + (confidence * 0.02) + (whatif_edge * 0.03) + (coverage * 0.01))
+            evidence_strength = min(1.0, evidence_strength + hold_bonus)
+            exit_discount = min(0.12, 0.04 + (confidence * 0.02) + (whatif_edge * 0.05))
+            exit_score = max(0.0, exit_score - exit_discount)
+            green_hold_reason = (
+                f"green state active: preserve winners while edge remains strong ({daily_pnl_pct:+.2f}% daily)"
+            )
 
         decision_state = "WAIT"
         decision_score = wait_score
@@ -245,7 +274,12 @@ class SovereignCouncil:
                 decision_score = wait_score
                 status = "WAIT"
                 recovery_reason = "sell signal without matching inventory"
-            elif exit_score >= 0.72 and (late_window or risk >= 0.70):
+            elif action == "SELL" and green_hold_mode and has_target_position and exit_score < 0.82:
+                decision_state = "WAIT"
+                decision_score = max(wait_score, enter_score)
+                status = "WAIT"
+                recovery_reason = green_hold_reason or "green hold mode: keep winner alive"
+            elif exit_score >= 0.72 and (late_window or risk >= 0.70 or daily_pnl_idr < 0):
                 decision_state = "EXIT"
                 decision_score = exit_score
                 status = "EXECUTING" if action == "SELL" else "WAIT"
@@ -295,6 +329,10 @@ class SovereignCouncil:
             "daily_pnl_idr": daily_pnl_idr,
             "daily_pnl_pct": daily_pnl_pct,
             "combined_equity_idr": combined_equity_idr,
+            "green_state": green_state,
+            "daily_state": daily_state,
+            "green_hold_mode": green_hold_mode,
+            "green_hold_reason": green_hold_reason,
             "deadline_pressure": round(deadline_pressure, 3),
             "trade_profile": trade_profile,
             "learning_probe": learning_probe,
@@ -541,6 +579,7 @@ class SovereignCouncil:
         scout_res = await query_ai("MARKET_SCOUT", {"raw_scan_results": market_snapshot})
         sentiment = await query_ai("SENTIMENT_SYNTHESIZER", {"news_context": "Global Crypto Trends"})
         whatif_snapshot = self._load_whatif_snapshot()
+        portfolio_ctx = self._portfolio_context(market_snapshot)
 
         # [NEW V3.1] Forensic and Cross-Market Intelligence
         whale_intel = await query_ai("WHALE_WATCHER", {"orderbook_snapshot": market_snapshot.get("indodax")})
@@ -552,6 +591,7 @@ class SovereignCouncil:
         # 3. Final Strategic Decision (Strategy Dean)
         current = load_strategy()
         pnl_history = load_pnl_history()
+        runtime_daily_state = current.get("daily_state") if isinstance(current.get("daily_state"), dict) else portfolio_ctx.get("daily_state", {})
         
         # [MIDNIGHT ORACLE LOGIC]
         from datetime import datetime
@@ -565,7 +605,8 @@ class SovereignCouncil:
             "signals": market_snapshot.get("signals", market_snapshot),
             "evidence_bundle": market_snapshot.get("evidence_bundle", {}),
             "whatif_snapshot": whatif_snapshot,
-            "portfolio_state": market_snapshot.get("portfolio_state", {}),
+            "portfolio_state": portfolio_ctx.get("portfolio", {}),
+            "daily_state": runtime_daily_state,
             "today_trade_activity": self._get_today_trade_activity(),
             "minutes_to_midnight": minutes_to_midnight,
             "deadline_pressure": deadline_pressure,
@@ -574,6 +615,7 @@ class SovereignCouncil:
         possibility_view = await query_ai("POSSIBILITY_MINING", {
             "raw_data": market_snapshot,
             "current_strategy": current,
+            "daily_state": runtime_daily_state,
             "deadline_pressure": deadline_pressure,
             "minutes_to_midnight": minutes_to_midnight,
         })
@@ -586,6 +628,7 @@ class SovereignCouncil:
             "whale_intel": whale_intel,
             "bridge_alpha": bridge_alpha,
             "whatif_snapshot": whatif_snapshot,
+            "daily_state": runtime_daily_state,
             "recent_pnl": pnl_history,
             "is_midnight_approaching": is_midnight_approaching,
             "minutes_to_midnight": minutes_to_midnight,
@@ -608,6 +651,7 @@ class SovereignCouncil:
                 "antagonist_view": antagonist_view,
                 "possibility_view": possibility_view,
                 "deadline_pressure": deadline_pressure,
+                "daily_state": runtime_daily_state,
                 "last_updated": time.time()
             }
             save_strategy(new_strategy)
@@ -647,6 +691,7 @@ class SovereignCouncil:
             "today_trade_activity": today_trade_activity,
             "portfolio_state": portfolio_ctx.get("portfolio", {}),
             "polymarket_state": portfolio_ctx.get("polymarket", {}),
+            "daily_state": portfolio_ctx.get("daily_state", {}),
             "minutes_to_midnight": minutes_to_midnight,
             "deadline_pressure": deadline_pressure,
         }
@@ -677,6 +722,7 @@ class SovereignCouncil:
         decision["evidence_bundle"] = evidence_bundle
         decision["antagonist_view"] = antagonist_view or {}
         decision["deadline_pressure"] = deadline_pressure
+        decision["daily_state"] = portfolio_ctx.get("daily_state", {})
         
         # Find matching signal from context for price/metadata parity
         signals = signals_context.get("signals", [])

@@ -209,6 +209,7 @@ class CouncilDataAggregator:
         combined_equity_idr = idr_balance + poly_equity_idr
         daily_pnl_idr = combined_equity_idr - session_start_balance if session_start_balance > 0 else 0.0
         daily_pnl_pct = (daily_pnl_idr / session_start_balance * 100.0) if session_start_balance > 0 else 0.0
+        green_state = "GREEN" if daily_pnl_idr > 0 else "RECOVERY" if daily_pnl_idr < 0 else "FLAT"
 
         snapshot.update({
             "equity_idr": idr_balance,
@@ -216,6 +217,12 @@ class CouncilDataAggregator:
             "return_pct": daily_pnl_pct,
             "daily_pnl_idr": daily_pnl_idr,
             "daily_pnl_pct": daily_pnl_pct,
+            "daily_state": {
+                "color": green_state,
+                "hold_winners": green_state == "GREEN",
+                "take_profit_multiplier": 1.75 if green_state == "GREEN" else 1.0,
+                "reason": "green_state" if green_state == "GREEN" else "recovery_state" if green_state == "RECOVERY" else "flat_state",
+            },
             "active_positions": active_positions,
             "combined_equity_idr": combined_equity_idr,
             "polymarket": {

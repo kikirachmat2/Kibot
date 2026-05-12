@@ -122,6 +122,11 @@ class IndodaxExecutor:
             try:
                 strategy = load_strategy()
                 indo_strat = strategy.get("indodax", {})
+                daily_state = strategy.get("daily_state", {}) if isinstance(strategy.get("daily_state"), dict) else {}
+                green_hold_mode = str(daily_state.get("color", "")).upper() == "GREEN" and bool(daily_state.get("hold_winners", False))
+                green_hold_multiplier = float(
+                    indo_strat.get("green_hold_tp_multiplier", daily_state.get("take_profit_multiplier", 1.0)) or 1.0
+                )
                 urgency = check_urgency()
 
                 if urgency.get("flag") == "EMERGENCY_PAUSE":
@@ -155,7 +160,17 @@ class IndodaxExecutor:
                             continue
 
                         # 3. Dynamic Take Profit (V3.2 fallback)
-                        if change >= indo_strat.get("take_profit_pct", 0.5):
+                        base_take_profit_pct = float(indo_strat.get("take_profit_pct", 0.5))
+                        effective_take_profit_pct = base_take_profit_pct
+                        if green_hold_mode:
+                            effective_take_profit_pct = base_take_profit_pct * max(1.0, green_hold_multiplier)
+                            if change >= base_take_profit_pct and change < effective_take_profit_pct:
+                                logger.debug(
+                                    f"🟢 GREEN HOLD: {symbol} holding profit @ {change:.2f}% "
+                                    f"(TP {base_take_profit_pct:.2f}% -> {effective_take_profit_pct:.2f}%)"
+                                )
+
+                        if change >= effective_take_profit_pct:
                             logger.info(f"💰 TAKE PROFIT HIT: {symbol} @ {change:.2f}%")
                             await self.execute_exit(symbol, last_price, "TAKE_PROFIT")
                             continue
