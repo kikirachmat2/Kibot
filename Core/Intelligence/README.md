@@ -16,12 +16,12 @@ Source of truth untuk keadaan server yang sebenarnya:
 Snapshot singkat yang paling penting:
 - Server: `BrainSystem` di Batam.
 - OS: Ubuntu 24.04.4 LTS `aarch64`.
-- Disk root: 184G total, sekitar 154G free setelah cleanup terakhir.
+- Disk root: 184G total, sekitar 144G free setelah cleanup + model pulls terbaru.
 - RAM: 23Gi, CPU: 4 core.
 - Core services hidup: `kibot-master`, `kibot-executor`, `kibot-executor-polymarket`, `kibot-ai-scout`, `ollama`, `redis-server`.
 - Port hidup: `9990`, `9991`, `9998`, `11434`, `11600`, `6379`.
-- Ollama model yang tersedia saat ini: `qwen2.5:0.5b`, `qwen2.5:1.5b`, `qwen2.5:3b`, `llama3.2:3b`, `nomic-embed-text:latest`.
-- Native `TA-Lib` tidak terpasang; repo memakai fallback `ta`/`pandas` shim.
+- Ollama model yang tersedia saat ini: `qwen2.5:0.5b`, `qwen2.5:1.5b`, `qwen2.5:3b`, `llama3.2:3b`, `deepseek-r1:7b`, `mistral:7b`, `qwen2.5-coder:3b`, `nomic-embed-text:latest`.
+- Native `TA-Lib` sudah terpasang di server; fallback `ta`/`pandas` shim tetap disimpan untuk portability.
 
 Server-only artifacts yang tidak kelihatan dari code tree biasa:
 - `state/` runtime JSON, cache, ledger, dan strategi aktif. Ini canonical runtime state; `Core/state` adalah jejak lama yang sudah dipreteli.
@@ -29,6 +29,7 @@ Server-only artifacts yang tidak kelihatan dari code tree biasa:
 - `config/systemd/` untuk unit file service.
 - `~/.cache`, `~/.local`, `~/.copilot`, `~/.npm`, `~/.ssh`, `~/.oci`, `~/.aider` di akun `ubuntu`.
 - `SERVER_INVENTORY.md` sebagai snapshot runtime yang disimpan di repo.
+- `bin/kibotctl` sebagai wrapper operasional satu pintu untuk status, doctor, restart, dan sync model.
 
 ## Responsibility
 - **AI Veto**: Validating signals using local LLMs (Ollama/Dify).
@@ -39,8 +40,9 @@ Server-only artifacts yang tidak kelihatan dari code tree biasa:
 
 ## AI / Web Search Matrix
 - **Local brain**: Ollama via `kibot_ollama_gateway.py`.
-- **External fallbacks**: Gemini, Groq, OpenRouter, Cerebras, Mistral, Cohere, DeepSeek, Together, Fireworks, DeepInfra, Novita, Nvidia, Perplexity, SambaNova, HuggingFace, Jina.
-- **Search / intel sources**: Tavily, Serper, DuckDuckGo, Finnhub, GDELT, Brave Search, CryptoPanic.
+- **External fallbacks currently configured on Batam**: Gemini, Groq, OpenRouter, Cerebras, Mistral, Cohere, Jina.
+- **Search / intel sources**: Tavily, Serper, DuckDuckGo, Finnhub.
+- **Code specialist**: `qwen2.5-coder:3b` for repo work, wrapper generation, and code review tasks.
 - **Live caution**: `401` / `429` biasanya tanda auth atau rate-limit upstream, bukan bug inti bot.
 
 ## Operational Notes
@@ -48,7 +50,8 @@ Server-only artifacts yang tidak kelihatan dari code tree biasa:
 - `sovereign_janitor.py` sekarang menjadi pintu awal health sweep.
 - `sovereign_disk_cleaner.py` adalah guardrail utama untuk nested repo, cache bloat, dan orphaned logs.
 - AI provider cooldown state dipertahankan lintas boot; set `KIBOT_RESET_AI_COOLDOWNS_ON_BOOT=1` hanya saat perlu reset manual.
-- `POLYMARKET_WALLET_ADDRESS` / `POLYMARKET_PRIVATE_KEY` masih perlu diisi agar Polymarket benar-benar otomatis.
+- `POLYMARKET_WALLET_ADDRESS` / `POLYMARKET_PRIVATE_KEY` sudah terisi di env lokal untuk eksekusi Polymarket otomatis.
+- `kibotctl` adalah entrypoint operasional satu command; gunakan `status`, `doctor`, `restart`, dan `sync-models` untuk menjaga sinkronisasi server.
 
 ## Key Files
 - `kibot_ai_coordinator.py`: Main AI signal processor.

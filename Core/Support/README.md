@@ -8,6 +8,7 @@ Configuration, utilities, health guards, and vault helpers.
 - `ki_vault.py` memuat secret dari vault ke environment saat boot.
 - `sovereign_janitor.py` memantau disk dan health Ollama.
 - `sovereign_disk_cleaner.py` membersihkan nested repo, cache, dan log orphaned.
+- `bin/kibotctl` adalah wrapper operasional satu pintu untuk status, doctor, restart, dan sync model.
 
 ## Responsibility
 - **Configuration**: `ki_config.py` and `dynamic_config.py`.

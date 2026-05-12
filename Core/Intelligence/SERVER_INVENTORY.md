@@ -13,7 +13,7 @@
 | Kernel | 6.17.0-1011-oracle |
 | CPU | 4 cores |
 | RAM | 23Gi total |
-| Disk | 184G root, sekitar 154G free setelah cleanup terakhir |
+| Disk | 184G root, sekitar 144G free setelah cleanup + model pulls terbaru |
 | Python | 3.12.3 |
 | Node.js | v18.19.1 |
 
@@ -58,11 +58,12 @@
 | `qwen2.5:1.5b` | ✅ ADA | Default council model |
 | `qwen2.5:3b` | ✅ ADA | Pro tasks / liquidity hunting |
 | `llama3.2:3b` | ✅ ADA | Sentiment / NLP |
+| `qwen2.5-coder:3b` | ✅ ADA | Code specialist / wrapper generation |
 | `nomic-embed-text:latest` | ✅ ADA | Embeddings / RAG |
-| `deepseek-r1:7b` | ❌ belum | Heavy reasoning |
-| `mistral:7b` | ❌ belum | Bridge / synthesis |
+| `deepseek-r1:7b` | ✅ ADA | Heavy reasoning |
+| `mistral:7b` | ✅ ADA | Bridge / synthesis |
 
-> Catatan: model besar belum dipull karena kebijakan disk dan prioritas runtime.
+> Catatan: semua model inti sudah dipull; `ollama ps` sempat menunjukkan `qwen2.5:1.5b` aktif saat validasi.
 
 ---
 
@@ -76,24 +77,16 @@
 | `KIBOT_TELEGRAM_CHAT_ID` | SET | Telegram target |
 | `GEMINI_API_KEY` | SET | AI fallback |
 | `GROQ_API_KEY` | SET | AI fallback |
+| `CEREBRAS_API_KEY` | SET | AI fallback |
+| `MISTRAL_API_KEY` | SET | AI fallback |
 | `OPENROUTER_API_KEY` | SET | AI gateway |
 | `TAVILY_API_KEY` | SET | Web search |
 | `SERPER_API_KEY` | SET | Web search |
 | `FINNHUB_API_KEY` | SET | Market news |
 | `JINA_API_KEY` | SET | Search / scrape |
-| `GDELT_API_KEY` | SET | News events |
 | `COHERE_API_KEY` | SET | AI fallback |
-
-### Not loaded / missing
-| Variable | Status | Catatan |
-|----------|--------|---------|
-| `CEREBRAS_API_KEY` | EMPTY | Raw `.env` ada encrypted value, tapi vault runtime drop karena decrypt gagal |
-| `MISTRAL_API_KEY` | EMPTY | Raw `.env` ada encrypted value, tapi vault runtime drop karena decrypt gagal |
-| `POLYMARKET_WALLET_ADDRESS` | EMPTY | Belum ada di runtime |
-| `POLYMARKET_PRIVATE_KEY` | EMPTY | Belum ada di runtime |
-| `BRAVE_API_KEY` | EMPTY | Belum dikonfigurasi |
-| `CRYPTOPANIC_API_KEY` | EMPTY | Belum dikonfigurasi |
-| `DEEPSEEK_API_KEY` | EMPTY | Belum dikonfigurasi |
+| `POLYMARKET_WALLET_ADDRESS` | SET | Wallet EVM untuk Polymarket |
+| `POLYMARKET_PRIVATE_KEY` | SET | Private key Phantom/EVM untuk eksekusi Polymarket |
 
 ---
 
@@ -105,9 +98,6 @@
 | DuckDuckGo | `duckduckgo-search` | ✅ | Free search |
 | Finnhub | `finnhub-python` | ✅ | Crypto / market news |
 | Jina AI | `httpx` | ✅ | Scrape / semantic fetch |
-| GDELT | `httpx` | ✅ | News events |
-| Brave Search | `httpx` | ❌ | Key missing |
-| CryptoPanic | `httpx` | ❌ | Key missing |
 
 ---
 
@@ -131,7 +121,7 @@
 | `numpy` | ✅ | Numerical computing |
 | `pandas` | ✅ | Data handling |
 | `web3` | ✅ | Polygon / EVM |
-| `TA-Lib` | ❌ | Native package unavailable; repo uses `ta` / `pandas` fallback shim |
+| `TA-Lib` | ✅ | Native package installed on Batam; fallback shim remains for portability |
 
 ---
 
@@ -149,6 +139,7 @@ These exist on the server but are easy to miss if you only inspect the code tree
   - `world_model.json`
 - `logs/` application logs.
 - `config/systemd/` local unit files for Kibot services.
+- `bin/kibotctl` operator wrapper for status / doctor / restart / sync-models.
 - User caches and tooling:
   - `~/.cache`
   - `~/.local`
@@ -169,10 +160,10 @@ These exist on the server but are easy to miss if you only inspect the code tree
 1. `MasterNode.py` should stay monitor-only and avoid spawning duplicate child services.
 2. `sovereign_janitor.py` now delegates to `sovereign_disk_cleaner.py` when disk pressure is high.
 3. `sovereign_disk_cleaner.py` is the main guardrail for nested repo duplication, cache bloat, and orphaned logs.
-4. `CEREBRAS_API_KEY` / `MISTRAL_API_KEY` raw blobs may still live in `.env`, but they are not usable until re-encrypted or replaced.
-5. `POLYMARKET_*` is still missing, so Phantom-driven Polymarket automation is not fully armed yet.
-6. 401 / 429 failures from upstream AI providers should be treated as provider-health/rate-limit signals, not immediate bot crashes.
-7. `kibot-executor.service` is the canonical Indodax systemd unit; the older `kibot-executor-indodax` naming is retired.
+4. `POLYMARKET_*` is now present locally for Phantom-driven Polymarket automation.
+5. 401 / 429 failures from upstream AI providers should be treated as provider-health/rate-limit signals, not immediate bot crashes.
+6. `kibot-executor.service` is the canonical Indodax systemd unit; the older `kibot-executor-indodax` naming is retired.
+7. `bin/kibotctl` is the canonical operator wrapper; it should stay thin and delegate runtime authority to systemd.
 
 ---
 

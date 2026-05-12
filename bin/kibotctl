@@ -1,0 +1,215 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# KiBot Sovereign Control Wrapper
+# One-command operator entrypoint for systemd-managed services and Ollama model hygiene.
+
+CORE_SERVICES=(
+  redis-server
+  ollama
+  kibot-master
+  kibot-scanner
+  kibot-executor
+  kibot-executor-polymarket
+  kibot-ai-scout
+  kibot-janitor
+)
+
+CANONICAL_MODELS=(
+  "qwen2.5:0.5b"
+  "qwen2.5:1.5b"
+  "qwen2.5:3b"
+  "llama3.2:3b"
+  "deepseek-r1:7b"
+  "mistral:7b"
+  "qwen2.5-coder:3b"
+  "nomic-embed-text:latest"
+)
+
+if [[ $# -lt 1 ]]; then
+  cat <<'EOF'
+Usage:
+  kibotctl status
+  kibotctl doctor
+  kibotctl up
+  kibotctl down
+  kibotctl restart
+  kibotctl models
+  kibotctl sync-models
+  kibotctl pull <model>
+  kibotctl logs [service...]
+EOF
+  exit 1
+fi
+
+if ! command -v systemctl >/dev/null 2>&1; then
+  echo "kibotctl requires systemd. Run this on the Batam server host." >&2
+  exit 1
+fi
+
+SYSTEMCTL_PREFIX=()
+if [[ "${EUID:-$(id -u)}" -ne 0 ]]; then
+  if command -v sudo >/dev/null 2>&1; then
+    SYSTEMCTL_PREFIX=(sudo)
+  else
+    echo "root or sudo is required for systemctl operations." >&2
+    exit 1
+  fi
+fi
+
+systemctl_cmd() {
+  "${SYSTEMCTL_PREFIX[@]}" systemctl "$@"
+}
+
+section() {
+  printf '\n=== %s ===\n' "$1"
+}
+
+service_status() {
+  local svc status
+  for svc in "${CORE_SERVICES[@]}"; do
+    status="$(systemctl is-active "$svc" 2>/dev/null || true)"
+    printf '%-30s %s\n' "$svc" "${status:-unknown}"
+  done
+}
+
+port_status() {
+  section "UDP"
+  ss -ulnp | grep -E '9990|9991|9998' || echo "No KiBot UDP listeners found."
+  section "TCP"
+  ss -tlnp | grep -E '11434|11600|6379' || echo "No KiBot TCP listeners found."
+}
+
+model_list() {
+  ollama list || true
+}
+
+model_ps() {
+  ollama ps || true
+}
+
+cmd_status() {
+  section "System"
+  nproc
+  free -h
+  df -h /
+  section "Services"
+  service_status
+  port_status
+  section "Ollama Models"
+  model_list
+  section "Ollama Running Models"
+  model_ps
+}
+
+cmd_doctor() {
+  cmd_status
+  section "Python Runtime"
+  python3 - <<'PY'
+checks = [
+    ("talib", "import talib"),
+    ("numpy", "import numpy"),
+    ("pandas", "import pandas"),
+    ("web3", "from web3 import Web3"),
+    ("py_clob_client", "from py_clob_client.client import ClobClient"),
+    ("redis", "import redis"),
+    ("httpx", "import httpx"),
+    ("aiohttp", "import aiohttp"),
+    ("nest_asyncio", "import nest_asyncio"),
+]
+for name, stmt in checks:
+    try:
+        exec(stmt)
+        print(f"✅ {name}")
+    except Exception as exc:
+        print(f"❌ {name}: {exc}")
+PY
+}
+
+cmd_up() {
+  section "Reloading systemd"
+  systemctl_cmd daemon-reload
+  for svc in "${CORE_SERVICES[@]}"; do
+    echo "[start] $svc"
+    systemctl_cmd restart "$svc"
+  done
+  cmd_status
+}
+
+cmd_down() {
+  local svc
+  for ((i=${#CORE_SERVICES[@]}-1; i>=0; i--)); do
+    svc="${CORE_SERVICES[$i]}"
+    echo "[stop] $svc"
+    systemctl_cmd stop "$svc" || true
+  done
+  section "Services"
+  service_status
+}
+
+cmd_restart() {
+  cmd_down
+  cmd_up
+}
+
+cmd_models() {
+  section "Ollama Models"
+  model_list
+  section "Running"
+  model_ps
+}
+
+cmd_pull() {
+  if [[ $# -lt 2 ]]; then
+    echo "Usage: kibotctl pull <model>" >&2
+    exit 1
+  fi
+  shift
+  ollama pull "$@"
+}
+
+cmd_sync_models() {
+  local installed model missing=0
+  installed="$(ollama list 2>/dev/null | awk 'NR>1 {print $1}' || true)"
+  for model in "${CANONICAL_MODELS[@]}"; do
+    if ! grep -qx "$model" <<<"$installed"; then
+      echo "[pull] $model"
+      ollama pull "$model"
+      missing=1
+    else
+      echo "[ok]   $model"
+    fi
+  done
+  if [[ "$missing" -eq 0 ]]; then
+    echo "All canonical Ollama models already present."
+  fi
+}
+
+cmd_logs() {
+  if [[ $# -eq 0 ]]; then
+    journalctl -u kibot-master -n 80 --no-pager
+    return
+  fi
+  local args=()
+  local svc
+  for svc in "$@"; do
+    args+=("-u" "$svc")
+  done
+  journalctl -n 80 --no-pager "${args[@]}"
+}
+
+case "${1:-}" in
+  status) shift; cmd_status "$@" ;;
+  doctor) shift; cmd_doctor "$@" ;;
+  up) shift; cmd_up "$@" ;;
+  down) shift; cmd_down "$@" ;;
+  restart) shift; cmd_restart "$@" ;;
+  models) shift; cmd_models "$@" ;;
+  sync-models) shift; cmd_sync_models "$@" ;;
+  pull) cmd_pull "$@" ;;
+  logs) cmd_logs "$@" ;;
+  *)
+    echo "Unknown command: ${1:-}" >&2
+    exit 1
+    ;;
+esac
