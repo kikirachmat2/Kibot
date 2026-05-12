@@ -30,10 +30,17 @@ class SovereignJanitor:
     def cleanup_logs(self):
         """Purge old log files and vacuum journalctl."""
         try:
-            # 1. Vacuum systemd journal to 500M
+            # Prefer the wider disk cleaner first so nested repo / cache regressions
+            # are handled by the same guardrail that fixed the original outage.
+            try:
+                from Core.sovereign_disk_cleaner import run_cleanup
+                run_cleanup(dry_run=False)
+                return
+            except Exception as cleaner_error:
+                logger.warning(f"Disk cleaner unavailable, falling back to log-only cleanup: {cleaner_error}")
+
+            # Fallback: vacuum journal + clear large application logs.
             subprocess.run(["sudo", "journalctl", "--vacuum-size=500M"], check=True)
-            
-            # 2. Clear application logs
             for p in self.log_paths:
                 if p.exists():
                     for f in p.glob("*.log"):

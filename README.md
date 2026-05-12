@@ -6,6 +6,7 @@
 - [`Core/Scanner/README.md`](./Core/Scanner/README.md): alur scanner dan delta filter.
 - [`Core/Executors/README.md`](./Core/Executors/README.md): eksekusi trade dan risk checks.
 - [`Core/Intelligence/README.md`](./Core/Intelligence/README.md): AI, aggregator, dan learning loop.
+- [`Core/Intelligence/SERVER_INVENTORY.md`](./Core/Intelligence/SERVER_INVENTORY.md): snapshot runtime server, AI models, API keys, dan artefak server-only.
 - [`Core/Security/README.md`](./Core/Security/README.md): HMAC, vault, dan audit security.
 - [`Core/Support/README.md`](./Core/Support/README.md): config, utilities, dan tooling.
 

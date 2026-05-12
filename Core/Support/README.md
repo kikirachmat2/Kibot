@@ -6,6 +6,8 @@ Configuration, Utilities, Web Dashboard, and Node Agents.
 - `ki_config.py` menyimpan path dan port bersama.
 - `ki_utils.py` berisi helper umum seperti signing/verification.
 - `ki_vault.py` memuat secret dari vault ke environment saat boot.
+- `sovereign_janitor.py` memantau disk dan health Ollama.
+- `sovereign_disk_cleaner.py` membersihkan nested repo, cache, dan log orphaned.
 
 ## Responsibility
 - **Configuration**: `ki_config.py` and `dynamic_config.py`.
