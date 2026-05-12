@@ -11,7 +11,7 @@ import hmac
 import signal
 import uuid
 import threading
-from datetime import datetime, date, timedelta
+from datetime import datetime, date, timedelta, timezone
 from pathlib import Path
 from typing import Dict, List, Any, Optional, Tuple
 
@@ -39,9 +39,7 @@ REDIS_PORT = int(os.getenv("KIBOT_REDIS_PORT", "6379"))
 ROUND_TRIP_MAKER = float(os.getenv("KIBOT_ROUND_TRIP_MAKER_COST", "0.003"))
 ROUND_TRIP_TAKER = float(os.getenv("KIBOT_ROUND_TRIP_TAKER_COST", "0.005"))
 WIB_UTC_OFFSET_HOURS = int(os.getenv("KIBOT_WIB_UTC_OFFSET_HOURS", "7"))
-
-# Security Secret (Same as kibot_security)
-KIBOT_SECRET = os.getenv("KIBOT_SECRET", "SOVEREIGN_DEFAULT_SECRET").encode()
+WIB_TZ = timezone(timedelta(hours=WIB_UTC_OFFSET_HOURS))
 
 # --- INTELLIGENCE HARDENING ---
 PNL_UPPER_BOUND = 0.50 # +50% max per trade for learning (prevents outlier manipulation)
@@ -184,7 +182,9 @@ class PairStats:
 
 def _get_signing_key() -> bytes:
     # Use the same root of trust as kibot_security
-    secret = os.getenv("KIBOT_SECRET", "SOVEREIGN_DEFAULT_SECRET").encode()
+    secret = os.getenv("KIBOT_SECRET")
+    if not secret:
+        raise RuntimeError("KIBOT_SECRET missing: learning engine refuses to sign or verify state")
     try:
         from Core.Support.ki_vault import get_vault
         vault = get_vault()
@@ -192,7 +192,11 @@ def _get_signing_key() -> bytes:
             return vault._key
     except Exception:
         pass
-    return secret
+    return secret.encode()
+
+
+def _now_wib() -> datetime:
+    return datetime.now(WIB_TZ)
 
 class LearningEngine:
     def __init__(self):
@@ -283,7 +287,7 @@ class LearningEngine:
         trade_id = str(uuid.uuid4())[:8]
         trade = {
             "trade_id": trade_id, "pair_id": pair, "entry_price": entry_price,
-            "budget_idr": budget, "status": "OPEN", "entry_at": datetime.utcnow().isoformat(),
+            "budget_idr": budget, "status": "OPEN", "entry_at": _now_wib().isoformat(),
             "timestamp": time.time(),
             **kwargs
         }
@@ -388,7 +392,7 @@ class LearningEngine:
         trade.update({
             "exit_price": exit_price, "exit_reason": reason, "status": "CLOSED",
             "pnl_idr": round(pnl_idr, 2), "pnl_pct": round(net_pct, 5),
-            "exit_at": datetime.utcnow().isoformat(),
+            "exit_at": _now_wib().isoformat(),
             "win": net_pct > 0,
             **kwargs
         })
@@ -414,7 +418,7 @@ class LearningEngine:
 
 
     def get_today_stats(self) -> dict:
-        today = datetime.utcnow().strftime("%Y-%m-%d")
+        today = _now_wib().strftime("%Y-%m-%d")
         closed = []
         if TRADE_LOG_FILE.exists():
             with open(TRADE_LOG_FILE, "r") as f:
@@ -433,6 +437,34 @@ class LearningEngine:
         return {
             "total": total, "wins": len(wins), "losses": len(losses),
             "win_rate": len(wins)/total, "pnl_idr": sum(t.get("pnl_idr", 0) for t in closed)
+        }
+
+    def get_today_activity(self) -> dict:
+        """Return today's trade activity counts including open entries."""
+        today = _now_wib().strftime("%Y-%m-%d")
+        entries = 0
+        open_trades = 0
+        closed_trades = 0
+        if TRADE_LOG_FILE.exists():
+            with open(TRADE_LOG_FILE, "r") as f:
+                for line in f:
+                    try:
+                        trade = json.loads(line)
+                    except Exception:
+                        continue
+                    stamp = str(trade.get("entry_at") or trade.get("exit_at") or "")
+                    if not stamp.startswith(today):
+                        continue
+                    if trade.get("status") == "OPEN":
+                        entries += 1
+                        open_trades += 1
+                    elif trade.get("status") == "CLOSED":
+                        closed_trades += 1
+        return {
+            "entries": entries,
+            "open": open_trades,
+            "closed": closed_trades,
+            "today": today,
         }
 
     def get_pair_stats(self, pair: str) -> dict:
@@ -498,7 +530,7 @@ class LearningEngine:
             # Sync any unsaved state
             self.save_daily_summary()
             # In the future, this will scan trade_log.jsonl for inconsistencies
-            print(f"[LEARNING] Patrol completed at {datetime.now()}")
+            print(f"[LEARNING] Patrol completed at {_now_wib()}")
         except Exception as e:
             print(f"[LEARNING] Patrol Error: {e}")
     def handle_sigterm(self, signum, frame):

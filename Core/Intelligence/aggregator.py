@@ -1,3 +1,4 @@
+import os
 import sys
 from pathlib import Path
 ROOT_DIR = Path(__file__).resolve().parent.parent.parent
@@ -5,6 +6,7 @@ if str(ROOT_DIR) not in sys.path:
     sys.path.insert(0, str(ROOT_DIR))
 
 import json
+import httpx
 
 from pathlib import Path
 from datetime import datetime, timedelta
@@ -32,7 +34,7 @@ class CouncilDataAggregator:
         """
         rejection_stats = self._get_fast_path_stats()
         missed_opps = self._get_missed_opportunities()
-        portfolio = self._get_portfolio_snapshot()
+        portfolio = await self._get_portfolio_snapshot()
         market = await self._get_market_context()
         
         # Collect unique pairs from audit
@@ -140,22 +142,91 @@ class CouncilDataAggregator:
             
         return sorted(opportunities, key=lambda x: x["gain_missed"], reverse=True)[:5]
 
-    def _get_portfolio_snapshot(self):
-        """Gets current holdings and PnL from the master node."""
-        snapshot = self.master.last_state.get("portfolio", {
-            "equity_idr": 0,
-            "daily_pnl": "0.0%",
-            "active_positions": []
-        }).copy()
+    async def _get_portfolio_snapshot(self):
+        """Gets current holdings and PnL from live exchange/state endpoints."""
+        snapshot = {
+            "equity_idr": 0.0,
+            "pnl_idr": 0.0,
+            "return_pct": 0.0,
+            "daily_pnl_idr": 0.0,
+            "daily_pnl_pct": 0.0,
+            "active_positions": [],
+            "combined_equity_idr": 0.0,
+            "source": "live",
+            "polymarket": {
+                "usdc_balance": 0.0,
+                "equity_idr": 0.0,
+                "pnl_idr": 0.0,
+                "daily_pnl_usd": 0.0,
+                "daily_pnl_idr": 0.0,
+                "active_positions": [],
+                "active_bets": [],
+            },
+        }
+
+        idr_balance = 0.0
+        active_positions = []
         try:
-            poly_state = self.master.last_state.get("polymarket", {})
-            snapshot["polymarket"] = {
-                "usdc_balance": poly_state.get("usdc_balance", 0),
-                "active_positions": poly_state.get("active_positions", []),
-                "daily_pnl_usd": poly_state.get("daily_pnl_usd", 0),
-            }
+            info = await self.master.indodax.get_info()
+            if info.get("success") == 1:
+                balances = info.get("return", {}).get("balance", {})
+                idr_balance = float(balances.get("idr", 0) or 0)
+                for coin, amount in balances.items():
+                    if coin == "idr":
+                        continue
+                    try:
+                        amt = float(amount)
+                    except Exception:
+                        continue
+                    if amt > 1e-6:
+                        active_positions.append({"coin": coin, "amount": amt})
+        except Exception as e:
+            print(f"ERROR [Aggregator]: Indodax balance fetch failed: {e}")
+
+        poly_state = {}
+        try:
+            async with httpx.AsyncClient(timeout=3.0) as client:
+                resp = await client.get("http://127.0.0.1:11600/api/state")
+                if resp.status_code == 200:
+                    poly_state = resp.json() or {}
         except Exception:
-            snapshot["polymarket"] = {"usdc_balance": 0, "active_positions": [], "daily_pnl_usd": 0}
+            poly_state = {}
+
+        if not poly_state:
+            try:
+                poly_state = dict(self.master.last_state.get("polymarket", {}) or {})
+            except Exception:
+                poly_state = {}
+
+        usdc_balance = float(poly_state.get("usdc_balance", 0) or 0)
+        usd_idr_rate = float(os.getenv("USD_IDR_RATE", "16000"))
+        poly_daily_pnl_usd = float(poly_state.get("daily_pnl_usd", 0) or 0)
+        poly_daily_pnl_idr = poly_daily_pnl_usd * usd_idr_rate
+        poly_equity_idr = usdc_balance * usd_idr_rate
+        active_bets = list(poly_state.get("active_bets") or poly_state.get("top_opportunities") or [])
+
+        session_start_balance = float(getattr(self.master, "_pnl_session_start_balance", 0.0) or 0.0)
+        daily_pnl_idr = idr_balance - session_start_balance if session_start_balance > 0 else 0.0
+        daily_pnl_pct = (daily_pnl_idr / session_start_balance * 100.0) if session_start_balance > 0 else 0.0
+
+        snapshot.update({
+            "equity_idr": idr_balance,
+            "pnl_idr": daily_pnl_idr,
+            "return_pct": daily_pnl_pct,
+            "daily_pnl_idr": daily_pnl_idr,
+            "daily_pnl_pct": daily_pnl_pct,
+            "active_positions": active_positions,
+            "combined_equity_idr": idr_balance + poly_equity_idr,
+            "polymarket": {
+                "usdc_balance": usdc_balance,
+                "equity_idr": poly_equity_idr,
+                "pnl_idr": poly_daily_pnl_idr,
+                "daily_pnl_usd": poly_daily_pnl_usd,
+                "daily_pnl_idr": poly_daily_pnl_idr,
+                "active_positions": active_bets[:5],
+                "active_bets": active_bets[:5],
+            },
+        })
         return snapshot
 
     async def _get_market_context(self):

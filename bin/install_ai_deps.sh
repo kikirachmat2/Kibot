@@ -15,6 +15,7 @@ python3 -m pip install --upgrade --no-cache-dir -r "${ROOT_DIR}/requirements.txt
 python3 -m pip install --upgrade \
   --no-cache-dir \
   tavily-python \
+  ddgs \
   duckduckgo-search \
   finnhub-python \
   py-clob-client \

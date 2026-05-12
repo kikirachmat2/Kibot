@@ -23,6 +23,7 @@
 - **Adaptif Situasional (Council-Driven)**: Membaca dunia, bertindak sesuai konteks. KiBot tidak dipatok oleh script kaku; strategi berubah secara organik mengikuti temuan Sovereign Council.
 - **Kesadaran Ekonomi Total**: Sadar akan seluruh saldo dan koin di Indodax & Polymarket. Trading dilakukan dengan kapasitas maksimal yang tersedia tanpa batasan artifisial.
 - **Pertahanan Berdaulat**: Manajemen risiko otomatis tetap ketat (1.5% Max Daily Loss), namun fleksibel dalam eksekusi peluang.
+- **Learning Probe**: Jika hari itu belum ada trade dan edge-nya layak, council boleh menandai entry kecil sebagai probe pembelajaran tanpa melanggar hard loss.
 - **Self-Healing & Resilience**: Pemulihan mandiri instan dari kegagalan infrastruktur (Ollama, Network, Disk).
 - **Explicit Live Gate**: order real-money hanya jalan jika `KIBOT_LIVE_TRADING_ENABLED=true` atau `KIBOT_TRADING_MODE=live`.
 

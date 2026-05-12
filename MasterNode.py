@@ -147,16 +147,26 @@ class KiBotMaster:
                     continue
                 balances = info["return"]["balance"]
                 current_idr = float(balances.get("idr", 0))
+                usd_idr_rate = float(os.getenv("USD_IDR_RATE", "16000"))
+                poly_state = self.last_state.get("polymarket", {}) if isinstance(self.last_state, dict) else {}
+                usdc_balance = float(poly_state.get("usdc_balance", 0) or 0)
+                combined_equity_idr = current_idr + (usdc_balance * usd_idr_rate)
                 if self._pnl_session_start_balance is None:
-                    self._pnl_session_start_balance = current_idr
-                    logger.info(f"💼 Session baseline set to Rp{current_idr:,.0f}")
+                    self._pnl_session_start_balance = combined_equity_idr
+                    logger.info(
+                        f"💼 Session baseline set to Rp{combined_equity_idr:,.0f} "
+                        f"(IDR Rp{current_idr:,.0f} + USDC ${usdc_balance:.2f})"
+                    )
                     await asyncio.sleep(300)
                     continue
 
-                pnl_idr = current_idr - self._pnl_session_start_balance
+                pnl_idr = combined_equity_idr - self._pnl_session_start_balance
                 pnl_pct = (pnl_idr / self._pnl_session_start_balance * 100) if self._pnl_session_start_balance > 0 else 0
                 risk_daily = getattr(getattr(self, "council", None), "risk", None)
-                logger.info(f"💰 [PNL-5M] Saldo Rp{current_idr:,.0f} | PnL Rp{pnl_idr:+,.0f} ({pnl_pct:+.2f}%)")
+                logger.info(
+                    f"💰 [PNL-5M] IDR Rp{current_idr:,.0f} | USDC ${usdc_balance:.2f} | "
+                    f"Combined Rp{combined_equity_idr:,.0f} | PnL Rp{pnl_idr:+,.0f} ({pnl_pct:+.2f}%)"
+                )
 
                 if pnl_pct >= float(os.getenv("KIBOT_DAILY_TARGET_PCT", "1.0")):
                     key = "target_hit"
@@ -244,8 +254,11 @@ class KiBotMaster:
     async def signal_listener_loop(self):
         """Listens for HMAC-signed high-priority signals from all scanner sources."""
         from Core.Support.ki_utils import verify_signature, sign_payload
-        secret = os.environ.get("KIBOT_SECRET", "default_sovereign_secret")
-        
+        secret = os.environ.get("KIBOT_SECRET")
+        if not secret:
+            logger.error("❌ CRITICAL: KIBOT_SECRET missing. Council listener will reject all signals.")
+            return
+
         logger.info("📡 Council Signal Listener active on UDP:9991")
         sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
@@ -290,7 +303,10 @@ class KiBotMaster:
                                     "side": decision["action"],
                                     "price": decision.get("source_signal", {}).get("price", 0),
                                     "confidence": decision.get("confidence", 0),
-                                    "reason": decision.get("logic", "Council Mandate")[:100]
+                                    "reason": decision.get("logic", "Council Mandate")[:100],
+                                    "learning_probe": bool(decision.get("learning_probe", False)),
+                                    "probe_confidence_floor": float(decision.get("probe_confidence_floor", 0.0) or 0.0),
+                                    "trade_profile": decision.get("trade_profile", "STANDARD"),
                                 }
                                 
                                 # Send HMAC-signed mandate to Indodax Executor (Port 9998)
@@ -573,10 +589,14 @@ class KiBotMaster:
         # 4. Add Council & Market Context
         try:
             context = await self.aggregator.get_debate_context()
-            telemetry["portfolio"] = context.get("portfolio_state", {})
+            portfolio_state = context.get("portfolio_state", {})
+            telemetry["portfolio"] = portfolio_state
             telemetry["market"] = context.get("market_context", {})
             telemetry["stats"] = context.get("audit_data", {}).get("rejection_analysis", {})
             telemetry["council"] = context.get("philosophy", {})
+            telemetry["polymarket"] = portfolio_state.get("polymarket", telemetry.get("polymarket", {}))
+            self.last_state["portfolio"] = portfolio_state
+            self.last_state["polymarket"] = portfolio_state.get("polymarket", {})
         except Exception as e:
             logger.error(f"Failed to aggregate council data: {e}")
         

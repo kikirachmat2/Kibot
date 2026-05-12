@@ -110,14 +110,22 @@ class PolymarketFullScanner:
             return 0.0
         
         spread_score = max(0.0, 1.0 - (spread / 0.15))
-        
+        momentum_bias = 0.0
+        if best_prob > 0.65 or best_prob < 0.35:
+            momentum_bias = 0.08
+        track_record = 0.0
+        if vol > 0 and liquidity > 0:
+            track_record = min(1.0, math.log10(max(vol + liquidity, 1)) / 7)
+
         score = (
             (float(vol_score) * 0.25) +
             (float(liq_score) * 0.20) +
             (float(time_score) * 0.18) +
             (float(spread_score) * 0.15) +
             (float(prob_score) * 0.12) +
-            (float(momentum_score) * 0.10)
+            (float(momentum_score) * 0.10) +
+            (float(track_record) * 0.05) +
+            momentum_bias
         )
         return round(min(1.0, score), 4)
 
@@ -159,9 +167,11 @@ class PolymarketFullScanner:
                     "end_date": m.get("endDate", ""),
                     "category": m.get("category", "other"),
                     "outcome_index": 0,
+                    "track_record_score": round(min(1.0, math.log10(max(float(m.get("volumeNum", 0) or m.get("volume", 0) or 0) + float(m.get("liquidityNum", 0) or m.get("liquidity", 0) or 0), 1)) / 7), 3),
                 },
                 "price": best_yes,
                 "obi": score,
+                "confidence": score,
                 "regime": "POLYMARKET_SIGNAL",
                 "ts": int(time.time() * 1000)
             }

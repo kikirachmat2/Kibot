@@ -13,25 +13,11 @@ from urllib.request import Request, urlopen
 ROOT_DIR = Path(__file__).resolve().parent.parent
 
 
-# Force load ki_vault from absolute path
-SUPPORT_DIR = ROOT_DIR.parent / "Support"
-VAULT_PATH = SUPPORT_DIR / "ki_vault.py"
-
-load_sovereign_env = lambda vault_key: None
-if VAULT_PATH.exists():
-    try:
-        import importlib.util
-        spec = importlib.util.spec_from_file_location("ki_vault", str(VAULT_PATH))
-        ki_vault = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(ki_vault)
-        load_sovereign_env = ki_vault.load_sovereign_env
-        
-        vault_key = os.getenv("KIBOT_VAULT_KEY", "kibot_sovereign_trinity_mesh_2024_batam")
-        load_sovereign_env(vault_key=vault_key)
-    except Exception as e:
-        print(f"⚠️ [OLLAMA_GATEWAY] Vault Load Warning: {e}")
-else:
-    print(f"⚠️ [OLLAMA_GATEWAY] Vault path not found: {VAULT_PATH}")
+try:
+    from Core.Support.ki_vault import load_sovereign_env
+    load_sovereign_env()
+except Exception as e:
+    print(f"⚠️ [OLLAMA_GATEWAY] Vault Load Warning: {e}")
 
 
 HOST = os.getenv("KIBOT_OLLAMA_GATEWAY_BIND_HOST", "0.0.0.0")

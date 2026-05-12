@@ -148,6 +148,7 @@ cmd_doctor() {
   python3 - <<'PY'
 checks = [
     ("talib", "import talib"),
+    ("ddgs", "from ddgs import DDGS"),
     ("numpy", "import numpy"),
     ("pandas", "import pandas"),
     ("web3", "from web3 import Web3"),
@@ -156,6 +157,7 @@ checks = [
     ("httpx", "import httpx"),
     ("aiohttp", "import aiohttp"),
     ("nest_asyncio", "import nest_asyncio"),
+    ("ta", "import ta"),
 ]
 for name, stmt in checks:
     try:

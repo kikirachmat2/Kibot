@@ -7,9 +7,11 @@ Wants=network-online.target redis-server.service
 Type=simple
 User=ubuntu
 WorkingDirectory=/home/ubuntu/KiBot
+EnvironmentFile=-/home/ubuntu/KiBot/.env
+EnvironmentFile=-/home/ubuntu/KiBot/.env.kiv
 Environment=PYTHONUNBUFFERED=1
 Environment=PYTHONPATH=.
-ExecStart=/home/ubuntu/KiBot/venv/bin/python3 -u Core/Executors/indodax_executor.py
+ExecStart=/usr/bin/python3 -u Core/Executors/indodax_executor.py
 Restart=always
 RestartSec=10
 StandardOutput=journal

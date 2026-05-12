@@ -8,11 +8,11 @@ from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
 
 class KiVault:
     def __init__(self, secret_key: str = None):
-        # Support multiple legacy and current secret keys
-        self.secret = secret_key or \
-                      os.getenv("KIBOT_SECRET") or \
-                      os.getenv("KIBOT_NODE_AGENT_SECRET") or \
-                      "SOVEREIGN_DEFAULT_SECRET"
+        # Support a single explicit root of trust. Legacy node-agent secret is
+        # accepted only if it is configured; there is no baked-in default.
+        self.secret = secret_key or os.getenv("KIBOT_SECRET") or os.getenv("KIBOT_NODE_AGENT_SECRET")
+        if not self.secret:
+            raise RuntimeError("KIBOT_SECRET missing: KiVault refuses to initialize without an explicit secret")
         
         self.salt = os.getenv("KIBOT_VAULT_SALT", "kibot_sovereign_salt").encode()
         self._key = self._derive_key(self.secret)

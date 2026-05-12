@@ -30,6 +30,7 @@ To prevent "Adversarial Data Poisoning", the intelligence layer implements stric
 - **Signal TTL**: Signals older than 10-15 seconds are automatically rejected to prevent replay attacks or execution on stale market conditions.
 - **Live Trading Gate**: real-money entry is blocked unless the operator explicitly enables `KIBOT_LIVE_TRADING_ENABLED` or `KIBOT_TRADING_MODE=live`.
 - **Stale Urgency Expiry**: `EMERGENCY_PAUSE` / `FORCE_EXIT` flags auto-expire if they are stale or carry no reason.
+- **Secret Strictness**: `KIBOT_SECRET` must exist in runtime env; receivers reject signals instead of falling back to a default signing key. `KiVault` also refuses to initialize without an explicit configured secret.
 
 ## Hardening Checklist
 - [x] Oracle Circuit Breaker (Veto price jumps > 2%)

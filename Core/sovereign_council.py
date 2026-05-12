@@ -4,6 +4,7 @@ from pathlib import Path
 from typing import Dict, List, Optional, Any
 from Core.Support.ki_vault import load_sovereign_env
 from Core.Intelligence.kibot_ai_coordinator import query_ai
+from Core.Intelligence.kibot_ai_search import AISearchService
 from Core.sovereign_state import save_strategy, load_strategy, set_urgency, load_pnl_history
 
 logger = logging.getLogger("SovereignCouncil")
@@ -25,6 +26,7 @@ class SovereignCouncil:
         # Thresholds
         self.CONFIDENCE_AUTO_THRESHOLD = 0.85
         self.RISK_LEVELS = ["LOW", "MEDIUM", "HIGH", "CRITICAL"]
+        self.search_service = AISearchService(timeout=6)
         
         # Load environment
         load_sovereign_env()
@@ -40,6 +42,219 @@ class SovereignCouncil:
         except Exception as e:
             logger.warning(f"Failed to load what-if snapshot: {e}")
         return {"pairsSimulated": 0, "topOpportunities": [], "results": {}}
+
+    def _whatif_edge_score(self, whatif_snapshot: Dict[str, Any]) -> float:
+        results = whatif_snapshot.get("results") if isinstance(whatif_snapshot, dict) else {}
+        if not isinstance(results, dict) or not results:
+            return 0.0
+        best = 0.0
+        positive = 0
+        for item in results.values():
+            if not isinstance(item, dict):
+                continue
+            ev = float(item.get("expectedValue") or 0.0)
+            if ev > best:
+                best = ev
+            if ev > 0:
+                positive += 1
+        return min(1.0, max(0.0, best * 40.0) + min(0.25, positive * 0.04))
+
+    def _evidence_floor(self, evidence_bundle: Dict[str, Any], whatif_snapshot: Dict[str, Any]) -> float:
+        coverage = float(evidence_bundle.get("coverage_score") or 0.0)
+        catalyst = float(evidence_bundle.get("catalyst_score") or 0.0)
+        track = float(evidence_bundle.get("track_record_score") or 0.0)
+        risk = float(evidence_bundle.get("risk_penalty") or 0.0)
+        whatif_edge = self._whatif_edge_score(whatif_snapshot)
+
+        floor = 0.78
+        floor -= min(0.08, coverage * 0.05)
+        floor -= min(0.08, catalyst * 0.06)
+        floor -= min(0.06, track * 0.04)
+        floor -= min(0.10, whatif_edge * 0.08)
+        floor += min(0.08, risk * 0.06)
+        return max(0.68, min(0.90, round(floor, 3)))
+
+    def _get_today_trade_activity(self) -> Dict[str, Any]:
+        """Read today's trade activity so the council can avoid blind repetition."""
+        try:
+            from Core.Intelligence.kibot_learning_engine import get_engine
+
+            engine = get_engine()
+            closed_stats = engine.get_today_stats()
+            activity = engine.get_today_activity() if hasattr(engine, "get_today_activity") else {}
+            return {
+                "entries": int(activity.get("entries", 0) or 0),
+                "open": int(activity.get("open", 0) or 0),
+                "closed": int(closed_stats.get("total", 0) or 0),
+                "win_rate": float(closed_stats.get("win_rate", 0.5) or 0.5),
+                "pnl_idr": float(closed_stats.get("pnl_idr", 0.0) or 0.0),
+            }
+        except Exception as e:
+            logger.debug(f"Failed to load today trade activity: {e}")
+            return {"entries": 0, "open": 0, "closed": 0, "win_rate": 0.5, "pnl_idr": 0.0}
+
+    async def _build_trade_evidence(self, signals_context: Dict[str, Any]) -> Dict[str, Any]:
+        signals = list(signals_context.get("signals") or [])
+        targets = []
+        seen = set()
+        for sig in signals:
+            if not isinstance(sig, dict):
+                continue
+            symbol = str(sig.get("base_symbol") or sig.get("symbol") or "").upper().strip()
+            if not symbol or symbol in seen:
+                continue
+            seen.add(symbol)
+            targets.append(symbol)
+        targets = targets[:3]
+
+        if not targets:
+            return {
+                "targets": [],
+                "coverage_score": 0.0,
+                "catalyst_score": 0.0,
+                "track_record_score": 0.0,
+                "risk_penalty": 0.0,
+                "sources": [],
+                "notes": ["no target symbols available"],
+            }
+
+        evidence_rows: List[Dict[str, Any]] = []
+        source_names = set()
+        catalysts = 0
+        red_flags = 0
+        track_hits = 0
+        track_total = 0
+
+        async def gather_for_symbol(symbol: str) -> Dict[str, Any]:
+            pair = f"{symbol.lower()}_idr"
+            queries = [
+                f"{symbol} crypto latest catalyst listing partnership exploit",
+                f"{pair} track record volume trend Indodax",
+                f"{symbol} site:coingecko.com crypto",
+            ]
+            tavily, serper, ddg, finnhub, brave, cryptopanic = await asyncio.gather(
+                self.search_service.tavily_search_async(queries[0], search_depth="advanced"),
+                self.search_service.serper_search_async(queries[1]),
+                self.search_service.ddg_search_async(queries[2], max_results=3),
+                self.search_service.finnhub_news_async(symbol.lower()),
+                self.search_service.brave_search_async(queries[0]),
+                self.search_service.cryptopanic_news_async("hot"),
+            )
+            return {
+                "symbol": symbol,
+                "pair": pair,
+                "tavily": tavily or {},
+                "serper": serper or {},
+                "ddg": ddg or [],
+                "finnhub": finnhub or [],
+                "brave": brave or {},
+                "cryptopanic": cryptopanic or [],
+            }
+
+        symbol_payloads = await asyncio.gather(*(gather_for_symbol(symbol) for symbol in targets))
+
+        for payload in symbol_payloads:
+            symbol = payload.get("symbol")
+            pair = payload.get("pair")
+            texts: List[str] = []
+            row_sources = set()
+            for row in list(payload.get("finnhub") or [])[:3]:
+                if isinstance(row, dict):
+                    source_names.add("finnhub")
+                    row_sources.add("finnhub")
+                    title = str(row.get("headline") or row.get("title") or "").strip()
+                    if title:
+                        texts.append(title)
+            tavily = payload.get("tavily") or {}
+            if tavily:
+                source_names.add("tavily")
+                row_sources.add("tavily")
+                ans = str(tavily.get("answer") or "").strip()
+                if ans:
+                    texts.append(ans)
+                for item in list(tavily.get("results") or [])[:2]:
+                    if isinstance(item, dict):
+                        txt = str(item.get("content") or item.get("title") or "").strip()
+                        if txt:
+                            texts.append(txt)
+            serper = payload.get("serper") or {}
+            if serper:
+                source_names.add("serper")
+                row_sources.add("serper")
+                for item in list(serper.get("organic") or [])[:2]:
+                    if isinstance(item, dict):
+                        txt = str(item.get("snippet") or item.get("title") or "").strip()
+                        if txt:
+                            texts.append(txt)
+            for item in list(payload.get("ddg") or [])[:2]:
+                if isinstance(item, dict):
+                    source_names.add("ddg")
+                    row_sources.add("ddg")
+                    txt = str(item.get("body") or item.get("title") or "").strip()
+                    if txt:
+                        texts.append(txt)
+            brave = payload.get("brave") or {}
+            if brave:
+                source_names.add("brave")
+                row_sources.add("brave")
+                for item in list((brave.get("web") or {}).get("results") or [])[:2]:
+                    if isinstance(item, dict):
+                        txt = str(item.get("description") or item.get("title") or "").strip()
+                        if txt:
+                            texts.append(txt)
+            for item in list(payload.get("cryptopanic") or [])[:3]:
+                if isinstance(item, dict):
+                    source_names.add("cryptopanic")
+                    row_sources.add("cryptopanic")
+                    title = str(item.get("title") or "").strip()
+                    if title:
+                        texts.append(title)
+
+            combined = " ".join(texts).lower()
+            catalyst_hit = any(key in combined for key in (
+                "listing", "mainnet", "partnership", "upgrade", "launch", "integrat", "airdrop", "etf", "approval"
+            ))
+            exploit_hit = any(key in combined for key in (
+                "hack", "exploit", "rug", "lawsuit", "ban", "delist", "halt", "outage"
+            ))
+            track_hit = any(key in combined for key in ("volume", "liquidity", "trend", "history", "record"))
+
+            if catalyst_hit:
+                catalysts += 1
+            if exploit_hit:
+                red_flags += 1
+            if track_hit:
+                track_hits += 1
+            track_total += 1
+
+            evidence_rows.append({
+                "symbol": symbol,
+                "pair": pair,
+                "source_count": len(row_sources),
+                "catalyst_hit": catalyst_hit,
+                "risk_hit": exploit_hit,
+                "track_hit": track_hit,
+                "summary": texts[:6],
+            })
+
+        coverage_score = min(1.0, len(source_names) / 5.0)
+        catalyst_score = min(1.0, catalysts / max(1, len(symbol_payloads)))
+        track_record_score = min(1.0, track_hits / max(1, track_total))
+        risk_penalty = min(1.0, red_flags / max(1, len(symbol_payloads)))
+
+        return {
+            "targets": targets,
+            "coverage_score": round(coverage_score, 3),
+            "catalyst_score": round(catalyst_score, 3),
+            "track_record_score": round(track_record_score, 3),
+            "risk_penalty": round(risk_penalty, 3),
+            "sources": sorted(source_names),
+            "evidence_rows": evidence_rows,
+            "notes": [
+                "broadened validation across Tavily, Serper, Brave, DDG, Finnhub, and CryptoPanic",
+                "track record proxy uses repeated mentions of volume, liquidity, history, and trend",
+            ],
+        }
 
     async def deliberate_system(self, issue_context: Dict) -> Dict:
         """Handles system anomalies and self-healing logic (Watchman mode)."""
@@ -167,9 +382,13 @@ class SovereignCouncil:
         """
         logger.info(f"🏛️ Council Deliberating Trading Signals...")
         whatif_snapshot = self._load_whatif_snapshot()
+        evidence_bundle = await self._build_trade_evidence(signals_context)
+        today_trade_activity = self._get_today_trade_activity()
         signals_context = {
             **signals_context,
             "whatif_snapshot": whatif_snapshot,
+            "evidence_bundle": evidence_bundle,
+            "today_trade_activity": today_trade_activity,
         }
         
         # 1. Council Consensus
@@ -187,6 +406,7 @@ class SovereignCouncil:
         # 2. Add metadata and match source signal
         decision["timestamp"] = time.time()
         decision["whatif_snapshot"] = whatif_snapshot
+        decision["evidence_bundle"] = evidence_bundle
         
         # Find matching signal from context for price/metadata parity
         signals = signals_context.get("signals", [])
@@ -201,8 +421,40 @@ class SovereignCouncil:
         decision["source_signal"] = source_signal
 
         # 3. Determine Execution Status
-        if decision.get("action") in ["BUY", "SELL"] and decision.get("confidence", 0) >= 0.8:
+        confidence_floor = self._evidence_floor(evidence_bundle, whatif_snapshot)
+        decision["confidence_floor"] = confidence_floor
+        decision["today_trade_activity"] = today_trade_activity
+        decision.setdefault("learning_probe", False)
+        decision.setdefault("trade_profile", "STANDARD")
+
+        has_trade_today = int(today_trade_activity.get("entries", 0) or 0) > 0
+        probe_floor = max(0.72, confidence_floor - 0.05)
+        probe_ready = (
+            decision.get("action") in ["BUY", "SELL"]
+            and not has_trade_today
+            and float(decision.get("confidence", 0) or 0) >= probe_floor
+            and float(evidence_bundle.get("coverage_score", 0) or 0) >= 0.35
+            and float(evidence_bundle.get("risk_penalty", 0) or 0) <= 0.6
+            and self._whatif_edge_score(whatif_snapshot) > 0.0
+        )
+
+        if decision.get("action") in ["BUY", "SELL"] and decision.get("confidence", 0) >= confidence_floor:
             decision["status"] = "EXECUTING"
+            decision["trade_profile"] = "STANDARD"
+        elif decision.get("action") in ["BUY", "SELL"]:
+            if probe_ready:
+                decision["status"] = "EXECUTING"
+                decision["learning_probe"] = True
+                decision["trade_profile"] = "LEARNING_PROBE"
+                decision["probe_confidence_floor"] = probe_floor
+                decision["wait_reason"] = (
+                    f"learning probe triggered: confidence {decision.get('confidence', 0):.3f} >= probe floor {probe_floor:.3f}"
+                )
+            else:
+                decision["status"] = "WAIT"
+                decision["wait_reason"] = (
+                    f"confidence {decision.get('confidence', 0):.3f} below floor {confidence_floor:.3f}"
+                )
         else:
             decision["status"] = "REJECTED"
 

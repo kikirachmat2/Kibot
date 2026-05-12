@@ -7,6 +7,8 @@ Wants=network-online.target
 Type=simple
 User=ubuntu
 WorkingDirectory=/home/ubuntu/KiBot
+EnvironmentFile=-/home/ubuntu/KiBot/.env
+EnvironmentFile=-/home/ubuntu/KiBot/.env.kiv
 Environment=PYTHONUNBUFFERED=1
 Environment=PYTHONPATH=.
 ExecStart=/usr/bin/python3 -u Core/Scanner/engine.py

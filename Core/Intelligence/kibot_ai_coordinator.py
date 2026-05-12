@@ -312,9 +312,10 @@ PROVIDERS = {
 PROMPT_PROVIDER_ORDER = {
     "COUNCIL_WATCHMAN": ["ollama", "groq", "gemini", "or_claude_free"],
     "COUNCIL_STRATEGIST": ["ollama", "gemini", "groq", "mistral_large"],
+    "STRATEGY_DEAN": ["ollama", "cerebras", "nvidia", "gemini", "groq", "deepseek", "mistral_large", "openrouter"],
     "MOMENTUM_HAWK": ["ollama", "groq", "together_turbo", "cerebras"],
     "RISK_SENTINEL": ["ollama", "gemini", "mistral_large", "or_llama3_1_70b_free"],
-    "COUNCIL_SPEAKER": ["ollama", "gemini", "mistral_large", "groq"],
+    "COUNCIL_SPEAKER": ["ollama", "gemini", "nvidia", "mistral_large", "groq"],
     "INTELLIGENCE_SYNTHESIS": ["groq", "gemini", "deepseek", "together_turbo", "mistral_large", "cloudflare_ai", "perplexity_pro", "github_experimental", "or_claude_free", "or_gpt4o_mini_free", "or_llama3_1_70b_free", "or_gemini_flash_free", "or_qwen2_72b_free", "fireworks", "nvidia", "openrouter", "deepinfra", "octoai", "novita", "perplexity", "cohere", "jina", "huggingface", "friendliai", "lepton", "ollama"],
     "TARGETED_VALIDATION": ["groq", "gemini", "deepseek", "together_turbo", "mistral_large", "perplexity_pro", "or_claude_free", "or_gpt4o_mini_free", "ollama"],
     "BRAIN_CRITIC": ["gemini", "groq", "deepseek", "together_turbo", "mistral_large", "or_claude_free", "ollama"],
@@ -349,8 +350,10 @@ PROMPT_TEMPLATES = {
         "3. Adaptive Defense: Management remains strict (1.5% Max Daily Loss), but execution is flexible and context-aware.\n"
         "4. Organized Greed: Profit targets are benchmarks, not ends. If the trend is strong, push with situational awareness.\n"
         "5. Midnight Oracle: At 23:45, evaluate the daily report and decide on the next phase (HODL, EXIT_ALL, or PIVOT).\n"
-        "Inputs: {market_data}, {system_health}, {current_strategy}, Midnight Approaching: {is_midnight_approaching}.\n"
-        "Task: Output a refined JSON strategy (Indodax & Polymarket) focusing on Risk mitigation and capital allocation.\n"
+        "6. Evidence First: Prefer decisions that are supported by live web validation, source convergence, and what-if simulations.\n"
+        "7. Learning Discipline: If no trade has happened today and a vetted edge exists, prefer a tiny learning probe over inactivity, but never bypass hard-loss rules.\n"
+        "Inputs: {market_data}, {system_health}, {current_strategy}, {whatif_snapshot}, {today_trade_activity}, Midnight Approaching: {is_midnight_approaching}.\n"
+        "Task: Output a refined JSON strategy (Indodax & Polymarket) focusing on Risk mitigation, capital allocation, and confidence calibration.\n"
         "Optimal Modes: AGGRESSIVE|NEUTRAL|DEFENSIVE|FULL_ATTACK|EXIT_ALL.\n"
         "Return strict JSON: {\"global_mode\":\"...\", \"indodax\":{...}, \"polymarket\":{...}, \"rationale\":\"...\"}"
     ),
@@ -481,8 +484,13 @@ PROMPT_TEMPLATES = {
     "COUNCIL_SPEAKER": (
         "You are the Speaker of the Sovereign Council.\n"
         "Review the signals: {signals}\n"
-        "Provide a final trading mandate (BUY/SELL/NONE).\n"
-        "Return strict compact JSON: {\"action\":\"BUY|SELL|NONE\", \"ticker\":\"SYMBOL/IDR\", \"confidence\":0.0, \"logic\":\"...\"}"
+        "Evidence bundle: {evidence_bundle}\n"
+        "What-if snapshot: {whatif_snapshot}\n"
+        "Today's trade activity: {today_trade_activity}\n"
+        "Provide a final trading mandate (BUY/SELL/NONE). Prefer decisive action when evidence converges, but refuse weak or noisy setups.\n"
+        "If evidence is insufficient, choose NONE rather than force a trade.\n"
+        "If no trade has happened today and the edge is still acceptable, you may mark the trade as a tiny learning probe instead of a full-size entry.\n"
+        "Return strict compact JSON: {\"action\":\"BUY|SELL|NONE\", \"ticker\":\"SYMBOL/IDR\", \"confidence\":0.0, \"logic\":\"...\", \"learning_probe\":false, \"probe_confidence_floor\":0.0, \"trade_profile\":\"STANDARD|LEARNING_PROBE\"}"
     ),
     "MOMENTUM_HAWK": (
         "You are MomentumHawk (Technical Analyst). Model: qwen2.5:1.5b.\n"

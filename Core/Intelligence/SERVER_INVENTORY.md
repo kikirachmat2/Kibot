@@ -97,7 +97,7 @@
 |--------|---------------|--------|---------|
 | Tavily | `tavily-python` | ✅ | Deep search / catalyst |
 | Serper | `requests` | ✅ | Google-result style search |
-| DuckDuckGo | `duckduckgo-search` | ✅ | Free search |
+| DuckDuckGo | `ddgs` / `duckduckgo-search` | ✅ | Free search |
 | Finnhub | `finnhub-python` | ✅ | Crypto / market news |
 | Jina AI | `httpx` | ✅ | Scrape / semantic fetch |
 
@@ -178,6 +178,9 @@ These exist on the server but are easy to miss if you only inspect the code tree
 8. Real-money entries stay blocked until `KIBOT_LIVE_TRADING_ENABLED=true` or `KIBOT_TRADING_MODE=live` is set explicitly.
 9. Telegram is a scarce incident channel and is throttled / deduped by the shared helper.
 10. `whatif_results.json` is treated as live council input, so the system does not deliberate blind.
+11. `SovereignCouncil` now merges `evidence_bundle` from Tavily, Serper, Brave, DuckDuckGo, Finnhub, and CryptoPanic before executing.
+12. `IndodaxSmallCapScanner` and `PolymarketFullScanner` both emit richer confidence metadata so council can be more selective without going blind.
+13. Daily learning probe logic exists to encourage at least one controlled entry per day, but it still respects hard loss limits and evidence floors.
 
 ---
 

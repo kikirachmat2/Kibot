@@ -214,6 +214,7 @@ class IndodaxExecutor:
         price = float(signal.get("price", 0))
         confidence = signal.get("confidence", 0)
         change_pct = abs(signal.get("change_pct", 0))
+        learning_probe = bool(signal.get("learning_probe", False))
 
         # --- SCRIPT LOGIC (V3.2) ---
         max_exposure = float(indo_strat.get("max_exposure_idr", 0))
@@ -256,6 +257,15 @@ class IndodaxExecutor:
 
             # Ensure it doesn't exceed current balance and meets minimums
             budget = min(budget, current_balance * 0.99)
+
+            if learning_probe:
+                probe_cap = max(10_000.0, current_balance * 0.02)
+                budget = min(budget, probe_cap)
+                logger.info(
+                    f"🧪 LEARNING PROBE: budget capped to Rp{budget:,.0f} "
+                    f"(cap Rp{probe_cap:,.0f}) for {symbol}"
+                )
+
             signal["budget_idr"] = budget
 
             fee_roundtrip_pct = float(indo_strat.get("fee_roundtrip_pct", 1.02))
@@ -298,7 +308,11 @@ class IndodaxExecutor:
                 logger.debug(f"🛡️ Symbol {symbol} not in allowed_pairs.")
                 return
 
-            if confidence < indo_strat.get("min_confidence", 0.88):
+            min_confidence = float(indo_strat.get("min_confidence", 0.88))
+            probe_confidence_floor = float(signal.get("probe_confidence_floor", max(0.60, min_confidence - 0.10)))
+            required_confidence = probe_confidence_floor if learning_probe else min_confidence
+
+            if confidence < required_confidence:
                 logger.debug(f"🛡️ Confidence {confidence} too low for Pump Hunter.")
                 return
             
@@ -334,10 +348,16 @@ class IndodaxExecutor:
                     "amount": filled_coin,
                     "high_price": actual_price,
                     "time": time.time(),
-                    "cost": filled_rp
+                    "cost": filled_rp,
+                    "trade_profile": "LEARNING_PROBE" if learning_probe else "STANDARD",
+                    "learning_probe": learning_probe
                 }
                 self._save_active_trades()
-                self.report_to_batam(symbol, "OPEN", f"Buy @ {actual_price}")
+                self.report_to_batam(
+                    symbol,
+                    "OPEN",
+                    f"{'Probe ' if learning_probe else ''}Buy @ {actual_price}"
+                )
             else:
                 logger.error(f"❌ EXECUTION FAILED: {symbol} - {res.get('error')}")
 

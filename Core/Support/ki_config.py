@@ -81,7 +81,7 @@ class KiConfig:
     MOTTO = "Tekan Kerugian, Maksimalkan Probabilitas Keuntungan"
     
     # Strict Risk Parameters (Sovereign Level - Aggressive V3.1)
-    MAX_DAILY_LOSS_PERCENT = 10.0      # 10% Max Daily Loss
+    MAX_DAILY_LOSS_PERCENT = 1.5       # Manifesto max daily loss cap
     MIN_SIGNAL_PROBABILITY = 0.65     # Lowered to 65% for high-aggression
     SCALPING_TP_PERCENT = 1.0         # Increased for more room
     SCALPING_SL_PERCENT = 2.0         # Matches RiskGate SL
@@ -109,7 +109,7 @@ class KiConfig:
     
     # --- SECURITY ---
     VAULT_SALT = os.getenv("KIBOT_VAULT_SALT", "SOVEREIGN_SALT_2026")
-    SECRET_KEY = os.getenv("KIBOT_SECRET", "TRINITY_SECRET_CHANGE_ME")
+    SECRET_KEY = os.getenv("KIBOT_SECRET")
 
     @classmethod
     def get_node_name(cls):

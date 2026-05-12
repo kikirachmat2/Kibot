@@ -163,6 +163,7 @@ class SovereignNotifier:
         # 3. Indodax Financials
         portfolio = data.get("portfolio", {})
         equity = portfolio.get("equity_idr", 0)
+        combined_equity = portfolio.get("combined_equity_idr", equity)
         pnl_val = portfolio.get("pnl_idr", 0)
         ret_pct = portfolio.get("return_pct", 0.0)
         wl_ratio = portfolio.get("wl_ratio", "0W / 0L")
@@ -201,6 +202,8 @@ class SovereignNotifier:
 🕒 {now_wib} WIB
 
 ━━━━━━━━━━━━━━━━━━━━━━
+
+💼 Combined Equity : Rp {combined_equity:,.0f}
 
 {batam_str}
 

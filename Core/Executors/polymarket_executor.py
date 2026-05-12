@@ -32,17 +32,55 @@ class PolymarketExecutor:
         self.private_key = os.environ.get("POLYMARKET_PRIVATE_KEY")
         self.batam_ip = os.environ.get("KIBOT_MASTER_IP", "127.0.0.1")
         self.live_trading_enabled = KiConfig.LIVE_TRADING_ENABLED
+        self._clob_client = None
         self.state = {
             "ready": True,
             "analysis_ready": True,
             "execution_enabled": self.live_trading_enabled,
             "live_trading_enabled": self.live_trading_enabled,
             "wallet_ready": bool(self.wallet_address and self.private_key),
+            "wallet_address": self.wallet_address,
+            "usdc_balance": 0.0,
+            "equity_idr": 0.0,
+            "daily_pnl_usd": 0.0,
+            "daily_pnl_idr": 0.0,
             "geoblock": {"blocked": False, "country": "ID"},
             "top_opportunities": [],
+            "active_positions": [],
             "last_update": datetime.now().isoformat()
         }
         logger.info(f"🚦 Polymarket live trading enabled: {self.live_trading_enabled}")
+
+    def _build_clob_client(self):
+        if self._clob_client is not None:
+            return self._clob_client
+        if not self.wallet_address or not self.private_key:
+            return None
+
+        try:
+            from py_clob_client.client import ClobClient
+            from py_clob_client.constants import POLYGON
+        except Exception as e:
+            logger.error(f"py-clob-client import failed: {e}")
+            return None
+
+        try:
+            client = ClobClient(
+                host="https://clob.polymarket.com",
+                chain_id=POLYGON,
+                key=self.private_key,
+                signature_type=0,
+                funder=self.wallet_address,
+            )
+            try:
+                client.set_api_creds(client.create_or_derive_api_creds())
+            except Exception as cred_err:
+                logger.warning(f"Polymarket API credential bootstrap failed: {cred_err}")
+            self._clob_client = client
+            return client
+        except Exception as e:
+            logger.error(f"Polymarket client init failed: {e}")
+            return None
 
     async def _get_usdc_balance_polygon(self) -> float:
         try:
@@ -65,6 +103,23 @@ class PolymarketExecutor:
         except Exception as e:
             logger.debug(f"USDC balance fetch failed: {e}")
             return 0.0
+
+    async def _refresh_state_snapshot(self) -> None:
+        usdc_balance = await self._get_usdc_balance_polygon()
+        usd_idr_rate = float(os.getenv("USD_IDR_RATE", "16000"))
+        self.state.update({
+            "ready": True,
+            "analysis_ready": True,
+            "execution_enabled": self.live_trading_enabled,
+            "live_trading_enabled": self.live_trading_enabled,
+            "wallet_ready": bool(self.wallet_address and self.private_key),
+            "wallet_address": self.wallet_address,
+            "usdc_balance": round(usdc_balance, 6),
+            "equity_idr": round(usdc_balance * usd_idr_rate, 2),
+            "daily_pnl_usd": float(self.state.get("daily_pnl_usd", 0.0) or 0.0),
+            "daily_pnl_idr": float(self.state.get("daily_pnl_usd", 0.0) or 0.0) * usd_idr_rate,
+            "last_update": datetime.now().isoformat(),
+        })
 
     async def execute_order(self, signal):
         """Pure script-based Polymarket execution using Council strategy."""
@@ -109,22 +164,30 @@ class PolymarketExecutor:
             if usdc_balance <= 0:
                 logger.warning("🛡️ No USDC balance on Polygon. Skipping bet.")
                 return
-            
-            from py_clob_client.client import ClobClient
-            from py_clob_client.clob_types import OrderArgs, OrderType
-            from py_clob_client.constants import POLYGON
+            usd_idr_rate = float(os.getenv("USD_IDR_RATE", "16000"))
+            self.state["usdc_balance"] = round(usdc_balance, 6)
+            self.state["equity_idr"] = round(usdc_balance * usd_idr_rate, 2)
 
-            client = ClobClient(
-                host="https://clob.polymarket.com",
-                chain_id=POLYGON,
-                key=self.private_key,
-                signature_type=2,
-            )
+            from py_clob_client.clob_types import OrderArgs, OrderType
+            from py_clob_client.order_builder.constants import BUY
+
+            client = self._build_clob_client()
+            if client is None:
+                logger.warning("🛡️ Polymarket client unavailable. Skipping bet.")
+                return
 
             if base_size == 0:
                 size_usdc = usdc_balance * 0.20
             else:
                 size_usdc = min(base_size, usdc_balance * 0.50)
+
+            if signal.get("learning_probe"):
+                probe_cap = max(1.0, usdc_balance * 0.02)
+                size_usdc = min(size_usdc, probe_cap)
+                logger.info(
+                    f"🧪 LEARNING PROBE: Polymarket bet capped to ${size_usdc:.2f} "
+                    f"(cap ${probe_cap:.2f})"
+                )
 
             if size_usdc < 1.0:
                 logger.warning(f"🛡️ Bet size terlalu kecil: ${size_usdc:.2f}")
@@ -146,11 +209,23 @@ class PolymarketExecutor:
                 token_id=market_id,
                 price=price,
                 size=size_usdc,
-                side="BUY",
-                order_type=OrderType.GTC,
+                side=BUY,
             )
 
-            resp = client.create_and_post_order(order_args)
+            signed = client.create_order(order_args)
+            resp = client.post_order(signed, OrderType.GTC)
+            active_bet = {
+                "market_id": market_id,
+                "symbol": signal.get("symbol"),
+                "price": price,
+                "size_usdc": round(size_usdc, 2),
+                "learning_probe": bool(signal.get("learning_probe", False)),
+                "timestamp": datetime.now().isoformat(),
+            }
+            active_positions = list(self.state.get("active_positions", []))
+            active_positions.append(active_bet)
+            self.state["active_positions"] = active_positions[-10:]
+            self.state["top_opportunities"] = active_positions[-5:]
             logger.info(f"✅ Polymarket order placed: {resp}")
             self.report_to_batam(signal.get("symbol"), "SUCCESS", str(resp))
 
@@ -173,6 +248,7 @@ class PolymarketExecutor:
         except: pass
 
     async def handle_state_request(self, request):
+        await self._refresh_state_snapshot()
         self.state["last_update"] = datetime.now().isoformat()
         return web.json_response(self.state)
 
@@ -205,7 +281,10 @@ class PolySignalProtocol(asyncio.DatagramProtocol):
 
     def datagram_received(self, data, addr):
         from Core.Support.ki_utils import verify_signature
-        secret = os.environ.get("KIBOT_SECRET", "default_sovereign_secret")
+        secret = os.environ.get("KIBOT_SECRET")
+        if not secret:
+            logger.error("❌ CRITICAL: KIBOT_SECRET missing! Rejecting all signals.")
+            return
         try:
             envelope = json.loads(data.decode())
             payload = envelope.get("data", {})

@@ -149,7 +149,10 @@ class ScannerEngine:
                     self.universal_signals.append(s)
 
         from Core.Support.ki_utils import sign_payload
-        secret = os.environ.get("KIBOT_SECRET", "default_sovereign_secret")
+        secret = os.environ.get("KIBOT_SECRET")
+        if not secret:
+            logger.error("❌ CRITICAL: KIBOT_SECRET missing. Scanner will not dispatch signals.")
+            return
 
         # Dispatch Indodax
         if indo_signals:

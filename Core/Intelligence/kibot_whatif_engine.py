@@ -17,10 +17,15 @@ dan di-serve via /api/state.whatIfSimulation
 """
 
 import json, time, math, os
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
 from Core.Intelligence.kibot_learning_engine import get_engine, ROUND_TRIP_MAKER, ROUND_TRIP_TAKER
 
 WHATIF_PATH = "state/whatif_results.json"
+WIB_TZ = timezone(timedelta(hours=int(os.getenv("KIBOT_WIB_UTC_OFFSET_HOURS", "7"))))
+
+
+def _now_wib() -> datetime:
+    return datetime.now(WIB_TZ)
 
 def atomic_write_json(path: str, payload: dict) -> None:
     tmp = f"{path}.tmp.{os.getpid()}"
@@ -79,7 +84,7 @@ def simulate_pair(pair: str, current_price: float,
             "bear": {"gross": bear_gross, "net": round(bear_net, 4), "prob": bear_prob}
         },
         "verdict": "ENTRY_OK" if ev > 0.003 else ("MARGINAL" if ev > 0 else "SKIP"),
-        "timestamp": datetime.utcnow().isoformat()
+        "timestamp": _now_wib().isoformat()
     }
 
 def run_simulation(market_prices: dict) -> dict:
@@ -100,7 +105,7 @@ def run_simulation(market_prices: dict) -> dict:
     ))
     
     output = {
-        "runAt": datetime.utcnow().isoformat(),
+        "runAt": _now_wib().isoformat(),
         "pairsSimulated": len(sorted_results),
         "topOpportunities": list(sorted_results.keys())[:5],
         "results": sorted_results

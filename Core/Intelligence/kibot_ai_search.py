@@ -142,7 +142,10 @@ class AISearchService:
 
     async def ddg_search_async(self, query: str, max_results: int = 5) -> List[Dict]:
         try:
-            from duckduckgo_search import DDGS
+            try:
+                from ddgs import DDGS
+            except ImportError:
+                from duckduckgo_search import DDGS  # backward-compatible fallback
             async def loader():
                 with DDGS() as ddgs:
                     return list(ddgs.text(query, max_results=max_results))

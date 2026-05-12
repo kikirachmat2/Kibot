@@ -2402,24 +2402,17 @@ class BrainManager:
         }
 
     def _has_ddg_client(self) -> bool:
-        for module_name in ("ddgs", "duckduckgo_search"):
-            try:
-                if importlib.util.find_spec(module_name) is not None:
-                    return True
-            except ModuleNotFoundError:
-                continue
-        return False
+        try:
+            return importlib.util.find_spec("ddgs") is not None
+        except ModuleNotFoundError:
+            return False
 
     def _ddg_search(self, query: str, max_results: int = 3) -> Dict[str, Any]:
         client_cls = None
-        for module_name in ("ddgs", "duckduckgo_search"):
-            try:
-                module = __import__(module_name, fromlist=["DDGS"])
-                client_cls = getattr(module, "DDGS", None)
-                if client_cls is not None:
-                    break
-            except Exception:
-                continue
+        try:
+            from ddgs import DDGS as client_cls  # preferred package name
+        except Exception:
+            client_cls = None
         if client_cls is None:
             return {}
 
