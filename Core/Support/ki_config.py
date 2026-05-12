@@ -1,3 +1,4 @@
+import logging
 import os
 from pathlib import Path
 import pytz
@@ -17,6 +18,43 @@ def _load_sovereign_env():
 
 # Load everything before constants are assigned
 _load_sovereign_env()
+
+for noisy_logger in ("httpx", "httpcore", "urllib3"):
+    logging.getLogger(noisy_logger).setLevel(logging.ERROR)
+
+
+def _normalize_ollama_root_url(raw_url: str, default_root: str = "http://127.0.0.1:11434") -> str:
+    """Return the Ollama host root without any /api/... suffix."""
+    url = str(raw_url or "").strip().rstrip("/")
+    if not url:
+        return default_root.rstrip("/")
+
+    for suffix in ("/api/chat", "/api/generate", "/api/embed", "/api/tags", "/api/ps"):
+        if url.endswith(suffix):
+            url = url[: -len(suffix)].rstrip("/")
+            break
+
+    return url or default_root.rstrip("/")
+
+
+def _normalize_ollama_chat_url(raw_url: str, default_root: str = "http://127.0.0.1:11434") -> str:
+    """Return a usable Ollama chat endpoint from root or already-qualified URLs."""
+    url = str(raw_url or "").strip().rstrip("/")
+    if not url:
+        return f"{default_root.rstrip('/')}/api/chat"
+
+    if url.endswith("/api/chat"):
+        return url
+
+    for suffix in ("/api/generate", "/api/embed", "/api/tags", "/api/ps"):
+        if url.endswith(suffix):
+            url = url[: -len(suffix)].rstrip("/")
+            break
+
+    if "/api/" in url:
+        return url
+
+    return f"{url}/api/chat"
 
 # --- PATHS ---
 BASE_PATH = Path(__file__).resolve().parent.parent  # Points to Core/
@@ -101,7 +139,10 @@ def verify_egress_health() -> bool:
 KIBOT_EGRESS_HOSTS = [h for h in [KIBOT_UDP_HOST, KIBOT_UDP_HOST_BACKUP] if h]
 
 # --- AI & OLLAMA ---
-OLLAMA_URL = os.getenv("OLLAMA_URL", "http://127.0.0.1:11434")
+OLLAMA_URL = _normalize_ollama_root_url(os.getenv("OLLAMA_URL", os.getenv("KIBOT_OLLAMA_BASE_URL", "")))
+OLLAMA_CHAT_URL = _normalize_ollama_chat_url(os.getenv("KIBOT_OLLAMA_BASE_URL", OLLAMA_URL))
+OLLAMA_TAGS_URL = f"{OLLAMA_URL}/api/tags"
+OLLAMA_PS_URL = f"{OLLAMA_URL}/api/ps"
 AI_REQUEST_TIMEOUT_SEC = float(os.getenv("KIBOT_AI_TIMEOUT", "10.0"))
 AI_ROUTER_ENABLED = os.getenv("KIBOT_AI_ROUTER_ENABLED", "true").lower() == "true"
 

@@ -6,6 +6,7 @@ Repository-wide security infrastructure for the sovereign trading cluster.
 - HMAC dipakai untuk payload UDP dan state integrity.
 - Vault dipakai untuk secret loading saat boot.
 - Log audit disimpan terpisah agar mudah ditinjau dan diverifikasi.
+- HTTP client logging dijaga di level error supaya query string berisi API key tidak bocor ke journal.
 
 ## Paranoid Security Posture (v8.2)
 

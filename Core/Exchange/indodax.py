@@ -9,6 +9,9 @@ import urllib.parse
 from pathlib import Path
 import httpx
 import logging
+import threading
+
+from Core.Support.ki_config import STATE_DIR
 
 # Resolve absolute root
 ROOT_DIR = Path(__file__).resolve().parent.parent.parent
@@ -27,6 +30,8 @@ class IndodaxGateway:
     _info_cache = None
     _info_cache_time = 0
     _CACHE_TTL = 2  # 2 seconds cache for get_info
+    _nonce_lock = threading.Lock()
+    _nonce_file = STATE_DIR / "indodax_nonce.json"
 
     def __init__(self, api_key=None, api_secret=None):
         self.api_key = (api_key or os.environ.get("INDODAX_API_KEY", "")).strip()
@@ -46,13 +51,48 @@ class IndodaxGateway:
         ).hexdigest()
         return payload_str, signature
 
+    def _next_nonce(self) -> int:
+        """
+        Generate a monotonic nonce that is safe across multiple KiBot processes.
+
+        Indodax rejects duplicate or decreasing nonces, so we persist the last
+        value to shared state and lock the update across processes.
+        """
+        import fcntl
+
+        self._nonce_file.parent.mkdir(parents=True, exist_ok=True)
+        # Use microseconds so a fresh process starts well above older
+        # millisecond-based nonces even after a restart.
+        candidate = int(time.time_ns() // 1000)
+
+        with IndodaxGateway._nonce_lock:
+            with open(self._nonce_file, "a+", encoding="utf-8") as fp:
+                fcntl.flock(fp, fcntl.LOCK_EX)
+                fp.seek(0)
+                last_nonce = 0
+                try:
+                    payload = json.loads(fp.read() or "{}")
+                    last_nonce = int(payload.get("last_nonce", 0))
+                except Exception:
+                    last_nonce = 0
+
+                nonce = max(candidate, last_nonce + 1)
+                fp.seek(0)
+                fp.truncate()
+                fp.write(json.dumps({"last_nonce": nonce}))
+                fp.flush()
+                os.fsync(fp.fileno())
+                fcntl.flock(fp, fcntl.LOCK_UN)
+
+        return nonce
+
     async def _post_private(self, method, params=None):
         if not self.api_key:
             return {"success": 0, "error": "Missing API Key"}
 
         payload = {
             "method": method,
-            "nonce": int(time.time() * 1000)
+            "nonce": self._next_nonce()
         }
         if params:
             payload.update(params)

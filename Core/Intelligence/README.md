@@ -47,6 +47,7 @@ Server-only artifacts yang tidak kelihatan dari code tree biasa:
 - `MasterNode.py` sebaiknya tetap monitor-only dan tidak spawn duplicate services.
 - `sovereign_janitor.py` sekarang menjadi pintu awal health sweep.
 - `sovereign_disk_cleaner.py` adalah guardrail utama untuk nested repo, cache bloat, dan orphaned logs.
+- AI provider cooldown state dipertahankan lintas boot; set `KIBOT_RESET_AI_COOLDOWNS_ON_BOOT=1` hanya saat perlu reset manual.
 - `POLYMARKET_WALLET_ADDRESS` / `POLYMARKET_PRIVATE_KEY` masih perlu diisi agar Polymarket benar-benar otomatis.
 
 ## Key Files

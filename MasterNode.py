@@ -28,7 +28,7 @@ import signal
 load_sovereign_env()
 
 # Core Imports (Unified Structure)
-from Core.Support.ki_config import STATE_DIR, LOGS_DIR, PROJECT_ROOT as ROOT_DIR
+from Core.Support.ki_config import STATE_DIR, LOGS_DIR, PROJECT_ROOT as ROOT_DIR, OLLAMA_TAGS_URL
 from Core.circuit_breaker import CircuitBreaker
 from Core.sovereign_council import SovereignCouncil
 from Core.sovereign_notifier import SovereignNotifier
@@ -47,6 +47,8 @@ logging.basicConfig(
     ]
 )
 logger = logging.getLogger("KiBotMaster")
+for noisy_logger in ("httpx", "httpcore", "urllib3"):
+    logging.getLogger(noisy_logger).setLevel(logging.ERROR)
 
 # Path Setup
 sys.path.append(str(ROOT_DIR))
@@ -97,14 +99,18 @@ class KiBotMaster:
         from Core.Exchange.indodax import IndodaxGateway
         self.indodax = IndodaxGateway()
         
-        # Self-Healing: Reset AI Provider Cooldowns on start
+        # Self-Healing: Keep AI provider cooldowns persistent by default.
+        # Reset only when explicitly requested so 401/429 providers stay muted
+        # across restarts instead of being hammered again on every boot.
         provider_cache = STATE_DIR / "ai_coordinator_providers.json"
-        if provider_cache.exists():
+        if os.getenv("KIBOT_RESET_AI_COOLDOWNS_ON_BOOT", "0") == "1" and provider_cache.exists():
             try:
                 provider_cache.unlink()
                 logger.info("🔥 AI Provider Cooldowns Reset Successfully.")
             except Exception as e:
                 logger.error(f"❌ Failed to reset AI cooldowns: {e}")
+        elif provider_cache.exists():
+            logger.info("🧠 AI Provider cooldowns preserved across boot.")
         
         logger.info("Initializing KiBot Sovereign Master...")
 
@@ -115,12 +121,11 @@ class KiBotMaster:
             "qwen2.5:3b",
             "llama3.2:3b",
         ]
-        base_url = os.getenv("KIBOT_OLLAMA_BASE_URL", "http://127.0.0.1:11434")
         try:
             async with httpx.AsyncClient(timeout=5.0) as client:
-                resp = await client.get(f"{base_url}/api/tags")
+                resp = await client.get(OLLAMA_TAGS_URL)
                 if resp.status_code != 200:
-                    logger.warning("Ollama health check failed.")
+                    logger.warning(f"Ollama health check failed: {resp.status_code}")
                     return
                 installed = {m.get("name", "") for m in resp.json().get("models", [])}
                 missing = [m for m in required_models if not any(m in name for name in installed)]

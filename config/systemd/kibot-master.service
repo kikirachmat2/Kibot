@@ -1,7 +1,7 @@
 [Unit]
 Description=KiBot Sovereign Master Node (Batam)
-After=network-online.target redis.service ollama.service
-Wants=network-online.target redis.service ollama.service
+After=network-online.target redis-server.service ollama.service
+Wants=network-online.target redis-server.service ollama.service
 
 [Service]
 Type=simple

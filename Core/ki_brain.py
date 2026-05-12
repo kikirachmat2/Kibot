@@ -19,6 +19,7 @@ import asyncio
 from urllib.request import Request, urlopen
 from urllib.parse import urlencode
 from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
+from Core.Support.ki_config import OLLAMA_URL
 
 
 logger = logging.getLogger("KiBrain")
@@ -371,7 +372,7 @@ class BrainManager:
         """
         Calls the Always-On Qwen 1.5b model for near-instant signal validation.
         """
-        ollama_url = os.getenv("OLLAMA_URL", "http://localhost:11434")
+        ollama_url = OLLAMA_URL
         prompt = (
             f"As a high-frequency trading sniper, filter this signal.\n"
             f"Asset: {pair}, Type: {msg_type}, Regime: {regime}, OBI: {obi}\n"

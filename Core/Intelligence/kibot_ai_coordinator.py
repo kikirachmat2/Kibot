@@ -81,20 +81,12 @@ AI_AUTH_COOLDOWN_SEC = int(os.getenv("KIBOT_AI_PROVIDER_AUTH_COOLDOWN_SEC", "216
 AI_OLLAMA_COOLDOWN_SEC = int(os.getenv("KIBOT_AI_PROVIDER_OLLAMA_COOLDOWN_SEC", "600"))
 
 
-def _canonical_ollama_chat_url(raw_url: str) -> str:
-    fallback = "http://127.0.0.1:11434/api/chat"
-    url = str(raw_url or "").strip() or fallback
-    return url
-
-
-
-
 PROVIDERS = {
     "ollama": {
         "daily_limit": 100000,
         "model": OLLAMA_DEFAULT_MODEL,
         "api_key_envs": ["OLLAMA_API_KEY", "KIBOT_OLLAMA_GATEWAY_TOKEN"],
-        "base_url": _canonical_ollama_chat_url(os.getenv("KIBOT_OLLAMA_BASE_URL", "")),
+        "base_url": OLLAMA_CHAT_URL,
         "priority": 99,
     },
     "finnhub": {

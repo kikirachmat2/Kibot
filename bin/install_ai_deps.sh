@@ -5,13 +5,15 @@ set -euo pipefail
 # Keeps the intelligence stack aligned with requirements.txt plus extra market/search packages.
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+export PIP_NO_CACHE_DIR=1
 
 echo "--- Installing KiBot AI Dependencies ---"
 
-python3 -m pip install --upgrade -r "${ROOT_DIR}/requirements.txt" --break-system-packages
+python3 -m pip install --upgrade --no-cache-dir -r "${ROOT_DIR}/requirements.txt" --break-system-packages
 
 # Intelligence / market extras that are often used outside the minimal requirements set.
 python3 -m pip install --upgrade \
+  --no-cache-dir \
   tavily-python \
   duckduckgo-search \
   finnhub-python \
@@ -19,6 +21,7 @@ python3 -m pip install --upgrade \
   web3 \
   pandas \
   numpy \
+  nest_asyncio \
   ta \
   pandas-ta \
   redis \

@@ -16,8 +16,9 @@ logger = logging.getLogger("SovereignJanitor")
 
 class SovereignJanitor:
     def __init__(self, threshold_pct=90.0):
-        from Core.Support.ki_config import LOGS_DIR
+        from Core.Support.ki_config import LOGS_DIR, OLLAMA_TAGS_URL
         self.threshold = threshold_pct
+        self.ollama_tags_url = OLLAMA_TAGS_URL
         self.log_paths = [
             LOGS_DIR,
             Path("/var/log/journal")
@@ -60,7 +61,7 @@ class SovereignJanitor:
         """Ping local Ollama to ensure it's responding."""
         try:
             result = subprocess.run(
-                ["curl", "-s", "http://localhost:11434/api/tags"],
+                ["curl", "-s", self.ollama_tags_url],
                 capture_output=True, timeout=5
             )
             if result.returncode != 0:
