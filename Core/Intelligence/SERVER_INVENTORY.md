@@ -177,6 +177,7 @@ These exist on the server but are easy to miss if you only inspect the code tree
 7. `bin/kibotctl` is the canonical operator wrapper; it should stay thin and delegate runtime authority to systemd.
 8. Real-money entries stay blocked until `KIBOT_LIVE_TRADING_ENABLED=true` or `KIBOT_TRADING_MODE=live` is set explicitly.
 9. Telegram is a scarce incident channel and is throttled / deduped by the shared helper.
+10. `whatif_results.json` is treated as live council input, so the system does not deliberate blind.
 
 ---
 

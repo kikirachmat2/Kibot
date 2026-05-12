@@ -8,6 +8,7 @@ AI Orchestration, Learning, and Market Intelligence models.
 - `kibot_learning_engine.py` menyimpan state belajar dan validasi integritas.
 - `kibot_rag.py` menyuntikkan fakta server dan memori operasional ke agent.
 - `kibot_ai_scout.py` menjaga scouting intel pasar dan berita global tetap hidup.
+- `kibot_whatif_engine.py` menjaga simulasi skenario selalu terbarui untuk council.
 
 ## Live Server Atlas
 Source of truth untuk keadaan server yang sebenarnya:
@@ -31,6 +32,7 @@ Server-only artifacts yang tidak kelihatan dari code tree biasa:
 - `SERVER_INVENTORY.md` sebagai snapshot runtime yang disimpan di repo.
 - `bin/kibotctl` sebagai wrapper operasional satu pintu untuk status, doctor, restart, dan sync model.
 - `gh`, `copilot`, dan `aider` tersedia di server Batam; gunakan `bin/kibotctl tools` untuk cek apakah toolchain ini benar-benar siap dipakai.
+- Council tidak lagi buta skenario: hasil `whatif_results.json` ikut dibaca saat deliberasi strategis dan trading.
 
 ## Responsibility
 - **AI Veto**: Validating signals using local LLMs (Ollama/Dify).

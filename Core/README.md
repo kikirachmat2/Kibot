@@ -16,6 +16,7 @@ Ini adalah "Otak Kolektif" KiBot. Council tidak berjalan linear, melainkan melal
 - **Risk Arbiter (0.6b):** Menentukan keputusan final dan tingkat kepercayaan (confidence).
 - **Executor Bridge:** Menjalankan aksi otomatis (Service Restart, ADB Recovery, Aider Self-Healing) jika `confidence >= 85%` dan `risk <= MEDIUM`.
 - **Live Trading Gate:** Order real-money hanya dibuka jika `KIBOT_LIVE_TRADING_ENABLED=true` atau mode trading `live` sudah di-set eksplisit.
+- **What-If First:** Council selalu membawa hasil simulasi what-if ke deliberasi supaya keputusan tidak buta skenario.
 
 ---
 

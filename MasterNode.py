@@ -33,6 +33,8 @@ from Core.circuit_breaker import CircuitBreaker
 from Core.sovereign_council import SovereignCouncil
 from Core.sovereign_notifier import SovereignNotifier
 from Core.Intelligence.aggregator import CouncilDataAggregator
+from Core.sovereign_state import load_strategy
+from Core.Intelligence.kibot_whatif_engine import run_simulation
 
 # Configure Logging
 LOGS_DIR.mkdir(parents=True, exist_ok=True)
@@ -94,6 +96,7 @@ class KiBotMaster:
         self.use_systemd_services = os.getenv("KIBOT_USE_SYSTEMD_SERVICES", "1") == "1"
         self._pnl_session_start_balance: Optional[float] = None
         self._pnl_last_milestone: Dict[str, float] = {}
+        self._whatif_last_refresh = 0.0
         
         # [OPTIMIZATION] Reuse Gateway instances
         from Core.Exchange.indodax import IndodaxGateway
@@ -168,6 +171,46 @@ class KiBotMaster:
             except Exception as e:
                 logger.error(f"PnL Watchdog error: {e}")
             await asyncio.sleep(300)
+
+    async def whatif_refresh_loop(self):
+        """Refresh what-if simulation so council always has a live scenario view."""
+        interval_sec = int(os.getenv("KIBOT_WHATIF_REFRESH_SEC", "900"))
+        logger.info(f"🧪 What-if refresh loop active ({interval_sec}s).")
+        while self.is_running:
+            try:
+                strategy = load_strategy()
+                allowed = strategy.get("indodax", {}).get("allowed_pairs", ["*"])
+                pair_list = []
+                if "*" in allowed:
+                    pair_list = ["btc_idr", "eth_idr", "sol_idr", "xrp_idr"]
+                else:
+                    for pair in allowed:
+                        pair = str(pair).strip().lower()
+                        if pair:
+                            pair_list.append(pair if pair.endswith("_idr") else f"{pair}_idr")
+
+                prices = {}
+                for pair in pair_list:
+                    try:
+                        ticker = await self.indodax.get_ticker(pair)
+                        price = float(ticker.get("last", 0) or 0)
+                        if price > 0:
+                            prices[pair] = price
+                    except Exception:
+                        continue
+
+                if not prices:
+                    prices = {
+                        "btc_idr": float(os.getenv("KIBOT_WHATIF_BTC_PRICE", "1500000000")),
+                        "eth_idr": float(os.getenv("KIBOT_WHATIF_ETH_PRICE", "50000000")),
+                    }
+
+                output = run_simulation(prices)
+                logger.info(f"🧪 What-if refreshed: {output.get('pairsSimulated', 0)} pairs simulated.")
+                self._whatif_last_refresh = time.time()
+            except Exception as e:
+                logger.error(f"What-if refresh error: {e}")
+            await asyncio.sleep(interval_sec)
 
     def is_command_safe(self, cmd: str) -> bool:
         """Verify if a command is allowed to be executed by the AI."""
@@ -275,6 +318,7 @@ class KiBotMaster:
         # Start Signal Listener in background
         asyncio.create_task(self.signal_listener_loop())
         asyncio.create_task(self.pnl_watchdog_loop())
+        asyncio.create_task(self.whatif_refresh_loop())
         
         # Immediate Oracle Scout on startup
         logger.info("Oracle Mode (Startup): Performing initial market scouting...")

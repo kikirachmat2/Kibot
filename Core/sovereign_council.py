@@ -19,6 +19,7 @@ class SovereignCouncil:
         self.state_dir = base_dir / "state"
         self.decision_log = self.state_dir / "council_decisions.jsonl"
         self.directive_log = self.state_dir / "council_directives.json"
+        self.whatif_file = self.state_dir / "whatif_results.json"
         self.state_dir.mkdir(parents=True, exist_ok=True)
         
         # Thresholds
@@ -27,6 +28,18 @@ class SovereignCouncil:
         
         # Load environment
         load_sovereign_env()
+
+    def _load_whatif_snapshot(self) -> Dict[str, Any]:
+        if not self.whatif_file.exists():
+            return {"pairsSimulated": 0, "topOpportunities": [], "results": {}}
+        try:
+            with open(self.whatif_file, "r") as f:
+                data = json.load(f)
+            if isinstance(data, dict):
+                return data
+        except Exception as e:
+            logger.warning(f"Failed to load what-if snapshot: {e}")
+        return {"pairsSimulated": 0, "topOpportunities": [], "results": {}}
 
     async def deliberate_system(self, issue_context: Dict) -> Dict:
         """Handles system anomalies and self-healing logic (Watchman mode)."""
@@ -85,7 +98,8 @@ class SovereignCouncil:
         # 2. Market Synthesis
         scout_res = await query_ai("MARKET_SCOUT", {"raw_scan_results": market_snapshot})
         sentiment = await query_ai("SENTIMENT_SYNTHESIZER", {"news_context": "Global Crypto Trends"})
-        
+        whatif_snapshot = self._load_whatif_snapshot()
+
         # [NEW V3.1] Forensic and Cross-Market Intelligence
         whale_intel = await query_ai("WHALE_WATCHER", {"orderbook_snapshot": market_snapshot.get("indodax")})
         bridge_alpha = await query_ai("CROSS_BRIDGE_STRATEGIST", {
@@ -110,6 +124,7 @@ class SovereignCouncil:
             "sentiment": sentiment,
             "whale_intel": whale_intel,
             "bridge_alpha": bridge_alpha,
+            "whatif_snapshot": whatif_snapshot,
             "recent_pnl": pnl_history,
             "is_midnight_approaching": is_midnight_approaching,
             "philosophy": "ORGANIZED_GREED" # Never satisfied
@@ -151,6 +166,11 @@ class SovereignCouncil:
         Analyzes incoming signals and returns a formal mandate for execution.
         """
         logger.info(f"🏛️ Council Deliberating Trading Signals...")
+        whatif_snapshot = self._load_whatif_snapshot()
+        signals_context = {
+            **signals_context,
+            "whatif_snapshot": whatif_snapshot,
+        }
         
         # 1. Council Consensus
         # We use COUNCIL_SPEAKER to synthesize the final verdict from signals
@@ -166,6 +186,7 @@ class SovereignCouncil:
 
         # 2. Add metadata and match source signal
         decision["timestamp"] = time.time()
+        decision["whatif_snapshot"] = whatif_snapshot
         
         # Find matching signal from context for price/metadata parity
         signals = signals_context.get("signals", [])
