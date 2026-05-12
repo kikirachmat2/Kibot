@@ -46,6 +46,7 @@ Server-only artifacts yang tidak kelihatan dari code tree biasa:
 - Daily state dikirim ke planner dan executor supaya posisi pemenang tidak dipotong terlalu cepat hanya karena target angka lama sudah tercapai.
 - Scanner dedupe memakai UID yang tidak mencampur market Polymarket yang berbeda, jadi sinyal tidak lagi hilang karena base_symbol yang terlalu generik.
 - `EXIT_ALL` sekarang hanya sah di window midnight / emergency terkontrol; keputusan strategi normal tidak boleh mematikan trading saat sesi masih berjalan.
+- Mode `DEFENSIVE` tidak lagi dipakai sebagai default saat hari `FLAT` dan server sehat; council akan cenderung tetap oportunistik dengan `CONTROLLED_AGGRESSIVE` atau `NEUTRAL` agar tidak idle.
 - CPU spike sendiri tidak lagi cukup untuk memicu emergency pause jika RAM/disk masih sehat; council menganggap itu sebagai kondisi DEGRADED, bukan stop total.
 
 ## Responsibility

@@ -353,6 +353,7 @@ PROMPT_TEMPLATES = {
         "5. Midnight Oracle: At 23:45, evaluate the daily report and decide on the next phase (HODL, EXIT_ALL, or PIVOT). Do not choose EXIT_ALL early just because the day is flat; daily target is GREEN, not a fixed percentage.\n"
         "6. Evidence First: Prefer decisions that are supported by live web validation, source convergence, and what-if simulations.\n"
         "7. Learning Discipline: If no trade has happened today and a vetted edge exists, prefer a tiny learning probe over inactivity, but never bypass hard-loss rules.\n"
+        "8. Anti-Idle Bias: A healthy FLAT day should not default to DEFENSIVE. When resources are healthy and evidence is not collapsing, prefer CONTROLLED_AGGRESSIVE or NEUTRAL so the council stays opportunistic instead of passive.\n"
         "Inputs: {market_data}, {system_health}, {current_strategy}, {whatif_snapshot}, {daily_state}, {today_trade_activity}, {antagonist_view}, {possibility_view}, Minutes to Midnight: {minutes_to_midnight}, Deadline Pressure: {deadline_pressure}, Midnight Approaching: {is_midnight_approaching}.\n"
         "Task: Output a refined JSON strategy (Indodax & Polymarket) focusing on Risk mitigation, capital allocation, and confidence calibration.\n"
         "Optimal Modes: AGGRESSIVE|NEUTRAL|DEFENSIVE|FULL_ATTACK|EXIT_ALL.\n"

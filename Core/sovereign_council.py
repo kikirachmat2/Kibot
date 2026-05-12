@@ -672,6 +672,22 @@ class SovereignCouncil:
                     "🛡️ Premature EXIT_ALL overridden outside midnight window; "
                     f"using {raw_mode} instead."
                 )
+            elif raw_mode == "DEFENSIVE" and not is_midnight_approaching:
+                current_mode = str(current.get("global_mode", "NEUTRAL")).upper().strip()
+                daily_color = str(runtime_daily_state.get("color", "FLAT")).upper().strip()
+                cpu_safe = float(cpu) < 80.0
+                ram_safe = float(ram) < 85.0
+                disk_safe = float(disk) < 90.0
+                if daily_color == "FLAT" and cpu_safe and ram_safe and disk_safe:
+                    raw_mode = "CONTROLLED_AGGRESSIVE"
+                    logger.warning(
+                        "🛡️ Defensive posture softened on healthy FLAT day; "
+                        f"using {raw_mode} to keep the council opportunistic."
+                    )
+                elif daily_color == "GREEN":
+                    raw_mode = "CONTROLLED_AGGRESSIVE"
+                elif daily_color == "RECOVERY" and current_mode not in {"EXIT_ALL", ""}:
+                    raw_mode = current_mode
             new_strategy = {
                 "version": "3.0.0",
                 "global_mode": raw_mode,
