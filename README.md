@@ -10,7 +10,8 @@
 - [`Core/Security/README.md`](./Core/Security/README.md): HMAC, vault, dan audit security.
 - [`Core/Support/README.md`](./Core/Support/README.md): config, utilities, dan tooling.
 - [`bin/`](./bin): shell utilities canonical untuk backup, dependency bootstrap, dan wrapper operasional.
-- [`bin/kibotctl`](./bin/kibotctl): one-command wrapper untuk status, doctor, start/stop, dan sync model server.
+- [`bin/kibotctl`](./bin/kibotctl): one-command wrapper untuk status, doctor, tools, start/stop, dan sync model server.
+- [`AGENTS.md`](./AGENTS.md): guardrail kerja untuk Codex, Aider, Copilot, dan operator automation.
 - [`state/`](./state): runtime JSON snapshot yang dipakai engine saat berjalan.
 
 ## 📜 THE MANIFESTO
@@ -23,9 +24,11 @@
 - **Kesadaran Ekonomi Total**: Sadar akan seluruh saldo dan koin di Indodax & Polymarket. Trading dilakukan dengan kapasitas maksimal yang tersedia tanpa batasan artifisial.
 - **Pertahanan Berdaulat**: Manajemen risiko otomatis tetap ketat (1.5% Max Daily Loss), namun fleksibel dalam eksekusi peluang.
 - **Self-Healing & Resilience**: Pemulihan mandiri instan dari kegagalan infrastruktur (Ollama, Network, Disk).
+- **Explicit Live Gate**: order real-money hanya jalan jika `KIBOT_LIVE_TRADING_ENABLED=true` atau `KIBOT_TRADING_MODE=live`.
 
 ### 📱 Notification Protocol
 - **Urgent Only**: Hanya mengirim pesan darurat dan tindakan kritis ke Telegram.
+- **Throttle & Dedupe**: Telegram diproteksi dengan cooldown global, dedupe pesan, dan incident cooldown supaya tidak spam.
 - **Midnight Report**: Laporan PnL harian otomatis setiap pukul 00:00 WIB.
 
 ---

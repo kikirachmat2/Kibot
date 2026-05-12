@@ -1,6 +1,5 @@
 import json
 import time
-import requests
 import sys
 from pathlib import Path
 from datetime import datetime, timezone, timedelta
@@ -20,21 +19,29 @@ except ImportError:
         TELEGRAM_BOT_TOKEN = None
         TELEGRAM_CHAT_ID = None
 
+try:
+    from Core.Support.telegram_throttle import telegram_send as _telegram_send
+except ImportError:
+    try:
+        from Support.telegram_throttle import telegram_send as _telegram_send
+    except ImportError:
+        _telegram_send = None
+
 def get_wib_now() -> datetime:
     return datetime.now(timezone.utc) + timedelta(hours=7)
 
 def get_wib_str() -> str:
     return get_wib_now().strftime('%Y-%m-%d %H:%M:%S WIB')
 
-def telegram_send(message: str):
-    if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID:
-        return
-    url = f'https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage'
-    payload = {'chat_id': TELEGRAM_CHAT_ID, 'text': message, 'parse_mode': 'Markdown'}
-    try:
-        requests.post(url, json=payload, timeout=10)
-    except Exception as e:
-        print(f"[KI_UTILS][TELEGRAM][ERROR] {e}", flush=True)
+def telegram_send(message: str, token: str = None, chat_id: str = None, **kwargs):
+    if _telegram_send is None:
+        return False
+    return _telegram_send(
+        message,
+        token=token or TELEGRAM_BOT_TOKEN,
+        chat_id=chat_id or TELEGRAM_CHAT_ID,
+        **kwargs,
+    )
 
 def load_json(path: Path, default: Any = None) -> Any:
     try:

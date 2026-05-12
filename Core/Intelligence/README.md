@@ -30,6 +30,7 @@ Server-only artifacts yang tidak kelihatan dari code tree biasa:
 - `~/.cache`, `~/.local`, `~/.copilot`, `~/.npm`, `~/.ssh`, `~/.oci`, `~/.aider` di akun `ubuntu`.
 - `SERVER_INVENTORY.md` sebagai snapshot runtime yang disimpan di repo.
 - `bin/kibotctl` sebagai wrapper operasional satu pintu untuk status, doctor, restart, dan sync model.
+- `gh`, `copilot`, dan `aider` tersedia di server Batam; gunakan `bin/kibotctl tools` untuk cek apakah toolchain ini benar-benar siap dipakai.
 
 ## Responsibility
 - **AI Veto**: Validating signals using local LLMs (Ollama/Dify).
@@ -52,6 +53,7 @@ Server-only artifacts yang tidak kelihatan dari code tree biasa:
 - AI provider cooldown state dipertahankan lintas boot; set `KIBOT_RESET_AI_COOLDOWNS_ON_BOOT=1` hanya saat perlu reset manual.
 - `POLYMARKET_WALLET_ADDRESS` / `POLYMARKET_PRIVATE_KEY` sudah terisi di env lokal untuk eksekusi Polymarket otomatis.
 - `kibotctl` adalah entrypoint operasional satu command; gunakan `status`, `doctor`, `restart`, dan `sync-models` untuk menjaga sinkronisasi server.
+- Live trading executor tetap menunggu gate eksplisit `KIBOT_LIVE_TRADING_ENABLED=true` atau `KIBOT_TRADING_MODE=live`.
 
 ## Key Files
 - `kibot_ai_coordinator.py`: Main AI signal processor.

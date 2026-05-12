@@ -15,6 +15,7 @@ Ini adalah "Otak Kolektif" KiBot. Council tidak berjalan linear, melainkan melal
 - **Global Eye Integration:** Council terhubung langsung ke web search (Brave/Tavily/Jina) untuk memvalidasi apakah gangguan sistem disebabkan oleh faktor eksternal (Market outage).
 - **Risk Arbiter (0.6b):** Menentukan keputusan final dan tingkat kepercayaan (confidence).
 - **Executor Bridge:** Menjalankan aksi otomatis (Service Restart, ADB Recovery, Aider Self-Healing) jika `confidence >= 85%` dan `risk <= MEDIUM`.
+- **Live Trading Gate:** Order real-money hanya dibuka jika `KIBOT_LIVE_TRADING_ENABLED=true` atau mode trading `live` sudah di-set eksplisit.
 
 ---
 
@@ -31,6 +32,7 @@ Tameng pelindung dari loop gila dan spam notifikasi.
 - Jika sebuah komponen gagal lebih dari **3 kali**, sirkuit akan **OPEN** (Putus).
 - Retries akan dihentikan selama **5-10 menit** (Cooldown).
 - Mencegah spam Telegram saat terjadi gangguan jaringan atau API outage.
+- Notifikasi Telegram memakai throttle bersama untuk dedupe dan incident cooldown.
 
 ### 3. [KiBot Sovereign Master](../MasterNode.py)
 Satu-satunya entry point sistem. Semua modul (Manager, Monitor, API) telah dilebur ke sini.

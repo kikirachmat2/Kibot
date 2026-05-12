@@ -56,6 +56,10 @@ def _normalize_ollama_chat_url(raw_url: str, default_root: str = "http://127.0.0
 
     return f"{url}/api/chat"
 
+
+def _env_flag(name: str, default: str = "false") -> bool:
+    return os.getenv(name, default).strip().lower() in {"1", "true", "yes", "on", "live", "production"}
+
 # --- PATHS ---
 BASE_PATH = Path(__file__).resolve().parent.parent  # Points to Core/
 PROJECT_ROOT = BASE_PATH.parent                     # Points to KiBot root
@@ -81,6 +85,13 @@ class KiConfig:
     MIN_SIGNAL_PROBABILITY = 0.65     # Lowered to 65% for high-aggression
     SCALPING_TP_PERCENT = 1.0         # Increased for more room
     SCALPING_SL_PERCENT = 2.0         # Matches RiskGate SL
+    TRADING_MODE = os.getenv("KIBOT_TRADING_MODE", "paper").strip().lower()
+    LIVE_TRADING_ENABLED = _env_flag("KIBOT_LIVE_TRADING_ENABLED", "false") or TRADING_MODE in {"live", "real", "production"}
+    TELEGRAM_GLOBAL_MIN_INTERVAL_SEC = int(os.getenv("KIBOT_TELEGRAM_MIN_INTERVAL_SEC", "30"))
+    TELEGRAM_DEDUPE_WINDOW_SEC = int(os.getenv("KIBOT_TELEGRAM_DEDUPE_WINDOW_SEC", "900"))
+    TELEGRAM_INCIDENT_COOLDOWN_SEC = int(os.getenv("KIBOT_TELEGRAM_INCIDENT_COOLDOWN_SEC", "3600"))
+    TELEGRAM_CLAIM_TTL_SEC = int(os.getenv("KIBOT_TELEGRAM_CLAIM_TTL_SEC", "30"))
+    TELEGRAM_MAX_CHARS = int(os.getenv("KIBOT_TELEGRAM_MAX_CHARS", "3800"))
     
     # --- EXCHANGE RATES ---
     KRW_USD_RATE = 1350.0             # Default conversion, can be updated via env

@@ -28,6 +28,7 @@ We have migrated from plaintext `.env` files to encrypted `.env.kiv` containers.
 To prevent "Adversarial Data Poisoning", the intelligence layer implements strict input validation:
 - **PnL Clipping**: Bayesian updates are capped at `[-20%, +50%]` to prevent extreme outlier data from corrupting the AI's risk models.
 - **Signal TTL**: Signals older than 10-15 seconds are automatically rejected to prevent replay attacks or execution on stale market conditions.
+- **Live Trading Gate**: real-money entry is blocked unless the operator explicitly enables `KIBOT_LIVE_TRADING_ENABLED` or `KIBOT_TRADING_MODE=live`.
 
 ## Hardening Checklist
 - [x] Oracle Circuit Breaker (Veto price jumps > 2%)
@@ -35,6 +36,7 @@ To prevent "Adversarial Data Poisoning", the intelligence layer implements stric
 - [x] Inter-Node HMAC (Sign UDP signals)
 - [x] Hardware-bound KiVault (AES-256)
 - [x] Humility-weighted Sizing (Cap Kelly at 0.95)
+- [x] Telegram Throttle / Dedupe (Shared channel guardrail)
 - [ ] Final Secret Purge (Remove legacy .env files)
 
 ### 2. Immutable Logging (`kibot_security.py`)
@@ -58,3 +60,4 @@ All audited events are stored in `state/security_log.jsonl` in a signed JSON for
 1. **Fail-Closed**: If the security vault is inaccessible, the system will refuse to boot.
 2. **Sovereign Egress**: All trading communication must pass through verified sovereign network paths.
 3. **Hardware Bound**: Security keys are derived from the server's unique hardware footprint, preventing unauthorized credential reuse.
+4. **Sparse Notifications**: Telegram is an incident channel, not a chat log.

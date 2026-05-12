@@ -36,6 +36,8 @@ Usage:
   kibotctl restart
   kibotctl models
   kibotctl sync-models
+  kibotctl tools
+  kibotctl install-tools
   kibotctl pull <model>
   kibotctl logs [service...]
 EOF
@@ -88,6 +90,20 @@ model_ps() {
   ollama ps || true
 }
 
+resolve_aider_cmd() {
+  if command -v aider >/dev/null 2>&1; then
+    command -v aider
+    return
+  fi
+
+  if [[ -x "${HOME}/.local/bin/aider" ]]; then
+    printf '%s\n' "${HOME}/.local/bin/aider"
+    return
+  fi
+
+  return 1
+}
+
 cmd_status() {
   section "System"
   nproc
@@ -100,6 +116,30 @@ cmd_status() {
   model_list
   section "Ollama Running Models"
   model_ps
+}
+
+cmd_tools() {
+  section "GitHub CLI"
+  if command -v gh >/dev/null 2>&1; then
+    gh auth status || true
+  else
+    echo "gh not installed"
+  fi
+
+  section "Copilot CLI"
+  if command -v copilot >/dev/null 2>&1; then
+    copilot --version || true
+  else
+    echo "copilot not installed"
+  fi
+
+  section "Aider"
+  if aider_cmd="$(resolve_aider_cmd 2>/dev/null)"; then
+    "$aider_cmd" --version || true
+  else
+    echo "aider not installed"
+    echo "Hint: pipx install aider-chat && export PATH=\"\$HOME/.local/bin:\$PATH\""
+  fi
 }
 
 cmd_doctor() {
@@ -124,6 +164,7 @@ for name, stmt in checks:
     except Exception as exc:
         print(f"❌ {name}: {exc}")
 PY
+  cmd_tools
 }
 
 cmd_up() {
@@ -185,6 +226,33 @@ cmd_sync_models() {
   fi
 }
 
+cmd_install_tools() {
+  section "GitHub CLI"
+  if command -v gh >/dev/null 2>&1; then
+    gh auth status || true
+  else
+    echo "gh missing. Install via GitHub CLI package for your host OS."
+  fi
+
+  section "Copilot CLI"
+  if command -v copilot >/dev/null 2>&1; then
+    copilot --version || true
+  else
+    echo "copilot missing. Install Copilot CLI on the server host."
+  fi
+
+  section "Aider"
+  if aider_cmd="$(resolve_aider_cmd 2>/dev/null)"; then
+    "$aider_cmd" --version || true
+    echo "Aider already installed."
+  elif command -v pipx >/dev/null 2>&1; then
+    echo "[install] pipx install aider-chat"
+    pipx install aider-chat || true
+  else
+    echo "pipx missing. Install pipx first, then run: pipx install aider-chat"
+  fi
+}
+
 cmd_logs() {
   if [[ $# -eq 0 ]]; then
     journalctl -u kibot-master -n 80 --no-pager
@@ -206,6 +274,8 @@ case "${1:-}" in
   restart) shift; cmd_restart "$@" ;;
   models) shift; cmd_models "$@" ;;
   sync-models) shift; cmd_sync_models "$@" ;;
+  tools) shift; cmd_tools "$@" ;;
+  install-tools) shift; cmd_install_tools "$@" ;;
   pull) cmd_pull "$@" ;;
   logs) cmd_logs "$@" ;;
   *)

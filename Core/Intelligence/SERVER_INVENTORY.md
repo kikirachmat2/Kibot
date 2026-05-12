@@ -140,6 +140,7 @@ These exist on the server but are easy to miss if you only inspect the code tree
 - `logs/` application logs.
 - `config/systemd/` local unit files for Kibot services.
 - `bin/kibotctl` operator wrapper for status / doctor / restart / sync-models.
+- `gh`, `copilot`, and `aider` are installed on the server; validate them with `bin/kibotctl tools`.
 - User caches and tooling:
   - `~/.cache`
   - `~/.local`
@@ -154,6 +155,14 @@ These exist on the server but are easy to miss if you only inspect the code tree
   - `SERVER_BATAM/`
   - `KiBot_LEGACY_BACKUP/`
 
+## 🛠️ Operator Toolchain
+| Tool | Status | Catatan |
+|------|--------|---------|
+| `gh` | authenticated | Login aktif di server Batam; dipakai untuk publish / inspect repo |
+| `copilot` | installed | Copilot CLI tersedia di server |
+| `aider` | installed | Terpasang via `pipx`; gunakan path explicit atau `bin/kibotctl tools` |
+| `bin/kibotctl` | installed | Wrapper operasional satu pintu untuk status / doctor / toolchain / model sync |
+
 ---
 
 ## 🧠 Operational Notes
@@ -164,6 +173,8 @@ These exist on the server but are easy to miss if you only inspect the code tree
 5. 401 / 429 failures from upstream AI providers should be treated as provider-health/rate-limit signals, not immediate bot crashes.
 6. `kibot-executor.service` is the canonical Indodax systemd unit; the older `kibot-executor-indodax` naming is retired.
 7. `bin/kibotctl` is the canonical operator wrapper; it should stay thin and delegate runtime authority to systemd.
+8. Real-money entries stay blocked until `KIBOT_LIVE_TRADING_ENABLED=true` or `KIBOT_TRADING_MODE=live` is set explicitly.
+9. Telegram is a scarce incident channel and is throttled / deduped by the shared helper.
 
 ---
 

@@ -31,14 +31,18 @@ class PolymarketExecutor:
         self.wallet_address = os.environ.get("POLYMARKET_WALLET_ADDRESS")
         self.private_key = os.environ.get("POLYMARKET_PRIVATE_KEY")
         self.batam_ip = os.environ.get("KIBOT_MASTER_IP", "127.0.0.1")
+        self.live_trading_enabled = KiConfig.LIVE_TRADING_ENABLED
         self.state = {
             "ready": True,
             "analysis_ready": True,
-            "execution_enabled": True,
+            "execution_enabled": self.live_trading_enabled,
+            "live_trading_enabled": self.live_trading_enabled,
+            "wallet_ready": bool(self.wallet_address and self.private_key),
             "geoblock": {"blocked": False, "country": "ID"},
             "top_opportunities": [],
             "last_update": datetime.now().isoformat()
         }
+        logger.info(f"🚦 Polymarket live trading enabled: {self.live_trading_enabled}")
 
     async def _get_usdc_balance_polygon(self) -> float:
         try:
@@ -68,6 +72,10 @@ class PolymarketExecutor:
             urgency = check_urgency()
             if urgency.get("flag") == "EMERGENCY_PAUSE":
                 logger.warning("🚨 EMERGENCY PAUSE: Polymarket execution blocked.")
+                return
+
+            if not self.live_trading_enabled:
+                logger.warning("🧪 PAPER MODE: live trading disabled; skipping Polymarket entry.")
                 return
 
             # 1. Filter by Council Strategy
@@ -165,6 +173,7 @@ class PolymarketExecutor:
         except: pass
 
     async def handle_state_request(self, request):
+        self.state["last_update"] = datetime.now().isoformat()
         return web.json_response(self.state)
 
     async def run_state_api(self):

@@ -1,9 +1,7 @@
 #!/usr/bin/env python3
 import os
-import json
-import time
 import asyncio
-import httpx
+import logging
 from pathlib import Path
 from datetime import datetime
 
@@ -16,82 +14,97 @@ if str(ROOT) not in sys.path:
     sys.path.append(str(ROOT))
 
 try:
-    from Core.Support.ki_config import TELEGRAM_BOT_TOKEN as TELEGRAM_TOKEN, TELEGRAM_CHAT_ID
+    from Core.Support.ki_config import (
+        TELEGRAM_BOT_TOKEN as TELEGRAM_TOKEN,
+        TELEGRAM_CHAT_ID,
+        KiConfig,
+    )
 except ImportError:
     TELEGRAM_TOKEN = os.getenv("KIBOT_TELEGRAM_TOKEN")
     TELEGRAM_CHAT_ID = os.getenv("KIBOT_TELEGRAM_CHAT_ID")
+    class _FallbackConfig:
+        TELEGRAM_GLOBAL_MIN_INTERVAL_SEC = int(os.getenv("KIBOT_TELEGRAM_MIN_INTERVAL_SEC", "30"))
+        TELEGRAM_DEDUPE_WINDOW_SEC = int(os.getenv("KIBOT_TELEGRAM_DEDUPE_WINDOW_SEC", "900"))
+        TELEGRAM_INCIDENT_COOLDOWN_SEC = int(os.getenv("KIBOT_TELEGRAM_INCIDENT_COOLDOWN_SEC", "3600"))
+        TELEGRAM_CLAIM_TTL_SEC = int(os.getenv("KIBOT_TELEGRAM_CLAIM_TTL_SEC", "30"))
+    KiConfig = _FallbackConfig()
 
-STATE_FILE = ROOT / "Data" / "State" / "notifier_throttle.json"
+from Core.Support.telegram_throttle import telegram_send_async, get_telegram_throttle
+
+logger = logging.getLogger("SovereignNotifier")
 
 class SovereignNotifier:
     def __init__(self, token=TELEGRAM_TOKEN, chat_id=TELEGRAM_CHAT_ID):
         self.token = token
         self.chat_id = chat_id
-        self.api_url = f"https://api.telegram.org/bot{self.token}/sendMessage"
-        self.throttle_file = STATE_FILE
-        self._ensure_state_dir()
+        self.throttle = get_telegram_throttle()
 
-    def _ensure_state_dir(self):
-        self.throttle_file.parent.mkdir(parents=True, exist_ok=True)
-        if not self.throttle_file.exists():
-            self._save_throttle_state({})
-
-    def _load_throttle_state(self):
-        try:
-            if self.throttle_file.exists():
-                return json.loads(self.throttle_file.read_text())
-        except Exception:
-            pass
-        return {}
-
-    def _save_throttle_state(self, state):
-        self.throttle_file.write_text(json.dumps(state, indent=2))
-
-    async def send_message(self, text, parse_mode='Markdown'):
+    async def send_message(
+        self,
+        text,
+        parse_mode='Markdown',
+        *,
+        incident_key=None,
+        channel='general',
+        min_interval_sec=None,
+        dedupe_window_sec=None,
+        incident_cooldown_sec=None,
+        claim_ttl_sec=None,
+        force=False,
+    ):
         """Base method to send telegram message asynchronously."""
         if not self.token or not self.chat_id:
-            print("⚠️ Notifier: Telegram credentials missing.")
+            logger.warning("⚠️ Notifier: Telegram credentials missing.")
             return False
-            
-        payload = {
-            "chat_id": self.chat_id,
-            "text": text,
-            "parse_mode": parse_mode
-        }
-        
-        try:
-            async with httpx.AsyncClient(timeout=10.0) as client:
-                resp = await client.post(self.api_url, json=payload)
-                if resp.status_code == 200:
-                    return True
-                else:
-                    print(f"❌ Notifier Error {resp.status_code}: {resp.text}")
-        except Exception as e:
-            print(f"❌ Notifier Exception: {e}")
-        return False
+
+        min_interval_sec = (
+            KiConfig.TELEGRAM_GLOBAL_MIN_INTERVAL_SEC if min_interval_sec is None else min_interval_sec
+        )
+        dedupe_window_sec = (
+            KiConfig.TELEGRAM_DEDUPE_WINDOW_SEC if dedupe_window_sec is None else dedupe_window_sec
+        )
+        incident_cooldown_sec = (
+            KiConfig.TELEGRAM_INCIDENT_COOLDOWN_SEC if incident_cooldown_sec is None else incident_cooldown_sec
+        )
+        claim_ttl_sec = (
+            KiConfig.TELEGRAM_CLAIM_TTL_SEC if claim_ttl_sec is None else claim_ttl_sec
+        )
+
+        return await telegram_send_async(
+            text,
+            parse_mode=parse_mode,
+            incident_key=incident_key,
+            channel=channel,
+            min_interval_sec=min_interval_sec,
+            dedupe_window_sec=dedupe_window_sec,
+            incident_cooldown_sec=incident_cooldown_sec,
+            claim_ttl_sec=claim_ttl_sec,
+            force=force,
+            token=self.token,
+            chat_id=self.chat_id,
+        )
 
     async def send_urgent_alert(self, message, incident_key):
         """Sends an alert only if it hasn't been sent in the last 3600 seconds."""
-        state = self._load_throttle_state()
-        now = time.time()
-        last_sent = state.get(incident_key, 0)
-
-        if now - last_sent < 3600:
-            print(f"⌛ Notifier: Alert '{incident_key}' throttled. (Cooldown: {int(3600 - (now - last_sent))}s)")
-            return False
-
-        full_msg = f"🚨 **URGENT SYSTEM ALERT**\n\n{message}"
-        success = await self.send_message(full_msg)
-        
-        if success:
-            state[incident_key] = now
-            self._save_throttle_state(state)
-        return success
+        full_msg = f"🚨 *URGENT SYSTEM ALERT*\n\n{message}"
+        return await self.send_message(
+            full_msg,
+            incident_key=incident_key,
+            channel="alerts",
+            min_interval_sec=max(30, KiConfig.TELEGRAM_GLOBAL_MIN_INTERVAL_SEC),
+            dedupe_window_sec=KiConfig.TELEGRAM_DEDUPE_WINDOW_SEC,
+            incident_cooldown_sec=KiConfig.TELEGRAM_INCIDENT_COOLDOWN_SEC,
+        )
 
     async def send_status_reply(self, telemetry):
         """Formats and sends the /status reply."""
         report = self._format_status_template(telemetry)
-        return await self.send_message(report)
+        return await self.send_message(
+            report,
+            channel="status",
+            min_interval_sec=max(180, KiConfig.TELEGRAM_GLOBAL_MIN_INTERVAL_SEC),
+            dedupe_window_sec=KiConfig.TELEGRAM_DEDUPE_WINDOW_SEC,
+        )
 
     def _format_status_template(self, data):
         """The User's specific /status template - EXACT FORMAT."""

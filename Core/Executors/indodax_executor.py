@@ -75,6 +75,7 @@ class IndodaxExecutor:
 
     async def start(self):
         print(f"🚀 {self.__class__.__name__} Starting...")
+        logger.info(f"🚦 Live trading enabled: {KiConfig.LIVE_TRADING_ENABLED}")
         asyncio.create_task(self.monitor_positions())
         self.running = True
         logger.info(f"🚀 Indodax Engine active on port {LISTEN_PORT}...")
@@ -199,6 +200,11 @@ class IndodaxExecutor:
         """Script-based signal processing using Council-defined parameters."""
         urgency = check_urgency()
         if urgency.get("flag") == "EMERGENCY_PAUSE": return
+
+        if not KiConfig.LIVE_TRADING_ENABLED:
+            symbol = signal.get("symbol", "UNKNOWN")
+            logger.warning(f"🧪 PAPER MODE: live trading disabled; skipping live entry for {symbol}.")
+            return
 
         strategy = load_strategy()
         indo_strat = strategy.get("indodax", {})
