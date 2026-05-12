@@ -10,6 +10,7 @@ AI Orchestration, Learning, and Market Intelligence models.
 - `kibot_ai_scout.py` menjaga scouting intel pasar dan berita global tetap hidup.
 - `kibot_whatif_engine.py` menjaga simulasi skenario selalu terbarui untuk council.
 - `SovereignCouncil` membaca `whatif_results.json` dan evidence web sebelum memberi mandat trading.
+- `SovereignCouncil` sekarang juga memberi posture eksplisit `ENTER / WAIT / EXIT`, plus recovery mode terkontrol saat equity harian merah dan masih ada waktu sebelum midnight.
 
 ## Live Server Atlas
 Source of truth untuk keadaan server yang sebenarnya:
@@ -37,6 +38,7 @@ Server-only artifacts yang tidak kelihatan dari code tree biasa:
 - Council tidak lagi buta skenario: hasil `whatif_results.json` ikut dibaca saat deliberasi strategis dan trading.
 - Council juga tidak buta web: evidence bundle menghitung coverage, catalyst hit, risk flags, dan track-record proxy sebelum action `EXECUTING`.
 - Daily learning probe dipertimbangkan jika belum ada trade hari itu, tetapi tetap dibatasi evidence bundle dan hard loss rules.
+- Recovery posture dipakai hanya ketika PnL merah, waktu masih cukup, dan evidence masih kuat. Itu bukan revenge trading, melainkan controlled re-entry / de-risking.
 
 ## Responsibility
 - **AI Veto**: Validating signals using local LLMs (Ollama/Dify).

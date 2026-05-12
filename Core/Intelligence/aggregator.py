@@ -206,7 +206,8 @@ class CouncilDataAggregator:
         active_bets = list(poly_state.get("active_bets") or poly_state.get("top_opportunities") or [])
 
         session_start_balance = float(getattr(self.master, "_pnl_session_start_balance", 0.0) or 0.0)
-        daily_pnl_idr = idr_balance - session_start_balance if session_start_balance > 0 else 0.0
+        combined_equity_idr = idr_balance + poly_equity_idr
+        daily_pnl_idr = combined_equity_idr - session_start_balance if session_start_balance > 0 else 0.0
         daily_pnl_pct = (daily_pnl_idr / session_start_balance * 100.0) if session_start_balance > 0 else 0.0
 
         snapshot.update({
@@ -216,7 +217,7 @@ class CouncilDataAggregator:
             "daily_pnl_idr": daily_pnl_idr,
             "daily_pnl_pct": daily_pnl_pct,
             "active_positions": active_positions,
-            "combined_equity_idr": idr_balance + poly_equity_idr,
+            "combined_equity_idr": combined_equity_idr,
             "polymarket": {
                 "usdc_balance": usdc_balance,
                 "equity_idr": poly_equity_idr,

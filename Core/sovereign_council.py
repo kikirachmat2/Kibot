@@ -1,5 +1,6 @@
 from __future__ import annotations
 import os, json, time, asyncio, logging
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Dict, List, Optional, Any
 from Core.Support.ki_vault import load_sovereign_env
@@ -8,6 +9,9 @@ from Core.Intelligence.kibot_ai_search import AISearchService
 from Core.sovereign_state import save_strategy, load_strategy, set_urgency, load_pnl_history
 
 logger = logging.getLogger("SovereignCouncil")
+
+WIB_UTC_OFFSET_HOURS = int(os.getenv("KIBOT_WIB_UTC_OFFSET_HOURS", "7"))
+WIB_TZ = timezone(timedelta(hours=WIB_UTC_OFFSET_HOURS))
 
 class SovereignCouncil:
     """
@@ -73,6 +77,180 @@ class SovereignCouncil:
         floor -= min(0.10, whatif_edge * 0.08)
         floor += min(0.08, risk * 0.06)
         return max(0.68, min(0.90, round(floor, 3)))
+
+    def _now_wib(self) -> datetime:
+        return datetime.now(WIB_TZ)
+
+    def _minutes_to_midnight_wib(self, now: Optional[datetime] = None) -> int:
+        now = now or self._now_wib()
+        next_midnight = (now + timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0)
+        return max(0, int((next_midnight - now).total_seconds() // 60))
+
+    def _portfolio_context(self, signals_context: Dict[str, Any]) -> Dict[str, Any]:
+        portfolio = dict(signals_context.get("portfolio_state") or {})
+        polymarket = dict(signals_context.get("polymarket_state") or portfolio.get("polymarket") or {})
+        open_positions = list(portfolio.get("active_positions") or [])
+        open_bets = list(polymarket.get("active_bets") or polymarket.get("active_positions") or [])
+        combined_equity_idr = float(portfolio.get("combined_equity_idr") or 0.0)
+        indodax_equity_idr = float(portfolio.get("equity_idr") or 0.0)
+        if combined_equity_idr <= 0 and (indodax_equity_idr > 0 or polymarket):
+            combined_equity_idr = indodax_equity_idr + float(polymarket.get("equity_idr") or 0.0)
+        daily_pnl_idr = float(portfolio.get("daily_pnl_idr") or portfolio.get("pnl_idr") or 0.0)
+        daily_pnl_pct = float(portfolio.get("daily_pnl_pct") or portfolio.get("return_pct") or 0.0)
+        if daily_pnl_pct == 0.0 and combined_equity_idr > 0 and daily_pnl_idr:
+            daily_pnl_pct = (daily_pnl_idr / combined_equity_idr) * 100.0
+        position_symbols = {
+            str(pos.get("coin") or "").upper().replace("/IDR", "").replace("_IDR", "")
+            for pos in open_positions
+            if isinstance(pos, dict) and pos.get("coin")
+        }
+        return {
+            "portfolio": portfolio,
+            "polymarket": polymarket,
+            "combined_equity_idr": combined_equity_idr,
+            "indodax_equity_idr": indodax_equity_idr,
+            "daily_pnl_idr": daily_pnl_idr,
+            "daily_pnl_pct": daily_pnl_pct,
+            "open_positions": open_positions,
+            "open_bets": open_bets,
+            "position_symbols": position_symbols,
+            "has_positions": bool(open_positions or open_bets),
+        }
+
+    def _decision_posture(
+        self,
+        decision: Dict[str, Any],
+        evidence_bundle: Dict[str, Any],
+        whatif_snapshot: Dict[str, Any],
+        portfolio_ctx: Dict[str, Any],
+        today_trade_activity: Dict[str, Any],
+        minutes_to_midnight: int,
+        confidence_floor: float,
+    ) -> Dict[str, Any]:
+        action = str(decision.get("action") or "NONE").upper()
+        confidence = float(decision.get("confidence", 0.0) or 0.0)
+        coverage = float(evidence_bundle.get("coverage_score") or 0.0)
+        catalyst = float(evidence_bundle.get("catalyst_score") or 0.0)
+        track = float(evidence_bundle.get("track_record_score") or 0.0)
+        risk = float(evidence_bundle.get("risk_penalty") or 0.0)
+        whatif_edge = self._whatif_edge_score(whatif_snapshot)
+
+        combined_equity_idr = float(portfolio_ctx.get("combined_equity_idr") or 0.0)
+        daily_pnl_idr = float(portfolio_ctx.get("daily_pnl_idr") or 0.0)
+        daily_pnl_pct = float(portfolio_ctx.get("daily_pnl_pct") or 0.0)
+        has_positions = bool(portfolio_ctx.get("has_positions"))
+        position_symbols = set(portfolio_ctx.get("position_symbols") or set())
+        target_symbol = str(decision.get("ticker") or "").upper().split("/")[0].strip()
+        target_symbol = target_symbol.replace("_IDR", "").replace("/IDR", "")
+        has_target_position = target_symbol in position_symbols if target_symbol else False
+
+        late_window = minutes_to_midnight <= 45
+        time_pressure = 0.0 if minutes_to_midnight >= 180 else min(1.0, (180 - minutes_to_midnight) / 180.0)
+        loss_pressure = 0.0
+        if daily_pnl_pct < 0:
+            loss_pressure = min(1.0, abs(daily_pnl_pct) / 1.5)
+
+        evidence_strength = (
+            0.34 * confidence
+            + 0.18 * coverage
+            + 0.11 * catalyst
+            + 0.09 * track
+            + 0.14 * whatif_edge
+            - 0.14 * risk
+        )
+        recovery_mode = (
+            daily_pnl_idr < 0
+            and not late_window
+            and confidence >= max(0.72, confidence_floor - 0.04)
+            and coverage >= 0.38
+            and risk <= 0.58
+            and whatif_edge > 0.0
+        )
+        if recovery_mode:
+            evidence_strength += min(0.06, (1.0 - loss_pressure) * 0.04)
+
+        enter_threshold = confidence_floor if not recovery_mode else max(0.62, confidence_floor - 0.04)
+        enter_score = max(0.0, min(1.0, evidence_strength))
+        wait_score = max(0.0, min(1.0, 1.0 - enter_score + (0.08 if not action or action == "NONE" else 0.0)))
+        exit_score = max(
+            0.0,
+            min(
+                1.0,
+                (0.30 * risk)
+                + (0.18 * (1.0 - confidence))
+                + (0.16 * (1.0 - whatif_edge))
+                + (0.12 * time_pressure)
+                + (0.18 * loss_pressure)
+            ),
+        )
+
+        decision_state = "WAIT"
+        decision_score = wait_score
+        status = "WAIT"
+        recovery_reason = ""
+        learning_probe = bool(decision.get("learning_probe", False))
+        trade_profile = str(decision.get("trade_profile", "STANDARD") or "STANDARD").upper()
+
+        if action in {"BUY", "SELL"}:
+            if action == "SELL" and not has_target_position:
+                decision_state = "WAIT"
+                decision_score = wait_score
+                status = "WAIT"
+                recovery_reason = "sell signal without matching inventory"
+            elif exit_score >= 0.72 and (late_window or risk >= 0.70):
+                decision_state = "EXIT"
+                decision_score = exit_score
+                status = "EXECUTING" if action == "SELL" else "WAIT"
+                recovery_reason = "risk-over-time exit posture"
+            elif enter_score >= enter_threshold:
+                decision_state = "ENTER"
+                decision_score = enter_score
+                status = "EXECUTING"
+                if recovery_mode:
+                    trade_profile = "RECOVERY"
+                    recovery_reason = (
+                        f"controlled recovery posture: pnl {daily_pnl_pct:+.2f}% with {minutes_to_midnight}m to midnight"
+                    )
+            elif action == "SELL" and has_target_position and exit_score >= 0.58:
+                decision_state = "EXIT"
+                decision_score = exit_score
+                status = "EXECUTING"
+            else:
+                decision_state = "WAIT"
+                decision_score = max(wait_score, 1.0 - enter_score)
+                status = "WAIT"
+        else:
+            if exit_score >= 0.72 and has_positions and (late_window or risk >= 0.70 or daily_pnl_idr < 0):
+                decision_state = "EXIT"
+                decision_score = exit_score
+                status = "WAIT"
+                recovery_reason = "portfolio de-risk recommendation"
+            else:
+                decision_state = "WAIT"
+                decision_score = wait_score
+                status = "WAIT"
+
+        if decision_state == "ENTER" and not recovery_mode and daily_pnl_idr < 0:
+            trade_profile = "STANDARD"
+
+        return {
+            "status": status,
+            "decision_state": decision_state,
+            "decision_score": round(decision_score * 100.0, 1),
+            "enter_score": round(enter_score * 100.0, 1),
+            "wait_score": round(wait_score * 100.0, 1),
+            "exit_score": round(exit_score * 100.0, 1),
+            "recovery_mode": recovery_mode,
+            "recovery_reason": recovery_reason,
+            "confidence_floor": confidence_floor,
+            "minutes_to_midnight": minutes_to_midnight,
+            "daily_pnl_idr": daily_pnl_idr,
+            "daily_pnl_pct": daily_pnl_pct,
+            "combined_equity_idr": combined_equity_idr,
+            "trade_profile": trade_profile,
+            "learning_probe": learning_probe,
+            "probe_confidence_floor": float(decision.get("probe_confidence_floor", 0.0) or 0.0),
+        }
 
     def _get_today_trade_activity(self) -> Dict[str, Any]:
         """Read today's trade activity so the council can avoid blind repetition."""
@@ -384,11 +562,16 @@ class SovereignCouncil:
         whatif_snapshot = self._load_whatif_snapshot()
         evidence_bundle = await self._build_trade_evidence(signals_context)
         today_trade_activity = self._get_today_trade_activity()
+        portfolio_ctx = self._portfolio_context(signals_context)
+        minutes_to_midnight = self._minutes_to_midnight_wib()
         signals_context = {
             **signals_context,
             "whatif_snapshot": whatif_snapshot,
             "evidence_bundle": evidence_bundle,
             "today_trade_activity": today_trade_activity,
+            "portfolio_state": portfolio_ctx.get("portfolio", {}),
+            "polymarket_state": portfolio_ctx.get("polymarket", {}),
+            "minutes_to_midnight": minutes_to_midnight,
         }
         
         # 1. Council Consensus
@@ -424,6 +607,8 @@ class SovereignCouncil:
         confidence_floor = self._evidence_floor(evidence_bundle, whatif_snapshot)
         decision["confidence_floor"] = confidence_floor
         decision["today_trade_activity"] = today_trade_activity
+        decision["portfolio_state"] = portfolio_ctx.get("portfolio", {})
+        decision["polymarket_state"] = portfolio_ctx.get("polymarket", {})
         decision.setdefault("learning_probe", False)
         decision.setdefault("trade_profile", "STANDARD")
 
@@ -438,25 +623,38 @@ class SovereignCouncil:
             and self._whatif_edge_score(whatif_snapshot) > 0.0
         )
 
-        if decision.get("action") in ["BUY", "SELL"] and decision.get("confidence", 0) >= confidence_floor:
-            decision["status"] = "EXECUTING"
-            decision["trade_profile"] = "STANDARD"
-        elif decision.get("action") in ["BUY", "SELL"]:
-            if probe_ready:
-                decision["status"] = "EXECUTING"
-                decision["learning_probe"] = True
-                decision["trade_profile"] = "LEARNING_PROBE"
-                decision["probe_confidence_floor"] = probe_floor
+        posture = self._decision_posture(
+            decision=decision,
+            evidence_bundle=evidence_bundle,
+            whatif_snapshot=whatif_snapshot,
+            portfolio_ctx=portfolio_ctx,
+            today_trade_activity=today_trade_activity,
+            minutes_to_midnight=minutes_to_midnight,
+            confidence_floor=confidence_floor,
+        )
+
+        decision.update(posture)
+
+        if decision.get("status") == "EXECUTING" and decision.get("decision_state") == "ENTER" and probe_ready:
+            decision["learning_probe"] = True
+            decision["trade_profile"] = "LEARNING_PROBE" if decision.get("trade_profile") == "STANDARD" else decision["trade_profile"]
+            decision["probe_confidence_floor"] = probe_floor
+            decision["wait_reason"] = (
+                f"learning probe triggered: confidence {decision.get('confidence', 0):.3f} >= probe floor {probe_floor:.3f}"
+            )
+        elif decision.get("status") == "WAIT" and decision.get("decision_state") == "WAIT":
+            if decision.get("recovery_mode"):
                 decision["wait_reason"] = (
-                    f"learning probe triggered: confidence {decision.get('confidence', 0):.3f} >= probe floor {probe_floor:.3f}"
+                    f"recovery posture active: pnl {decision.get('daily_pnl_pct', 0):+.2f}% with {decision.get('minutes_to_midnight', 0)}m to midnight"
                 )
             else:
-                decision["status"] = "WAIT"
                 decision["wait_reason"] = (
                     f"confidence {decision.get('confidence', 0):.3f} below floor {confidence_floor:.3f}"
                 )
-        else:
-            decision["status"] = "REJECTED"
+        elif decision.get("decision_state") == "EXIT" and decision.get("status") != "EXECUTING":
+            decision["wait_reason"] = (
+                f"exit posture signaled: score {decision.get('exit_score', 0):.1f}"
+            )
 
         self._log_decision(decision)
         return decision

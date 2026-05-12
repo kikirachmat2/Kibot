@@ -487,10 +487,13 @@ PROMPT_TEMPLATES = {
         "Evidence bundle: {evidence_bundle}\n"
         "What-if snapshot: {whatif_snapshot}\n"
         "Today's trade activity: {today_trade_activity}\n"
+        "Portfolio state: {portfolio_state}\n"
+        "Minutes to midnight: {minutes_to_midnight}\n"
         "Provide a final trading mandate (BUY/SELL/NONE). Prefer decisive action when evidence converges, but refuse weak or noisy setups.\n"
         "If evidence is insufficient, choose NONE rather than force a trade.\n"
+        "If daily PnL is red and there is time left before midnight, think in controlled recovery mode: only support entries with strong evidence, never revenge-trade.\n"
         "If no trade has happened today and the edge is still acceptable, you may mark the trade as a tiny learning probe instead of a full-size entry.\n"
-        "Return strict compact JSON: {\"action\":\"BUY|SELL|NONE\", \"ticker\":\"SYMBOL/IDR\", \"confidence\":0.0, \"logic\":\"...\", \"learning_probe\":false, \"probe_confidence_floor\":0.0, \"trade_profile\":\"STANDARD|LEARNING_PROBE\"}"
+        "Return strict compact JSON: {\"action\":\"BUY|SELL|NONE\", \"ticker\":\"SYMBOL/IDR\", \"confidence\":0.0, \"logic\":\"...\", \"decision_state\":\"ENTER|WAIT|EXIT\", \"recovery_mode\":false, \"learning_probe\":false, \"probe_confidence_floor\":0.0, \"trade_profile\":\"STANDARD|LEARNING_PROBE|RECOVERY\"}"
     ),
     "MOMENTUM_HAWK": (
         "You are MomentumHawk (Technical Analyst). Model: qwen2.5:1.5b.\n"
