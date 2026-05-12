@@ -2,6 +2,11 @@
 
 Configuration, Utilities, Web Dashboard, and Node Agents.
 
+## Ringkas
+- `ki_config.py` menyimpan path dan port bersama.
+- `ki_utils.py` berisi helper umum seperti signing/verification.
+- `ki_vault.py` memuat secret dari vault ke environment saat boot.
+
 ## Responsibility
 - **Configuration**: `ki_config.py` and `dynamic_config.py`.
 - **Utilities**: Shared helper functions and vault management.

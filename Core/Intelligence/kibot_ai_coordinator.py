@@ -707,6 +707,8 @@ def _provider_api_key(provider: str) -> str:
     config = PROVIDERS.get(provider) or {}
     envs = config.get("api_key_envs") or []
     key = _env_first(*[str(item) for item in envs])
+    if key.startswith("ENC("):
+        return ""
     # Survival Bypass: Ollama doesn't strictly need a key
     if str(provider).lower() == "ollama" and not key:
         return "ollama_local"

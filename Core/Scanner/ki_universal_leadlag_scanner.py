@@ -34,6 +34,7 @@ class UniversalLeadLagScanner:
         }
         self.last_prices = {}
         self.pending_signals = []
+        self._lock = asyncio.Lock()
         
     async def _fetch_one(self, session, name, url):
         try:
@@ -60,25 +61,24 @@ class UniversalLeadLagScanner:
     async def _process_single_result(self, name, price):
         """Processes a single price result immediately for low latency."""
         now = time.time()
-        if name in self.last_prices:
-            old_p = self.last_prices[name]
-            change = (price - old_p) / old_p * 100
-            if abs(change) >= 0.08: # Slightly tighter threshold for v2
-                signal = {
-                    "type": "GLOBAL_LEAD",
-                    "symbol": name.split("_")[0],
-                    "source": name,
-                    "price": round(price, 4),
-                    "change_pct": round(change, 3),
-                    "verdict": "BULLISH" if change > 0 else "BEARISH",
-                    "confidence": abs(change) * 5,
-                    "ts": int(now * 1000),
-                    "priority": "HIGH" if "BINANCE" in name or "UPBIT" in name else "NORMAL"
-                }
-                # In a real scenario, this would push to a queue or UDP directly
-                # For now, we collect them in a fast-access list
-                self.pending_signals.append(signal)
-        self.last_prices[name] = price
+        async with self._lock:
+            if name in self.last_prices:
+                old_p = self.last_prices[name]
+                change = (price - old_p) / old_p * 100 if old_p else 0
+                if abs(change) >= 0.08: # Slightly tighter threshold for v2
+                    signal = {
+                        "type": "GLOBAL_LEAD",
+                        "symbol": name.split("_")[0],
+                        "source": name,
+                        "price": round(price, 4),
+                        "change_pct": round(change, 3),
+                        "verdict": "BULLISH" if change > 0 else "BEARISH",
+                        "confidence": abs(change) * 5,
+                        "ts": int(now * 1000),
+                        "priority": "HIGH" if "BINANCE" in name or "UPBIT" in name else "NORMAL"
+                    }
+                    self.pending_signals.append(signal)
+            self.last_prices[name] = price
 
     async def _fetch_all(self):
         async with aiohttp.ClientSession() as session:
@@ -90,12 +90,18 @@ class UniversalLeadLagScanner:
     def collect_signals(self) -> Dict[str, Any]:
         """Returns signals that have been detected since the last call."""
         try:
-            loop = asyncio.get_event_loop()
-            if loop.is_running():
-                asyncio.run_coroutine_threadsafe(self._fetch_all(), loop).result(timeout=2)
+            try:
+                loop = asyncio.get_running_loop()
+            except RuntimeError:
+                loop = None
+
+            if loop and loop.is_running():
+                future = asyncio.run_coroutine_threadsafe(self._fetch_all(), loop)
+                future.result(timeout=2)
             else:
-                loop.run_until_complete(self._fetch_all())
-        except: pass
+                asyncio.run(asyncio.wait_for(self._fetch_all(), timeout=2))
+        except Exception as e:
+            logger.debug(f"Universal scanner fetch partial/timeout: {e}")
         
         signals = list(self.pending_signals)
         self.pending_signals.clear()

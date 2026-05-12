@@ -9,6 +9,7 @@ import json
 import time
 import socket
 import logging
+import asyncio
 from datetime import datetime, timezone
 from typing import List, Dict, Any, Sequence
 from pathlib import Path
@@ -18,7 +19,8 @@ logger = logging.getLogger("KiBotScanner")
 
 class ScannerEngine:
     def __init__(self, scanners: Sequence[Any] | None = None, interval_s: int | None = None):
-        self.interval_s = int(interval_s or os.getenv("SCAN_INTERVAL_S", "5"))
+        self.interval_s = int(interval_s or os.getenv("SCAN_INTERVAL_S", "2"))
+        self.poly_interval_s = int(os.getenv("POLY_SCAN_INTERVAL_S", "30"))
         self.scanners: List[Any] = list(scanners or self._build_scanners())
         
         # Now centralized on localhost (Batam Internal)
@@ -29,6 +31,15 @@ class ScannerEngine:
         self.last_prices = {} # For Delta Filtering
         self.seq_id = 0
         self.is_running = True
+        self._last_poly_scan = 0.0
+
+    def _extract_signals(self, res: Any) -> List[Dict[str, Any]]:
+        if isinstance(res, dict):
+            raw = res.get("signals", [])
+            return raw if isinstance(raw, list) else []
+        if isinstance(res, list):
+            return res
+        return []
 
     def _build_scanners(self):
         """Builds default scanners if none provided."""
@@ -60,16 +71,33 @@ class ScannerEngine:
         exchange = str(getattr(scanner, "exchange", "UNKNOWN")).upper()
         signals = []
         try:
-            res = scanner.collect_signals()
-            raw_signals = res.get("signals", []) if isinstance(res, dict) else res
+            collect = getattr(scanner, "collect_signals", None)
+            if collect is None:
+                return {"signals": []}
+
+            if asyncio.iscoroutinefunction(collect):
+                res = asyncio.run(collect())
+            else:
+                res = collect()
+
+            raw_signals = self._extract_signals(res)
             for s in raw_signals:
+                if not isinstance(s, dict):
+                    continue
                 s["exchange"] = exchange
                 
-                # DELTA FILTERING: Only send if price changed
-                uid = f"{exchange}:{s.get('base_symbol')}"
-                current_price = s.get('price_usdt', 0)
+                # FIX: Gunakan field harga yang tepat per exchange
+                uid = f"{exchange}:{s.get('base_symbol', s.get('symbol', 'UNK'))}"
+                if exchange == "INDODAX":
+                    current_price = s.get('price_idr', s.get('price', 0))
+                elif exchange == "POLYMARKET":
+                    current_price = s.get('price', 0)
+                else:
+                    current_price = s.get('price_usdt', s.get('price', 0))
+                
+                # DELTA FILTER: Skip jika harga sama persis
                 if uid in self.last_prices and self.last_prices[uid] == current_price:
-                    continue 
+                    continue
                 
                 self.last_prices[uid] = current_price
                 signals.append(s)
@@ -77,16 +105,33 @@ class ScannerEngine:
             logger.debug(f"Scan error for {exchange}: {e}")
         return {"signals": signals}
 
-    def run_once(self) -> None:
+    async def _dispatch(self, port: int, data: Dict[str, Any], secret: str) -> None:
+        from Core.Support.ki_utils import sign_payload
+        from Core.Support.ki_config import KiConfig
+        payload = json.dumps({
+            "data": data,
+            "signature": sign_payload(data, secret)
+        }).encode("utf-8")
+        self.udp_sock.sendto(payload, (self.target_host, port))
+
+    async def run_once_async(self) -> None:
         """Single scanning cycle."""
         self.universal_signals = []
         self.seq_id += 1
         started_at = time.time()
-        
         from Core.Support.ki_config import KiConfig
-        
-        with ThreadPoolExecutor(max_workers=15) as executor:
-            results = list(executor.map(self._scan_one, self.scanners))
+
+        selected_scanners = []
+        for scanner in self.scanners:
+            exchange = str(getattr(scanner, "exchange", "UNKNOWN")).upper()
+            if exchange == "POLYMARKET":
+                if started_at - self._last_poly_scan < self.poly_interval_s:
+                    continue
+                self._last_poly_scan = started_at
+            selected_scanners.append(scanner)
+
+        with ThreadPoolExecutor(max_workers=max(1, len(selected_scanners))) as executor:
+            results = list(executor.map(self._scan_one, selected_scanners))
             
         # Group signals by destination
         indo_signals = []
@@ -113,11 +158,7 @@ class ScannerEngine:
                 "ts": int(started_at * 1000),
                 "signals": indo_signals
             }
-            payload = json.dumps({
-                "data": data,
-                "signature": sign_payload(data, secret)
-            }).encode("utf-8")
-            self.udp_sock.sendto(payload, (self.target_host, KiConfig.INDO_SIGNAL_PORT))
+            await self._dispatch(KiConfig.INDO_SIGNAL_PORT, data, secret)
             logger.debug(f"[SCANNER] Seq:{self.seq_id} | Dispatched {len(indo_signals)} HMAC-signed INDO signals.")
 
         # Dispatch Polymarket
@@ -127,11 +168,7 @@ class ScannerEngine:
                 "ts": int(started_at * 1000),
                 "signals": poly_signals
             }
-            payload = json.dumps({
-                "data": data,
-                "signature": sign_payload(data, secret)
-            }).encode("utf-8")
-            self.udp_sock.sendto(payload, (self.target_host, KiConfig.POLY_SIGNAL_PORT))
+            await self._dispatch(KiConfig.POLY_SIGNAL_PORT, data, secret)
             logger.debug(f"[SCANNER] Seq:{self.seq_id} | Dispatched {len(poly_signals)} HMAC-signed POLY signals.")
 
         # NEW: Dispatch to MasterNode (Council) for high-level deliberation
@@ -142,23 +179,22 @@ class ScannerEngine:
                 "signals": all_signals,
                 "ts": int(started_at * 1000)
             }
-            payload = json.dumps({
-                "data": data,
-                "signature": sign_payload(data, secret)
-            }).encode("utf-8")
-            # Port 9991 is the Command Plane / Council Egress
-            self.udp_sock.sendto(payload, ("127.0.0.1", 9991))
+            await self._dispatch(9991, data, secret)
             logger.info(f"🧠 Dispatched {len(all_signals)} HMAC-signed signals to Sovereign Council.")
 
     def run(self) -> None:
-        logger.info("🚀 KiBot Centralized Scanner Engine Started.")
-        while self.is_running:
-            t0 = time.time()
-            try:
-                self.run_once()
-            except Exception as e:
-                logger.error(f"Scanner Runtime Error: {e}")
-            time.sleep(max(0.1, float(self.interval_s) - (time.time() - t0)))
+        logger.info(f"🚀 KiBot HFT Scanner Engine Started ({self.interval_s}s interval).")
+        async def _run_async():
+            while self.is_running:
+                t0 = time.time()
+                try:
+                    await self.run_once_async()
+                except Exception as e:
+                    logger.error(f"Scanner Runtime Error: {e}")
+                elapsed = time.time() - t0
+                await asyncio.sleep(max(0.05, float(self.interval_s) - elapsed))
+
+        asyncio.run(_run_async())
 
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)

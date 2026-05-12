@@ -1,6 +1,14 @@
 # 🏛️ KiBot Sovereign Trinity
 **Autonomous Trading System | Adaptive Consciousness | Mesh Infrastructure**
 
+## 📚 Folder Guide
+- [`Core/README.md`](./Core/README.md): peta inti arsitektur.
+- [`Core/Scanner/README.md`](./Core/Scanner/README.md): alur scanner dan delta filter.
+- [`Core/Executors/README.md`](./Core/Executors/README.md): eksekusi trade dan risk checks.
+- [`Core/Intelligence/README.md`](./Core/Intelligence/README.md): AI, aggregator, dan learning loop.
+- [`Core/Security/README.md`](./Core/Security/README.md): HMAC, vault, dan audit security.
+- [`Core/Support/README.md`](./Core/Support/README.md): config, utilities, dan tooling.
+
 ## 📜 THE MANIFESTO
 > **"Sedikit demi Sedikit, Lama-lama Menjadi Bukit."**
 >

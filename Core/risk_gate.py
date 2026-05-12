@@ -109,6 +109,15 @@ class RiskGate:
         if side == "BUY" and balance_idr < budget:
             return False, f"Insufficient balance for sovereign greed (Need Rp{budget}, have Rp{balance_idr})"
 
+        fee_roundtrip_pct = float(signal.get("fee_roundtrip_pct", 1.02)) / 100.0
+        effective_budget = budget * (1 - fee_roundtrip_pct)
+        if price > 0 and price > effective_budget:
+            return False, f"COIN_PRICE_EXCEEDS_BUDGET: 1 coin = Rp{price:,.0f} > fee-adjusted budget Rp{effective_budget:,.0f}"
+        if price > 0:
+            coin_amount = effective_budget / price
+            if coin_amount < 1e-6:
+                return False, f"DUST_PREVENTION: Amount {coin_amount:.8f} too small"
+
         # Slippage/Spread - Sovereignly loose for alpha capture
         meta = signal.get("meta", {})
         spread = float(meta.get("spread_pct", 0))

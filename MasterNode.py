@@ -89,6 +89,9 @@ class KiBotMaster:
         self._emergency_cooldown = {}
         self.notifier = SovereignNotifier()
         self.procs: Dict[str, asyncio.subprocess.Process] = {}
+        self.use_systemd_services = os.getenv("KIBOT_USE_SYSTEMD_SERVICES", "1") == "1"
+        self._pnl_session_start_balance: Optional[float] = None
+        self._pnl_last_milestone: Dict[str, float] = {}
         
         # [OPTIMIZATION] Reuse Gateway instances
         from Core.Exchange.indodax import IndodaxGateway
@@ -104,6 +107,62 @@ class KiBotMaster:
                 logger.error(f"❌ Failed to reset AI cooldowns: {e}")
         
         logger.info("Initializing KiBot Sovereign Master...")
+
+    async def ensure_ollama_models(self):
+        required_models = [
+            "qwen2.5:0.5b",
+            "qwen2.5:1.5b",
+            "qwen2.5:3b",
+            "llama3.2:3b",
+        ]
+        base_url = os.getenv("KIBOT_OLLAMA_BASE_URL", "http://127.0.0.1:11434")
+        try:
+            async with httpx.AsyncClient(timeout=5.0) as client:
+                resp = await client.get(f"{base_url}/api/tags")
+                if resp.status_code != 200:
+                    logger.warning("Ollama health check failed.")
+                    return
+                installed = {m.get("name", "") for m in resp.json().get("models", [])}
+                missing = [m for m in required_models if not any(m in name for name in installed)]
+                if missing:
+                    logger.warning(f"Missing Ollama models: {missing}")
+        except Exception as e:
+            logger.warning(f"Ollama health check error: {e}")
+
+    async def pnl_watchdog_loop(self):
+        logger.info("💰 PnL Watchdog aktif - monitoring setiap 5 menit.")
+        while self.is_running:
+            try:
+                info = await self.indodax.get_info()
+                if info.get("success") != 1:
+                    await asyncio.sleep(300)
+                    continue
+                balances = info["return"]["balance"]
+                current_idr = float(balances.get("idr", 0))
+                if self._pnl_session_start_balance is None:
+                    self._pnl_session_start_balance = current_idr
+                    logger.info(f"💼 Session baseline set to Rp{current_idr:,.0f}")
+                    await asyncio.sleep(300)
+                    continue
+
+                pnl_idr = current_idr - self._pnl_session_start_balance
+                pnl_pct = (pnl_idr / self._pnl_session_start_balance * 100) if self._pnl_session_start_balance > 0 else 0
+                risk_daily = getattr(getattr(self, "council", None), "risk", None)
+                logger.info(f"💰 [PNL-5M] Saldo Rp{current_idr:,.0f} | PnL Rp{pnl_idr:+,.0f} ({pnl_pct:+.2f}%)")
+
+                if pnl_pct >= float(os.getenv("KIBOT_DAILY_TARGET_PCT", "1.0")):
+                    key = "target_hit"
+                    if key not in self._pnl_last_milestone:
+                        self._pnl_last_milestone[key] = time.time()
+                        logger.info("🎯 Daily target reached.")
+                if pnl_pct <= -1.2:
+                    key = "loss_warning"
+                    if key not in self._pnl_last_milestone:
+                        self._pnl_last_milestone[key] = time.time()
+                        logger.warning("⚠️ Approaching loss limit.")
+            except Exception as e:
+                logger.error(f"PnL Watchdog error: {e}")
+            await asyncio.sleep(300)
 
     def is_command_safe(self, cmd: str) -> bool:
         """Verify if a command is allowed to be executed by the AI."""
@@ -210,6 +269,7 @@ class KiBotMaster:
         
         # Start Signal Listener in background
         asyncio.create_task(self.signal_listener_loop())
+        asyncio.create_task(self.pnl_watchdog_loop())
         
         # Immediate Oracle Scout on startup
         logger.info("Oracle Mode (Startup): Performing initial market scouting...")
@@ -517,47 +577,33 @@ class KiBotMaster:
 
 
     async def process_manager_loop(self):
-        """Self-healing process manager for child services."""
-        python_cmd = sys.executable
-        # Ensure we use absolute paths or paths relative to ROOT_DIR
-        services = {
-            "scanner": [python_cmd, "Core/Scanner/engine.py"],
-            "executor": [python_cmd, "Core/Executors/indodax_executor.py"],
-            "scout": [python_cmd, "Core/Intelligence/kibot_ai_scout.py"],
-            "learning": [python_cmd, "Core/Intelligence/kibot_learning_engine.py"]
-        }
-        
+        """Service monitor. In systemd mode, only checks health to avoid double-starting services."""
+        if not self.use_systemd_services:
+            logger.info("Service spawning mode disabled by default. Set KIBOT_USE_SYSTEMD_SERVICES=0 to manage subprocesses locally.")
+            return
+
+        monitored = [
+            "kibot-scanner",
+            "kibot-executor-indodax",
+            "kibot-executor-polymarket",
+            "kibot-ai-scout",
+        ]
+        logger.info("🛡️ Service monitor active (systemd mode).")
         while self.is_running:
-            for name, cmd in services.items():
-                proc = self.procs.get(name)
-                
-                # Check if process is alive
-                is_alive = False
-                if proc:
-                    if proc.returncode is None:
-                        is_alive = True
-                    else:
-                        logger.warning(f"⚠️ Service {name} exited with code {proc.returncode}. Restarting...")
-                
-                if not is_alive:
-                    try:
-                        # Ensure child processes can see the 'Core' package
-                        env = os.environ.copy()
-                        env["PYTHONPATH"] = str(ROOT_DIR)
-                        
-                        self.procs[name] = await asyncio.create_subprocess_exec(
-                            *cmd,
-                            cwd=str(ROOT_DIR),
-                            env=env,
-                            stdout=asyncio.subprocess.PIPE,
-                            stderr=asyncio.subprocess.STDOUT
-                        )
-                        # Pipe logs from child to master
-                        asyncio.create_task(self._log_pipe(name, self.procs[name]))
-                    except Exception as e:
-                        logger.error(f"Failed to start {name}: {e}")
-            
-            await asyncio.sleep(15)
+            for svc in monitored:
+                try:
+                    proc = await asyncio.create_subprocess_exec(
+                        "systemctl", "is-active", svc,
+                        stdout=asyncio.subprocess.PIPE,
+                        stderr=asyncio.subprocess.DEVNULL
+                    )
+                    stdout, _ = await proc.communicate()
+                    status = stdout.decode().strip()
+                    if status != "active":
+                        logger.warning(f"⚠️ Service {svc} status={status}.")
+                except Exception as e:
+                    logger.error(f"Service monitor error for {svc}: {e}")
+            await asyncio.sleep(60)
 
     async def _log_pipe(self, name: str, proc: asyncio.subprocess.Process):
         """Pipes child process output to main log."""
@@ -602,6 +648,7 @@ class KiBotMaster:
         # Add tasks
         loop.create_task(self.mesh_monitor_loop())
         loop.create_task(self.process_manager_loop())
+        loop.create_task(self.ensure_ollama_models())
         
         logger.info("🎖️ KiBot Sovereign Master is fully OPERATIONAL.")
         try:

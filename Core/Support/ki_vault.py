@@ -44,7 +44,9 @@ def load_sovereign_env(path: str = ".env.kiv"):
         
     vault = KiVault()
     
-    # 1. First, scan all existing environment variables for ENC() patterns
+    # 1. First, scan all existing environment variables for ENC() patterns.
+    # If a token cannot be decrypted, treat it as unavailable instead of
+    # leaving the encoded blob in the environment where it can poison callers.
     for key, val in list(os.environ.items()):
         if isinstance(val, str) and val.startswith("ENC("):
             try:
@@ -53,7 +55,7 @@ def load_sovereign_env(path: str = ".env.kiv"):
                 decrypted_val = vault.decrypt(token)
                 os.environ[key] = decrypted_val
             except Exception:
-                print(f"[VAULT][ERROR] Failed to decrypt {key} from os.environ.")
+                os.environ.pop(key, None)
 
     # 2. Then load .env.kiv if it exists
     vault_path = Path(path)
@@ -70,7 +72,7 @@ def load_sovereign_env(path: str = ".env.kiv"):
                                 decrypted_val = vault.decrypt(token)
                                 os.environ[key] = decrypted_val
                             except Exception:
-                                print(f"[VAULT][ERROR] Failed to decrypt {key} from {path}.")
+                                os.environ.pop(key, None)
                         else:
                             os.environ[key] = val
         except Exception as e:

@@ -2,7 +2,7 @@
 - IP: `168.110.201.228`
 - User: `ubuntu`
 - Role: Command & Control, Trading Master, AI Orchestration
-- SSH: `ssh batam` (via your local config)
+- SSH: `ssh-batam.pem` (via your local config)
 
 ## 🛡️ SYNC PROTOCOL
 1. **CENTRAL DEPLOY**: Semua perubahan dilakukan di MacBook, disinkronkan ke GitHub, lalu di-pull di Batam.

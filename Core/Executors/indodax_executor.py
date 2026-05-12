@@ -233,20 +233,35 @@ class IndodaxExecutor:
         try:
             # 1. Get Balance
             current_balance = await self.indodax.get_balance("idr")
+            if current_balance <= 0:
+                logger.warning(f"🛡️ REJECTED: Zero balance, cannot trade {symbol}.")
+                return
             
             # 2. Risk Validation
             # 2. Dynamic Budget Allocation (V3.1 Sovereign Balance Awareness)
-            remaining_slots = max_slots - len(self.active_trades)
+            remaining_slots = max(1, max_slots - len(self.active_trades))
             
             if max_exposure == 0:
                 # [SOVEREIGN GREED] Use all available balance divided by remaining slots
-                budget = current_balance / max(1, remaining_slots)
+                budget = max(10_000.0, (current_balance / remaining_slots) * 0.98)
             else:
-                budget = max_exposure / max_slots
-            
+                budget = max_exposure / max(1, max_slots)
+
             # Ensure it doesn't exceed current balance and meets minimums
-            budget = min(budget, current_balance)
+            budget = min(budget, current_balance * 0.99)
             signal["budget_idr"] = budget
+
+            fee_roundtrip_pct = float(indo_strat.get("fee_roundtrip_pct", 1.02))
+            tp_pct = float(indo_strat.get("take_profit_pct", 1.5))
+            expected_net_pct = tp_pct - fee_roundtrip_pct
+            logger.info(
+                f"📊 FEE CALC: TP={tp_pct:.2f}%, Fee={fee_roundtrip_pct:.2f}%, Net={expected_net_pct:.2f}%"
+            )
+
+            affordable, afford_reason = self._can_afford(symbol, price, budget, indo_strat)
+            if not affordable:
+                logger.warning(f"🛡️ REJECTED (Balance-Aware): {afford_reason} for {symbol}")
+                return
             
             is_valid, reason = self.risk.validate_signal(signal, current_balance, total_slots)
             if not is_valid:
@@ -323,6 +338,25 @@ class IndodaxExecutor:
             async with self.lock:
                 self.reservations.pop(symbol, None)
                 logger.info(f"🔓 RELEASED reservation for {symbol}")
+
+    def _can_afford(self, symbol: str, price: float, budget: float, indo_strat: Dict[str, Any]) -> tuple[bool, str]:
+        fee_rate = float(indo_strat.get("fee_roundtrip_pct", 1.02)) / 100.0
+        effective_budget = budget * (1 - fee_rate)
+        if price <= 0:
+            return False, "INVALID_PRICE"
+
+        if price > effective_budget * 0.8:
+            return False, f"COIN_TOO_EXPENSIVE: Rp{price:,.0f} > 80% budget Rp{effective_budget * 0.8:,.0f}"
+
+        coin_amount = effective_budget / price
+        if coin_amount < 1e-6:
+            return False, f"DUST_ORDER: Amount terlalu kecil ({coin_amount:.8f} koin)"
+
+        tp_pct = float(indo_strat.get("take_profit_pct", 1.5))
+        if tp_pct <= float(indo_strat.get("fee_roundtrip_pct", 1.02)):
+            return False, f"FEE_EATS_PROFIT: TP {tp_pct:.2f}% <= fee {float(indo_strat.get('fee_roundtrip_pct', 1.02)):.2f}%"
+
+        return True, "OK"
 
     def report_to_batam(self, symbol, status, msg):
         try:

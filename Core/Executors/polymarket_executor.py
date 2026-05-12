@@ -40,6 +40,28 @@ class PolymarketExecutor:
             "last_update": datetime.now().isoformat()
         }
 
+    async def _get_usdc_balance_polygon(self) -> float:
+        try:
+            from web3 import Web3
+            rpc_url = os.getenv("POLYGON_RPC_URL", "https://polygon-rpc.com")
+            usdc_contract = "0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174"
+            w3 = Web3(Web3.HTTPProvider(rpc_url))
+            if not self.wallet_address or not w3.is_address(self.wallet_address):
+                return 0.0
+            abi = [{
+                "inputs": [{"name": "account", "type": "address"}],
+                "name": "balanceOf",
+                "outputs": [{"name": "", "type": "uint256"}],
+                "stateMutability": "view",
+                "type": "function"
+            }]
+            contract = w3.eth.contract(address=Web3.to_checksum_address(usdc_contract), abi=abi)
+            balance_raw = contract.functions.balanceOf(Web3.to_checksum_address(self.wallet_address)).call()
+            return balance_raw / 1_000_000
+        except Exception as e:
+            logger.debug(f"USDC balance fetch failed: {e}")
+            return 0.0
+
     async def execute_order(self, signal):
         """Pure script-based Polymarket execution using Council strategy."""
         try:
@@ -73,8 +95,12 @@ class PolymarketExecutor:
                 logger.warning("No market_id in signal")
                 return
 
-            # 2. Dynamic Size Check (V3.1 Sovereign Balance Awareness)
+            # 2. Dynamic Size Check (Balance-aware)
             base_size = float(poly_strat.get("max_bet_usd", 0))
+            usdc_balance = await self._get_usdc_balance_polygon()
+            if usdc_balance <= 0:
+                logger.warning("🛡️ No USDC balance on Polygon. Skipping bet.")
+                return
             
             from py_clob_client.client import ClobClient
             from py_clob_client.clob_types import OrderArgs, OrderType
@@ -87,22 +113,18 @@ class PolymarketExecutor:
                 signature_type=2,
             )
 
-            # [SOVEREIGN AWARENESS] Fetch real USDC balance if base_size is 0
             if base_size == 0:
-                try:
-                    logger.info("🔍 Fetching Polymarket wallet balance...")
-                    # [SOVEREIGN GREED] High aggressive fallback
-                    size_usdc = 250.0 
-                except Exception as e:
-                    logger.warning(f"Failed to fetch balance: {e}. Using fallback.")
-                    size_usdc = 50.0
+                size_usdc = usdc_balance * 0.20
             else:
-                size_usdc = base_size
+                size_usdc = min(base_size, usdc_balance * 0.50)
 
-            # [ORGANIZED GREED] V3.5: Multiply bet size if in FULL_ATTACK mode
+            if size_usdc < 1.0:
+                logger.warning(f"🛡️ Bet size terlalu kecil: ${size_usdc:.2f}")
+                return
+
             if strategy.get("global_mode") == "FULL_ATTACK":
-                logger.info("👹 GREED PROTOCOL: Scaling Polymarket bet 2.5x (FULL_ATTACK).")
-                size_usdc = size_usdc * 2.5
+                logger.info("👹 GREED PROTOCOL: Scaling Polymarket bet 2x (FULL_ATTACK).")
+                size_usdc = min(size_usdc * 2.0, usdc_balance * 0.40)
 
             outcome_idx = signal.get("meta", {}).get("outcome_index", 0)
             price = float(signal.get("price", 0.5))

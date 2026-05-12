@@ -13,17 +13,25 @@ STRATEGY_FILE = STATE_DIR / "active_strategy.json"
 URGENCY_FILE = STATE_DIR / "urgency_flag.json"
 
 DEFAULT_STRATEGY = {
-    "version": "3.1.0",
+    "version": "4.0.0",
     "last_updated": 0,
-    "global_mode": "FULL_ATTACK", # Switched to FULL_ATTACK as per user request for aggressive trading
+    "global_mode": "FULL_ATTACK",
     "indodax": {
-        "buy_threshold_pct": 0.5,         # More aggressive momentum entry
-        "trailing_stop_pct": 0.25,        # Tighter trailing stop
-        "hard_stop_pct": 2.0,             # Wider stop loss for volatility
-        "max_exposure_idr": 0,            # 0 means "Use full available balance"
-        "max_slots": 100,                  # Allow up to 100 parallel trades
-        "min_confidence": 0.65,           # Hyper-aggressive threshold
-        "allowed_pairs": ["*"]            # ["*"] means all coins are allowed
+        "buy_threshold_pct": 0.5,
+        "trailing_stop_pct": 0.3,
+        "hard_stop_pct": 2.0,
+        "max_exposure_idr": 0,
+        "max_slots": 100,
+        "min_confidence": 0.65,
+        "allowed_pairs": ["*"],
+        "take_profit_pct": 1.5,
+        "min_profit_after_fee_pct": 0.3,
+        "fee_maker_pct": 0.30,
+        "fee_taker_pct": 0.55,
+        "fee_pph_sell_pct": 0.21,
+        "fee_roundtrip_pct": 1.02,
+        "prefer_limit_order": True,
+        "max_spread_pct": 0.3
     },
     "polymarket": {
         "min_liquidity_usd": 500,

@@ -1,5 +1,5 @@
-# 🏛️ KIBOT SOVEREIGN CORE v1.0
-> **Status:** PRODUCTION READY | **Architecture:** Decentralized Intelligence
+# 🏛️ KIBOT SOVEREIGN CORE v1.1
+> **Status:** PRODUCTION READY | **Architecture:** Decentralized Intelligence + Fee-Aware Execution
 
 Selamat datang di jantung pertahanan **KiBot Sovereign**. Folder ini berisi logika pusat yang mengatur seluruh ekosistem Trinity Mesh secara otonom, cerdas, dan tahan terhadap gangguan (spam-resistant).
 
@@ -7,7 +7,7 @@ Selamat datang di jantung pertahanan **KiBot Sovereign**. Folder ini berisi logi
 
 ## 🧠 Komponen Utama
 
-### 1. [Sovereign Council](file:///Users/kiki/Documents/Web%20Develop/KiBot/Batam/Core/sovereign_council.py)
+### 1. [Sovereign Council](./sovereign_council.py)
 Ini adalah "Otak Kolektif" KiBot. Council tidak berjalan linear, melainkan melalui 5 tahap deliberasi menggunakan model AI bertingkat (Qwen 2.5/3):
 - **Observer / The Watchman (0.6b):** Mengumpulkan snapshot sistem dan melakukan *Anomaly Detection*. Dilengkapi dengan **Hybrid Safety Net** (Python code) yang menjamin kegagalan kritis (Redis OFFLINE, Tailscale NeedsAuth) tidak pernah terlewatkan.
 - **Diagnostician (1.5b):** Menganalisa akar masalah (root cause) dari setiap anomali.
@@ -26,13 +26,13 @@ Berbeda dengan AI "Chat" biasa, Sovereign Council menggunakan pendekatan **Sekue
 
 ---
 
-### 2. [Circuit Breaker](file:///Users/kiki/Documents/Web%20Develop/KiBot/Batam/Core/circuit_breaker.py)
+### 2. [Circuit Breaker](./circuit_breaker.py)
 Tameng pelindung dari loop gila dan spam notifikasi. 
 - Jika sebuah komponen gagal lebih dari **3 kali**, sirkuit akan **OPEN** (Putus).
 - Retries akan dihentikan selama **5-10 menit** (Cooldown).
 - Mencegah spam Telegram saat terjadi gangguan jaringan atau API outage.
 
-### 3. [KiBot Sovereign Master](file:///Users/kiki/Documents/Web%20Develop/KiBot/Batam/MasterNode.py)
+### 3. [KiBot Sovereign Master](../MasterNode.py)
 Satu-satunya entry point sistem. Semua modul (Manager, Monitor, API) telah dilebur ke sini.
 - **Unified Command:** Tidak ada lagi konflik proses antar-skrip.
 - **Mesh Aware:** Sadar penuh terhadap kesehatan node Singapore (Scanner & Executor).
@@ -44,13 +44,7 @@ Satu-satunya entry point sistem. Semua modul (Manager, Monitor, API) telah dileb
 ### Menjalankan Sistem Master
 ```bash
 # Pastikan Ollama sudah aktif
-python3 Batam/MasterNode.py
-```
-
-### Simulasi Debat Council
-Untuk menguji logika AI dalam menangani krisis:
-```bash
-python3 scratch/council_simulation.py
+python3 MasterNode.py
 ```
 
 ---
@@ -60,5 +54,4 @@ Sistem diatur agar sangat efisien:
 - **Core Engine:** ~200MB RAM.
 - **Ollama Models:** Load on demand. Qwen 0.5b tetap hangat di RAM, model besar di-unload setelah 90 detik tidak digunakan.
 
----
 **"Sovereign power is the ability to make decisions in the face of uncertainty."**

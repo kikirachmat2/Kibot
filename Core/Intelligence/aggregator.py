@@ -142,12 +142,21 @@ class CouncilDataAggregator:
 
     def _get_portfolio_snapshot(self):
         """Gets current holdings and PnL from the master node."""
-        # Use master's last_state or direct indodax proxy data if available
-        return self.master.last_state.get("portfolio", {
+        snapshot = self.master.last_state.get("portfolio", {
             "equity_idr": 0,
             "daily_pnl": "0.0%",
             "active_positions": []
-        })
+        }).copy()
+        try:
+            poly_state = self.master.last_state.get("polymarket", {})
+            snapshot["polymarket"] = {
+                "usdc_balance": poly_state.get("usdc_balance", 0),
+                "active_positions": poly_state.get("active_positions", []),
+                "daily_pnl_usd": poly_state.get("daily_pnl_usd", 0),
+            }
+        except Exception:
+            snapshot["polymarket"] = {"usdc_balance": 0, "active_positions": [], "daily_pnl_usd": 0}
+        return snapshot
 
     async def _get_market_context(self):
         """Gets market mood and global regime."""

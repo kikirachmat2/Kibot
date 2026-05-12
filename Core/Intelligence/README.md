@@ -2,6 +2,11 @@
 
 AI Orchestration, Learning, and Market Intelligence models.
 
+## Ringkas
+- `aggregator.py` menggabungkan konteks portfolio, market, dan historis council.
+- `kibot_ai_coordinator.py` mengatur alur AI dan provider fallback.
+- `kibot_learning_engine.py` menyimpan state belajar dan validasi integritas.
+
 ## Responsibility
 - **AI Veto**: Validating signals using local LLMs (Ollama/Dify).
 - **What-If Analysis**: Simulating market conditions before execution.
