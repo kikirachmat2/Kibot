@@ -6,7 +6,8 @@ After=network.target
 Type=simple
 User=ubuntu
 WorkingDirectory=/home/ubuntu/KiBot
-ExecStart=/usr/bin/python3 Core/Support/sovereign_janitor.py
+ExecStart=/usr/bin/python3 -m Core.Support.sovereign_janitor
+Environment=PYTHONUNBUFFERED=1
 Restart=always
 RestartSec=60
 
