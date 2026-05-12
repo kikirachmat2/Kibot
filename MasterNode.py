@@ -281,12 +281,14 @@ class KiBotMaster:
                         async def deliberate_and_dispatch(sigs):
                             now = datetime.now()
                             is_midnight = (now.hour == 23 and now.minute >= 45)
+                            minutes_to_midnight = self.council._minutes_to_midnight_wib()
                             portfolio_state = dict(self.last_state.get("portfolio", {}) or {})
                             polymarket_state = dict(self.last_state.get("polymarket", {}) or {})
                             decision = await self.council.deliberate_trading({
                                 "signals": sigs, 
                                 "source": addr[0],
                                 "is_midnight_approaching": is_midnight,
+                                "minutes_to_midnight": minutes_to_midnight,
                                 "portfolio_state": portfolio_state,
                                 "polymarket_state": polymarket_state,
                                 "current_strategy": load_strategy(),

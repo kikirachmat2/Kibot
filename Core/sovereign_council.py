@@ -86,6 +86,10 @@ class SovereignCouncil:
         next_midnight = (now + timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0)
         return max(0, int((next_midnight - now).total_seconds() // 60))
 
+    def _deadline_pressure(self, minutes_to_midnight: int) -> float:
+        """Normalize deadline pressure to [0, 1]. Pressure rises as midnight approaches."""
+        return max(0.0, min(1.0, 1.0 - (minutes_to_midnight / 1440.0)))
+
     def _portfolio_context(self, signals_context: Dict[str, Any]) -> Dict[str, Any]:
         portfolio = dict(signals_context.get("portfolio_state") or {})
         polymarket = dict(signals_context.get("polymarket_state") or portfolio.get("polymarket") or {})
@@ -117,6 +121,46 @@ class SovereignCouncil:
             "has_positions": bool(open_positions or open_bets),
         }
 
+    def _normalize_signal_key(self, value: Any) -> str:
+        text = str(value or "").upper().strip()
+        if not text:
+            return ""
+        return (
+            text.replace(" ", "")
+            .replace("_", "/")
+            .replace("::", ":")
+            .replace("//", "/")
+        )
+
+    def _find_matching_signal(self, signals: List[Dict[str, Any]], target_ticker: str) -> Dict[str, Any]:
+        norm_target = self._normalize_signal_key(target_ticker)
+        if not norm_target:
+            return {}
+        target_base = norm_target.split("/")[0].split(":")[0]
+        for signal in signals:
+            if not isinstance(signal, dict):
+                continue
+            candidates = [
+                signal.get("ticker"),
+                signal.get("symbol"),
+                signal.get("base_symbol"),
+                signal.get("pair"),
+                (signal.get("meta") or {}).get("market_id"),
+            ]
+            for candidate in candidates:
+                norm_candidate = self._normalize_signal_key(candidate)
+                if not norm_candidate:
+                    continue
+                candidate_base = norm_candidate.split("/")[0].split(":")[0]
+                if (
+                    norm_candidate == norm_target
+                    or candidate_base == target_base
+                    or norm_candidate.startswith(target_base)
+                    or target_base in norm_candidate
+                ):
+                    return signal
+        return {}
+
     def _decision_posture(
         self,
         decision: Dict[str, Any],
@@ -146,6 +190,7 @@ class SovereignCouncil:
 
         late_window = minutes_to_midnight <= 45
         time_pressure = 0.0 if minutes_to_midnight >= 180 else min(1.0, (180 - minutes_to_midnight) / 180.0)
+        deadline_pressure = self._deadline_pressure(minutes_to_midnight)
         loss_pressure = 0.0
         if daily_pnl_pct < 0:
             loss_pressure = min(1.0, abs(daily_pnl_pct) / 1.5)
@@ -158,6 +203,7 @@ class SovereignCouncil:
             + 0.14 * whatif_edge
             - 0.14 * risk
         )
+        evidence_strength += min(0.04, deadline_pressure * 0.03)
         recovery_mode = (
             daily_pnl_idr < 0
             and not late_window
@@ -170,6 +216,8 @@ class SovereignCouncil:
             evidence_strength += min(0.06, (1.0 - loss_pressure) * 0.04)
 
         enter_threshold = confidence_floor if not recovery_mode else max(0.62, confidence_floor - 0.04)
+        if not has_positions and minutes_to_midnight <= 720:
+            enter_threshold = max(0.60, enter_threshold - min(0.04, deadline_pressure * 0.03))
         enter_score = max(0.0, min(1.0, evidence_strength))
         wait_score = max(0.0, min(1.0, 1.0 - enter_score + (0.08 if not action or action == "NONE" else 0.0)))
         exit_score = max(
@@ -247,6 +295,7 @@ class SovereignCouncil:
             "daily_pnl_idr": daily_pnl_idr,
             "daily_pnl_pct": daily_pnl_pct,
             "combined_equity_idr": combined_equity_idr,
+            "deadline_pressure": round(deadline_pressure, 3),
             "trade_profile": trade_profile,
             "learning_probe": learning_probe,
             "probe_confidence_floor": float(decision.get("probe_confidence_floor", 0.0) or 0.0),
@@ -509,6 +558,25 @@ class SovereignCouncil:
         now = datetime.now()
         # If between 23:45 and 00:00, force 'EXIT_ALL' mode
         is_midnight_approaching = (now.hour == 23 and now.minute >= 45)
+        minutes_to_midnight = self._minutes_to_midnight_wib()
+        deadline_pressure = self._deadline_pressure(minutes_to_midnight)
+
+        antagonist_view = await query_ai("COUNCIL_ANTAGONIST", {
+            "signals": market_snapshot.get("signals", market_snapshot),
+            "evidence_bundle": market_snapshot.get("evidence_bundle", {}),
+            "whatif_snapshot": whatif_snapshot,
+            "portfolio_state": market_snapshot.get("portfolio_state", {}),
+            "today_trade_activity": self._get_today_trade_activity(),
+            "minutes_to_midnight": minutes_to_midnight,
+            "deadline_pressure": deadline_pressure,
+            "current_strategy": current,
+        })
+        possibility_view = await query_ai("POSSIBILITY_MINING", {
+            "raw_data": market_snapshot,
+            "current_strategy": current,
+            "deadline_pressure": deadline_pressure,
+            "minutes_to_midnight": minutes_to_midnight,
+        })
         
         dean_res = await query_ai("STRATEGY_DEAN", {
             "market_data": scout_res,
@@ -520,6 +588,10 @@ class SovereignCouncil:
             "whatif_snapshot": whatif_snapshot,
             "recent_pnl": pnl_history,
             "is_midnight_approaching": is_midnight_approaching,
+            "minutes_to_midnight": minutes_to_midnight,
+            "deadline_pressure": deadline_pressure,
+            "antagonist_view": antagonist_view,
+            "possibility_view": possibility_view,
             "philosophy": "ORGANIZED_GREED" # Never satisfied
         })
 
@@ -533,6 +605,9 @@ class SovereignCouncil:
                 "global_mode": dean_res.get("global_mode", "NEUTRAL"),
                 "indodax": dean_res.get("indodax", current["indodax"]),
                 "polymarket": dean_res.get("polymarket", current["polymarket"]),
+                "antagonist_view": antagonist_view,
+                "possibility_view": possibility_view,
+                "deadline_pressure": deadline_pressure,
                 "last_updated": time.time()
             }
             save_strategy(new_strategy)
@@ -564,6 +639,7 @@ class SovereignCouncil:
         today_trade_activity = self._get_today_trade_activity()
         portfolio_ctx = self._portfolio_context(signals_context)
         minutes_to_midnight = self._minutes_to_midnight_wib()
+        deadline_pressure = self._deadline_pressure(minutes_to_midnight)
         signals_context = {
             **signals_context,
             "whatif_snapshot": whatif_snapshot,
@@ -572,13 +648,22 @@ class SovereignCouncil:
             "portfolio_state": portfolio_ctx.get("portfolio", {}),
             "polymarket_state": portfolio_ctx.get("polymarket", {}),
             "minutes_to_midnight": minutes_to_midnight,
+            "deadline_pressure": deadline_pressure,
         }
         
         # 1. Council Consensus
+        # First gather an explicit antagonistic view, then let the speaker reconcile both sides.
+        antagonist_view = await query_ai("COUNCIL_ANTAGONIST", {
+            **signals_context,
+            "current_strategy": load_strategy(),
+            "is_midnight_approaching": signals_context.get("is_midnight_approaching", False),
+        })
+
         # We use COUNCIL_SPEAKER to synthesize the final verdict from signals
         is_midnight = signals_context.get("is_midnight_approaching", False)
         decision = await query_ai("COUNCIL_SPEAKER", {
             **signals_context,
+            "antagonist_view": antagonist_view,
             "is_midnight_approaching": is_midnight
         })
         
@@ -590,17 +675,13 @@ class SovereignCouncil:
         decision["timestamp"] = time.time()
         decision["whatif_snapshot"] = whatif_snapshot
         decision["evidence_bundle"] = evidence_bundle
+        decision["antagonist_view"] = antagonist_view or {}
+        decision["deadline_pressure"] = deadline_pressure
         
         # Find matching signal from context for price/metadata parity
         signals = signals_context.get("signals", [])
         target_ticker = decision.get("ticker", "UNKNOWN").upper()
-        
-        source_signal = {}
-        for s in signals:
-            if s.get("ticker", "").upper() == target_ticker:
-                source_signal = s
-                break
-        
+        source_signal = self._find_matching_signal(signals, target_ticker)
         decision["source_signal"] = source_signal
 
         # 3. Determine Execution Status
@@ -634,6 +715,35 @@ class SovereignCouncil:
         )
 
         decision.update(posture)
+        decision["deadline_pressure"] = deadline_pressure
+
+        if antagonist_view and isinstance(antagonist_view, dict):
+            decision["antagonist_view"] = antagonist_view
+            best_alt_action = str(antagonist_view.get("best_alternative_action") or "NONE").upper()
+            best_alt_ticker = str(antagonist_view.get("best_alternative_ticker") or "").upper()
+            best_alt_conf = float(antagonist_view.get("best_alternative_confidence", 0.0) or 0.0)
+            if (
+                decision.get("decision_state") == "WAIT"
+                and best_alt_action in {"BUY", "SELL"}
+                and best_alt_ticker
+                and best_alt_conf >= max(confidence_floor, 0.74)
+                and minutes_to_midnight > 30
+            ):
+                decision["decision_state"] = "ENTER"
+                decision["action"] = best_alt_action
+                decision["ticker"] = best_alt_ticker
+                decision["confidence"] = max(float(decision.get("confidence", 0.0) or 0.0), best_alt_conf)
+                decision["status"] = "EXECUTING"
+                decision["trade_profile"] = "RECOVERY" if decision.get("recovery_mode") else decision.get("trade_profile", "STANDARD")
+                decision["source_signal"] = self._find_matching_signal(signals, best_alt_ticker)
+                decision["wait_reason"] = (
+                    f"antagonist pivot to {best_alt_ticker} with confidence {best_alt_conf:.3f}"
+                )
+
+        if decision.get("status") == "EXECUTING" and not decision.get("source_signal"):
+            decision["status"] = "WAIT"
+            decision["decision_state"] = "WAIT"
+            decision["wait_reason"] = "no matching source signal for selected mandate"
 
         if decision.get("status") == "EXECUTING" and decision.get("decision_state") == "ENTER" and probe_ready:
             decision["learning_probe"] = True

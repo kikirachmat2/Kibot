@@ -316,6 +316,7 @@ PROMPT_PROVIDER_ORDER = {
     "MOMENTUM_HAWK": ["ollama", "groq", "together_turbo", "cerebras"],
     "RISK_SENTINEL": ["ollama", "gemini", "mistral_large", "or_llama3_1_70b_free"],
     "COUNCIL_SPEAKER": ["ollama", "gemini", "nvidia", "mistral_large", "groq"],
+    "COUNCIL_ANTAGONIST": ["ollama", "gemini", "nvidia", "mistral_large", "groq"],
     "INTELLIGENCE_SYNTHESIS": ["groq", "gemini", "deepseek", "together_turbo", "mistral_large", "cloudflare_ai", "perplexity_pro", "github_experimental", "or_claude_free", "or_gpt4o_mini_free", "or_llama3_1_70b_free", "or_gemini_flash_free", "or_qwen2_72b_free", "fireworks", "nvidia", "openrouter", "deepinfra", "octoai", "novita", "perplexity", "cohere", "jina", "huggingface", "friendliai", "lepton", "ollama"],
     "TARGETED_VALIDATION": ["groq", "gemini", "deepseek", "together_turbo", "mistral_large", "perplexity_pro", "or_claude_free", "or_gpt4o_mini_free", "ollama"],
     "BRAIN_CRITIC": ["gemini", "groq", "deepseek", "together_turbo", "mistral_large", "or_claude_free", "ollama"],
@@ -352,7 +353,7 @@ PROMPT_TEMPLATES = {
         "5. Midnight Oracle: At 23:45, evaluate the daily report and decide on the next phase (HODL, EXIT_ALL, or PIVOT).\n"
         "6. Evidence First: Prefer decisions that are supported by live web validation, source convergence, and what-if simulations.\n"
         "7. Learning Discipline: If no trade has happened today and a vetted edge exists, prefer a tiny learning probe over inactivity, but never bypass hard-loss rules.\n"
-        "Inputs: {market_data}, {system_health}, {current_strategy}, {whatif_snapshot}, {today_trade_activity}, Midnight Approaching: {is_midnight_approaching}.\n"
+        "Inputs: {market_data}, {system_health}, {current_strategy}, {whatif_snapshot}, {today_trade_activity}, {antagonist_view}, {possibility_view}, Minutes to Midnight: {minutes_to_midnight}, Deadline Pressure: {deadline_pressure}, Midnight Approaching: {is_midnight_approaching}.\n"
         "Task: Output a refined JSON strategy (Indodax & Polymarket) focusing on Risk mitigation, capital allocation, and confidence calibration.\n"
         "Optimal Modes: AGGRESSIVE|NEUTRAL|DEFENSIVE|FULL_ATTACK|EXIT_ALL.\n"
         "Return strict JSON: {\"global_mode\":\"...\", \"indodax\":{...}, \"polymarket\":{...}, \"rationale\":\"...\"}"
@@ -486,14 +487,34 @@ PROMPT_TEMPLATES = {
         "Review the signals: {signals}\n"
         "Evidence bundle: {evidence_bundle}\n"
         "What-if snapshot: {whatif_snapshot}\n"
+        "Antagonist view: {antagonist_view}\n"
         "Today's trade activity: {today_trade_activity}\n"
         "Portfolio state: {portfolio_state}\n"
         "Minutes to midnight: {minutes_to_midnight}\n"
+        "Deadline pressure: {deadline_pressure}\n"
         "Provide a final trading mandate (BUY/SELL/NONE). Prefer decisive action when evidence converges, but refuse weak or noisy setups.\n"
+        "Do not sit idle just because the market is ugly. Search the supplied signals for the best available edge, but never force a low-quality trade.\n"
         "If evidence is insufficient, choose NONE rather than force a trade.\n"
         "If daily PnL is red and there is time left before midnight, think in controlled recovery mode: only support entries with strong evidence, never revenge-trade.\n"
         "If no trade has happened today and the edge is still acceptable, you may mark the trade as a tiny learning probe instead of a full-size entry.\n"
         "Return strict compact JSON: {\"action\":\"BUY|SELL|NONE\", \"ticker\":\"SYMBOL/IDR\", \"confidence\":0.0, \"logic\":\"...\", \"decision_state\":\"ENTER|WAIT|EXIT\", \"recovery_mode\":false, \"learning_probe\":false, \"probe_confidence_floor\":0.0, \"trade_profile\":\"STANDARD|LEARNING_PROBE|RECOVERY\"}"
+    ),
+    "COUNCIL_ANTAGONIST": (
+        "You are the Council Antagonist, a disciplined devil's advocate for KiBot.\n"
+        "Your job is to challenge the default thesis, hunt for the best alternative opportunity among the supplied signals, and expose hidden risks.\n"
+        "Signals: {signals}\n"
+        "Evidence bundle: {evidence_bundle}\n"
+        "What-if snapshot: {whatif_snapshot}\n"
+        "Portfolio state: {portfolio_state}\n"
+        "Today's trade activity: {today_trade_activity}\n"
+        "Minutes to midnight: {minutes_to_midnight}\n"
+        "Deadline pressure: {deadline_pressure}\n"
+        "Rules:\n"
+        "1. Never agree by default; try to prove the leading thesis wrong.\n"
+        "2. If the current market is weak, search for the least-bad valid opportunity instead of freezing.\n"
+        "3. If no trade has happened today and the deadline is approaching, prioritize finding a clean setup over staying idle.\n"
+        "4. If all supplied signals are poor, recommend WAIT or ABORT clearly.\n"
+        "Return strict compact JSON: {\"verdict\":\"CHALLENGE|SUPPORT|ABORT\", \"counter_thesis\":\"...\", \"best_alternative_ticker\":\"SYMBOL/IDR\", \"best_alternative_action\":\"BUY|SELL|NONE\", \"best_alternative_confidence\":0.0, \"risk_focus\":[...], \"opportunity_focus\":[...], \"recovery_angle\":\"...\"}"
     ),
     "MOMENTUM_HAWK": (
         "You are MomentumHawk (Technical Analyst). Model: qwen2.5:1.5b.\n"
@@ -535,6 +556,8 @@ PROMPT_OLLAMA_MODEL = {
     "SENTIMENT_SYNTHESIZER": OLLAMA_SMART_MODEL,
     "WHALE_WATCHER": OLLAMA_DEFAULT_MODEL,
     "CROSS_BRIDGE_STRATEGIST": OLLAMA_BRIDGE_MODEL,
+    "COUNCIL_ANTAGONIST": OLLAMA_PRO_MODEL,
+    "POSSIBILITY_MINING": OLLAMA_PRO_MODEL,
     
     # Legacy / Utility
     "COUNCIL_WATCHMAN": OLLAMA_FAST_MODEL,
@@ -560,6 +583,8 @@ PROMPT_OLLAMA_TIMEOUT = {
     "SOVEREIGN_DAILY_REVIEW": OLLAMA_DEEP_TIMEOUT_SEC,
     "MOMENTUM_HAWK": OLLAMA_FAST_TIMEOUT_SEC,
     "RISK_SENTINEL": OLLAMA_FAST_TIMEOUT_SEC,
+    "COUNCIL_ANTAGONIST": OLLAMA_DEFAULT_TIMEOUT_SEC,
+    "POSSIBILITY_MINING": OLLAMA_DEFAULT_TIMEOUT_SEC,
 }
 
 PROMPT_OLLAMA_KEEP_ALIVE = {
@@ -568,6 +593,8 @@ PROMPT_OLLAMA_KEEP_ALIVE = {
     "MOMENTUM_HAWK": OLLAMA_FAST_KEEP_ALIVE,
     "RISK_SENTINEL": OLLAMA_FAST_KEEP_ALIVE,
     "COUNCIL_SPEAKER": OLLAMA_FAST_KEEP_ALIVE,
+    "COUNCIL_ANTAGONIST": OLLAMA_DEFAULT_KEEP_ALIVE,
+    "POSSIBILITY_MINING": OLLAMA_DEFAULT_KEEP_ALIVE,
     "COUNCIL_ORACLE": OLLAMA_DEEP_KEEP_ALIVE,
     "BRAIN_CRITIC": OLLAMA_FAST_KEEP_ALIVE,
     "PAIR_DISCOVERY": OLLAMA_FAST_KEEP_ALIVE,
@@ -587,6 +614,8 @@ PROMPT_OLLAMA_OPTIONS = {
     "MOMENTUM_HAWK": {"num_ctx": OLLAMA_FAST_NUM_CTX, "num_predict": OLLAMA_FAST_NUM_PREDICT},
     "RISK_SENTINEL": {"num_ctx": OLLAMA_FAST_NUM_CTX, "num_predict": OLLAMA_FAST_NUM_PREDICT},
     "COUNCIL_SPEAKER": {"num_ctx": OLLAMA_DEFAULT_NUM_CTX, "num_predict": OLLAMA_DEFAULT_NUM_PREDICT},
+    "COUNCIL_ANTAGONIST": {"num_ctx": OLLAMA_DEFAULT_NUM_CTX, "num_predict": OLLAMA_DEFAULT_NUM_PREDICT},
+    "POSSIBILITY_MINING": {"num_ctx": OLLAMA_DEFAULT_NUM_CTX, "num_predict": OLLAMA_DEFAULT_NUM_PREDICT},
     "COUNCIL_ORACLE": {"num_ctx": OLLAMA_DEEP_NUM_CTX, "num_predict": OLLAMA_DEEP_NUM_PREDICT},
     "BRAIN_CRITIC": {"num_ctx": OLLAMA_FAST_NUM_CTX, "num_predict": OLLAMA_FAST_NUM_PREDICT},
     "PAIR_DISCOVERY": {"num_ctx": OLLAMA_FAST_NUM_CTX, "num_predict": OLLAMA_FAST_NUM_PREDICT},
@@ -1050,6 +1079,8 @@ def _response_has_minimum_schema(prompt_type: str, parsed: Dict[str, Any]) -> bo
         "MOMENTUM_HAWK": {"thesis", "verdict", "confidence"},
         "RISK_SENTINEL": {"risk_critique", "verdict", "confidence"},
         "COUNCIL_SPEAKER": {"action", "ticker", "confidence"},
+        "COUNCIL_ANTAGONIST": {"verdict", "best_alternative_ticker", "best_alternative_action"},
+        "POSSIBILITY_MINING": {"possibilities"},
         "BRAIN_CRITIC": {"verdict", "refined_logic"},
         "PAIR_DISCOVERY": {"summary", "candidates"},
         "VETO_ANALYSIS": {"approved", "reason", "confidence"},

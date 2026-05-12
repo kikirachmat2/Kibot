@@ -182,6 +182,7 @@ These exist on the server but are easy to miss if you only inspect the code tree
 12. `IndodaxSmallCapScanner` and `PolymarketFullScanner` both emit richer confidence metadata so council can be more selective without going blind.
 13. Daily learning probe logic exists to encourage at least one controlled entry per day, but it still respects hard loss limits and evidence floors.
 14. `SovereignCouncil` now emits explicit `ENTER / WAIT / EXIT` posture and a recovery mode when equity is red but the evidence is still strong enough before midnight.
+15. `SovereignCouncil` now also queries an antagonist / devil's-advocate view and `POSSIBILITY_MINING` so it can challenge its own thesis and avoid one-direction consensus drift.
 
 ---
 
