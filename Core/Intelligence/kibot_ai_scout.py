@@ -32,6 +32,15 @@ def get_ai_coordinator():
     from Core.Intelligence import kibot_ai_coordinator
     return kibot_ai_coordinator
 
+def _load_daily_state() -> Dict[str, Any]:
+    try:
+        from Core.sovereign_state import load_strategy
+        strategy = load_strategy()
+        daily_state = strategy.get("daily_state", {})
+        return daily_state if isinstance(daily_state, dict) else {}
+    except Exception:
+        return {}
+
 class WorldScout:
     def __init__(self):
         STATE_DIR.mkdir(parents=True, exist_ok=True)
@@ -57,10 +66,12 @@ class WorldScout:
 
         # 2. Synthesize using Cloud AI (Non-Ollama preferred for global context)
         self._log("Synthesizing global intelligence...")
+        daily_state = _load_daily_state()
         
         prompt_context = {
             "raw_data": scouting_data,
-            "current_time": time.ctime()
+            "current_time": time.ctime(),
+            "daily_state": daily_state,
         }
         
         # We use a specific prompt type for intelligence synthesis
@@ -119,10 +130,12 @@ class WorldScout:
 
         # 2. Validate using AI
         self._log(f"Validating {pair} anomaly using AI...")
+        daily_state = _load_daily_state()
         prompt_context = {
             "pair": pair,
             "raw_data": scouting_data,
-            "current_time": time.ctime()
+            "current_time": time.ctime(),
+            "daily_state": daily_state,
         }
         
         validation = await self.coordinator.query_ai(

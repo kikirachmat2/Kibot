@@ -9,6 +9,9 @@ Scanner layer untuk membaca peluang pasar dan mengirim sinyal HMAC-signed ke exe
 - `ki_universal_leadlag_scanner.py`: lead-lag scanner lintas sumber global.
 
 ## Catatan Operasional
-- Delta filter membandingkan harga terakhir per `exchange:symbol`.
+- Delta filter membandingkan harga terakhir per UID yang stabil per logical signal:
+  - Indodax: `exchange:symbol`
+  - Polymarket: `exchange:market_id[:outcome_index]`
+  - Universal: `exchange:topic`
 - Interval scanner default lebih agresif untuk flow cepat.
 - Universal scanner dijalankan aman dari thread context.

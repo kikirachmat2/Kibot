@@ -13,6 +13,7 @@ AI Orchestration, Learning, and Market Intelligence models.
 - `SovereignCouncil` sekarang juga memberi posture eksplisit `ENTER / WAIT / EXIT`, plus recovery mode terkontrol saat equity harian merah dan masih ada waktu sebelum midnight.
 - `SovereignCouncil` juga menjalankan `COUNCIL_ANTAGONIST` dan `POSSIBILITY_MINING` supaya council tidak berpikir satu arah saja.
 - Target harian sekarang dipahami sebagai state `GREEN` bukan angka persen statis, jadi council dan executor bisa menahan winner lebih lama kalau edge masih kuat.
+- `kibot_ai_scout.py` membawa `daily_state` yang sama ke `POSSIBILITY_MINING` dan validasi targeted scouting, sehingga scouting global dan council memakai posture yang konsisten.
 
 ## Live Server Atlas
 Source of truth untuk keadaan server yang sebenarnya:
@@ -43,6 +44,7 @@ Server-only artifacts yang tidak kelihatan dari code tree biasa:
 - Recovery posture dipakai hanya ketika PnL merah, waktu masih cukup, dan evidence masih kuat. Itu bukan revenge trading, melainkan controlled re-entry / de-risking.
 - Deadline pressure dan antagonistic debate sekarang aktif di council planning, jadi sistem terus mencari opsi terbaik sampai menjelang midnight.
 - Daily state dikirim ke planner dan executor supaya posisi pemenang tidak dipotong terlalu cepat hanya karena target angka lama sudah tercapai.
+- Scanner dedupe memakai UID yang tidak mencampur market Polymarket yang berbeda, jadi sinyal tidak lagi hilang karena base_symbol yang terlalu generik.
 
 ## Responsibility
 - **AI Veto**: Validating signals using local LLMs (Ollama/Dify).

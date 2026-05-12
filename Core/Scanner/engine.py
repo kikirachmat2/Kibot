@@ -41,6 +41,40 @@ class ScannerEngine:
             return res
         return []
 
+    def _signal_uid(self, signal: Dict[str, Any]) -> str:
+        """Build a stable UID per logical signal so delta filtering does not collapse distinct markets."""
+        exchange = str(signal.get("exchange") or "UNKNOWN").upper().strip()
+        symbol = str(signal.get("symbol") or signal.get("base_symbol") or "UNK").upper().strip()
+
+        if exchange == "POLYMARKET":
+            meta = signal.get("meta") if isinstance(signal.get("meta"), dict) else {}
+            market_id = str(meta.get("market_id") or signal.get("market_id") or symbol).upper().strip()
+            outcome_index = meta.get("outcome_index")
+            outcome_suffix = f":{outcome_index}" if outcome_index is not None else ""
+            return f"{exchange}:{market_id}{outcome_suffix}"
+
+        if exchange == "INDODAX":
+            return f"{exchange}:{symbol}"
+
+        if exchange == "UNIVERSAL_LEAD":
+            topic = str(signal.get("topic") or signal.get("keyword") or symbol).upper().strip()
+            return f"{exchange}:{topic}"
+
+        return f"{exchange}:{symbol}"
+
+    def _normalize_price(self, exchange: str, signal: Dict[str, Any]) -> Any:
+        if exchange == "INDODAX":
+            raw_price = signal.get("price_idr", signal.get("price", 0))
+        elif exchange == "POLYMARKET":
+            raw_price = signal.get("price", 0)
+        else:
+            raw_price = signal.get("price_usdt", signal.get("price", 0))
+
+        try:
+            return round(float(raw_price), 8)
+        except Exception:
+            return raw_price
+
     def _build_scanners(self):
         """Builds default scanners if none provided."""
         scanners = []
@@ -85,15 +119,8 @@ class ScannerEngine:
                 if not isinstance(s, dict):
                     continue
                 s["exchange"] = exchange
-                
-                # FIX: Gunakan field harga yang tepat per exchange
-                uid = f"{exchange}:{s.get('base_symbol', s.get('symbol', 'UNK'))}"
-                if exchange == "INDODAX":
-                    current_price = s.get('price_idr', s.get('price', 0))
-                elif exchange == "POLYMARKET":
-                    current_price = s.get('price', 0)
-                else:
-                    current_price = s.get('price_usdt', s.get('price', 0))
+                uid = self._signal_uid(s)
+                current_price = self._normalize_price(exchange, s)
                 
                 # DELTA FILTER: Skip jika harga sama persis
                 if uid in self.last_prices and self.last_prices[uid] == current_price:
