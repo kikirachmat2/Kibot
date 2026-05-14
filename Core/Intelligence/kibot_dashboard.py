@@ -18,7 +18,7 @@ from fastapi.staticfiles import StaticFiles
 
 from Core.Support.ki_config import PROJECT_ROOT, STATE_DIR
 
-app = FastAPI(title="KiBot Sovereign Dashboard", version="3.0")
+app = FastAPI(title="KiBot Sovereign Dashboard", version="3.1")
 
 ROOT = Path(PROJECT_ROOT)
 STATE = Path(STATE_DIR)
@@ -427,7 +427,7 @@ async def canvas() -> JSONResponse:
 
 @app.get("/api/healthz")
 async def healthz() -> JSONResponse:
-    return JSONResponse({"ok": True, "service": "kibot-dashboard", "version": "3.0", "generated_at": datetime.now(WIB).isoformat()})
+    return JSONResponse({"ok": True, "service": "kibot-dashboard", "version": "3.1", "generated_at": datetime.now(WIB).isoformat()})
 
 
 @app.get("/api/stream")

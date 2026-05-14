@@ -12,6 +12,8 @@ Environment=KIBOT_DASHBOARD_PORT=8787
 ExecStart=/home/ubuntu/KiBot/bin/kibot-dashboard
 Restart=always
 RestartSec=5
+TimeoutStopSec=8
+KillMode=mixed
 
 [Install]
 WantedBy=multi-user.target

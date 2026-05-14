@@ -8,6 +8,9 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/static/style.css?v=3.1" />
+  <script defer src="/static/canvas.js?v=3.1"></script>
+  <script defer src="/static/live.js?v=3.1"></script>
 </head>
 <body>
 
@@ -99,92 +102,110 @@
           <button class="icon-button" id="stage-zoom-in" title="Zoom in">+</button>
         </div>
 
-        <div class="office-stage" id="office-stage">
+        <div class="office-stage flow-stage" id="office-stage">
+          <svg class="flow-lines" viewBox="0 0 980 500" aria-hidden="true">
+            <path class="flow-path primary" d="M490 96 V172" />
+            <path class="flow-path primary" d="M490 236 V308" />
+            <path class="flow-path scanner-line" d="M490 236 V294 H202 V332" />
+            <path class="flow-path brain-line" d="M490 236 V294 H490 V332" />
+            <path class="flow-path indo-line" d="M490 236 V294 H778 V332" />
+            <path class="flow-path poly-line" d="M490 236 V292 H928 V332" />
+            <circle class="junction" cx="490" cy="96" r="5" />
+            <circle class="junction" cx="490" cy="172" r="5" />
+            <circle class="junction" cx="490" cy="236" r="5" />
+            <circle class="junction" cx="202" cy="332" r="5" />
+            <circle class="junction" cx="490" cy="332" r="5" />
+            <circle class="junction" cx="778" cy="332" r="5" />
+            <circle class="junction" cx="928" cy="332" r="5" />
+          </svg>
 
-          <!-- Floor perspective -->
-          <div class="floor-perspective">
-            <div class="floor-grid"></div>
-            <div class="blue-boundary boundary-a"></div>
-            <div class="blue-boundary boundary-b"></div>
-            <div class="blue-boundary boundary-c"></div>
-            <div class="office-prop prop-desk prop-a"></div>
-            <div class="office-prop prop-desk prop-b"></div>
-            <div class="office-prop prop-wall prop-c"></div>
-            <div class="office-prop prop-chair prop-d"></div>
-            <div class="office-prop prop-server prop-e"></div>
-          </div>
-
-          <!-- Signal lines -->
-          <div class="signal-line line-scanner-council" aria-hidden="true"></div>
-          <div class="signal-line line-brain-council"   aria-hidden="true"></div>
-          <div class="signal-line line-council-indo"    aria-hidden="true"></div>
-          <div class="signal-line line-council-poly"    aria-hidden="true"></div>
-          <div class="signal-line line-exec-verifier"   aria-hidden="true"></div>
-
-          <!-- Agent Avatars -->
-          <button class="agent-avatar scanner active selected"
-                  type="button" data-agent="scanner" id="char-scanner"
-                  aria-label="Scanner agent">
-            <span class="agent-bubble" id="metric-scanner">scan live</span>
-            <span class="agent-head"></span>
-            <span class="agent-body"></span>
-            <strong>Scanner</strong>
+          <button class="flow-node user-node" type="button" data-agent="council" aria-label="Operator">
+            <span class="node-avatar operator"><span></span></span>
+            <span class="node-content">
+              <strong>Operator (You)</strong>
+              <em>monitoring + override</em>
+            </span>
           </button>
 
-          <button class="agent-avatar brain"
-                  type="button" data-agent="brain" id="char-brain"
-                  aria-label="AI Brain agent">
-            <span class="agent-bubble" id="metric-brain">MIXED</span>
-            <span class="agent-head"></span>
-            <span class="agent-body"></span>
-            <strong>AI Brain</strong>
-          </button>
-
-          <button class="agent-avatar council thinking"
+          <button class="flow-node council thinking"
                   type="button" data-agent="council" id="char-council"
                   aria-label="Council agent">
-            <span class="agent-bubble" id="metric-council">conf 0.00</span>
-            <span class="agent-head"></span>
-            <span class="agent-body"></span>
-            <strong>Council</strong>
+            <span class="node-avatar council"><span></span></span>
+            <span class="node-content">
+              <strong>Council Director</strong>
+              <span class="node-tags">
+                <b>LEAD AGENT</b>
+                <b>HUMAN-IN-THE-LOOP</b>
+              </span>
+              <em id="metric-council">conf 0.00</em>
+            </span>
           </button>
 
-          <button class="agent-avatar indo"
+          <button class="flow-node scanner active"
+                  type="button" data-agent="scanner" id="char-scanner"
+                  aria-label="Scanner agent">
+            <span class="node-avatar scanner"><span></span></span>
+            <span class="node-content">
+              <strong>Scanner</strong>
+              <span class="node-tags"><b>SUBAGENT</b></span>
+              <em id="metric-scanner">scan live</em>
+            </span>
+          </button>
+
+          <button class="flow-node brain"
+                  type="button" data-agent="brain" id="char-brain"
+                  aria-label="AI Brain agent">
+            <span class="node-avatar brain"><span></span></span>
+            <span class="node-content">
+              <strong>AI Brain</strong>
+              <span class="node-tags"><b>LOCAL LLM</b></span>
+              <em id="metric-brain">MIXED</em>
+            </span>
+          </button>
+
+          <button class="flow-node indo"
                   type="button" data-agent="indodax" id="char-indo"
                   aria-label="Indodax Executor agent">
-            <span class="agent-bubble" id="metric-indo">Rp --</span>
-            <span class="agent-head"></span>
-            <span class="agent-body"></span>
-            <strong>Indodax</strong>
+            <span class="node-avatar indo"><span></span></span>
+            <span class="node-content">
+              <strong>Indodax Executor</strong>
+              <span class="node-tags"><b>REAL MONEY</b></span>
+              <em id="metric-indo">Rp --</em>
+            </span>
           </button>
 
-          <button class="agent-avatar poly"
+          <button class="flow-node poly"
                   type="button" data-agent="polymarket" id="char-poly"
                   aria-label="Polymarket Executor agent">
-            <span class="agent-bubble" id="metric-poly">$0.00</span>
-            <span class="agent-head"></span>
-            <span class="agent-body"></span>
-            <strong>Polymarket</strong>
+            <span class="node-avatar poly"><span></span></span>
+            <span class="node-content">
+              <strong>Polymarket</strong>
+              <span class="node-tags"><b>PHANTOM</b></span>
+              <em id="metric-poly">$0.00</em>
+            </span>
           </button>
 
-          <button class="agent-avatar verifier"
+          <button class="flow-node verifier"
                   type="button" data-agent="verifier" id="char-verifier"
                   aria-label="Verifier agent">
-            <span class="agent-bubble" id="metric-verifier">verify</span>
-            <span class="agent-head"></span>
-            <span class="agent-body"></span>
-            <strong>Verifier</strong>
+            <span class="node-avatar verifier"><span></span></span>
+            <span class="node-content">
+              <strong>Verifier</strong>
+              <span class="node-tags"><b>STATE CHECK</b></span>
+              <em id="metric-verifier">verify</em>
+            </span>
           </button>
 
-          <button class="agent-avatar janitor"
+          <button class="flow-node janitor"
                   type="button" data-agent="janitor" id="char-janitor"
                   aria-label="Janitor agent">
-            <span class="agent-bubble" id="metric-janitor">disk --</span>
-            <span class="agent-head"></span>
-            <span class="agent-body"></span>
-            <strong>Janitor</strong>
+            <span class="node-avatar janitor"><span></span></span>
+            <span class="node-content">
+              <strong>Janitor</strong>
+              <span class="node-tags"><b>SELF HEALING</b></span>
+              <em id="metric-janitor">disk --</em>
+            </span>
           </button>
-
         </div><!-- /office-stage -->
       </section>
 

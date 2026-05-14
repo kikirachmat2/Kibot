@@ -17,7 +17,10 @@ const LOG_COLORS = {
 };
 
 let lastSummary = null;
-let localFeed = [];
+let activityFeed = [];
+let technicalFeed = [];
+const seenActivityKeys = new Set();
+const seenTechnicalKeys = new Set();
 let fallbackPollTimer = null;
 let streamRetryTimer = null;
 let streamInstance = null;
@@ -110,7 +113,28 @@ function renderBets(bets) {
   }).join("");
 }
 
-function normalizeEvents(data) {
+function eventKey(event) {
+  return [
+    event.agent || event.title || "Event",
+    event.tag || event.level || "INFO",
+    event.message || event.detail || "",
+  ].join("::");
+}
+
+function rememberEvents(feed, seen, events, limit = 80) {
+  events.forEach((event) => {
+    const key = eventKey(event);
+    if (seen.has(key)) return;
+    seen.add(key);
+    feed.unshift({
+      ...event,
+      time: event.time || new Date().toISOString(),
+    });
+  });
+  feed.splice(limit);
+}
+
+function buildCandidateEvents(data) {
   const portfolio = data?.portfolio || {};
   const council = data?.council || {};
   const world = data?.world_model || {};
@@ -152,7 +176,7 @@ function normalizeEvents(data) {
     },
   ];
 
-  return [...localFeed, ...generated, ...events].slice(0, 60);
+  return [...generated, ...events].slice(0, 60);
 }
 
 function logTime(event) {
@@ -191,11 +215,21 @@ function renderLogList(targetId, events, technical = false) {
 }
 
 function renderLogs(data) {
-  const all = normalizeEvents(data);
-  const technical = all.filter((item) => ["System", "Janitor", "Brain"].includes(item.agent)).slice(0, 60);
+  const candidates = buildCandidateEvents(data);
+  const technicalCandidates = [
+    ...candidates.filter((item) => ["System", "Janitor", "Brain"].includes(item.agent)),
+    ...Object.entries(data?.services || {}).map(([service, status]) => ({
+      agent: "System",
+      tag: status === "active" ? "SUCCESS" : "WARN",
+      message: `${service}: ${status}`,
+    })),
+  ];
 
-  renderLogList("activity-log", all, false);
-  renderLogList("technical-log", technical, true);
+  rememberEvents(activityFeed, seenActivityKeys, candidates, 80);
+  rememberEvents(technicalFeed, seenTechnicalKeys, technicalCandidates, 80);
+
+  renderLogList("activity-log", activityFeed, false);
+  renderLogList("technical-log", technicalFeed, true);
 }
 
 function renderWhatif(items) {
@@ -336,7 +370,10 @@ function bindUi() {
   });
 
   byId("clear-local-feed")?.addEventListener("click", () => {
-    localFeed = [];
+    activityFeed = [];
+    technicalFeed = [];
+    seenActivityKeys.clear();
+    seenTechnicalKeys.clear();
     if (lastSummary) renderLogs(lastSummary);
   });
 }

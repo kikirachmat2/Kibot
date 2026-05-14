@@ -10,7 +10,7 @@
 - [`Core/Intelligence/delegation_workflows.md`](./Core/Intelligence/delegation_workflows.md): playbook workflow delegasi formal untuk seluruh sistem.
 - [`Core/Intelligence/delegation_workflows.json`](./Core/Intelligence/delegation_workflows.json): manifest machine-readable untuk workflow delegasi.
 - [`Core/Intelligence/kibot_dashboard.py`](./Core/Intelligence/kibot_dashboard.py): control-plane web dashboard untuk memantau delegation flow secara visual, saldo, strategy, dan event stream.
-- [`Core/Intelligence/dashboard/`](./Core/Intelligence/dashboard): HTML/CSS/JS Dashboard V3 dengan delegation workspace interaktif, agent floor, logs panel, workflow board, dan live ledger.
+- [`Core/Intelligence/dashboard/`](./Core/Intelligence/dashboard): HTML/CSS/JS Dashboard V3.1 dengan delegation graph sederhana, activity log dedupe, agent inspector, workflow board, dan live ledger.
 - [`Core/Security/README.md`](./Core/Security/README.md): HMAC, vault, dan audit security.
 - [`Core/Support/README.md`](./Core/Support/README.md): config, utilities, dan tooling.
 - [`bin/`](./bin): shell utilities canonical untuk backup, dependency bootstrap, dan wrapper operasional.

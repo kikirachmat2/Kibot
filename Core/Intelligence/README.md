@@ -16,7 +16,7 @@ AI Orchestration, Learning, and Market Intelligence models.
 - `kibot_ai_scout.py` membawa `daily_state` yang sama ke `POSSIBILITY_MINING` dan validasi targeted scouting, sehingga scouting global dan council memakai posture yang konsisten.
 - `delegation_workflows.md` dan `delegation_workflows.json` mendokumentasikan alur delegasi formal KiBot: discovery, council, executor, verification, dan maintenance.
 - `kibot_dashboard.py` menampilkan alur delegasi, saldo live, council lens, strategy state, dan event trail dalam visual control plane web di port `8787`.
-- `dashboard/` memuat Dashboard V3: delegation workspace interaktif ala control room, logs panel, karakter agen selectable, workflow board, live ledger Indodax/Polymarket, dan SSE updates.
+- `dashboard/` memuat Dashboard V3.1: delegation graph sederhana ala node workflow, activity log dedupe, agent inspector, workflow board, live ledger Indodax/Polymarket, dan SSE updates.
 - `bin/kibotctl` sekarang ikut mengelola `kibot-dashboard`, jadi visual control plane masuk ke wrapper operasional satu pintu.
 - `aggregator.py` sekarang menghitung equity Indodax sebagai `idr_cash + coin_holdings_idr`, sehingga saldo koin yang sedang dipegang ikut tampil di dashboard dan council snapshot.
 

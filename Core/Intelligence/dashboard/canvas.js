@@ -65,7 +65,7 @@ const AGENTS = {
   },
 };
 
-let selectedAgent = "scanner";
+let selectedAgent = "council";
 let stageScale = 1;
 let latestSummary = null;
 
@@ -94,7 +94,7 @@ function setAgentClass(id, status, summary) {
 
   const normalized = normalizedStatus(status);
   const visualClass = AGENT_ID_MAP[id] || id;
-  const classes = ["agent-avatar", visualClass];
+  const classes = ["flow-node", visualClass];
   if (id === selectedAgent) classes.push("selected");
 
   if (id === "council") {
