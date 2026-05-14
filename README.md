@@ -7,10 +7,14 @@
 - [`Core/Executors/README.md`](./Core/Executors/README.md): eksekusi trade dan risk checks.
 - [`Core/Intelligence/README.md`](./Core/Intelligence/README.md): AI, aggregator, dan learning loop.
 - [`Core/Intelligence/SERVER_INVENTORY.md`](./Core/Intelligence/SERVER_INVENTORY.md): snapshot runtime server, AI models, API keys, dan artefak server-only.
+- [`Core/Intelligence/delegation_workflows.md`](./Core/Intelligence/delegation_workflows.md): playbook workflow delegasi formal untuk seluruh sistem.
+- [`Core/Intelligence/delegation_workflows.json`](./Core/Intelligence/delegation_workflows.json): manifest machine-readable untuk workflow delegasi.
+- [`Core/Intelligence/kibot_dashboard.py`](./Core/Intelligence/kibot_dashboard.py): control-plane web dashboard untuk memantau delegation flow secara visual.
 - [`Core/Security/README.md`](./Core/Security/README.md): HMAC, vault, dan audit security.
 - [`Core/Support/README.md`](./Core/Support/README.md): config, utilities, dan tooling.
 - [`bin/`](./bin): shell utilities canonical untuk backup, dependency bootstrap, dan wrapper operasional.
 - [`bin/kibotctl`](./bin/kibotctl): one-command wrapper untuk status, doctor, tools, start/stop, dan sync model server.
+- [`bin/kibot-dashboard`](./bin/kibot-dashboard): launcher dashboard visual berbasis FastAPI/Uvicorn.
 - [`AGENTS.md`](./AGENTS.md): guardrail kerja untuk Codex, Aider, Copilot, dan operator automation.
 - [`state/`](./state): runtime JSON snapshot yang dipakai engine saat berjalan.
 
@@ -26,6 +30,7 @@
 - **Learning Probe**: Jika hari itu belum ada trade dan edge-nya layak, council boleh menandai entry kecil sebagai probe pembelajaran tanpa melanggar hard loss.
 - **Self-Healing & Resilience**: Pemulihan mandiri instan dari kegagalan infrastruktur (Ollama, Network, Disk).
 - **Explicit Live Gate**: order real-money hanya jalan jika `KIBOT_LIVE_TRADING_ENABLED=true` atau `KIBOT_TRADING_MODE=live`.
+- **Visual Control Plane**: workflow delegasi dan state runtime bisa dilihat lewat dashboard web di port `8787` melalui `bin/kibot-dashboard`.
 
 ### 📱 Notification Protocol
 - **Urgent Only**: Hanya mengirim pesan darurat dan tindakan kritis ke Telegram.
