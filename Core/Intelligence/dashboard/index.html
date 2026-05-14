@@ -299,6 +299,24 @@
         <span id="cl-detail">waiting signal</span>
       </section>
 
+      <!-- ── Signal Intelligence (§17.2) ── -->
+      <section class="signal-intel-card">
+        <h2>Signal Intel</h2>
+        <div class="signal-intel-top">
+          <span class="lifecycle-badge" id="si-lifecycle">--</span>
+          <span class="grade-badge" id="si-grade">?</span>
+        </div>
+        <div class="signal-pair" id="si-pair">no signal</div>
+        <div class="confidence-bar-wrap">
+          <div class="confidence-bar-fill" id="si-conf-bar" style="width:0%"></div>
+        </div>
+        <div class="signal-breakdown" id="si-breakdown"></div>
+        <div class="exit-quality-row">
+          <span>Exit Quality</span>
+          <b id="si-exit-quality">--</b>
+        </div>
+      </section>
+
       <!-- System Stats -->
       <section class="system-card">
         <h2>System</h2>
@@ -307,6 +325,19 @@
         <div class="snap-row"><span>Disk</span>   <strong id="sys-disk">--</strong></div>
         <div class="snap-row"><span>Ollama</span> <strong id="sys-ollama">--</strong></div>
         <div class="snap-row"><span>Redis</span>  <strong id="sys-redis">--</strong></div>
+      </section>
+
+      <!-- ── Order Tracker Summary (§16.2) ── -->
+      <section class="order-tracker-card">
+        <h2>Order Tracker</h2>
+        <div class="ot-grid">
+          <span>Today</span>      <b id="ot-total">0</b>
+          <span>Filled</span>     <b id="ot-filled">0</b>
+          <span>Reconciled</span> <b id="ot-reconciled">0</b>
+          <span>Stale</span>      <b id="ot-stale" class="ot-warn">0</b>
+          <span>PnL</span>        <b id="ot-pnl" class="neutral">Rp 0</b>
+        </div>
+        <div class="open-orders-list" id="ot-open-orders"></div>
       </section>
 
       <!-- What-If Top -->

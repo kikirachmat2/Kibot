@@ -247,6 +247,100 @@ function renderWhatif(items) {
   }).join("");
 }
 
+
+/* ── §17.2 Signal Intel Panel ── */
+function renderSignalIntel(data) {
+  const signal = data?.council?.last_signal || data?.last_signal || {};
+  if (!signal || !signal.pair) return;
+
+  const lifecycle = String(signal.lifecycle || "").toUpperCase();
+  const grade     = String(signal.trade_grade || "?").toUpperCase();
+  const conf      = Number(signal.confidence || 0);
+  const pair      = String(signal.pair || signal.symbol || "").toUpperCase();
+  const breakdown = signal.confidence_breakdown || {};
+  const exitQ     = String(signal.exit_quality || "--");
+
+  // Lifecycle badge
+  const lcBadge = byId("si-lifecycle");
+  if (lcBadge) {
+    lcBadge.textContent = lifecycle || "--";
+    lcBadge.className = `lifecycle-badge ${lifecycle}`;
+  }
+
+  // Grade badge
+  const gBadge = byId("si-grade");
+  if (gBadge) {
+    gBadge.textContent = grade;
+    gBadge.className = `grade-badge ${grade}`;
+  }
+
+  updateText("si-pair", pair || "no signal");
+
+  // Confidence bar
+  const bar = byId("si-conf-bar");
+  if (bar) bar.style.width = `${Math.round(conf * 100)}%`;
+
+  // Breakdown chips
+  const bdEl = byId("si-breakdown");
+  if (bdEl && typeof breakdown === "object" && Object.keys(breakdown).length) {
+    bdEl.innerHTML = Object.entries(breakdown).map(([k, v]) => {
+      const val = Number(v);
+      const tier = val >= 0.7 ? "high" : val >= 0.4 ? "med" : "low";
+      const dot  = val >= 0.7 ? "✓" : val >= 0.4 ? "·" : "✗";
+      return `<span class="breakdown-chip ${tier}">${dot} ${escapeHtml(k.replace(/_/g, " "))} ${(val * 100).toFixed(0)}%</span>`;
+    }).join("");
+  } else if (bdEl) {
+    bdEl.innerHTML = "";
+  }
+
+  updateText("si-exit-quality", exitQ);
+}
+
+/* ── §16.2 Order Tracker Panel ── */
+function renderOrderTracker(data) {
+  const ot = data?.order_tracker || {};
+  const summary = ot.today_summary || {};
+  const openOrders = Array.isArray(ot.open_orders) ? ot.open_orders : [];
+
+  updateText("ot-total",       String(summary.total       ?? 0), false);
+  updateText("ot-filled",      String(summary.filled      ?? 0), false);
+  updateText("ot-reconciled",  String(summary.reconciled  ?? 0), false);
+
+  const staleEl = byId("ot-stale");
+  const staleN  = Number(summary.stale ?? 0);
+  if (staleEl) {
+    staleEl.textContent = String(staleN);
+    staleEl.classList.toggle("ot-warn", staleN > 0);
+  }
+
+  const pnlEl = byId("ot-pnl");
+  const pnl   = Number(summary.pnl_idr ?? 0);
+  if (pnlEl) {
+    pnlEl.textContent = fmtRp(pnl);
+    pnlEl.className   = pnl > 0 ? "positive" : pnl < 0 ? "negative" : "neutral";
+  }
+
+  // Open order rows
+  const listEl = byId("ot-open-orders");
+  if (!listEl) return;
+  if (!openOrders.length) {
+    listEl.innerHTML = "";
+    return;
+  }
+  listEl.innerHTML = openOrders.slice(0, 5).map((o) => {
+    const pair    = String(o.pair || "--").toUpperCase();
+    const state   = String(o.state || "").toUpperCase();
+    const budget  = Number(o.budget_idr || 0);
+    return `
+      <div class="ot-order-row">
+        <span class="ot-order-pair">${escapeHtml(pair)}</span>
+        <span class="ot-order-state ${escapeHtml(state)}">${escapeHtml(state)}</span>
+        <span class="ot-order-budget">${fmtRp(budget)}</span>
+      </div>
+    `;
+  }).join("");
+}
+
 function renderSummary(data) {
   const snapshot = data || {};
   lastSummary = snapshot;
@@ -312,6 +406,8 @@ function renderSummary(data) {
   updateText("agency-count", String(Object.keys(window.KiBotCanvas?.AGENTS || {}).length || 7), false);
 
   renderLogs(snapshot);
+  renderSignalIntel(snapshot);
+  renderOrderTracker(snapshot);
   window.KiBotCanvas?.render(snapshot);
 }
 

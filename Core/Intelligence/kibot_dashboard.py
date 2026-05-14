@@ -468,6 +468,47 @@ def _build_summary() -> Dict[str, Any]:
             "world_model": _latest_mtime(STATE / "world_model.json"),
         },
     }
+    # ── §16.2 Order Tracker ──────────────────────────
+    try:
+        from Core.Intelligence.order_tracker import OrderTracker
+        _ot = OrderTracker()
+        _ot_summary = _ot.get_today_summary()
+        _open_orders_raw = _ot.get_open_orders()
+        _open_orders = [
+            {
+                "id":         str(o.get("id", "")),
+                "pair":       str(o.get("pair", o.get("symbol", "--"))).upper(),
+                "state":      str(o.get("state", "")).upper(),
+                "budget_idr": _safe_float(o.get("budget_idr") or o.get("cost_idr"), 0.0),
+                "entry_price": _safe_float(o.get("entry_price") or o.get("fill_price"), 0.0),
+            }
+            for o in (_open_orders_raw if isinstance(_open_orders_raw, list) else [])
+        ]
+        summary["order_tracker"] = {
+            "today_summary": {
+                "total":       _safe_int(_ot_summary.get("total"), 0),
+                "filled":      _safe_int(_ot_summary.get("filled"), 0),
+                "reconciled":  _safe_int(_ot_summary.get("reconciled"), 0),
+                "stale":       _safe_int(_ot_summary.get("stale"), 0),
+                "pnl_idr":     _safe_float(_ot_summary.get("pnl_idr"), 0.0),
+            },
+            "open_orders": _open_orders[:5],
+        }
+    except Exception:
+        summary["order_tracker"] = {"today_summary": {}, "open_orders": []}
+
+    # ── §17.2 Last Signal (scanner output) ─────────
+    try:
+        _last_signal_path = STATE / "last_signal.json"
+        _ls = _read_json(_last_signal_path, {})
+        if isinstance(_ls, dict) and _ls:
+            summary["last_signal"] = _ls
+            # also inject into council for canvas compatibility
+            if "council" in summary and isinstance(summary["council"], dict):
+                summary["council"]["last_signal"] = _ls
+    except Exception:
+        pass
+
     summary["events"] = _build_events(summary)
     return summary
 
