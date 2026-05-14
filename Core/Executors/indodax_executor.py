@@ -326,7 +326,7 @@ class IndodaxExecutor:
                     if range_break_reclaim:
                         max_spread = max(max_spread, 0.50)
                     if support_bounce_reclaim:
-                        max_spread = max(max_spread, 0.49)
+                        max_spread = max(max_spread, 0.50)
                     if mature_pump:
                         max_spread = max(max_spread, 0.60)
                     if spread_pct > max_spread:
@@ -354,7 +354,7 @@ class IndodaxExecutor:
             elif range_break_reclaim:
                 required_confidence = max(0.57 if not learning_probe else 0.54, required_confidence - 0.05)
             elif support_bounce_reclaim:
-                required_confidence = max(0.55 if not learning_probe else 0.52, required_confidence - 0.08)
+                required_confidence = max(0.53 if not learning_probe else 0.50, required_confidence - 0.09)
             elif mature_pump:
                 required_confidence = max(0.56 if not learning_probe else 0.54, required_confidence - 0.08)
 
@@ -373,7 +373,7 @@ class IndodaxExecutor:
             elif range_break_reclaim:
                 momentum_floor = max(0.20, momentum_floor - 0.12)
             elif support_bounce_reclaim:
-                momentum_floor = max(0.18, momentum_floor - 0.14)
+                momentum_floor = max(0.16, momentum_floor - 0.16)
             elif mature_pump:
                 momentum_floor = max(0.15, momentum_floor - 0.20)
 
