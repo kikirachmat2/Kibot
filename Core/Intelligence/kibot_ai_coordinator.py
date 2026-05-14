@@ -486,6 +486,7 @@ PROMPT_TEMPLATES = {
         "For pump hunting, favor coins with 24h run-up, near-high price action, and persistent volume rather than isolated one-candle spikes.\n"
         "If a coin has already pulled back from the high but is reclaiming with renewed volume and persistence, treat it as a valid second-leg or pullback-reclaim candidate rather than rejecting it as dead.\n"
         "If the coin is a bit farther from the high but still shows strong reclaiming momentum, treat it as a late-reclaim candidate only when the recovery score remains strong and the move is not exhausted.\n"
+        "If a coin breaks out of an intraday range and then reclaims with sustained volume, treat it as a range-break reclaim candidate, but only if the thesis is still clean.\n"
         "Polymarket context: Focus on high-volume prediction shifts that correlate with tokens.\n"
         "Return strict compact JSON only with keys "
         "{\"possibilities\":[{\"title\":\"...\",\"description\":\"...\",\"probability\":0.0,\"assets\":[...],\"platforms\":[\"INDODAX\",\"POLYMARKET\",\"BINANCE\"],\"urgency\":\"LOW|MED|HIGH\"}]}"
@@ -531,6 +532,7 @@ PROMPT_TEMPLATES = {
         "5. If all supplied signals are poor, recommend WAIT or ABORT clearly.\n"
         "6. If a pullback-reclaim setup is present with strong recovery score, recommend it over stale continuation ideas.\n"
         "7. If a late-reclaim setup is present, only recommend it when the recovery score and volume persistence still justify the risk.\n"
+        "8. If a range-break reclaim setup is present, prefer it over weaker reclaim ideas when the structure is still clean.\n"
         "Return strict compact JSON: {\"verdict\":\"CHALLENGE|SUPPORT|ABORT\", \"counter_thesis\":\"...\", \"best_alternative_ticker\":\"SYMBOL/IDR\", \"best_alternative_action\":\"BUY|SELL|NONE\", \"best_alternative_confidence\":0.0, \"risk_focus\":[...], \"opportunity_focus\":[...], \"recovery_angle\":\"...\"}"
     ),
     "MOMENTUM_HAWK": (

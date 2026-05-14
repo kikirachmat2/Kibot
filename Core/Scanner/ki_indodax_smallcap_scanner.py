@@ -31,6 +31,12 @@ LATE_RECLAIM_MAX_DIST_TO_HIGH_PCT = 45.0
 LATE_RECLAIM_MAX_DRAWDOWN_FROM_HIGH_PCT = 45.0
 LATE_RECLAIM_MIN_VOLUME_RATIO = 1.08
 LATE_RECLAIM_MIN_RECLAIM_SCORE = 0.64
+RANGE_BREAK_MIN_RUNUP_PCT = 15.0
+RANGE_BREAK_MIN_RANGE_POSITION = 0.22
+RANGE_BREAK_MIN_BREAKOUT_FROM_LOW_PCT = 2.0
+RANGE_BREAK_MAX_DIST_TO_HIGH_PCT = 55.0
+RANGE_BREAK_MIN_VOLUME_RATIO = 1.10
+RANGE_BREAK_MIN_RECLAIM_SCORE = 0.70
 
 class IndodaxSmallCapScanner:
     def __init__(self):
@@ -138,6 +144,8 @@ class IndodaxSmallCapScanner:
         pullback_reclaim_score = 0.0
         late_reclaim = False
         late_reclaim_score = 0.0
+        range_break_reclaim = False
+        range_break_reclaim_score = 0.0
         if not trend_continuation:
             recent_low_5m = min(recent_prices) if recent_prices else price
             reclaim_from_low_pct = ((price - recent_low_5m) / recent_low_5m * 100) if recent_low_5m > 0 else 0.0
@@ -170,6 +178,17 @@ class IndodaxSmallCapScanner:
                 and reclaim_score >= LATE_RECLAIM_MIN_RECLAIM_SCORE
             )
             late_reclaim_score = round(reclaim_score, 3)
+            breakout_from_low_pct = reclaim_from_low_pct
+            range_break_reclaim = (
+                runup_from_low_pct >= RANGE_BREAK_MIN_RUNUP_PCT
+                and range_position >= RANGE_BREAK_MIN_RANGE_POSITION
+                and distance_to_high_pct <= RANGE_BREAK_MAX_DIST_TO_HIGH_PCT
+                and vol_ratio >= RANGE_BREAK_MIN_VOLUME_RATIO
+                and persistence >= 0.58
+                and breakout_from_low_pct >= RANGE_BREAK_MIN_BREAKOUT_FROM_LOW_PCT
+                and reclaim_score >= RANGE_BREAK_MIN_RECLAIM_SCORE
+            )
+            range_break_reclaim_score = round(reclaim_score, 3)
         mature_pump = (
             runup_from_low_pct >= MATURE_MIN_RUNUP_PCT
             and range_position >= MATURE_MIN_RANGE_POSITION
@@ -188,6 +207,9 @@ class IndodaxSmallCapScanner:
         if late_reclaim:
             price_floor = min(price_floor, 0.18)
             volume_floor = min(volume_floor, LATE_RECLAIM_MIN_VOLUME_RATIO)
+        if range_break_reclaim:
+            price_floor = min(price_floor, 0.16)
+            volume_floor = min(volume_floor, RANGE_BREAK_MIN_VOLUME_RATIO)
         if mature_pump:
             price_floor = min(price_floor, 0.15)
             volume_floor = min(volume_floor, MATURE_MIN_VOLUME_RATIO)
@@ -208,6 +230,8 @@ class IndodaxSmallCapScanner:
             stage_bonus = max(stage_bonus, 0.04)
         if late_reclaim:
             stage_bonus = max(stage_bonus, 0.035)
+        if range_break_reclaim:
+            stage_bonus = max(stage_bonus, 0.045)
         obi = self.fetch_orderbook(pair)
         obi_available = obi is not None
         if obi_available and obi < OBI_MIN:
@@ -274,6 +298,7 @@ class IndodaxSmallCapScanner:
             "trend_continuation": trend_continuation,
             "pullback_reclaim": pullback_reclaim,
             "late_reclaim": late_reclaim,
+            "range_break_reclaim": range_break_reclaim,
             "mature_pump": mature_pump,
             "track_record": {
                 "persistence": round(persistence, 3),
@@ -283,8 +308,9 @@ class IndodaxSmallCapScanner:
                 "day_high": round(day_high, 8),
                 "pullback_reclaim_score": pullback_reclaim_score,
                 "late_reclaim_score": late_reclaim_score,
+                "range_break_reclaim_score": range_break_reclaim_score,
             },
-            "pump_stage": "CONTINUATION" if trend_continuation else "RECLAIM" if pullback_reclaim else "LATE_RECLAIM" if late_reclaim else "MATURE" if mature_pump else "IGNITION",
+            "pump_stage": "CONTINUATION" if trend_continuation else "RECLAIM" if pullback_reclaim else "LATE_RECLAIM" if late_reclaim else "RANGE_BREAK_RECLAIM" if range_break_reclaim else "MATURE" if mature_pump else "IGNITION",
             "regime": "PUMP_DETECTED",
             "exchange": "INDODAX",
             "ts": int(now * 1000)

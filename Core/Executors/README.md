@@ -15,6 +15,7 @@ Executor layer menerima sinyal yang sudah divalidasi lalu mengeksekusi order sec
 - Untuk Indodax pump continuation, executor sekarang bisa melonggarkan momentum/confidence floor secara terkontrol jika scanner menandai `trend_continuation` atau `mature_pump`.
 - Untuk wave yang sudah retrace lalu reclaim lagi, executor juga mengenali `pullback_reclaim` dan melonggarkan floor sedikit, tetapi hanya setelah fee, spread, dan balance checks tetap lolos.
 - Untuk wave yang lebih jauh dari high, executor dapat mengenali `late_reclaim`, tetapi hanya bila recovery score dan volume persistence masih cukup kuat.
+- Untuk setup intraday range break yang reclaim lagi, executor dapat mengenali `range_break_reclaim`, tetapi tetap menolak kalau struktur, fee, atau spread tidak masuk.
 - Order real-money hanya dibuka jika `KIBOT_LIVE_TRADING_ENABLED=true` atau `KIBOT_TRADING_MODE=live`.
 - Council sekarang punya confidence floor adaptif, jadi entry yang terlalu lemah akan masuk `WAIT` bukan dipaksa eksekusi.
 - Hindari double-start service jika node dijalankan via `systemd`.
