@@ -15,6 +15,7 @@
 - [`bin/`](./bin): shell utilities canonical untuk backup, dependency bootstrap, dan wrapper operasional.
 - [`bin/kibotctl`](./bin/kibotctl): one-command wrapper untuk status, doctor, tools, start/stop, dan sync model server.
 - [`bin/kibot-dashboard`](./bin/kibot-dashboard): launcher dashboard visual berbasis FastAPI/Uvicorn.
+- [`config/systemd/kibot-dashboard.service`](./config/systemd/kibot-dashboard.service): systemd unit untuk dashboard visual port `8787`.
 - [`AGENTS.md`](./AGENTS.md): guardrail kerja untuk Codex, Aider, Copilot, dan operator automation.
 - [`state/`](./state): runtime JSON snapshot yang dipakai engine saat berjalan.
 

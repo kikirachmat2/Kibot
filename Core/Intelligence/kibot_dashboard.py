@@ -59,6 +59,17 @@ def _build_summary() -> Dict[str, Any]:
     council = _read_json(STATE / "council_directives.json", {})
     active_trades = _read_json(STATE / "active_trades.json", {})
     logger_state = _read_json(STATE / "ai_coordinator_providers.json", {})
+    brain_state = _read_json(STATE / "brain_status.json", {})
+    world_model = _read_json(STATE / "world_model.json", {})
+    agent_state = _read_json(STATE / "learning_state.json", {})
+    ai_search = _read_json(STATE / "ai_search_cache.json", {})
+
+    portfolio = telemetry.get("portfolio") or {}
+    indodax_equity = float(portfolio.get("equity_idr") or 0.0)
+    combined_equity = float(portfolio.get("combined_equity_idr") or indodax_equity or 0.0)
+    daily_pnl = float(portfolio.get("daily_pnl_idr") or 0.0)
+    daily_state = portfolio.get("daily_state") or {}
+    polymarket = portfolio.get("polymarket") or {}
 
     services = {}
     for name in [
@@ -80,8 +91,22 @@ def _build_summary() -> Dict[str, Any]:
         "strategy": strategy,
         "whatif": whatif,
         "council": council,
+        "brain": brain_state,
+        "world_model": world_model,
+        "learning_state": agent_state,
+        "ai_search": ai_search,
         "active_trades": active_trades,
         "provider_state": logger_state,
+        "portfolio": {
+            "indodax_equity_idr": indodax_equity,
+            "combined_equity_idr": combined_equity,
+            "daily_pnl_idr": daily_pnl,
+            "daily_state": daily_state,
+            "polymarket": polymarket,
+            "indodax_balance": indodax_equity,
+            "polymarket_balance_idr": float(polymarket.get("equity_idr") or 0.0),
+            "polymarket_usdc_balance": float(polymarket.get("usdc_balance") or 0.0),
+        },
         "services": services,
         "logs": {
             "master": _load_lines(LOGS / "kibot-master.log", 40),
@@ -163,12 +188,22 @@ async def home() -> str:
           const r = await fetch('/api/summary');
           const d = await r.json();
           document.getElementById('gen').textContent = d.generated_at;
-          document.getElementById('equity').textContent = d.telemetry?.portfolio?.combined_equity_idr ? 'Rp ' + Number(d.telemetry.portfolio.combined_equity_idr).toLocaleString('id-ID') : 'n/a';
-          document.getElementById('pnl').textContent = d.telemetry?.portfolio?.daily_pnl_idr ? 'Rp ' + Number(d.telemetry.portfolio.daily_pnl_idr).toLocaleString('id-ID') : 'n/a';
+          document.getElementById('equity').textContent = d.portfolio?.combined_equity_idr ? 'Rp ' + Number(d.portfolio.combined_equity_idr).toLocaleString('id-ID') : 'n/a';
+          document.getElementById('pnl').textContent = d.portfolio?.daily_pnl_idr ? 'Rp ' + Number(d.portfolio.daily_pnl_idr).toLocaleString('id-ID') : 'n/a';
           document.getElementById('mode').textContent = d.strategy?.global_mode || 'unknown';
-          document.getElementById('whatif').textContent = d.whatif?.state || 'n/a';
-          document.getElementById('runtime').textContent = d.runtime?.daily_state || 'n/a';
+          document.getElementById('whatif').textContent = d.whatif?.state || d.world_model?.status || 'n/a';
+          document.getElementById('runtime').textContent = d.portfolio?.daily_state?.color || d.runtime?.daily_state || 'n/a';
           document.getElementById('services').textContent = Object.entries(d.services).map(([k,v]) => `${k}: ${v}`).join(' | ');
+          document.getElementById('indodax').textContent = d.portfolio?.indodax_equity_idr ? 'Rp ' + Number(d.portfolio.indodax_equity_idr).toLocaleString('id-ID') : 'n/a';
+          document.getElementById('poly').textContent = d.portfolio?.polymarket_balance_idr ? 'Rp ' + Number(d.portfolio.polymarket_balance_idr).toLocaleString('id-ID') : 'n/a';
+          document.getElementById('usdc').textContent = d.portfolio?.polymarket_usdc_balance ? Number(d.portfolio.polymarket_usdc_balance).toFixed(4) + ' USDC' : 'n/a';
+          document.getElementById('state').textContent = JSON.stringify({
+            daily_state: d.portfolio?.daily_state,
+            active_trades: Object.keys(d.active_trades || {}).length,
+            whatif: d.whatif?.state || null,
+            council: d.council?.decision_state || d.council?.action || null,
+            brain: d.brain?.status || null
+          }, null, 2);
         }
         window.addEventListener('load', refresh);
         setInterval(refresh, 15000);
@@ -185,6 +220,12 @@ async def home() -> str:
               <div class="tile"><div class="label">Combined Equity</div><div class="value green" id="equity">loading...</div></div>
               <div class="tile"><div class="label">Daily PnL</div><div class="value" id="pnl">loading...</div></div>
               <div class="tile"><div class="label">Strategy</div><div class="value" id="mode">loading...</div></div>
+            </div>
+            <div class="grid">
+              <div class="tile"><div class="label">Indodax Balance</div><div class="value" id="indodax">loading...</div></div>
+              <div class="tile"><div class="label">Polymarket IDR</div><div class="value" id="poly">loading...</div></div>
+              <div class="tile"><div class="label">Polymarket USDC</div><div class="value" id="usdc">loading...</div></div>
+              <div class="tile"><div class="label">State</div><div class="value" id="runtime">loading...</div></div>
             </div>
           </div>
           <div class="card">
@@ -219,6 +260,20 @@ async def home() -> str:
             <pre id="state">Open /api/summary for JSON state</pre>
           </div>
         </div>
+
+        <div class="card section">
+          <h2>Agent Ledger</h2>
+          <table>
+            <thead><tr><th>Actor</th><th>Status</th><th>Evidence</th><th>Notes</th></tr></thead>
+            <tbody>
+              <tr><td>Scanner</td><td>Live</td><td>Signals + stage metadata</td><td>Indodax / Polymarket / Universal</td></tr>
+              <tr><td>Council</td><td>Live</td><td>What-if + antagonist + possibility</td><td>Decision state visible in runtime</td></tr>
+              <tr><td>Executor</td><td>Live</td><td>Balance + fee + spread + confidence</td><td>Real money only behind gate</td></tr>
+              <tr><td>Verifier</td><td>Live</td><td>PnL + fills + active trades</td><td>Nightly report and escalation</td></tr>
+              <tr><td>Janitor</td><td>Live</td><td>Disk + services + models</td><td>Self-healing maintenance loop</td></tr>
+            </tbody>
+          </table>
+        </div>
       </div>
     </body>
     </html>
@@ -229,4 +284,3 @@ async def home() -> str:
 async def summary() -> JSONResponse:
     data = _build_summary()
     return JSONResponse(data)
-

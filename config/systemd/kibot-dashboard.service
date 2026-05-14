@@ -1,0 +1,17 @@
+[Unit]
+Description=KiBot Sovereign Visual Control Plane Dashboard
+After=network-online.target ollama.service redis-server.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=ubuntu
+WorkingDirectory=/home/ubuntu/KiBot
+Environment=PYTHONUNBUFFERED=1
+Environment=KIBOT_DASHBOARD_PORT=8787
+ExecStart=/home/ubuntu/KiBot/bin/kibot-dashboard
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
