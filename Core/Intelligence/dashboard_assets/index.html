@@ -1,0 +1,268 @@
+<!doctype html>
+<html lang="id">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="theme-color" content="#050913" />
+  <title>KiBot Sovereign Canvas</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=IBM+Plex+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/dashboard.css" />
+  <script defer src="/static/dashboard.js"></script>
+</head>
+<body>
+  <div class="bg-orbit bg-orbit--one"></div>
+  <div class="bg-orbit bg-orbit--two"></div>
+  <div class="bg-grid"></div>
+
+  <div class="shell">
+    <header class="sovereign-header panel">
+      <div class="brand-block">
+        <div class="brand-mark">⚡</div>
+        <div class="brand-copy">
+          <div class="brand-name">KiBot Sovereign</div>
+          <div class="brand-sub">Living delegation canvas · Indodax + Polymarket</div>
+        </div>
+      </div>
+
+      <div class="header-center">
+        <div class="state-chip state-chip--flat" id="header-state-chip">FLAT</div>
+        <div class="header-clock">
+          <div class="clock-now" id="header-clock">--:--:-- WIB</div>
+          <div class="clock-countdown" id="header-countdown">deadline unknown</div>
+        </div>
+      </div>
+
+      <div class="header-metrics">
+        <div class="metric-stack">
+          <div class="metric-label">Combined Equity</div>
+          <div class="metric-value metric-value--hero" id="header-combined-equity">Rp --</div>
+        </div>
+        <div class="metric-stack">
+          <div class="metric-label">Daily PnL</div>
+          <div class="metric-value" id="header-daily-pnl">Rp --</div>
+        </div>
+        <div class="metric-stack metric-stack--right">
+          <div class="metric-label">Refresh</div>
+          <div class="metric-value" id="header-updated">pending...</div>
+        </div>
+      </div>
+    </header>
+
+    <main class="control-grid">
+      <section class="panel canvas-panel">
+        <div class="panel-head">
+          <div>
+            <div class="panel-kicker">Delegation Canvas</div>
+            <h1 class="panel-title">Scanner → Council → Executor → Verifier → Janitor</h1>
+          </div>
+          <div class="panel-status">
+            <span class="status-pill status-pill--thinking" id="canvas-posture">thinking...</span>
+            <span class="status-mini" id="canvas-pulse">waiting for live state</span>
+          </div>
+        </div>
+
+        <div class="canvas-shell">
+          <svg id="delegation-canvas" viewBox="0 0 1280 560" preserveAspectRatio="none" aria-label="Delegation canvas"></svg>
+        </div>
+
+        <div class="canvas-legend">
+          <span><i class="dot dot--active"></i> active</span>
+          <span><i class="dot dot--thinking"></i> deliberating</span>
+          <span><i class="dot dot--warn"></i> warning</span>
+          <span><i class="dot dot--error"></i> error</span>
+          <span><i class="dot dot--idle"></i> idle</span>
+        </div>
+      </section>
+
+      <section class="panel live-panel">
+        <div class="panel-head">
+          <div>
+            <div class="panel-kicker">Live Ledger</div>
+            <h2 class="panel-title">Balances, council, strategy, and brain state</h2>
+          </div>
+          <div class="status-pill status-pill--green" id="header-live-gate">live gate checking...</div>
+        </div>
+
+        <article class="info-card info-card--equity">
+          <div class="info-card__head">
+            <div>
+              <div class="info-card__label">Mission Summary</div>
+              <div class="info-card__value" id="portfolio-daily-state">--</div>
+            </div>
+            <div class="info-card__badge" id="portfolio-daily-state-badge">--</div>
+          </div>
+          <div class="stacked-metrics">
+            <div class="stacked-metric">
+              <span class="stacked-metric__label">Combined</span>
+              <span class="stacked-metric__value" id="portfolio-combined">Rp --</span>
+            </div>
+            <div class="stacked-metric">
+              <span class="stacked-metric__label">Indodax cash</span>
+              <span class="stacked-metric__value" id="portfolio-indodax-balance">Rp --</span>
+            </div>
+            <div class="stacked-metric">
+              <span class="stacked-metric__label">Polymarket USDC</span>
+              <span class="stacked-metric__value" id="portfolio-poly-balance">--</span>
+            </div>
+          </div>
+        </article>
+
+        <article class="info-card info-card--split">
+          <div class="mini-card mini-card--indo">
+            <div class="mini-card__head">
+              <span class="mini-card__icon">🇮🇩</span>
+              <span class="mini-card__title">Indodax</span>
+            </div>
+            <div class="mini-card__body">
+              <div class="mini-card__balance" id="portfolio-indodax-equity">Rp --</div>
+              <div class="mini-card__subline" id="portfolio-indodax-pnl">Daily PnL: Rp --</div>
+              <div class="mini-card__subline" id="portfolio-indodax-positions">0 positions</div>
+            </div>
+            <div class="mini-card__footer">
+              <span class="chip chip--orange">cash aware</span>
+              <span class="chip chip--orange">fee aware</span>
+            </div>
+          </div>
+
+          <div class="mini-card mini-card--poly">
+            <div class="mini-card__head">
+              <span class="mini-card__icon">🔮</span>
+              <span class="mini-card__title">Polymarket</span>
+            </div>
+            <div class="mini-card__body">
+              <div class="mini-card__balance" id="portfolio-poly-equity">Rp --</div>
+              <div class="mini-card__subline" id="portfolio-poly-pnl">Daily PnL: --</div>
+              <div class="mini-card__subline" id="portfolio-poly-bets">0 active bets</div>
+            </div>
+            <div class="mini-card__footer">
+              <span class="chip chip--purple">phantom wallet</span>
+              <span class="chip chip--purple">clob live</span>
+            </div>
+          </div>
+        </article>
+
+        <article class="info-card">
+          <div class="info-card__head">
+            <div>
+              <div class="info-card__label">Council Lens</div>
+              <div class="info-card__value" id="council-decision">WAIT</div>
+            </div>
+            <div class="info-card__badge" id="council-confidence">0.00</div>
+          </div>
+          <div class="lens-grid">
+            <div>
+              <div class="lens-label">Enter / Wait / Exit</div>
+              <div class="lens-value" id="council-scores">0.00 / 0.00 / 0.00</div>
+            </div>
+            <div>
+              <div class="lens-label">Deadline</div>
+              <div class="lens-value" id="council-deadline">LOW</div>
+            </div>
+            <div>
+              <div class="lens-label">What-if</div>
+              <div class="lens-value" id="council-whatif">UNKNOWN</div>
+            </div>
+          </div>
+          <div class="info-card__note" id="council-mandate">Council mandate will appear here.</div>
+        </article>
+
+        <article class="info-card">
+          <div class="info-card__head">
+            <div>
+              <div class="info-card__label">Strategy + Brain</div>
+              <div class="info-card__value" id="strategy-mode">--</div>
+            </div>
+            <div class="info-card__badge" id="strategy-confidence">--</div>
+          </div>
+          <div class="stacked-metrics stacked-metrics--tight">
+            <div class="stacked-metric">
+              <span class="stacked-metric__label">Slots</span>
+              <span class="stacked-metric__value" id="strategy-slots">--</span>
+            </div>
+            <div class="stacked-metric">
+              <span class="stacked-metric__label">TP / SL</span>
+              <span class="stacked-metric__value" id="strategy-risk">--</span>
+            </div>
+            <div class="stacked-metric">
+              <span class="stacked-metric__label">Posture</span>
+              <span class="stacked-metric__value" id="brain-posture">--</span>
+            </div>
+          </div>
+          <div class="brain-strip">
+            <div class="brain-strip__row">
+              <span class="brain-strip__label">Sentiment</span>
+              <span class="brain-strip__value" id="brain-sentiment">--</span>
+            </div>
+            <div class="brain-strip__row">
+              <span class="brain-strip__label">Risk</span>
+              <span class="brain-strip__value" id="brain-risk">--</span>
+            </div>
+          </div>
+          <div class="headline-list" id="brain-headlines"></div>
+        </article>
+
+        <article class="info-card info-card--compact">
+          <div class="info-card__head">
+            <div>
+              <div class="info-card__label">Active Legs</div>
+              <div class="info-card__value" id="active-leg-count">0</div>
+            </div>
+            <div class="info-card__badge" id="active-leg-note">idle</div>
+          </div>
+          <div class="active-leg-list" id="active-leg-list"></div>
+        </article>
+
+        <article class="info-card info-card--compact">
+          <div class="info-card__head">
+            <div>
+              <div class="info-card__label">Mesh & Services</div>
+              <div class="info-card__value" id="service-summary">loading...</div>
+            </div>
+            <div class="info-card__badge" id="provider-summary">providers</div>
+          </div>
+          <div class="service-grid" id="service-grid"></div>
+        </article>
+      </section>
+
+      <aside class="panel feed-panel">
+        <div class="panel-head">
+          <div>
+            <div class="panel-kicker">Event Trail</div>
+            <h2 class="panel-title">Live feed with working character</h2>
+          </div>
+          <div class="feed-chip" id="feed-updated">idle</div>
+        </div>
+
+        <div class="feed-stream" id="event-feed"></div>
+
+        <article class="info-card info-card--compact">
+          <div class="info-card__head">
+            <div>
+              <div class="info-card__label">Snapshots</div>
+              <div class="info-card__value" id="snapshot-age">--</div>
+            </div>
+          </div>
+          <div class="snapshot-list">
+            <div class="snapshot-row"><span>Telemetry</span><strong id="snapshot-telemetry">--</strong></div>
+            <div class="snapshot-row"><span>Runtime</span><strong id="snapshot-runtime">--</strong></div>
+            <div class="snapshot-row"><span>What-if</span><strong id="snapshot-whatif">--</strong></div>
+            <div class="snapshot-row"><span>World model</span><strong id="snapshot-world">--</strong></div>
+          </div>
+        </article>
+
+        <article class="info-card info-card--compact">
+          <div class="info-card__head">
+            <div>
+              <div class="info-card__label">Provider Mesh</div>
+              <div class="info-card__value" id="provider-healthy-count">--</div>
+            </div>
+          </div>
+          <div class="provider-list" id="provider-list"></div>
+        </article>
+      </aside>
+    </main>
+  </div>
+</body>
+</html>

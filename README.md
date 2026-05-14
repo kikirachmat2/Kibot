@@ -9,7 +9,8 @@
 - [`Core/Intelligence/SERVER_INVENTORY.md`](./Core/Intelligence/SERVER_INVENTORY.md): snapshot runtime server, AI models, API keys, dan artefak server-only.
 - [`Core/Intelligence/delegation_workflows.md`](./Core/Intelligence/delegation_workflows.md): playbook workflow delegasi formal untuk seluruh sistem.
 - [`Core/Intelligence/delegation_workflows.json`](./Core/Intelligence/delegation_workflows.json): manifest machine-readable untuk workflow delegasi.
-- [`Core/Intelligence/kibot_dashboard.py`](./Core/Intelligence/kibot_dashboard.py): control-plane web dashboard untuk memantau delegation flow secara visual.
+- [`Core/Intelligence/kibot_dashboard.py`](./Core/Intelligence/kibot_dashboard.py): control-plane web dashboard untuk memantau delegation flow secara visual, lengkap dengan canvas SVG, live ledger, dan event stream.
+- [`Core/Intelligence/dashboard_assets/`](./Core/Intelligence/dashboard_assets): HTML/CSS/JS assets untuk visual control plane yang lebih hidup.
 - [`Core/Security/README.md`](./Core/Security/README.md): HMAC, vault, dan audit security.
 - [`Core/Support/README.md`](./Core/Support/README.md): config, utilities, dan tooling.
 - [`bin/`](./bin): shell utilities canonical untuk backup, dependency bootstrap, dan wrapper operasional.

@@ -15,7 +15,8 @@ AI Orchestration, Learning, and Market Intelligence models.
 - Target harian sekarang dipahami sebagai state `GREEN` bukan angka persen statis, jadi council dan executor bisa menahan winner lebih lama kalau edge masih kuat.
 - `kibot_ai_scout.py` membawa `daily_state` yang sama ke `POSSIBILITY_MINING` dan validasi targeted scouting, sehingga scouting global dan council memakai posture yang konsisten.
 - `delegation_workflows.md` dan `delegation_workflows.json` mendokumentasikan alur delegasi formal KiBot: discovery, council, executor, verification, dan maintenance.
-- `kibot_dashboard.py` menampilkan alur delegasi, runtime summary, strategy state, dan log ringkas dalam visual control plane web di port `8787`.
+- `kibot_dashboard.py` menampilkan alur delegasi, canvas SVG, live ledger, event trail, strategy state, dan log ringkas dalam visual control plane web di port `8787`.
+- `dashboard_assets/` memuat HTML/CSS/JS control plane yang dipakai dashboard agar tampil seperti living delegation canvas, bukan admin panel biasa.
 
 ## Live Server Atlas
 Source of truth untuk keadaan server yang sebenarnya:
