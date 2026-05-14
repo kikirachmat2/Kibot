@@ -153,21 +153,21 @@ async def home() -> str:
             linear-gradient(180deg, #05101d 0%, #091428 44%, #050a14 100%);
           color: var(--text);
         }
-        .wrap { max-width: 1400px; margin: 0 auto; padding: 28px; }
+        .wrap { max-width: 1560px; margin: 0 auto; padding: 28px; }
         .hero {
-          display: grid; grid-template-columns: 1.4fr 0.8fr; gap: 20px;
+          display: grid; grid-template-columns: 1.35fr 0.65fr; gap: 18px;
         }
         .card {
           background: linear-gradient(180deg, var(--panel), var(--panel2));
           border: 1px solid var(--line);
-          border-radius: 18px;
+          border-radius: 20px;
           padding: 18px;
           box-shadow: 0 18px 60px rgba(0,0,0,0.28);
         }
-        .title { font-size: 34px; font-weight: 800; letter-spacing: -0.04em; margin: 0 0 8px; }
+        .title { font-size: 36px; font-weight: 800; letter-spacing: -0.05em; margin: 0 0 8px; }
         .sub { color: var(--muted); line-height: 1.5; margin: 0; }
         .grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; margin-top: 18px; }
-        .tile { padding: 14px; border-radius: 16px; background: rgba(255,255,255,0.03); border: 1px solid var(--line); }
+        .tile { padding: 14px; border-radius: 16px; background: rgba(255,255,255,0.03); border: 1px solid var(--line); min-height: 86px; }
         .label { font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.08em; }
         .value { font-size: 22px; font-weight: 700; margin-top: 6px; }
         .section { margin-top: 20px; }
@@ -181,6 +181,62 @@ async def home() -> str:
         .red { color: var(--red); }
         pre { white-space: pre-wrap; word-break: break-word; margin: 0; color: #cfe1ff; }
         .two { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+        .canvas {
+          position: relative;
+          min-height: 420px;
+          overflow: hidden;
+          background:
+            radial-gradient(circle at 20% 20%, rgba(98,214,255,0.14), transparent 20%),
+            radial-gradient(circle at 80% 10%, rgba(72,224,145,0.12), transparent 18%),
+            linear-gradient(180deg, rgba(255,255,255,0.03), rgba(255,255,255,0.015));
+        }
+        .canvas-grid {
+          position: absolute;
+          inset: 0;
+          background-image:
+            linear-gradient(rgba(255,255,255,0.045) 1px, transparent 1px),
+            linear-gradient(90deg, rgba(255,255,255,0.045) 1px, transparent 1px);
+          background-size: 38px 38px;
+          mask-image: linear-gradient(180deg, rgba(0,0,0,0.75), transparent 92%);
+          pointer-events: none;
+        }
+        .node {
+          position: absolute;
+          width: 210px;
+          border-radius: 18px;
+          border: 1px solid rgba(110,181,255,0.22);
+          background: rgba(7, 16, 30, 0.88);
+          box-shadow: 0 16px 30px rgba(0,0,0,0.22);
+          padding: 14px 14px 12px;
+          backdrop-filter: blur(12px);
+        }
+        .node .k { font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.09em; }
+        .node .v { font-size: 18px; font-weight: 800; margin-top: 4px; }
+        .node .s { font-size: 12px; color: #cfe1ff; opacity: 0.9; margin-top: 6px; line-height: 1.45; }
+        .node.live { border-color: rgba(72,224,145,0.35); }
+        .node.alert { border-color: rgba(255,107,107,0.35); }
+        .node.warn { border-color: rgba(255,207,90,0.35); }
+        .wire {
+          position: absolute;
+          height: 3px;
+          background: linear-gradient(90deg, rgba(98,214,255,0.0), rgba(98,214,255,0.7), rgba(72,224,145,0.75), rgba(98,214,255,0.0));
+          box-shadow: 0 0 16px rgba(98,214,255,0.18);
+          border-radius: 999px;
+          transform-origin: left center;
+        }
+        .wire::after {
+          content: "";
+          position: absolute;
+          right: -7px;
+          top: -5px;
+          width: 12px;
+          height: 12px;
+          border-radius: 999px;
+          background: var(--green);
+          box-shadow: 0 0 18px rgba(72,224,145,0.7);
+        }
+        .flow-title { display:flex; justify-content:space-between; align-items:center; margin-bottom:12px; }
+        .mini { font-size: 12px; color: var(--muted); }
         @media (max-width: 1100px) { .hero, .two, .grid { grid-template-columns: 1fr; } }
       </style>
       <script>
@@ -191,12 +247,17 @@ async def home() -> str:
           document.getElementById('equity').textContent = d.portfolio?.combined_equity_idr ? 'Rp ' + Number(d.portfolio.combined_equity_idr).toLocaleString('id-ID') : 'n/a';
           document.getElementById('pnl').textContent = d.portfolio?.daily_pnl_idr ? 'Rp ' + Number(d.portfolio.daily_pnl_idr).toLocaleString('id-ID') : 'n/a';
           document.getElementById('mode').textContent = d.strategy?.global_mode || 'unknown';
+          document.getElementById('strategy-mini').textContent = d.strategy?.indodax?.take_profit_pct ? `TP ${d.strategy.indodax.take_profit_pct}% | Conf ${d.strategy.indodax.min_confidence || 'n/a'}` : 'strategy n/a';
           document.getElementById('whatif').textContent = d.whatif?.state || d.world_model?.status || 'n/a';
           document.getElementById('runtime').textContent = d.portfolio?.daily_state?.color || d.runtime?.daily_state || 'n/a';
           document.getElementById('services').textContent = Object.entries(d.services).map(([k,v]) => `${k}: ${v}`).join(' | ');
           document.getElementById('indodax').textContent = d.portfolio?.indodax_equity_idr ? 'Rp ' + Number(d.portfolio.indodax_equity_idr).toLocaleString('id-ID') : 'n/a';
           document.getElementById('poly').textContent = d.portfolio?.polymarket_balance_idr ? 'Rp ' + Number(d.portfolio.polymarket_balance_idr).toLocaleString('id-ID') : 'n/a';
           document.getElementById('usdc').textContent = d.portfolio?.polymarket_usdc_balance ? Number(d.portfolio.polymarket_usdc_balance).toFixed(4) + ' USDC' : 'n/a';
+          document.getElementById('scanner-status').textContent = d.services?.['kibot-scanner'] || 'unknown';
+          document.getElementById('council-status').textContent = d.council?.decision_state || d.council?.action || 'unknown';
+          document.getElementById('executor-status').textContent = d.services?.['kibot-executor'] || 'unknown';
+          document.getElementById('janitor-status').textContent = d.services?.['kibot-janitor'] || 'unknown';
           document.getElementById('state').textContent = JSON.stringify({
             daily_state: d.portfolio?.daily_state,
             active_trades: Object.keys(d.active_trades || {}).length,
@@ -204,6 +265,7 @@ async def home() -> str:
             council: d.council?.decision_state || d.council?.action || null,
             brain: d.brain?.status || null
           }, null, 2);
+          document.getElementById('flow-state').textContent = d.portfolio?.daily_state?.color || 'UNKNOWN';
         }
         window.addEventListener('load', refresh);
         setInterval(refresh, 15000);
@@ -225,7 +287,41 @@ async def home() -> str:
               <div class="tile"><div class="label">Indodax Balance</div><div class="value" id="indodax">loading...</div></div>
               <div class="tile"><div class="label">Polymarket IDR</div><div class="value" id="poly">loading...</div></div>
               <div class="tile"><div class="label">Polymarket USDC</div><div class="value" id="usdc">loading...</div></div>
-              <div class="tile"><div class="label">State</div><div class="value" id="runtime">loading...</div></div>
+              <div class="tile"><div class="label">State</div><div class="value" id="runtime">loading...</div><div class="mini" id="strategy-mini">loading...</div></div>
+            </div>
+            <div class="section">
+              <div class="flow-title">
+                <h2>Live Flow Canvas</h2>
+                <div class="mini">current posture: <span class="green" id="flow-state">loading...</span></div>
+              </div>
+              <div class="card canvas">
+                <div class="canvas-grid"></div>
+                <div class="wire" style="left: 180px; top: 126px; width: 165px; transform: rotate(0deg);"></div>
+                <div class="wire" style="left: 346px; top: 126px; width: 165px; transform: rotate(0deg);"></div>
+                <div class="wire" style="left: 512px; top: 126px; width: 160px; transform: rotate(0deg);"></div>
+                <div class="wire" style="left: 678px; top: 126px; width: 160px; transform: rotate(0deg);"></div>
+
+                <div class="node live" style="left: 40px; top: 64px;">
+                  <div class="k">Scanner</div><div class="v" id="scanner-status">live</div>
+                  <div class="s">Discovers pump continuation, reclaim, pivot, and Polymarket signals.</div>
+                </div>
+                <div class="node warn" style="left: 232px; top: 64px;">
+                  <div class="k">Council</div><div class="v" id="council-status">live</div>
+                  <div class="s">What-if + antagonist + possibility mining + deadline pressure.</div>
+                </div>
+                <div class="node live" style="left: 424px; top: 64px;">
+                  <div class="k">Executor</div><div class="v" id="executor-status">live</div>
+                  <div class="s">Balance-aware, fee-aware, spread-aware live order gate.</div>
+                </div>
+                <div class="node live" style="left: 616px; top: 64px;">
+                  <div class="k">Verifier</div><div class="v">active</div>
+                  <div class="s">Tracks fills, PnL, active trades, and midnight reporting.</div>
+                </div>
+                <div class="node live" style="left: 808px; top: 64px;">
+                  <div class="k">Janitor</div><div class="v" id="janitor-status">live</div>
+                  <div class="s">Keeps disk, models, and services healthy.</div>
+                </div>
+              </div>
             </div>
           </div>
           <div class="card">
