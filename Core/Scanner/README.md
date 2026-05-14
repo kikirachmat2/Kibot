@@ -18,6 +18,7 @@ Scanner layer untuk membaca peluang pasar dan mengirim sinyal HMAC-signed ke exe
 - Mode `late_reclaim` juga ada untuk wave yang lebih jauh dari high, tapi hanya kalau recovery score dan volume persistence masih cukup sehat. Ini menjaga sistem tetap agresif tanpa jadi liar.
 - Mode `range_break_reclaim` juga ada untuk setup yang keluar dari range intraday lalu reclaim lagi dengan volume lanjutan. Ini dibuat untuk menangkap second-wave yang lebih kuat, tapi tetap tidak dipakai kalau struktur sudah rusak.
 - Mode `support_bounce_reclaim` juga ada untuk coin yang memantul dari support intraday lalu reclaim lagi dengan room to run yang masih sehat. Ini membuat scanner lebih peka ke riding-the-wave tanpa jadi terlalu liar.
+- Mode `pivot_reclaim` juga ada untuk reclaim yang sangat awal, saat coin baru memantul dari pivot intraday dan masih punya room untuk lanjut. Ini dipakai untuk menangkap wave yang belum sempat kelihatan besar, tapi tetap dibatasi agar tidak jadi entry ngawur.
 - Kalau depth/OBI Indodax sedang tidak bisa diakses dari server, scanner memakai proxy struktural dari run-up, range position, persistence, dan volume sehingga pump detection tetap hidup.
 - Interval scanner default lebih agresif untuk flow cepat.
 - Universal scanner dijalankan aman dari thread context.
