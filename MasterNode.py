@@ -199,6 +199,36 @@ class KiBotMaster:
                     save_strategy(strategy)
             except Exception as e:
                 logger.error(f"PnL Watchdog error: {e}")
+
+            # ── §16.2 Stale Order Scan (every 5-min cycle) ──────────────────
+            try:
+                from Core.Intelligence.order_tracker import get_tracker as _get_ot
+                _ot = _get_ot()
+                _stale = _ot.scan_stale()
+                _ot_summary = _ot.get_today_summary()
+                if _stale:
+                    _stale_pairs = ", ".join(
+                        str(o.get("pair") or o.get("symbol") or o.get("id") or "?").upper()
+                        for o in _stale[:5]
+                    )
+                    logger.warning(f"⏰ [OrderTracker] {len(_stale)} stale order(s): {_stale_pairs}")
+                    await self.notifier.send_urgent_alert(
+                        f"⏰ OrderTracker: {len(_stale)} STALE order(s) detected — {_stale_pairs}. "
+                        f"Manual review or auto-cancel required.",
+                        "STALE_ORDER"
+                    )
+                else:
+                    logger.debug(f"[OrderTracker] no stale orders. today={_ot_summary}")
+
+                # Inject into telemetry so dashboard picks it up
+                if isinstance(self.last_state, dict):
+                    self.last_state["order_tracker"] = {
+                        "today_summary": _ot_summary,
+                        "open_orders":   _ot.get_open_orders()[:5],
+                    }
+            except Exception as _ot_err:
+                logger.debug(f"[MasterNode] OrderTracker scan skipped: {_ot_err}")
+
             await asyncio.sleep(300)
 
     async def whatif_refresh_loop(self):
