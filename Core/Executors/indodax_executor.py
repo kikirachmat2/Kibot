@@ -26,6 +26,16 @@ from Core.risk_gate import RiskGate
 from Core.Support.ki_vault import load_sovereign_env
 from Core.sovereign_state import load_strategy, check_urgency
 
+# ── Phase 5: Order lifecycle tracking ──
+try:
+    from Core.Intelligence.order_tracker import get_tracker as _get_tracker
+    from Core.Intelligence.exit_plan import build_exit_plan
+    _ORDER_TRACKER_AVAILABLE = True
+except ImportError:
+    _ORDER_TRACKER_AVAILABLE = False
+    logger_pre = __import__("logging").getLogger("IndodaxExecutor")
+    logger_pre.warning("[Executor] order_tracker / exit_plan not available — upgrade to Phase 5")
+
 try:
     load_sovereign_env()
 except Exception as e:
@@ -197,6 +207,14 @@ class IndodaxExecutor:
             except Exception as e:
                 logger.error(f"Monitor loop error: {e}")
             finally:
+                # Scan for stale orders every cycle
+                if _ORDER_TRACKER_AVAILABLE:
+                    try:
+                        staled = _get_tracker().scan_stale()
+                        if staled:
+                            logger.warning(f"[Executor] {len(staled)} order(s) marked STALE: {staled}")
+                    except Exception:
+                        pass
                 await asyncio.sleep(5)
 
     @staticmethod
@@ -467,6 +485,16 @@ class IndodaxExecutor:
             pnl_amount = (price - float(trade.get("price", 0) or 0)) * exit_amount
             self.risk.update_pnl(pnl_amount)
 
+            # ── §16.2 Order lifecycle reconcile ──
+            if _ORDER_TRACKER_AVAILABLE:
+                ot_order_id = trade.get("sovereign_order_id")
+                if ot_order_id:
+                    try:
+                        sell_value_idr = price * exit_amount
+                        _get_tracker().reconcile(ot_order_id, sell_value_idr=sell_value_idr)
+                    except Exception as ot_err:
+                        logger.warning(f"[Executor] OrderTracker reconcile failed for {symbol}: {ot_err}")
+
             logger.info(f"✅ EXIT FILLED: {symbol} via {reason} @ {price} amount={exit_amount:.8f}")
             if live_after > 1e-8:
                 remaining_cost = max(0.0, float(trade.get("cost", 0.0) or 0.0) * (live_after / max(state_amount, 1e-9)))
@@ -701,6 +729,55 @@ class IndodaxExecutor:
                     filled_rp = filled_coin * actual_price
                 
                 logger.info(f"✅ SUCCESS: {symbol} (Filled: Rp{filled_rp}, Coin: {filled_coin})")
+
+                # ── §16.2 Register with OrderTracker ──
+                sovereign_order_id = None
+                if _ORDER_TRACKER_AVAILABLE:
+                    try:
+                        daily_ctx = {}
+                        try:
+                            from Core.Intelligence.daily_context import get_daily_context
+                            daily_ctx = get_daily_context()
+                        except Exception:
+                            pass
+
+                        capital_state_info = self.risk.get_capital_state(
+                            current_balance, 0, len(self.active_trades)
+                        )
+                        ep = build_exit_plan(
+                            signal,
+                            daily_ctx,
+                            capital_state_info.get("capital_state", "NORMAL"),
+                            {}
+                        )
+                        mandate = {
+                            "source": str(signal.get("type", "SIGNAL")),
+                            "deadline_mode": daily_ctx.get("urgency_level", "PATIENT"),
+                            "budget_fraction": round(budget / max(current_balance, 1), 3),
+                        }
+                        tracker = _get_tracker()
+                        sovereign_order_id = tracker.create(
+                            symbol, "BUY", filled_rp, actual_price,
+                            mandate, ep, signal
+                        )
+                        exchange_oid = str(
+                            trade_data.get("order_id") or trade_data.get("orderId") or ""
+                        )
+                        tracker.transition(
+                            sovereign_order_id, "SUBMITTED",
+                            exchange_order_id=exchange_oid or None,
+                            note="market order sent"
+                        )
+                        tracker.transition(
+                            sovereign_order_id, "FILLED",
+                            fill_price=actual_price,
+                            coin_amount=filled_coin,
+                            note="wallet delta confirmed"
+                        )
+                        logger.info(f"[Executor] OrderTracker: {sovereign_order_id} FILLED")
+                    except Exception as ot_err:
+                        logger.warning(f"[Executor] OrderTracker create failed: {ot_err}")
+
                 self.active_trades[symbol] = {
                     "price": actual_price, 
                     "amount": filled_coin,
@@ -708,7 +785,8 @@ class IndodaxExecutor:
                     "time": time.time(),
                     "cost": filled_rp,
                     "trade_profile": "LEARNING_PROBE" if learning_probe else "STANDARD",
-                    "learning_probe": learning_probe
+                    "learning_probe": learning_probe,
+                    "sovereign_order_id": sovereign_order_id,
                 }
                 self._save_active_trades()
                 self.report_to_batam(

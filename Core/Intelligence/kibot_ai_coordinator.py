@@ -568,6 +568,58 @@ PROMPT_TEMPLATES = {
         "Return strict JSON: {\"cross_signal\":false,\"direction\":\"IDR_LEADS|POLY_LEADS|NONE\","
         "\"target_pair\":\"...\",\"edge_confidence\":0.0,\"action\":\"BUY|SELL|NONE\"}"
     ),
+
+    # ── §13.1 Fast Council ──
+    "fast_hunter": (
+        "You are KiBot's FastHunter (Speed Filter). Model: qwen2.5:1.5b.\n"
+        "Signal: pair={pair}, lifecycle={lifecycle}, trade_grade={trade_grade}, "
+        "confidence={confidence:.2f}, momentum={momentum_pct:.2f}%, spread={spread_pct:.2f}%, volume_ratio={volume_ratio:.2f}.\n"
+        "Daily context: urgency={urgency_level}, daily_color={daily_color}, minutes_to_midnight={minutes_to_midnight}.\n"
+        "Task: In under 8 seconds, decide PASS or REJECT. PASS only if lifecycle is IGNITION|CONFIRMATION, "
+        "grade >= C, confidence >= 0.60, and momentum is real (not noise).\n"
+        "Return strict JSON: {\"verdict\":\"PASS|REJECT\",\"reason\":\"...\",\"confidence\":0.0}"
+    ),
+    "fast_risk_officer": (
+        "You are KiBot's FastRiskOfficer (Quick Risk Check). Model: qwen2.5:1.5b.\n"
+        "Signal: pair={pair}, budget_fraction={budget_fraction:.2f}, capital_state={capital_state}, "
+        "sizing_mode={sizing_mode}, daily_pnl_idr={daily_pnl_idr:.0f}, active_slots={active_slots}.\n"
+        "Rules: REJECT if capital_state=MICRO and budget_fraction>0.5, or if daily_pnl is already -5%+ of equity.\n"
+        "Task: Quick risk gate — PASS or REJECT in under 5 seconds.\n"
+        "Return strict JSON: {\"verdict\":\"PASS|REJECT\",\"reason\":\"...\",\"risk_flag\":\"NONE|OVEREXPOSED|LOW_CAPITAL|PNL_LIMIT\"}"
+    ),
+
+    # ── §13.2 Deep Council ──
+    "antagonist": (
+        "You are KiBot's Antagonist (Devil's Advocate). Model: deepseek-r1:7b.\n"
+        "Signal under review: pair={pair}, lifecycle={lifecycle}, confidence={confidence:.2f}, "
+        "trade_grade={trade_grade}, exit_quality={exit_quality}, historian_verdict={historian_verdict}.\n"
+        "Context: {confidence_breakdown}\n"
+        "Task: Aggressively challenge this trade. List every reason this could go wrong: "
+        "exit risk, spread risk, dump risk, regime mismatch, trap patterns.\n"
+        "Do NOT approve unless you have genuinely tried to kill the thesis.\n"
+        "Return strict JSON: {\"adversarial_score\":0.0,\"kill_reasons\":[...],"
+        "\"verdict\":\"PROCEED|ABORT\",\"override_threshold\":0.0}"
+    ),
+    "regime_analyst": (
+        "You are KiBot's RegimeAnalyst (Market Context). Model: qwen2.5:3b.\n"
+        "Current regime: daily_color={daily_color}, urgency={urgency_level}, "
+        "minutes_to_midnight={minutes_to_midnight}, market_summary={market_summary}.\n"
+        "Signal: pair={pair}, lifecycle={lifecycle}, trade_grade={trade_grade}.\n"
+        "Task: Is this signal aligned with the current macro regime? "
+        "GREEN day favors HOLD; RED day requires tight stops; FLAT allows probes.\n"
+        "Return strict JSON: {\"regime_aligned\":true,\"sizing_advice\":\"FULL|HALF|PROBE|SKIP\","
+        "\"regime_note\":\"...\",\"confidence\":0.0}"
+    ),
+    "historian": (
+        "You are KiBot's Historian (Pair Memory). Model: qwen2.5:3b.\n"
+        "Pair history: pair={pair}, historian_verdict={historian_verdict}, "
+        "win_rate={win_rate:.2f}, avg_gain={avg_gain_pct:.2f}%, total_trades={total_trades}, "
+        "trap_prone={trap_prone}, last_trade_ts={last_trade_ts}.\n"
+        "Task: Based on this pair's track record, adjust confidence. "
+        "DEAD pairs get VETO regardless of signal quality. TRAP_PRONE pairs need extra exit caution.\n"
+        "Return strict JSON: {\"historian_confidence_adj\":0.0,\"verdict\":\"GOOD|CAUTION|VETO\","
+        "\"memory_note\":\"...\",\"extra_exit_caution\":false}"
+    ),
 }
 
 PROMPT_OLLAMA_MODEL = {
@@ -592,6 +644,15 @@ PROMPT_OLLAMA_MODEL = {
     "SOVEREIGN_DAILY_REVIEW": OLLAMA_DEEP_MODEL,
     "MOMENTUM_HAWK": OLLAMA_FAST_MODEL,
     "RISK_SENTINEL": OLLAMA_FAST_MODEL,
+
+    # ── §13.1 Fast Council roles (speed-optimised) ──
+    "fast_hunter":       OLLAMA_DEFAULT_MODEL,   # qwen2.5:1.5b — PASS/REJECT in <8s
+    "fast_risk_officer": OLLAMA_DEFAULT_MODEL,   # qwen2.5:1.5b — quick risk filter
+
+    # ── §13.2 Deep Council roles ──
+    "antagonist":        OLLAMA_DEEP_MODEL,      # deepseek-r1:7b — adversarial devil's advocate
+    "regime_analyst":    OLLAMA_PRO_MODEL,       # qwen2.5:3b — regime/macro context
+    "historian":         OLLAMA_PRO_MODEL,       # qwen2.5:3b — pair history awareness
 }
 
 PROMPT_OLLAMA_TIMEOUT = {
@@ -610,6 +671,13 @@ PROMPT_OLLAMA_TIMEOUT = {
     "RISK_SENTINEL": OLLAMA_FAST_TIMEOUT_SEC,
     "COUNCIL_ANTAGONIST": OLLAMA_DEFAULT_TIMEOUT_SEC,
     "POSSIBILITY_MINING": OLLAMA_DEFAULT_TIMEOUT_SEC,
+
+    # Fast/Deep Council
+    "fast_hunter":       OLLAMA_FAST_TIMEOUT_SEC,
+    "fast_risk_officer": OLLAMA_FAST_TIMEOUT_SEC,
+    "antagonist":        OLLAMA_DEEP_TIMEOUT_SEC,
+    "regime_analyst":    OLLAMA_DEFAULT_TIMEOUT_SEC,
+    "historian":         OLLAMA_DEFAULT_TIMEOUT_SEC,
 }
 
 PROMPT_OLLAMA_KEEP_ALIVE = {
@@ -631,6 +699,13 @@ PROMPT_OLLAMA_KEEP_ALIVE = {
     "WHATIF_SIMULATION": OLLAMA_DEFAULT_KEEP_ALIVE,
     "TRADE_POSTMORTEM": OLLAMA_DEFAULT_KEEP_ALIVE,
     "WEEKLY_SUMMARY": OLLAMA_DEEP_KEEP_ALIVE,
+
+    # Fast/Deep Council
+    "fast_hunter":       OLLAMA_FAST_KEEP_ALIVE,
+    "fast_risk_officer": OLLAMA_FAST_KEEP_ALIVE,
+    "antagonist":        OLLAMA_DEEP_KEEP_ALIVE,
+    "regime_analyst":    OLLAMA_DEFAULT_KEEP_ALIVE,
+    "historian":         OLLAMA_DEFAULT_KEEP_ALIVE,
 }
 
 PROMPT_OLLAMA_OPTIONS = {
