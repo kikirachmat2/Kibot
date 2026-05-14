@@ -18,6 +18,9 @@ const LOG_COLORS = {
 
 let lastSummary = null;
 let localFeed = [];
+let fallbackPollTimer = null;
+let streamRetryTimer = null;
+let streamInstance = null;
 
 function byId(id) {
   return document.getElementById(id);
@@ -112,6 +115,7 @@ function normalizeEvents(data) {
   const council = data?.council || {};
   const world = data?.world_model || {};
   const system = data?.system || {};
+  const brain = data?.brain || {};
   const services = data?.services || {};
   const events = Array.isArray(data?.events) ? data.events.slice(0, 24) : [];
 
@@ -130,6 +134,11 @@ function normalizeEvents(data) {
       agent: "Market",
       tag: "INFO",
       message: `${world.market_regime || "NEUTRAL"} | risk ${world.risk_level || "LOW"}`,
+    },
+    {
+      agent: "Brain",
+      tag: String(brain.status || "").toLowerCase() === "error" ? "ERROR" : "INFO",
+      message: `${String(brain.posture || "NEUTRAL").toUpperCase()} | risk ${brain.risk || "MIXED"}`,
     },
     {
       agent: "Janitor",
@@ -175,7 +184,7 @@ function renderLogList(targetId, events, technical = false) {
           <div class="log-agent" style="color:${color}">${escapeHtml(agent)}</div>
           <div class="log-message">${escapeHtml(event.message || event.detail || "")}</div>
         </div>
-        <span class="log-tag ${tag}">${escapeHtml(tag)}</span>
+        <span class="log-tag ${escapeHtml(tag)}">${escapeHtml(tag)}</span>
       </div>
     `;
   }).join("");
@@ -183,14 +192,7 @@ function renderLogList(targetId, events, technical = false) {
 
 function renderLogs(data) {
   const all = normalizeEvents(data);
-  const technical = [
-    ...(all.filter((item) => ["System", "Janitor", "Brain"].includes(item.agent))),
-    ...Object.entries(data?.services || {}).map(([service, status]) => ({
-      agent: "System",
-      tag: status === "active" ? "SUCCESS" : "WARN",
-      message: `${service}: ${status}`,
-    })),
-  ].slice(0, 60);
+  const technical = all.filter((item) => ["System", "Janitor", "Brain"].includes(item.agent)).slice(0, 60);
 
   renderLogList("activity-log", all, false);
   renderLogList("technical-log", technical, true);
@@ -212,16 +214,17 @@ function renderWhatif(items) {
 }
 
 function renderSummary(data) {
-  lastSummary = data;
-  const portfolio = data.portfolio || {};
+  const snapshot = data || {};
+  lastSummary = snapshot;
+  const portfolio = snapshot.portfolio || {};
   const poly = portfolio.polymarket || {};
-  const strategy = data.strategy || {};
+  const strategy = snapshot.strategy || {};
   const indoStrategy = strategy.indodax || {};
-  const council = data.council || {};
-  const system = data.system || {};
-  const services = data.services || {};
+  const council = snapshot.council || {};
+  const system = snapshot.system || {};
+  const services = snapshot.services || {};
 
-  const dailyColor = String(portfolio.daily_color || "FLAT").toUpperCase();
+  const dailyColor = String(portfolio.daily_color || portfolio.daily_state?.color || "FLAT").toUpperCase();
   const badge = byId("state-badge");
   if (badge) badge.className = `state-pill ${dailyColor}`;
   updateText("state-text", dailyColor);
@@ -245,13 +248,15 @@ function renderSummary(data) {
   updateText("poly-total", `$${Number(poly.usdc_balance || 0).toFixed(2)} USDC`);
   updateText("poly-idr", `~ ${fmtRp(poly.equity_idr || 0)}`);
   const polyPositions = byId("poly-positions");
-  if (polyPositions) polyPositions.innerHTML = renderBets(poly.active_bets || []);
+  const activeBets = poly.active_bets || [];
+  if (polyPositions) polyPositions.innerHTML = renderBets(activeBets);
+  byId("no-bets-label")?.classList.toggle("visible", !activeBets.length);
 
-  updateText("strategy-mode", strategy.global_mode || "UNKNOWN");
+  updateText("strategy-mode", String(strategy.global_mode || "UNKNOWN").toUpperCase());
   updateText("s-conf", Number(indoStrategy.min_confidence || 0).toFixed(2));
-  updateText("s-tp", `${indoStrategy.take_profit_pct || 0}%`);
-  updateText("s-slots", `${Object.keys(data.active_trades || {}).length}/${indoStrategy.max_slots || 100}`);
-  updateText("s-stop", `${indoStrategy.hard_stop_pct || -1.5}% day`);
+  updateText("s-tp", `${Number(indoStrategy.take_profit_pct || 0).toFixed(2)}%`);
+  updateText("s-slots", `${Object.keys(snapshot.active_trades || {}).length}/${indoStrategy.max_slots || 100}`);
+  updateText("s-stop", `${Number(indoStrategy.hard_stop_pct ?? -1.5).toFixed(2)}% day`);
 
   const decision = String(council.decision_state || "WAIT").toUpperCase();
   const lens = byId("council-lens");
@@ -259,7 +264,7 @@ function renderSummary(data) {
   updateText("cl-state", decision);
   updateText("cl-detail", `${council.ticker || "no ticker"} · ${council.action || "NONE"} · conf ${Number(council.confidence || 0).toFixed(2)}`);
 
-  renderWhatif(data.whatif?.top || []);
+  renderWhatif(snapshot.whatif?.top || []);
   updateText("sys-cpu", `${Number(system.cpu || 0).toFixed(1)}%`);
   updateText("sys-ram", `${Number(system.ram || 0).toFixed(1)}%`);
   updateText("sys-disk", `${Number(system.disk || 0).toFixed(1)}%`);
@@ -272,35 +277,50 @@ function renderSummary(data) {
   byId("readiness-pill")?.classList.toggle("warn", !ready);
   updateText("agency-count", String(Object.keys(window.KiBotCanvas?.AGENTS || {}).length || 7), false);
 
-  renderLogs(data);
-  window.KiBotCanvas?.render(data);
+  renderLogs(snapshot);
+  window.KiBotCanvas?.render(snapshot);
 }
 
 async function poll() {
-  const data = await fetch("/api/summary", { cache: "no-store" }).then((r) => r.json());
-  renderSummary(data);
+  const response = await fetch("/api/summary", { cache: "no-store" });
+  if (!response.ok) {
+    throw new Error(`summary request failed with ${response.status}`);
+  }
+  renderSummary(await response.json());
+}
+
+function startFallbackPolling() {
+  if (fallbackPollTimer) return;
+  fallbackPollTimer = window.setInterval(() => poll().catch(() => {}), 8000);
 }
 
 function startStream() {
   if (!window.EventSource) {
-    setInterval(() => poll().catch(() => {}), 8000);
+    startFallbackPolling();
     poll().catch(() => {});
     return;
   }
 
-  const stream = new EventSource("/api/stream");
-  stream.onmessage = (event) => {
+  if (streamInstance) {
+    streamInstance.close();
+  }
+
+  streamInstance = new EventSource("/api/stream");
+  streamInstance.onmessage = (event) => {
     try {
       renderSummary(JSON.parse(event.data));
     } catch (error) {
       console.warn("Dashboard stream parse failed", error);
     }
   };
-  stream.onerror = () => {
-    stream.close();
-    setTimeout(() => {
+  streamInstance.onerror = () => {
+    streamInstance?.close();
+    streamInstance = null;
+    if (streamRetryTimer) return;
+    streamRetryTimer = window.setTimeout(() => {
+      streamRetryTimer = null;
+      startFallbackPolling();
       poll().catch(() => {});
-      setInterval(() => poll().catch(() => {}), 8000);
     }, 2000);
   };
 }
@@ -316,11 +336,7 @@ function bindUi() {
   });
 
   byId("clear-local-feed")?.addEventListener("click", () => {
-    localFeed = [{
-      agent: "System",
-      tag: "INFO",
-      message: "visual feed cleared by operator",
-    }];
+    localFeed = [];
     if (lastSummary) renderLogs(lastSummary);
   });
 }

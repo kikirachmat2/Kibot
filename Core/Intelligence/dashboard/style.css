@@ -144,6 +144,14 @@ button {
   box-shadow: 0 0 0 6px rgba(18, 183, 106, 0.09);
 }
 
+.live-dot-green {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: var(--green);
+  box-shadow: 0 0 0 6px rgba(18, 183, 106, 0.09);
+}
+
 .ghost-button,
 .primary-button,
 .icon-button {
@@ -910,6 +918,18 @@ button {
 
 .position-list {
   margin-top: 14px;
+}
+
+.no-bets-label {
+  display: none;
+  margin-top: 14px;
+  color: var(--muted);
+  font-family: var(--mono);
+  font-size: 10px;
+}
+
+.no-bets-label.visible {
+  display: block;
 }
 
 .position-row {

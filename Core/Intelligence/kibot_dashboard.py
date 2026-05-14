@@ -385,7 +385,21 @@ def _build_summary() -> Dict[str, Any]:
 async def home() -> HTMLResponse:
     html_path = DASHBOARD_DIR / "index.html"
     if html_path.exists():
-        return HTMLResponse(html_path.read_text(encoding="utf-8"))
+        html = html_path.read_text(encoding="utf-8")
+        if "/static/style.css?v=3.0" not in html:
+            html = html.replace(
+                "</head>",
+                '  <link rel="stylesheet" href="/static/style.css?v=3.0" />\n</head>',
+                1,
+            )
+        if "/static/canvas.js?v=3.0" not in html or "/static/live.js?v=3.0" not in html:
+            html = html.replace(
+                "</body>",
+                '  <script src="/static/canvas.js?v=3.0"></script>\n'
+                '  <script src="/static/live.js?v=3.0"></script>\n</body>',
+                1,
+            )
+        return HTMLResponse(html)
     return HTMLResponse("<h1>Dashboard assets not found.</h1>")
 
 

@@ -1,24 +1,25 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="id">
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <meta http-equiv="Cache-Control" content="no-store, max-age=0" />
-  <title>KiBot Sovereign Delegation</title>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>The KiBot Delegation — Sovereign Trading Dashboard</title>
+  <meta name="description" content="KiBot Sovereign Agency — real-time trading intelligence dashboard for Indodax & Polymarket autonomous agents." />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="/static/style.css?v=3.0" />
-  <script defer src="/static/canvas.js?v=3.0"></script>
-  <script defer src="/static/live.js?v=3.0"></script>
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet" />
 </head>
 <body>
+
+  <!-- ═══════════════════════════════════════════════
+       COMMAND BAR
+  ══════════════════════════════════════════════════ -->
   <header class="command-bar">
     <div class="brand-lockup">
       <div class="terminal-mark">⌘</div>
       <div>
         <div class="product-name">The KiBot Delegation</div>
-        <div class="product-meta">v3.0.0 <span>•</span> Batam sovereign agency</div>
+        <div class="product-meta">v3.0.0 · Batam sovereign agency</div>
       </div>
     </div>
 
@@ -31,10 +32,10 @@
     </div>
 
     <div class="model-chip">
-      <span></span>
+      <span class="live-dot-green"></span>
       <div>
         <small>PRIMARY BRAIN</small>
-        <strong>ollama / qwen council</strong>
+        <strong id="primary-brain">ollama / qwen council</strong>
       </div>
     </div>
 
@@ -42,36 +43,47 @@
     <button class="primary-button" id="open-director" type="button">MANAGE AGENTS</button>
   </header>
 
+  <!-- ═══════════════════════════════════════════════
+       WORKSPACE
+  ══════════════════════════════════════════════════ -->
   <div class="workspace">
+
+    <!-- ── LEFT: LOGS PANEL ── -->
     <aside class="logs-panel">
       <div class="panel-head">
         <span>LOGS</span>
-        <button class="icon-button" id="clear-local-feed" type="button" title="Clear visual feed">⌫</button>
+        <button class="icon-button" id="clear-local-feed" title="Clear feed">⌫</button>
       </div>
       <div class="log-tabs" role="tablist">
-        <button class="active" type="button" data-log-tab="activity">ACTIVITY</button>
-        <button type="button" data-log-tab="technical">TECHNICAL</button>
+        <button class="active" type="button" data-log-tab="activity" role="tab" aria-selected="true">ACTIVITY</button>
+        <button type="button" data-log-tab="technical" role="tab" aria-selected="false">TECHNICAL</button>
       </div>
-      <div class="log-scroll active" id="activity-log"></div>
-      <div class="log-scroll" id="technical-log"></div>
+      <div class="log-scroll active" id="activity-log" role="log" aria-live="polite"></div>
+      <div class="log-scroll" id="technical-log" role="log" aria-live="polite"></div>
     </aside>
 
+    <!-- ── CENTER: MISSION CENTER ── -->
     <main class="mission-center">
+
+      <!-- Row 1: Topline Metrics -->
       <section class="mission-topline">
         <div class="state-pill FLAT" id="state-badge">
-          <span class="live-dot"></span>
+          <span class="live-dot" id="state-dot"></span>
           <span id="state-text">FLAT</span>
         </div>
+
         <div class="headline-metric">
           <small>COMBINED EQUITY</small>
           <strong id="combined-equity">Rp --</strong>
           <span id="equity-breakdown">cash -- · koin --</span>
         </div>
+
         <div class="headline-metric compact">
           <small>DAILY PNL</small>
           <strong id="daily-pnl" class="neutral">Rp 0</strong>
           <span id="portfolio-source">live portfolio</span>
         </div>
+
         <div class="headline-metric clock">
           <small>SERVER CLOCK</small>
           <strong id="clock">--:--:-- WIB</strong>
@@ -79,14 +91,17 @@
         </div>
       </section>
 
+      <!-- Row 2: Agent Stage -->
       <section class="stage-shell" id="stage-shell">
         <div class="stage-toolbar">
-          <button class="icon-button" id="stage-zoom-out" type="button">−</button>
-          <button class="icon-button" id="stage-reset" type="button">FIT</button>
-          <button class="icon-button" id="stage-zoom-in" type="button">+</button>
+          <button class="icon-button" id="stage-zoom-out" title="Zoom out">−</button>
+          <button class="icon-button" id="stage-reset" title="Fit">FIT</button>
+          <button class="icon-button" id="stage-zoom-in" title="Zoom in">+</button>
         </div>
 
         <div class="office-stage" id="office-stage">
+
+          <!-- Floor perspective -->
           <div class="floor-perspective">
             <div class="floor-grid"></div>
             <div class="blue-boundary boundary-a"></div>
@@ -99,63 +114,81 @@
             <div class="office-prop prop-server prop-e"></div>
           </div>
 
-          <div class="signal-line line-scanner-council"></div>
-          <div class="signal-line line-brain-council"></div>
-          <div class="signal-line line-council-indo"></div>
-          <div class="signal-line line-council-poly"></div>
-          <div class="signal-line line-exec-verifier"></div>
+          <!-- Signal lines -->
+          <div class="signal-line line-scanner-council" aria-hidden="true"></div>
+          <div class="signal-line line-brain-council"   aria-hidden="true"></div>
+          <div class="signal-line line-council-indo"    aria-hidden="true"></div>
+          <div class="signal-line line-council-poly"    aria-hidden="true"></div>
+          <div class="signal-line line-exec-verifier"   aria-hidden="true"></div>
 
-          <button class="agent-avatar scanner active selected" type="button" data-agent="scanner" id="char-scanner">
+          <!-- Agent Avatars -->
+          <button class="agent-avatar scanner active selected"
+                  type="button" data-agent="scanner" id="char-scanner"
+                  aria-label="Scanner agent">
             <span class="agent-bubble" id="metric-scanner">scan live</span>
             <span class="agent-head"></span>
             <span class="agent-body"></span>
             <strong>Scanner</strong>
           </button>
 
-          <button class="agent-avatar brain" type="button" data-agent="brain" id="char-brain">
+          <button class="agent-avatar brain"
+                  type="button" data-agent="brain" id="char-brain"
+                  aria-label="AI Brain agent">
             <span class="agent-bubble" id="metric-brain">MIXED</span>
             <span class="agent-head"></span>
             <span class="agent-body"></span>
             <strong>AI Brain</strong>
           </button>
 
-          <button class="agent-avatar council thinking" type="button" data-agent="council" id="char-council">
+          <button class="agent-avatar council thinking"
+                  type="button" data-agent="council" id="char-council"
+                  aria-label="Council agent">
             <span class="agent-bubble" id="metric-council">conf 0.00</span>
             <span class="agent-head"></span>
             <span class="agent-body"></span>
             <strong>Council</strong>
           </button>
 
-          <button class="agent-avatar indo" type="button" data-agent="indodax" id="char-indo">
+          <button class="agent-avatar indo"
+                  type="button" data-agent="indodax" id="char-indo"
+                  aria-label="Indodax Executor agent">
             <span class="agent-bubble" id="metric-indo">Rp --</span>
             <span class="agent-head"></span>
             <span class="agent-body"></span>
             <strong>Indodax</strong>
           </button>
 
-          <button class="agent-avatar poly" type="button" data-agent="polymarket" id="char-poly">
+          <button class="agent-avatar poly"
+                  type="button" data-agent="polymarket" id="char-poly"
+                  aria-label="Polymarket Executor agent">
             <span class="agent-bubble" id="metric-poly">$0.00</span>
             <span class="agent-head"></span>
             <span class="agent-body"></span>
             <strong>Polymarket</strong>
           </button>
 
-          <button class="agent-avatar verifier" type="button" data-agent="verifier" id="char-verifier">
+          <button class="agent-avatar verifier"
+                  type="button" data-agent="verifier" id="char-verifier"
+                  aria-label="Verifier agent">
             <span class="agent-bubble" id="metric-verifier">verify</span>
             <span class="agent-head"></span>
             <span class="agent-body"></span>
             <strong>Verifier</strong>
           </button>
 
-          <button class="agent-avatar janitor" type="button" data-agent="janitor" id="char-janitor">
+          <button class="agent-avatar janitor"
+                  type="button" data-agent="janitor" id="char-janitor"
+                  aria-label="Janitor agent">
             <span class="agent-bubble" id="metric-janitor">disk --</span>
             <span class="agent-head"></span>
             <span class="agent-body"></span>
             <strong>Janitor</strong>
           </button>
-        </div>
+
+        </div><!-- /office-stage -->
       </section>
 
+      <!-- Row 3: Workflow Board -->
       <section class="workflow-board">
         <article>
           <header>SCHEDULED <span id="scheduled-count">0</span></header>
@@ -174,9 +207,13 @@
           <div class="workflow-stack" id="lane-done"></div>
         </article>
       </section>
-    </main>
 
+    </main><!-- /mission-center -->
+
+    <!-- ── RIGHT: DIRECTOR PANEL ── -->
     <aside class="director-panel">
+
+      <!-- Project Info -->
       <section class="project-card">
         <div class="project-head">
           <h2>Project Info</h2>
@@ -185,15 +222,16 @@
         <div class="brief-block">
           <h3>SELECTED AGENT</h3>
           <strong id="selected-agent-title">Scanner</strong>
-          <p id="selected-agent-copy">Market sensor yang membaca sinyal Indodax dan Polymarket sebelum dikirim ke council.</p>
+          <p id="selected-agent-copy">Membaca pergerakan market, volume, pump candidate, dan mengirim sinyal mentah ke Council.</p>
           <div class="agent-detail-grid">
-            <span>Status</span><b id="selected-agent-status">ACTIVE</b>
-            <span>Metric</span><b id="selected-agent-metric">scan live</b>
-            <span>Runtime</span><b id="selected-agent-runtime">systemd</b>
+            <span>Status</span>  <b id="selected-agent-status">ACTIVE</b>
+            <span>Metric</span>  <b id="selected-agent-metric">scan live</b>
+            <span>Runtime</span> <b id="selected-agent-runtime">systemd</b>
           </div>
         </div>
       </section>
 
+      <!-- Indodax Account -->
       <section class="account-card indodax-card">
         <div class="account-head">
           <small>INDONESIA</small>
@@ -208,6 +246,7 @@
         <div class="position-list" id="indo-positions"></div>
       </section>
 
+      <!-- Polymarket Account -->
       <section class="account-card poly-card">
         <div class="account-head">
           <small>POLYGON</small>
@@ -217,44 +256,54 @@
         <div class="account-total" id="poly-total">$-- USDC</div>
         <div class="account-subline" id="poly-idr">~ Rp --</div>
         <div class="position-list" id="poly-positions"></div>
+        <div class="no-bets-label" id="no-bets-label">No active bets</div>
       </section>
 
+      <!-- Strategy Inspector -->
       <section class="strategy-inspector">
         <h2>Strategy</h2>
         <div class="strategy-mode" id="strategy-mode">UNKNOWN</div>
         <div class="strategy-grid">
-          <span>Confidence</span><b id="s-conf">--</b>
-          <span>Take Profit</span><b id="s-tp">--</b>
-          <span>Slots</span><b id="s-slots">--</b>
-          <span>Hard Stop</span><b id="s-stop">--</b>
+          <span>Confidence</span>  <b id="s-conf">--</b>
+          <span>Take Profit</span> <b id="s-tp">--</b>
+          <span>Slots</span>       <b id="s-slots">--</b>
+          <span>Hard Stop</span>   <b id="s-stop">--</b>
         </div>
       </section>
 
+      <!-- Council Lens -->
       <section class="council-lens WAIT" id="council-lens">
         <h2>Council Lens</h2>
         <strong id="cl-state">WAIT</strong>
         <span id="cl-detail">waiting signal</span>
       </section>
 
+      <!-- System Stats -->
       <section class="system-card">
         <h2>System</h2>
-        <div class="snap-row"><span>CPU</span><strong id="sys-cpu">--</strong></div>
-        <div class="snap-row"><span>RAM</span><strong id="sys-ram">--</strong></div>
-        <div class="snap-row"><span>Disk</span><strong id="sys-disk">--</strong></div>
-        <div class="snap-row"><span>Ollama</span><strong id="sys-ollama">--</strong></div>
-        <div class="snap-row"><span>Redis</span><strong id="sys-redis">--</strong></div>
+        <div class="snap-row"><span>CPU</span>    <strong id="sys-cpu">--</strong></div>
+        <div class="snap-row"><span>RAM</span>    <strong id="sys-ram">--</strong></div>
+        <div class="snap-row"><span>Disk</span>   <strong id="sys-disk">--</strong></div>
+        <div class="snap-row"><span>Ollama</span> <strong id="sys-ollama">--</strong></div>
+        <div class="snap-row"><span>Redis</span>  <strong id="sys-redis">--</strong></div>
       </section>
 
+      <!-- What-If Top -->
       <section class="whatif-card">
         <h2>What-If Top</h2>
         <div class="whatif-list" id="whatif-list">No data yet</div>
       </section>
-    </aside>
-  </div>
 
-  <div class="director-drawer" id="director-drawer" aria-hidden="true">
+    </aside><!-- /director-panel -->
+
+  </div><!-- /workspace -->
+
+  <!-- ═══════════════════════════════════════════════
+       DIRECTOR DRAWER (modal)
+  ══════════════════════════════════════════════════ -->
+  <div class="director-drawer" id="director-drawer" aria-hidden="true" role="dialog" aria-modal="true" aria-label="Agent Runtime Map">
     <div class="drawer-card">
-      <button class="drawer-close" id="drawer-close" type="button">×</button>
+      <button class="drawer-close" id="drawer-close" type="button" aria-label="Close drawer">×</button>
       <h2>Agent Runtime Map</h2>
       <p>Semua karakter di floor ini membaca state asli dari systemd, telemetry, executor, dan portfolio snapshot.</p>
       <div class="agent-pill-grid" id="agent-pills"></div>

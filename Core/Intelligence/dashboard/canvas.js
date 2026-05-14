@@ -65,14 +65,14 @@ const AGENTS = {
   },
 };
 
-const SERVICE_TO_AGENT = Object.entries(AGENTS).reduce((acc, [id, data]) => {
-  acc[data.service] = id;
-  return acc;
-}, {});
-
 let selectedAgent = "scanner";
 let stageScale = 1;
 let latestSummary = null;
+
+const AGENT_ID_MAP = {
+  indodax: "indo",
+  polymarket: "poly",
+};
 
 function normalizedStatus(status) {
   const value = String(status || "unknown").toLowerCase();
@@ -89,11 +89,11 @@ function statusLabel(status) {
 }
 
 function setAgentClass(id, status, summary) {
-  const el = document.getElementById(`char-${id === "indodax" ? "indo" : id === "polymarket" ? "poly" : id}`);
+  const el = document.getElementById(`char-${AGENT_ID_MAP[id] || id}`);
   if (!el) return;
 
   const normalized = normalizedStatus(status);
-  const visualClass = id === "indodax" ? "indo" : id === "polymarket" ? "poly" : id;
+  const visualClass = AGENT_ID_MAP[id] || id;
   const classes = ["agent-avatar", visualClass];
   if (id === selectedAgent) classes.push("selected");
 
@@ -112,7 +112,7 @@ function setAgentClass(id, status, summary) {
 }
 
 function updateMetric(id, summary) {
-  const metricId = id === "indodax" ? "metric-indo" : id === "polymarket" ? "metric-poly" : `metric-${id}`;
+  const metricId = `metric-${AGENT_ID_MAP[id] || id}`;
   const el = document.getElementById(metricId);
   if (!el) return;
   el.textContent = AGENTS[id].metric(summary);
@@ -137,15 +137,15 @@ function renderAgentPills(services) {
     const status = services?.[agent.service] || "unknown";
     const tone = normalizedStatus(status) === "active" ? "active" : normalizedStatus(status) === "error" ? "down" : "";
     return `<button type="button" class="agent-pill ${tone}" data-agent-select="${id}">
-      ${agent.label}: ${statusLabel(status)}
+      ${escapeHtml(agent.label)}: ${escapeHtml(statusLabel(status))}
     </button>`;
   }).join("");
 }
 
 function taskCard(title, detail, tone = "") {
-  return `<button type="button" class="task-card ${tone}" data-task="${title}">
-    <strong>${title}</strong>
-    <span>${detail}</span>
+  return `<button type="button" class="task-card ${tone}" data-task="${escapeHtml(title)}">
+    <strong>${escapeHtml(title)}</strong>
+    <span>${escapeHtml(detail)}</span>
   </button>`;
 }
 
@@ -166,7 +166,7 @@ function renderWorkflow(summary) {
   const decision = String(council.decision_state || "WAIT").toUpperCase();
 
   renderLane("lane-scheduled", "scheduled-count", [
-    taskCard("World Scout", summary?.world_model?.market_regime || "market regime", normalizedStatus(services["kibot-ai-scout"]) === "active" ? "live" : ""),
+    taskCard("World Scout", `${statusLabel(services["kibot-ai-scout"])} · ${summary?.world_model?.market_regime || "NEUTRAL"}`, normalizedStatus(services["kibot-ai-scout"]) === "active" ? "live" : ""),
     taskCard("What-If Batch", `${summary?.whatif?.count || 0} pairs simulated`),
   ]);
 
