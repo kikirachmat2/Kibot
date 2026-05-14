@@ -17,6 +17,7 @@ AI Orchestration, Learning, and Market Intelligence models.
 - `delegation_workflows.md` dan `delegation_workflows.json` mendokumentasikan alur delegasi formal KiBot: discovery, council, executor, verification, dan maintenance.
 - `kibot_dashboard.py` menampilkan alur delegasi, canvas SVG, live ledger, event trail, strategy state, dan log ringkas dalam visual control plane web di port `8787`.
 - `dashboard_assets/` memuat HTML/CSS/JS control plane yang dipakai dashboard agar tampil seperti living delegation canvas, bukan admin panel biasa.
+- `bin/kibotctl` sekarang ikut mengelola `kibot-dashboard`, jadi visual control plane masuk ke wrapper operasional satu pintu.
 
 ## Live Server Atlas
 Source of truth untuk keadaan server yang sebenarnya:

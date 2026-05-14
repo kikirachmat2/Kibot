@@ -189,7 +189,7 @@ These exist on the server but are easy to miss if you only inspect the code tree
 19. Live runtime strategy on Batam was restored from a stale defensive snapshot back to `CONTROLLED_AGGRESSIVE` with `allowed_pairs=["*"]`, `min_confidence=0.60`, `buy_threshold_pct=0.35`, and `max_spread_pct=0.45`, so valid Indodax continuation candidates can actually reach the executor again.
 20. Formal delegation workflow artifacts now exist in `Core/Intelligence/delegation_workflows.md` and `Core/Intelligence/delegation_workflows.json`, so discovery -> council -> executor -> verification -> maintenance has an explicit contract.
 21. A visual control-plane dashboard now exists at `Core/Intelligence/kibot_dashboard.py` and is launched with `bin/kibot-dashboard` on port `8787`, so the whole delegation flow can be inspected in a browser. The dashboard now serves a living delegation canvas, live ledger cards, provider mesh, and event stream from `Core/Intelligence/dashboard_assets/`.
-22. `config/systemd/kibot-dashboard.service` is now the canonical systemd unit for the visual control plane, so the dashboard can stay online like the other core services.
+22. `config/systemd/kibot-dashboard.service` is now the canonical systemd unit for the visual control plane, dan `bin/kibotctl` ikut mengelolanya sebagai service operasional supaya dashboard tetap online seperti core services lain.
 
 ---
 

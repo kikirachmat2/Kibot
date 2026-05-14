@@ -13,6 +13,7 @@ CORE_SERVICES=(
   kibot-executor-polymarket
   kibot-ai-scout
   kibot-janitor
+  kibot-dashboard
 )
 
 CANONICAL_MODELS=(
@@ -79,7 +80,14 @@ port_status() {
   section "UDP"
   ss -ulnp | grep -E '9990|9991|9998' || echo "No KiBot UDP listeners found."
   section "TCP"
-  ss -tlnp | grep -E '11434|11600|6379' || echo "No KiBot TCP listeners found."
+  ss -tlnp | grep -E '11434|11600|6379|8787' || echo "No KiBot TCP listeners found."
+}
+
+kill_dashboard_port() {
+  if command -v fuser >/dev/null 2>&1; then
+    fuser -k 8787/tcp >/dev/null 2>&1 || true
+  fi
+  pkill -f 'uvicorn Core.Intelligence.kibot_dashboard:app --host 0.0.0.0 --port 8787' >/dev/null 2>&1 || true
 }
 
 model_list() {
@@ -173,6 +181,9 @@ cmd_up() {
   section "Reloading systemd"
   systemctl_cmd daemon-reload
   for svc in "${CORE_SERVICES[@]}"; do
+    if [[ "$svc" == "kibot-dashboard" ]]; then
+      kill_dashboard_port
+    fi
     echo "[start] $svc"
     systemctl_cmd restart "$svc"
   done
@@ -183,6 +194,9 @@ cmd_down() {
   local svc
   for ((i=${#CORE_SERVICES[@]}-1; i>=0; i--)); do
     svc="${CORE_SERVICES[$i]}"
+    if [[ "$svc" == "kibot-dashboard" ]]; then
+      kill_dashboard_port
+    fi
     echo "[stop] $svc"
     systemctl_cmd stop "$svc" || true
   done

@@ -14,7 +14,7 @@
 - [`Core/Security/README.md`](./Core/Security/README.md): HMAC, vault, dan audit security.
 - [`Core/Support/README.md`](./Core/Support/README.md): config, utilities, dan tooling.
 - [`bin/`](./bin): shell utilities canonical untuk backup, dependency bootstrap, dan wrapper operasional.
-- [`bin/kibotctl`](./bin/kibotctl): one-command wrapper untuk status, doctor, tools, start/stop, dan sync model server.
+- [`bin/kibotctl`](./bin/kibotctl): one-command wrapper untuk status, doctor, tools, start/stop, sync model server, dan dashboard service.
 - [`bin/kibot-dashboard`](./bin/kibot-dashboard): launcher dashboard visual berbasis FastAPI/Uvicorn.
 - [`config/systemd/kibot-dashboard.service`](./config/systemd/kibot-dashboard.service): systemd unit untuk dashboard visual port `8787`.
 - [`AGENTS.md`](./AGENTS.md): guardrail kerja untuk Codex, Aider, Copilot, dan operator automation.
