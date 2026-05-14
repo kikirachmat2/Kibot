@@ -146,6 +146,8 @@ class CouncilDataAggregator:
         """Gets current holdings and PnL from live exchange/state endpoints."""
         snapshot = {
             "equity_idr": 0.0,
+            "idr_cash": 0.0,
+            "coin_holdings_idr": 0.0,
             "pnl_idr": 0.0,
             "return_pct": 0.0,
             "daily_pnl_idr": 0.0,
@@ -164,13 +166,16 @@ class CouncilDataAggregator:
             },
         }
 
+        idr_cash = 0.0
         idr_balance = 0.0
+        coin_holdings_value_idr = 0.0
         active_positions = []
         try:
             info = await self.master.indodax.get_info()
             if info.get("success") == 1:
                 balances = info.get("return", {}).get("balance", {})
-                idr_balance = float(balances.get("idr", 0) or 0)
+                idr_cash = float(balances.get("idr", 0) or 0)
+                held_coins = []
                 for coin, amount in balances.items():
                     if coin == "idr":
                         continue
@@ -179,7 +184,43 @@ class CouncilDataAggregator:
                     except Exception:
                         continue
                     if amt > 1e-6:
-                        active_positions.append({"coin": coin, "amount": amt})
+                        held_coins.append({"coin": coin, "amount": amt})
+
+                if held_coins:
+                    import asyncio
+
+                    async def get_coin_value(coin_data):
+                        coin = coin_data["coin"]
+                        amount = coin_data["amount"]
+                        try:
+                            ticker = await self.master.indodax.get_ticker(f"{coin}_idr")
+                            price = float(ticker.get("last", 0) or 0)
+                            value_idr = amount * price
+                            return {
+                                "coin": coin,
+                                "amount": amount,
+                                "price_idr": price,
+                                "value_idr": round(value_idr, 0),
+                            }
+                        except Exception:
+                            return {
+                                "coin": coin,
+                                "amount": amount,
+                                "price_idr": 0.0,
+                                "value_idr": 0.0,
+                            }
+
+                    results = await asyncio.gather(
+                        *[get_coin_value(coin_data) for coin_data in held_coins],
+                        return_exceptions=True,
+                    )
+                    for result in results:
+                        if isinstance(result, dict):
+                            if result.get("value_idr", 0) > 0:
+                                coin_holdings_value_idr += float(result["value_idr"])
+                            active_positions.append(result)
+
+                idr_balance = idr_cash + coin_holdings_value_idr
         except Exception as e:
             print(f"ERROR [Aggregator]: Indodax balance fetch failed: {e}")
 
@@ -213,6 +254,8 @@ class CouncilDataAggregator:
 
         snapshot.update({
             "equity_idr": idr_balance,
+            "idr_cash": idr_cash,
+            "coin_holdings_idr": coin_holdings_value_idr,
             "pnl_idr": daily_pnl_idr,
             "return_pct": daily_pnl_pct,
             "daily_pnl_idr": daily_pnl_idr,

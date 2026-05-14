@@ -1,0 +1,212 @@
+<!doctype html>
+<html lang="id">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta http-equiv="Cache-Control" content="no-store, max-age=0" />
+  <title>KiBot Sovereign</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&family=Syne:wght@500;600;700;800&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/static/style.css?v=2.1" />
+  <script defer src="/static/canvas.js?v=2.1"></script>
+  <script defer src="/static/live.js?v=2.1"></script>
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <div class="brand-mark">K</div>
+      <div>
+        <div class="brand-name">KiBot Sovereign</div>
+        <div class="brand-sub">Indodax + Polymarket control floor</div>
+      </div>
+    </div>
+
+    <div class="state-pill FLAT" id="state-badge">
+      <span class="live-dot"></span>
+      <span id="state-text">FLAT</span>
+    </div>
+
+    <div class="top-metric">
+      <span>Combined Equity</span>
+      <strong id="combined-equity">Rp --</strong>
+      <small id="equity-breakdown">cash -- · koin --</small>
+    </div>
+
+    <div class="top-metric">
+      <span>Daily PnL</span>
+      <strong id="daily-pnl" class="neutral">Rp 0</strong>
+      <small id="portfolio-source">live portfolio</small>
+    </div>
+
+    <div class="clockbox">
+      <strong id="clock">--:--:-- WIB</strong>
+      <span id="deadline">deadline --</span>
+    </div>
+  </header>
+
+  <main class="app-grid">
+    <section class="canvas-zone">
+      <div class="zone-label">
+        <span>Delegation Canvas</span>
+        <strong>Living Agent Floor</strong>
+      </div>
+
+      <div class="iso-stage">
+        <div class="iso-office" id="iso-office">
+          <div class="iso-floor"></div>
+          <div class="flow-line flow-line-a"></div>
+          <div class="flow-line flow-line-b"></div>
+          <div class="flow-line flow-line-c"></div>
+          <div class="flow-line flow-line-d"></div>
+
+          <div class="agent-desk desk-scanner" data-agent="scanner">
+            <div class="desk-plane scanner"></div>
+            <div class="agent-char active" id="char-scanner">
+              <div class="char-metric" id="metric-scanner">0 signals</div>
+              <div class="char-body scanner"></div>
+              <div class="char-shadow scanner"></div>
+              <div class="char-name">SCANNER</div>
+            </div>
+          </div>
+
+          <div class="agent-desk desk-brain" data-agent="brain">
+            <div class="desk-plane brain"></div>
+            <div class="agent-char" id="char-brain">
+              <div class="char-metric" id="metric-brain">MIXED</div>
+              <div class="char-body brain"></div>
+              <div class="char-shadow brain"></div>
+              <div class="char-name">AI BRAIN</div>
+            </div>
+          </div>
+
+          <div class="agent-desk desk-council" data-agent="council">
+            <div class="desk-plane council"></div>
+            <div class="agent-char thinking" id="char-council">
+              <div class="char-metric" id="metric-council">conf 0.00</div>
+              <div class="char-body council large"></div>
+              <div class="char-shadow council large"></div>
+              <div class="char-name">COUNCIL</div>
+            </div>
+          </div>
+
+          <div class="agent-desk desk-indo" data-agent="indodax">
+            <div class="desk-plane indo"></div>
+            <div class="agent-char" id="char-indo">
+              <div class="char-metric" id="metric-indo">Rp --</div>
+              <div class="char-body indo"></div>
+              <div class="char-shadow indo"></div>
+              <div class="char-name">INDODAX</div>
+            </div>
+          </div>
+
+          <div class="agent-desk desk-poly" data-agent="polymarket">
+            <div class="desk-plane poly"></div>
+            <div class="agent-char" id="char-poly">
+              <div class="char-metric" id="metric-poly">$0.00</div>
+              <div class="char-body poly"></div>
+              <div class="char-shadow poly"></div>
+              <div class="char-name">POLYMARKET</div>
+            </div>
+          </div>
+
+          <div class="agent-desk desk-verifier" data-agent="verifier">
+            <div class="desk-plane verifier"></div>
+            <div class="agent-char" id="char-verifier">
+              <div class="char-metric" id="metric-verifier">verify</div>
+              <div class="char-body verifier"></div>
+              <div class="char-shadow verifier"></div>
+              <div class="char-name">VERIFIER</div>
+            </div>
+          </div>
+
+          <div class="agent-desk desk-janitor" data-agent="janitor">
+            <div class="desk-plane janitor"></div>
+            <div class="agent-char" id="char-janitor">
+              <div class="char-metric" id="metric-janitor">disk --</div>
+              <div class="char-body janitor"></div>
+              <div class="char-shadow janitor"></div>
+              <div class="char-name">JANITOR</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="agent-strip" id="agent-pills"></div>
+      <div class="world-chip" id="world-regime">market regime loading...</div>
+    </section>
+
+    <aside class="ledger-panel">
+      <section class="panel-section">
+        <h2>Live Ledger</h2>
+        <article class="exchange-card indo">
+          <div class="exchange-head">
+            <span>Indonesia</span>
+            <strong>Indodax</strong>
+            <em>LIVE</em>
+          </div>
+          <div class="exchange-total" id="indo-total">Rp --</div>
+          <div class="exchange-breakdown">
+            <span id="indo-cash">cash --</span>
+            <span id="indo-holdings">koin --</span>
+          </div>
+          <div class="position-list" id="indo-positions"></div>
+        </article>
+
+        <article class="exchange-card poly">
+          <div class="exchange-head">
+            <span>Polygon</span>
+            <strong>Polymarket</strong>
+            <em>LIVE</em>
+          </div>
+          <div class="exchange-total" id="poly-total">$-- USDC</div>
+          <div class="exchange-breakdown" id="poly-idr">~ Rp --</div>
+          <div class="position-list" id="poly-positions"></div>
+        </article>
+      </section>
+
+      <section class="panel-section">
+        <h2>Strategy</h2>
+        <div class="strategy-card">
+          <strong id="strategy-mode">UNKNOWN</strong>
+          <div class="strategy-grid">
+            <span>Confidence</span><b id="s-conf">--</b>
+            <span>Take Profit</span><b id="s-tp">--</b>
+            <span>Slots</span><b id="s-slots">--</b>
+            <span>Hard Stop</span><b id="s-stop">-1.5% day</b>
+          </div>
+        </div>
+      </section>
+
+      <section class="panel-section">
+        <h2>Council Lens</h2>
+        <div class="council-lens WAIT" id="council-lens">
+          <strong id="cl-state">WAIT</strong>
+          <span id="cl-detail">waiting signal</span>
+        </div>
+      </section>
+
+      <section class="panel-section">
+        <h2>What-If Top</h2>
+        <div class="whatif-list" id="whatif-list">No data yet</div>
+      </section>
+    </aside>
+
+    <aside class="trail-panel">
+      <div class="trail-head">
+        <span>Event Trail</span>
+        <i></i>
+      </div>
+      <div class="trail-list" id="trail-list"></div>
+      <div class="system-card">
+        <h2>System</h2>
+        <div class="snap-row"><span>CPU</span><strong id="sys-cpu">--</strong></div>
+        <div class="snap-row"><span>RAM</span><strong id="sys-ram">--</strong></div>
+        <div class="snap-row"><span>Disk</span><strong id="sys-disk">--</strong></div>
+        <div class="snap-row"><span>Ollama</span><strong id="sys-ollama">--</strong></div>
+        <div class="snap-row"><span>Redis</span><strong id="sys-redis">--</strong></div>
+      </div>
+    </aside>
+  </main>
+</body>
+</html>

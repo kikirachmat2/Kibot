@@ -15,9 +15,10 @@ AI Orchestration, Learning, and Market Intelligence models.
 - Target harian sekarang dipahami sebagai state `GREEN` bukan angka persen statis, jadi council dan executor bisa menahan winner lebih lama kalau edge masih kuat.
 - `kibot_ai_scout.py` membawa `daily_state` yang sama ke `POSSIBILITY_MINING` dan validasi targeted scouting, sehingga scouting global dan council memakai posture yang konsisten.
 - `delegation_workflows.md` dan `delegation_workflows.json` mendokumentasikan alur delegasi formal KiBot: discovery, council, executor, verification, dan maintenance.
-- `kibot_dashboard.py` menampilkan alur delegasi, canvas SVG, live ledger, event trail, strategy state, dan log ringkas dalam visual control plane web di port `8787`.
-- `dashboard_assets/` memuat HTML/CSS/JS control plane yang dipakai dashboard agar tampil seperti living delegation canvas, bukan admin panel biasa.
+- `kibot_dashboard.py` menampilkan alur delegasi, saldo live, council lens, strategy state, dan event trail dalam visual control plane web di port `8787`.
+- `dashboard/` memuat Dashboard V2: isometric agent floor, karakter agen, live ledger Indodax/Polymarket, dan SSE updates.
 - `bin/kibotctl` sekarang ikut mengelola `kibot-dashboard`, jadi visual control plane masuk ke wrapper operasional satu pintu.
+- `aggregator.py` sekarang menghitung equity Indodax sebagai `idr_cash + coin_holdings_idr`, sehingga saldo koin yang sedang dipegang ikut tampil di dashboard dan council snapshot.
 
 ## Live Server Atlas
 Source of truth untuk keadaan server yang sebenarnya:
