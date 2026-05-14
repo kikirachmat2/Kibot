@@ -4,15 +4,20 @@ const fmtIdr = new Intl.NumberFormat("id-ID", {
   maximumFractionDigits: 0,
 });
 
-const agentColors = {
-  Portfolio: "var(--text2)",
+const LOG_COLORS = {
+  Portfolio: "var(--ink-soft)",
   Council: "var(--council)",
   Scanner: "var(--scanner)",
   Executor: "var(--indo)",
+  Polymarket: "var(--poly)",
   Janitor: "var(--janitor)",
   Market: "var(--blue)",
-  Log: "var(--text2)",
+  System: "var(--janitor)",
+  Brain: "var(--brain)",
 };
+
+let lastSummary = null;
+let localFeed = [];
 
 function byId(id) {
   return document.getElementById(id);
@@ -23,11 +28,6 @@ function fmtRp(value) {
   if (Math.abs(amount) >= 1_000_000_000) return `Rp ${(amount / 1_000_000_000).toFixed(2)}M`;
   if (Math.abs(amount) >= 1_000_000) return `Rp ${(amount / 1_000_000).toFixed(1)}jt`;
   return fmtIdr.format(amount);
-}
-
-function fmtPct(value) {
-  const amount = Number(value || 0);
-  return `${amount >= 0 ? "+" : ""}${amount.toFixed(2)}%`;
 }
 
 function escapeHtml(value) {
@@ -56,10 +56,11 @@ function updateText(id, value, flash = true) {
 function renderClock() {
   const now = new Date();
   const wib = new Date(now.toLocaleString("en-US", { timeZone: "Asia/Jakarta" }));
-  const clock = byId("clock");
-  if (clock) {
-    clock.textContent = `${String(wib.getHours()).padStart(2, "0")}:${String(wib.getMinutes()).padStart(2, "0")}:${String(wib.getSeconds()).padStart(2, "0")} WIB`;
-  }
+  updateText(
+    "clock",
+    `${String(wib.getHours()).padStart(2, "0")}:${String(wib.getMinutes()).padStart(2, "0")}:${String(wib.getSeconds()).padStart(2, "0")} WIB`,
+    false,
+  );
 
   const midnight = new Date(wib);
   midnight.setHours(24, 0, 0, 0);
@@ -94,7 +95,7 @@ function renderBets(bets) {
     return `<div class="empty-row">No active bets</div>`;
   }
   return bets.slice(0, 5).map((bet) => {
-    const name = String(bet.market_id || bet.symbol || bet.title || "market").slice(0, 12);
+    const name = String(bet.market_id || bet.symbol || bet.title || "market").slice(0, 15);
     const amount = Number(bet.size_usdc || bet.amount || 0);
     return `
       <div class="position-row">
@@ -106,25 +107,93 @@ function renderBets(bets) {
   }).join("");
 }
 
-function renderTrail(events) {
-  const list = byId("trail-list");
+function normalizeEvents(data) {
+  const portfolio = data?.portfolio || {};
+  const council = data?.council || {};
+  const world = data?.world_model || {};
+  const system = data?.system || {};
+  const services = data?.services || {};
+  const events = Array.isArray(data?.events) ? data.events.slice(0, 24) : [];
+
+  const generated = [
+    {
+      agent: "Portfolio",
+      tag: "INFO",
+      message: `Equity ${fmtRp(portfolio.combined_equity_idr || 0)} | cash ${fmtRp(portfolio.idr_cash || 0)} | coin ${fmtRp(portfolio.coin_holdings_idr || 0)}`,
+    },
+    {
+      agent: "Council",
+      tag: council.decision_state === "ENTER" ? "SUCCESS" : "INFO",
+      message: `${String(council.decision_state || "WAIT").toUpperCase()} | ${council.ticker || "no ticker"} | conf ${Number(council.confidence || 0).toFixed(2)}`,
+    },
+    {
+      agent: "Market",
+      tag: "INFO",
+      message: `${world.market_regime || "NEUTRAL"} | risk ${world.risk_level || "LOW"}`,
+    },
+    {
+      agent: "Janitor",
+      tag: Number(system.disk || 0) > 88 ? "WARN" : "INFO",
+      message: `CPU ${Number(system.cpu || 0).toFixed(1)}% | RAM ${Number(system.ram || 0).toFixed(1)}% | Disk ${Number(system.disk || 0).toFixed(1)}%`,
+    },
+    {
+      agent: "System",
+      tag: "INFO",
+      message: `master:${services["kibot-master"] || "--"} | scanner:${services["kibot-scanner"] || "--"} | executor:${services["kibot-executor"] || "--"}`,
+    },
+  ];
+
+  return [...localFeed, ...generated, ...events].slice(0, 60);
+}
+
+function logTime(event) {
+  if (event.time) {
+    const parsed = new Date(event.time);
+    if (!Number.isNaN(parsed.getTime())) {
+      return parsed.toLocaleTimeString("id-ID", { hour12: false });
+    }
+  }
+  return new Date().toLocaleTimeString("id-ID", { hour12: false });
+}
+
+function renderLogList(targetId, events, technical = false) {
+  const list = byId(targetId);
   if (!list) return;
-  list.innerHTML = (events || []).slice(0, 40).map((event) => {
+  if (!events.length) {
+    list.innerHTML = `<div class="log-empty">NO ${technical ? "TECHNICAL" : "ACTIVITY"} DATA...</div>`;
+    return;
+  }
+
+  list.innerHTML = events.map((event) => {
     const agent = event.agent || event.title || "Event";
     const tag = String(event.tag || event.level || "INFO").toUpperCase();
-    const time = event.time ? new Date(event.time).toLocaleTimeString("id-ID", { hour12: false }) : new Date().toLocaleTimeString("id-ID", { hour12: false });
-    const color = agentColors[agent] || "var(--text2)";
+    const color = LOG_COLORS[agent] || "var(--ink-soft)";
     return `
-      <div class="trail-item">
-        <span class="trail-time">${escapeHtml(time)}</span>
+      <div class="log-item">
+        <span class="log-time">${escapeHtml(logTime(event))}</span>
         <div>
-          <div class="trail-agent" style="color:${color}">${escapeHtml(agent)}</div>
-          <div class="trail-msg">${escapeHtml(event.message || event.detail || "")}</div>
+          <div class="log-agent" style="color:${color}">${escapeHtml(agent)}</div>
+          <div class="log-message">${escapeHtml(event.message || event.detail || "")}</div>
         </div>
-        <span class="trail-tag ${tag}">${escapeHtml(tag)}</span>
+        <span class="log-tag ${tag}">${escapeHtml(tag)}</span>
       </div>
     `;
   }).join("");
+}
+
+function renderLogs(data) {
+  const all = normalizeEvents(data);
+  const technical = [
+    ...(all.filter((item) => ["System", "Janitor", "Brain"].includes(item.agent))),
+    ...Object.entries(data?.services || {}).map(([service, status]) => ({
+      agent: "System",
+      tag: status === "active" ? "SUCCESS" : "WARN",
+      message: `${service}: ${status}`,
+    })),
+  ].slice(0, 60);
+
+  renderLogList("activity-log", all, false);
+  renderLogList("technical-log", technical, true);
 }
 
 function renderWhatif(items) {
@@ -134,15 +203,16 @@ function renderWhatif(items) {
     holder.innerHTML = "No data yet";
     return;
   }
-  holder.innerHTML = items.slice(0, 3).map((item) => {
+  holder.innerHTML = items.slice(0, 4).map((item) => {
     if (typeof item === "string") return `<div>${escapeHtml(item)}</div>`;
     const label = item.pair || item.symbol || item.market || item.name || "opportunity";
     const score = item.score || item.ev || item.expected_value || item.confidence || "";
-    return `<div>${escapeHtml(label)} ${score ? `· ${escapeHtml(score)}` : ""}</div>`;
+    return `<div>${escapeHtml(label)}${score ? ` · ${escapeHtml(score)}` : ""}</div>`;
   }).join("");
 }
 
 function renderSummary(data) {
+  lastSummary = data;
   const portfolio = data.portfolio || {};
   const poly = portfolio.polymarket || {};
   const strategy = data.strategy || {};
@@ -158,8 +228,13 @@ function renderSummary(data) {
   updateText("combined-equity", fmtRp(portfolio.combined_equity_idr || 0));
   updateText("equity-breakdown", `cash ${fmtRp(portfolio.idr_cash || 0)} · koin ${fmtRp(portfolio.coin_holdings_idr || 0)}`);
   updateText("daily-pnl", fmtRp(portfolio.daily_pnl_idr || 0));
+  updateText("portfolio-source", portfolio.daily_state?.reason || "live portfolio", false);
+
   const pnlEl = byId("daily-pnl");
-  if (pnlEl) pnlEl.className = Number(portfolio.daily_pnl_idr || 0) > 0 ? "positive" : Number(portfolio.daily_pnl_idr || 0) < 0 ? "negative" : "neutral";
+  if (pnlEl) {
+    const pnl = Number(portfolio.daily_pnl_idr || 0);
+    pnlEl.className = pnl > 0 ? "positive" : pnl < 0 ? "negative" : "neutral";
+  }
 
   updateText("indo-total", fmtRp(portfolio.equity_idr || 0));
   updateText("indo-cash", `cash ${fmtRp(portfolio.idr_cash || 0)}`);
@@ -190,8 +265,14 @@ function renderSummary(data) {
   updateText("sys-disk", `${Number(system.disk || 0).toFixed(1)}%`);
   updateText("sys-ollama", services.ollama || "--");
   updateText("sys-redis", services["redis-server"] || "--");
-  renderTrail(data.events || []);
 
+  const critical = ["kibot-master", "kibot-scanner", "kibot-executor", "ollama", "redis-server"];
+  const ready = critical.every((service) => services[service] === "active");
+  updateText("readiness-pill", ready ? "READY" : "ATTENTION", false);
+  byId("readiness-pill")?.classList.toggle("warn", !ready);
+  updateText("agency-count", String(Object.keys(window.KiBotCanvas?.AGENTS || {}).length || 7), false);
+
+  renderLogs(data);
   window.KiBotCanvas?.render(data);
 }
 
@@ -206,6 +287,7 @@ function startStream() {
     poll().catch(() => {});
     return;
   }
+
   const stream = new EventSource("/api/stream");
   stream.onmessage = (event) => {
     try {
@@ -223,9 +305,34 @@ function startStream() {
   };
 }
 
+function bindUi() {
+  document.querySelectorAll("[data-log-tab]").forEach((button) => {
+    button.addEventListener("click", () => {
+      document.querySelectorAll("[data-log-tab]").forEach((el) => el.classList.remove("active"));
+      document.querySelectorAll(".log-scroll").forEach((el) => el.classList.remove("active"));
+      button.classList.add("active");
+      byId(`${button.dataset.logTab}-log`)?.classList.add("active");
+    });
+  });
+
+  byId("clear-local-feed")?.addEventListener("click", () => {
+    localFeed = [{
+      agent: "System",
+      tag: "INFO",
+      message: "visual feed cleared by operator",
+    }];
+    if (lastSummary) renderLogs(lastSummary);
+  });
+}
+
+window.KiBotLive = {
+  fmtRp,
+  renderSummary,
+  updateText,
+};
+
 renderClock();
 setInterval(renderClock, 1000);
+bindUi();
 poll().catch(() => {});
 startStream();
-
-window.KiBotLive = { fmtRp, renderSummary };

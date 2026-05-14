@@ -4,209 +4,261 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <meta http-equiv="Cache-Control" content="no-store, max-age=0" />
-  <title>KiBot Sovereign</title>
+  <title>KiBot Sovereign Delegation</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&family=Syne:wght@500;600;700;800&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="/static/style.css?v=2.1" />
-  <script defer src="/static/canvas.js?v=2.1"></script>
-  <script defer src="/static/live.js?v=2.1"></script>
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/static/style.css?v=3.0" />
+  <script defer src="/static/canvas.js?v=3.0"></script>
+  <script defer src="/static/live.js?v=3.0"></script>
 </head>
 <body>
-  <header class="topbar">
-    <div class="brand">
-      <div class="brand-mark">K</div>
+  <header class="command-bar">
+    <div class="brand-lockup">
+      <div class="terminal-mark">⌘</div>
       <div>
-        <div class="brand-name">KiBot Sovereign</div>
-        <div class="brand-sub">Indodax + Polymarket control floor</div>
+        <div class="product-name">The KiBot Delegation</div>
+        <div class="product-meta">v3.0.0 <span>•</span> Batam sovereign agency</div>
       </div>
     </div>
 
-    <div class="state-pill FLAT" id="state-badge">
-      <span class="live-dot"></span>
-      <span id="state-text">FLAT</span>
+    <div class="agency-chip">
+      <span class="team-count" id="agency-count">7</span>
+      <div>
+        <strong>kibot.sovereign</strong>
+        <small>INDODAX + POLYMARKET CONTROL PLANE</small>
+      </div>
     </div>
 
-    <div class="top-metric">
-      <span>Combined Equity</span>
-      <strong id="combined-equity">Rp --</strong>
-      <small id="equity-breakdown">cash -- · koin --</small>
+    <div class="model-chip">
+      <span></span>
+      <div>
+        <small>PRIMARY BRAIN</small>
+        <strong>ollama / qwen council</strong>
+      </div>
     </div>
 
-    <div class="top-metric">
-      <span>Daily PnL</span>
-      <strong id="daily-pnl" class="neutral">Rp 0</strong>
-      <small id="portfolio-source">live portfolio</small>
-    </div>
-
-    <div class="clockbox">
-      <strong id="clock">--:--:-- WIB</strong>
-      <span id="deadline">deadline --</span>
-    </div>
+    <button class="ghost-button" id="focus-stage" type="button">FOCUS FLOOR</button>
+    <button class="primary-button" id="open-director" type="button">MANAGE AGENTS</button>
   </header>
 
-  <main class="app-grid">
-    <section class="canvas-zone">
-      <div class="zone-label">
-        <span>Delegation Canvas</span>
-        <strong>Living Agent Floor</strong>
+  <div class="workspace">
+    <aside class="logs-panel">
+      <div class="panel-head">
+        <span>LOGS</span>
+        <button class="icon-button" id="clear-local-feed" type="button" title="Clear visual feed">⌫</button>
       </div>
-
-      <div class="iso-stage">
-        <div class="iso-office" id="iso-office">
-          <div class="iso-floor"></div>
-          <div class="flow-line flow-line-a"></div>
-          <div class="flow-line flow-line-b"></div>
-          <div class="flow-line flow-line-c"></div>
-          <div class="flow-line flow-line-d"></div>
-
-          <div class="agent-desk desk-scanner" data-agent="scanner">
-            <div class="desk-plane scanner"></div>
-            <div class="agent-char active" id="char-scanner">
-              <div class="char-metric" id="metric-scanner">0 signals</div>
-              <div class="char-body scanner"></div>
-              <div class="char-shadow scanner"></div>
-              <div class="char-name">SCANNER</div>
-            </div>
-          </div>
-
-          <div class="agent-desk desk-brain" data-agent="brain">
-            <div class="desk-plane brain"></div>
-            <div class="agent-char" id="char-brain">
-              <div class="char-metric" id="metric-brain">MIXED</div>
-              <div class="char-body brain"></div>
-              <div class="char-shadow brain"></div>
-              <div class="char-name">AI BRAIN</div>
-            </div>
-          </div>
-
-          <div class="agent-desk desk-council" data-agent="council">
-            <div class="desk-plane council"></div>
-            <div class="agent-char thinking" id="char-council">
-              <div class="char-metric" id="metric-council">conf 0.00</div>
-              <div class="char-body council large"></div>
-              <div class="char-shadow council large"></div>
-              <div class="char-name">COUNCIL</div>
-            </div>
-          </div>
-
-          <div class="agent-desk desk-indo" data-agent="indodax">
-            <div class="desk-plane indo"></div>
-            <div class="agent-char" id="char-indo">
-              <div class="char-metric" id="metric-indo">Rp --</div>
-              <div class="char-body indo"></div>
-              <div class="char-shadow indo"></div>
-              <div class="char-name">INDODAX</div>
-            </div>
-          </div>
-
-          <div class="agent-desk desk-poly" data-agent="polymarket">
-            <div class="desk-plane poly"></div>
-            <div class="agent-char" id="char-poly">
-              <div class="char-metric" id="metric-poly">$0.00</div>
-              <div class="char-body poly"></div>
-              <div class="char-shadow poly"></div>
-              <div class="char-name">POLYMARKET</div>
-            </div>
-          </div>
-
-          <div class="agent-desk desk-verifier" data-agent="verifier">
-            <div class="desk-plane verifier"></div>
-            <div class="agent-char" id="char-verifier">
-              <div class="char-metric" id="metric-verifier">verify</div>
-              <div class="char-body verifier"></div>
-              <div class="char-shadow verifier"></div>
-              <div class="char-name">VERIFIER</div>
-            </div>
-          </div>
-
-          <div class="agent-desk desk-janitor" data-agent="janitor">
-            <div class="desk-plane janitor"></div>
-            <div class="agent-char" id="char-janitor">
-              <div class="char-metric" id="metric-janitor">disk --</div>
-              <div class="char-body janitor"></div>
-              <div class="char-shadow janitor"></div>
-              <div class="char-name">JANITOR</div>
-            </div>
-          </div>
-        </div>
+      <div class="log-tabs" role="tablist">
+        <button class="active" type="button" data-log-tab="activity">ACTIVITY</button>
+        <button type="button" data-log-tab="technical">TECHNICAL</button>
       </div>
-
-      <div class="agent-strip" id="agent-pills"></div>
-      <div class="world-chip" id="world-regime">market regime loading...</div>
-    </section>
-
-    <aside class="ledger-panel">
-      <section class="panel-section">
-        <h2>Live Ledger</h2>
-        <article class="exchange-card indo">
-          <div class="exchange-head">
-            <span>Indonesia</span>
-            <strong>Indodax</strong>
-            <em>LIVE</em>
-          </div>
-          <div class="exchange-total" id="indo-total">Rp --</div>
-          <div class="exchange-breakdown">
-            <span id="indo-cash">cash --</span>
-            <span id="indo-holdings">koin --</span>
-          </div>
-          <div class="position-list" id="indo-positions"></div>
-        </article>
-
-        <article class="exchange-card poly">
-          <div class="exchange-head">
-            <span>Polygon</span>
-            <strong>Polymarket</strong>
-            <em>LIVE</em>
-          </div>
-          <div class="exchange-total" id="poly-total">$-- USDC</div>
-          <div class="exchange-breakdown" id="poly-idr">~ Rp --</div>
-          <div class="position-list" id="poly-positions"></div>
-        </article>
-      </section>
-
-      <section class="panel-section">
-        <h2>Strategy</h2>
-        <div class="strategy-card">
-          <strong id="strategy-mode">UNKNOWN</strong>
-          <div class="strategy-grid">
-            <span>Confidence</span><b id="s-conf">--</b>
-            <span>Take Profit</span><b id="s-tp">--</b>
-            <span>Slots</span><b id="s-slots">--</b>
-            <span>Hard Stop</span><b id="s-stop">-1.5% day</b>
-          </div>
-        </div>
-      </section>
-
-      <section class="panel-section">
-        <h2>Council Lens</h2>
-        <div class="council-lens WAIT" id="council-lens">
-          <strong id="cl-state">WAIT</strong>
-          <span id="cl-detail">waiting signal</span>
-        </div>
-      </section>
-
-      <section class="panel-section">
-        <h2>What-If Top</h2>
-        <div class="whatif-list" id="whatif-list">No data yet</div>
-      </section>
+      <div class="log-scroll active" id="activity-log"></div>
+      <div class="log-scroll" id="technical-log"></div>
     </aside>
 
-    <aside class="trail-panel">
-      <div class="trail-head">
-        <span>Event Trail</span>
-        <i></i>
-      </div>
-      <div class="trail-list" id="trail-list"></div>
-      <div class="system-card">
+    <main class="mission-center">
+      <section class="mission-topline">
+        <div class="state-pill FLAT" id="state-badge">
+          <span class="live-dot"></span>
+          <span id="state-text">FLAT</span>
+        </div>
+        <div class="headline-metric">
+          <small>COMBINED EQUITY</small>
+          <strong id="combined-equity">Rp --</strong>
+          <span id="equity-breakdown">cash -- · koin --</span>
+        </div>
+        <div class="headline-metric compact">
+          <small>DAILY PNL</small>
+          <strong id="daily-pnl" class="neutral">Rp 0</strong>
+          <span id="portfolio-source">live portfolio</span>
+        </div>
+        <div class="headline-metric clock">
+          <small>SERVER CLOCK</small>
+          <strong id="clock">--:--:-- WIB</strong>
+          <span id="deadline">deadline --</span>
+        </div>
+      </section>
+
+      <section class="stage-shell" id="stage-shell">
+        <div class="stage-toolbar">
+          <button class="icon-button" id="stage-zoom-out" type="button">−</button>
+          <button class="icon-button" id="stage-reset" type="button">FIT</button>
+          <button class="icon-button" id="stage-zoom-in" type="button">+</button>
+        </div>
+
+        <div class="office-stage" id="office-stage">
+          <div class="floor-perspective">
+            <div class="floor-grid"></div>
+            <div class="blue-boundary boundary-a"></div>
+            <div class="blue-boundary boundary-b"></div>
+            <div class="blue-boundary boundary-c"></div>
+            <div class="office-prop prop-desk prop-a"></div>
+            <div class="office-prop prop-desk prop-b"></div>
+            <div class="office-prop prop-wall prop-c"></div>
+            <div class="office-prop prop-chair prop-d"></div>
+            <div class="office-prop prop-server prop-e"></div>
+          </div>
+
+          <div class="signal-line line-scanner-council"></div>
+          <div class="signal-line line-brain-council"></div>
+          <div class="signal-line line-council-indo"></div>
+          <div class="signal-line line-council-poly"></div>
+          <div class="signal-line line-exec-verifier"></div>
+
+          <button class="agent-avatar scanner active selected" type="button" data-agent="scanner" id="char-scanner">
+            <span class="agent-bubble" id="metric-scanner">scan live</span>
+            <span class="agent-head"></span>
+            <span class="agent-body"></span>
+            <strong>Scanner</strong>
+          </button>
+
+          <button class="agent-avatar brain" type="button" data-agent="brain" id="char-brain">
+            <span class="agent-bubble" id="metric-brain">MIXED</span>
+            <span class="agent-head"></span>
+            <span class="agent-body"></span>
+            <strong>AI Brain</strong>
+          </button>
+
+          <button class="agent-avatar council thinking" type="button" data-agent="council" id="char-council">
+            <span class="agent-bubble" id="metric-council">conf 0.00</span>
+            <span class="agent-head"></span>
+            <span class="agent-body"></span>
+            <strong>Council</strong>
+          </button>
+
+          <button class="agent-avatar indo" type="button" data-agent="indodax" id="char-indo">
+            <span class="agent-bubble" id="metric-indo">Rp --</span>
+            <span class="agent-head"></span>
+            <span class="agent-body"></span>
+            <strong>Indodax</strong>
+          </button>
+
+          <button class="agent-avatar poly" type="button" data-agent="polymarket" id="char-poly">
+            <span class="agent-bubble" id="metric-poly">$0.00</span>
+            <span class="agent-head"></span>
+            <span class="agent-body"></span>
+            <strong>Polymarket</strong>
+          </button>
+
+          <button class="agent-avatar verifier" type="button" data-agent="verifier" id="char-verifier">
+            <span class="agent-bubble" id="metric-verifier">verify</span>
+            <span class="agent-head"></span>
+            <span class="agent-body"></span>
+            <strong>Verifier</strong>
+          </button>
+
+          <button class="agent-avatar janitor" type="button" data-agent="janitor" id="char-janitor">
+            <span class="agent-bubble" id="metric-janitor">disk --</span>
+            <span class="agent-head"></span>
+            <span class="agent-body"></span>
+            <strong>Janitor</strong>
+          </button>
+        </div>
+      </section>
+
+      <section class="workflow-board">
+        <article>
+          <header>SCHEDULED <span id="scheduled-count">0</span></header>
+          <div class="workflow-stack" id="lane-scheduled"></div>
+        </article>
+        <article>
+          <header>ON HOLD <span id="hold-count">0</span></header>
+          <div class="workflow-stack" id="lane-hold"></div>
+        </article>
+        <article>
+          <header>IN PROGRESS <span id="progress-count">0</span></header>
+          <div class="workflow-stack" id="lane-progress"></div>
+        </article>
+        <article>
+          <header>DONE <span id="done-count">0</span></header>
+          <div class="workflow-stack" id="lane-done"></div>
+        </article>
+      </section>
+    </main>
+
+    <aside class="director-panel">
+      <section class="project-card">
+        <div class="project-head">
+          <h2>Project Info</h2>
+          <span class="ready-pill" id="readiness-pill">READY</span>
+        </div>
+        <div class="brief-block">
+          <h3>SELECTED AGENT</h3>
+          <strong id="selected-agent-title">Scanner</strong>
+          <p id="selected-agent-copy">Market sensor yang membaca sinyal Indodax dan Polymarket sebelum dikirim ke council.</p>
+          <div class="agent-detail-grid">
+            <span>Status</span><b id="selected-agent-status">ACTIVE</b>
+            <span>Metric</span><b id="selected-agent-metric">scan live</b>
+            <span>Runtime</span><b id="selected-agent-runtime">systemd</b>
+          </div>
+        </div>
+      </section>
+
+      <section class="account-card indodax-card">
+        <div class="account-head">
+          <small>INDONESIA</small>
+          <strong>Indodax</strong>
+          <em>LIVE</em>
+        </div>
+        <div class="account-total" id="indo-total">Rp --</div>
+        <div class="account-subline">
+          <span id="indo-cash">cash --</span>
+          <span id="indo-holdings">koin --</span>
+        </div>
+        <div class="position-list" id="indo-positions"></div>
+      </section>
+
+      <section class="account-card poly-card">
+        <div class="account-head">
+          <small>POLYGON</small>
+          <strong>Polymarket</strong>
+          <em>LIVE</em>
+        </div>
+        <div class="account-total" id="poly-total">$-- USDC</div>
+        <div class="account-subline" id="poly-idr">~ Rp --</div>
+        <div class="position-list" id="poly-positions"></div>
+      </section>
+
+      <section class="strategy-inspector">
+        <h2>Strategy</h2>
+        <div class="strategy-mode" id="strategy-mode">UNKNOWN</div>
+        <div class="strategy-grid">
+          <span>Confidence</span><b id="s-conf">--</b>
+          <span>Take Profit</span><b id="s-tp">--</b>
+          <span>Slots</span><b id="s-slots">--</b>
+          <span>Hard Stop</span><b id="s-stop">--</b>
+        </div>
+      </section>
+
+      <section class="council-lens WAIT" id="council-lens">
+        <h2>Council Lens</h2>
+        <strong id="cl-state">WAIT</strong>
+        <span id="cl-detail">waiting signal</span>
+      </section>
+
+      <section class="system-card">
         <h2>System</h2>
         <div class="snap-row"><span>CPU</span><strong id="sys-cpu">--</strong></div>
         <div class="snap-row"><span>RAM</span><strong id="sys-ram">--</strong></div>
         <div class="snap-row"><span>Disk</span><strong id="sys-disk">--</strong></div>
         <div class="snap-row"><span>Ollama</span><strong id="sys-ollama">--</strong></div>
         <div class="snap-row"><span>Redis</span><strong id="sys-redis">--</strong></div>
-      </div>
+      </section>
+
+      <section class="whatif-card">
+        <h2>What-If Top</h2>
+        <div class="whatif-list" id="whatif-list">No data yet</div>
+      </section>
     </aside>
-  </main>
+  </div>
+
+  <div class="director-drawer" id="director-drawer" aria-hidden="true">
+    <div class="drawer-card">
+      <button class="drawer-close" id="drawer-close" type="button">×</button>
+      <h2>Agent Runtime Map</h2>
+      <p>Semua karakter di floor ini membaca state asli dari systemd, telemetry, executor, dan portfolio snapshot.</p>
+      <div class="agent-pill-grid" id="agent-pills"></div>
+    </div>
+  </div>
 </body>
 </html>

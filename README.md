@@ -10,7 +10,7 @@
 - [`Core/Intelligence/delegation_workflows.md`](./Core/Intelligence/delegation_workflows.md): playbook workflow delegasi formal untuk seluruh sistem.
 - [`Core/Intelligence/delegation_workflows.json`](./Core/Intelligence/delegation_workflows.json): manifest machine-readable untuk workflow delegasi.
 - [`Core/Intelligence/kibot_dashboard.py`](./Core/Intelligence/kibot_dashboard.py): control-plane web dashboard untuk memantau delegation flow secara visual, saldo, strategy, dan event stream.
-- [`Core/Intelligence/dashboard/`](./Core/Intelligence/dashboard): HTML/CSS/JS Dashboard V2 dengan isometric agent canvas dan live ledger.
+- [`Core/Intelligence/dashboard/`](./Core/Intelligence/dashboard): HTML/CSS/JS Dashboard V3 dengan delegation workspace interaktif, agent floor, logs panel, workflow board, dan live ledger.
 - [`Core/Security/README.md`](./Core/Security/README.md): HMAC, vault, dan audit security.
 - [`Core/Support/README.md`](./Core/Support/README.md): config, utilities, dan tooling.
 - [`bin/`](./bin): shell utilities canonical untuk backup, dependency bootstrap, dan wrapper operasional.
@@ -32,7 +32,7 @@
 - **Learning Probe**: Jika hari itu belum ada trade dan edge-nya layak, council boleh menandai entry kecil sebagai probe pembelajaran tanpa melanggar hard loss.
 - **Self-Healing & Resilience**: Pemulihan mandiri instan dari kegagalan infrastruktur (Ollama, Network, Disk).
 - **Explicit Live Gate**: order real-money hanya jalan jika `KIBOT_LIVE_TRADING_ENABLED=true` atau `KIBOT_TRADING_MODE=live`.
-- **Visual Control Plane**: workflow delegasi dan state runtime bisa dilihat lewat dashboard web di port `8787` melalui `bin/kibot-dashboard`.
+- **Visual Control Plane**: workflow delegasi dan state runtime bisa dilihat lewat dashboard web interaktif di port `8787` melalui `bin/kibot-dashboard`.
 
 ### 📱 Notification Protocol
 - **Urgent Only**: Hanya mengirim pesan darurat dan tindakan kritis ke Telegram.

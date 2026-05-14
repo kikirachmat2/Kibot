@@ -18,7 +18,7 @@ from fastapi.staticfiles import StaticFiles
 
 from Core.Support.ki_config import PROJECT_ROOT, STATE_DIR
 
-app = FastAPI(title="KiBot Sovereign Dashboard", version="2.1")
+app = FastAPI(title="KiBot Sovereign Dashboard", version="3.0")
 
 ROOT = Path(PROJECT_ROOT)
 STATE = Path(STATE_DIR)
@@ -211,9 +211,10 @@ def _build_portfolio(telemetry: Dict[str, Any]) -> Dict[str, Any]:
     poly_daily_pnl_usd = _safe_float(polymarket.get("daily_pnl_usd"), 0.0)
     poly_daily_pnl_idr = _safe_float(polymarket.get("daily_pnl_idr"), poly_daily_pnl_usd * USD_IDR_RATE)
 
-    combined_equity = _safe_float(portfolio.get("combined_equity_idr"), 0.0)
-    if combined_equity <= 0:
-        combined_equity = indodax_equity + poly_equity_idr
+    # Recompute combined equity from live components. The telemetry field can lag
+    # behind `equity_idr` when held coins are repriced, so do not let stale cash
+    # overwrite the real portfolio total shown in the control plane.
+    combined_equity = indodax_equity + poly_equity_idr
 
     daily_pnl = _safe_float(portfolio.get("daily_pnl_idr"), 0.0) + poly_daily_pnl_idr
     daily_state = portfolio.get("daily_state") if isinstance(portfolio.get("daily_state"), dict) else {}
@@ -412,7 +413,7 @@ async def canvas() -> JSONResponse:
 
 @app.get("/api/healthz")
 async def healthz() -> JSONResponse:
-    return JSONResponse({"ok": True, "service": "kibot-dashboard", "version": "2.1", "generated_at": datetime.now(WIB).isoformat()})
+    return JSONResponse({"ok": True, "service": "kibot-dashboard", "version": "3.0", "generated_at": datetime.now(WIB).isoformat()})
 
 
 @app.get("/api/stream")
