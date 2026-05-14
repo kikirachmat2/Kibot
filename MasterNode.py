@@ -141,34 +141,28 @@ class KiBotMaster:
         logger.info("💰 PnL Watchdog aktif - monitoring setiap 5 menit.")
         while self.is_running:
             try:
-                info = await self.indodax.get_info()
-                if info.get("success") != 1:
-                    await asyncio.sleep(300)
-                    continue
-                balances = info["return"]["balance"]
-                current_idr = float(balances.get("idr", 0))
-                usd_idr_rate = float(os.getenv("USD_IDR_RATE", "16000"))
-                poly_state = self.last_state.get("polymarket", {}) if isinstance(self.last_state, dict) else {}
+                portfolio_snapshot = await self.aggregator._get_portfolio_snapshot()
+                current_idr = float(portfolio_snapshot.get("idr_cash", 0.0) or 0.0)
+                poly_state = portfolio_snapshot.get("polymarket", {}) if isinstance(portfolio_snapshot.get("polymarket"), dict) else {}
                 usdc_balance = float(poly_state.get("usdc_balance", 0) or 0)
-                combined_equity_idr = current_idr + (usdc_balance * usd_idr_rate)
+                combined_equity_idr = float(portfolio_snapshot.get("combined_equity_idr", 0.0) or 0.0)
+                pnl_idr = float(portfolio_snapshot.get("daily_pnl_idr", 0.0) or 0.0)
+                pnl_pct = float(portfolio_snapshot.get("daily_pnl_pct", 0.0) or 0.0)
+                daily_state = dict(portfolio_snapshot.get("daily_state", {}) or {})
+                green_color = str(daily_state.get("color") or ("GREEN" if pnl_idr > 0 else "RECOVERY" if pnl_idr < 0 else "FLAT")).upper()
+
                 if self._pnl_session_start_balance is None:
-                    self._pnl_session_start_balance = combined_equity_idr
+                    self._pnl_session_start_balance = max(combined_equity_idr - pnl_idr, 1.0)
                     logger.info(
-                        f"💼 Session baseline set to Rp{combined_equity_idr:,.0f} "
+                        f"💼 Session baseline set to Rp{self._pnl_session_start_balance:,.0f} "
                         f"(IDR Rp{current_idr:,.0f} + USDC ${usdc_balance:.2f})"
                     )
-                    await asyncio.sleep(300)
-                    continue
 
-                pnl_idr = combined_equity_idr - self._pnl_session_start_balance
-                pnl_pct = (pnl_idr / self._pnl_session_start_balance * 100) if self._pnl_session_start_balance > 0 else 0
-                risk_daily = getattr(getattr(self, "council", None), "risk", None)
-                green_color = "GREEN" if pnl_idr > 0 else "RECOVERY" if pnl_idr < 0 else "FLAT"
                 daily_state = {
                     "color": green_color,
                     "hold_winners": green_color == "GREEN",
                     "take_profit_multiplier": 1.75 if green_color == "GREEN" else 1.0,
-                    "reason": "green_state" if green_color == "GREEN" else "recovery_state" if green_color == "RECOVERY" else "flat_state",
+                    "reason": daily_state.get("reason") or "mark_to_market_pnl",
                 }
                 logger.info(
                     f"💰 [PNL-5M] IDR Rp{current_idr:,.0f} | USDC ${usdc_balance:.2f} | "

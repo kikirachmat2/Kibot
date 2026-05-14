@@ -19,6 +19,7 @@ AI Orchestration, Learning, and Market Intelligence models.
 - `dashboard/` memuat Dashboard V3.1: delegation graph sederhana ala node workflow, activity log dedupe, agent inspector, workflow board, live ledger Indodax/Polymarket, dan SSE updates.
 - `bin/kibotctl` sekarang ikut mengelola `kibot-dashboard`, jadi visual control plane masuk ke wrapper operasional satu pintu.
 - `aggregator.py` sekarang menghitung equity Indodax sebagai `idr_cash + coin_holdings_idr`, sehingga saldo koin yang sedang dipegang ikut tampil di dashboard dan council snapshot.
+- Daily PnL sekarang mark-to-market: realized PnL dari `risk_state.json` + unrealized open trades dari `active_trades.json` (`current_value - cost`), bukan lagi menganggap seluruh coin holdings sebagai profit.
 
 ## Live Server Atlas
 Source of truth untuk keadaan server yang sebenarnya:

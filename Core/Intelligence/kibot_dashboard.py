@@ -18,7 +18,7 @@ from fastapi.staticfiles import StaticFiles
 
 from Core.Support.ki_config import PROJECT_ROOT, STATE_DIR
 
-app = FastAPI(title="KiBot Sovereign Dashboard", version="3.1")
+app = FastAPI(title="KiBot Sovereign Dashboard", version="3.4")
 
 ROOT = Path(PROJECT_ROOT)
 STATE = Path(STATE_DIR)
@@ -129,6 +129,84 @@ def _ticker_price_idr_sync(coin: str) -> float:
         return 0.0
 
 
+def _coin_from_pair(pair: str) -> str:
+    raw = str(pair or "").strip().lower()
+    if "/" in raw:
+        return raw.split("/", 1)[0]
+    if "_" in raw:
+        return raw.split("_", 1)[0]
+    return raw.replace("idr", "")
+
+
+def _position_value_map(active_positions: List[Dict[str, Any]]) -> Dict[str, Dict[str, float]]:
+    values: Dict[str, Dict[str, float]] = {}
+    for position in active_positions:
+        coin = str(position.get("coin") or position.get("symbol") or "").lower().strip()
+        if not coin or coin == "idr":
+            continue
+        values[coin] = {
+            "amount": _safe_float(position.get("amount"), 0.0),
+            "price_idr": _safe_float(position.get("price_idr"), 0.0),
+            "value_idr": _safe_float(position.get("value_idr"), 0.0),
+        }
+    return values
+
+
+def _realized_daily_pnl_idr() -> float:
+    risk_state = _read_json(STATE / "risk_state.json", {})
+    if not isinstance(risk_state, dict):
+        return 0.0
+    today = datetime.now(WIB).strftime("%Y-%m-%d")
+    state_date = str(risk_state.get("last_reset_date") or "")
+    if state_date and state_date != today:
+        return 0.0
+    return _safe_float(risk_state.get("daily_pnl"), 0.0)
+
+
+def _active_trade_unrealized_pnl(active_positions: List[Dict[str, Any]]) -> Dict[str, Any]:
+    """Calculate open-position PnL as current market value minus entry cost."""
+    active_trades = _read_json(STATE / "active_trades.json", {})
+    if not isinstance(active_trades, dict):
+        return {"unrealized_pnl_idr": 0.0, "position_cost_basis_idr": 0.0, "positions": []}
+
+    values_by_coin = _position_value_map(active_positions)
+    total_pnl = 0.0
+    total_cost = 0.0
+    details = []
+    for pair, trade in active_trades.items():
+        if not isinstance(trade, dict):
+            continue
+        coin = _coin_from_pair(pair)
+        if not coin:
+            continue
+        cost = _safe_float(trade.get("cost") or trade.get("budget_idr") or trade.get("notional_idr"), 0.0)
+        amount = _safe_float(trade.get("amount"), 0.0)
+        position = values_by_coin.get(coin, {})
+        current_value = _safe_float(position.get("value_idr"), 0.0)
+        current_price = _safe_float(position.get("price_idr"), 0.0)
+        if current_value <= 0.0 and amount > 0.0:
+            current_price = current_price or _ticker_price_idr_sync(coin)
+            current_value = amount * current_price
+        if cost <= 0.0:
+            continue
+        pnl = current_value - cost
+        total_pnl += pnl
+        total_cost += cost
+        details.append({
+            "pair": str(pair).upper(),
+            "cost_idr": round(cost, 0),
+            "current_value_idr": round(current_value, 0),
+            "unrealized_pnl_idr": round(pnl, 0),
+            "current_price_idr": current_price,
+        })
+
+    return {
+        "unrealized_pnl_idr": total_pnl,
+        "position_cost_basis_idr": total_cost,
+        "positions": details,
+    }
+
+
 def _service_statuses(telemetry: Dict[str, Any]) -> Dict[str, str]:
     now = time.time()
     cached = SERVICE_CACHE.get("data") or {}
@@ -185,23 +263,26 @@ def _build_portfolio(telemetry: Dict[str, Any]) -> Dict[str, Any]:
     indodax_equity = _safe_float(portfolio.get("equity_idr"), 0.0)
     idr_cash = _safe_float(portfolio.get("idr_cash"), indodax_equity)
     coin_holdings = _safe_float(portfolio.get("coin_holdings_idr"), 0.0)
-    if coin_holdings <= 0:
-        estimated_positions = []
-        for item in active_positions:
-            position = dict(item)
-            value_idr = _safe_float(position.get("value_idr"), 0.0)
+    refreshed_positions = []
+    refreshed_holdings = 0.0
+    for item in active_positions:
+        position = dict(item)
+        amount = _safe_float(position.get("amount"), 0.0)
+        coin = str(position.get("coin") or position.get("symbol") or "").lower()
+        price_idr = _ticker_price_idr_sync(coin) if amount > 0 and coin else 0.0
+        if price_idr <= 0:
             price_idr = _safe_float(position.get("price_idr"), 0.0)
-            amount = _safe_float(position.get("amount"), 0.0)
-            coin = str(position.get("coin") or position.get("symbol") or "").lower()
-            if value_idr <= 0 and amount > 0 and coin:
-                price_idr = price_idr or _ticker_price_idr_sync(coin)
-                value_idr = amount * price_idr
-                position["price_idr"] = price_idr
-                position["value_idr"] = round(value_idr, 0)
-            estimated_positions.append(position)
-        active_positions = estimated_positions
-        coin_holdings = sum(_safe_float(item.get("value_idr"), 0.0) for item in active_positions)
-    if "idr_cash" not in portfolio and coin_holdings > 0:
+        value_idr = amount * price_idr if amount > 0 and price_idr > 0 else _safe_float(position.get("value_idr"), 0.0)
+        position["price_idr"] = price_idr
+        position["value_idr"] = round(value_idr, 0)
+        refreshed_holdings += value_idr
+        refreshed_positions.append(position)
+    if refreshed_positions:
+        active_positions = refreshed_positions
+        coin_holdings = refreshed_holdings
+    if refreshed_positions and coin_holdings > 0:
+        indodax_equity = idr_cash + coin_holdings
+    elif "idr_cash" not in portfolio and coin_holdings > 0:
         indodax_equity = idr_cash + coin_holdings
     if indodax_equity <= 0:
         indodax_equity = idr_cash + coin_holdings
@@ -216,15 +297,20 @@ def _build_portfolio(telemetry: Dict[str, Any]) -> Dict[str, Any]:
     # overwrite the real portfolio total shown in the control plane.
     combined_equity = indodax_equity + poly_equity_idr
 
-    daily_pnl = _safe_float(portfolio.get("daily_pnl_idr"), 0.0) + poly_daily_pnl_idr
+    realized_daily_pnl = _realized_daily_pnl_idr()
+    open_pnl = _active_trade_unrealized_pnl(active_positions)
+    unrealized_daily_pnl = _safe_float(open_pnl.get("unrealized_pnl_idr"), 0.0)
+    daily_pnl = realized_daily_pnl + unrealized_daily_pnl + poly_daily_pnl_idr
+    pnl_base = max(combined_equity - daily_pnl, _safe_float(open_pnl.get("position_cost_basis_idr"), 0.0), 1.0)
+    daily_pnl_pct = (daily_pnl / pnl_base) * 100.0
     daily_state = portfolio.get("daily_state") if isinstance(portfolio.get("daily_state"), dict) else {}
-    daily_color = str(daily_state.get("color") or "").upper()
-    if daily_color not in {"GREEN", "RECOVERY", "FLAT"}:
-        daily_color = "GREEN" if daily_pnl > 0 else "RECOVERY" if daily_pnl < 0 else "FLAT"
+    daily_color = "GREEN" if daily_pnl > 0 else "RECOVERY" if daily_pnl < 0 else "FLAT"
     daily_state = {
         **daily_state,
         "color": daily_color,
-        "reason": daily_state.get("reason") or ("green_state" if daily_color == "GREEN" else "recovery_state" if daily_color == "RECOVERY" else "flat_state"),
+        "hold_winners": daily_color == "GREEN",
+        "take_profit_multiplier": 1.75 if daily_color == "GREEN" else 1.0,
+        "reason": "open_trade_mark_to_market" if open_pnl.get("positions") else "realized_daily_pnl",
     }
 
     return {
@@ -233,8 +319,13 @@ def _build_portfolio(telemetry: Dict[str, Any]) -> Dict[str, Any]:
         "coin_holdings_idr": coin_holdings,
         "combined_equity_idr": combined_equity,
         "daily_pnl_idr": daily_pnl,
+        "daily_pnl_pct": daily_pnl_pct,
         "daily_color": daily_color,
         "daily_state": daily_state,
+        "realized_pnl_idr": realized_daily_pnl,
+        "unrealized_pnl_idr": unrealized_daily_pnl,
+        "position_cost_basis_idr": _safe_float(open_pnl.get("position_cost_basis_idr"), 0.0),
+        "open_position_pnl": open_pnl.get("positions", []),
         "active_positions": active_positions,
         "polymarket": {
             "usdc_balance": usdc_balance,
@@ -427,7 +518,7 @@ async def canvas() -> JSONResponse:
 
 @app.get("/api/healthz")
 async def healthz() -> JSONResponse:
-    return JSONResponse({"ok": True, "service": "kibot-dashboard", "version": "3.1", "generated_at": datetime.now(WIB).isoformat()})
+    return JSONResponse({"ok": True, "service": "kibot-dashboard", "version": "3.4", "generated_at": datetime.now(WIB).isoformat()})
 
 
 @app.get("/api/stream")

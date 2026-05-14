@@ -191,6 +191,8 @@ These exist on the server but are easy to miss if you only inspect the code tree
 21. A visual control-plane dashboard now exists at `Core/Intelligence/kibot_dashboard.py` and is launched with `bin/kibot-dashboard` on port `8787`, so the whole delegation flow can be inspected in a browser. Dashboard V3.1 now serves a simplified delegation graph with dotted canvas, clean connected agent cards, left activity/technical logs with dedupe, workflow lanes, live Indodax/Polymarket ledger, council lens, and SSE event stream from `Core/Intelligence/dashboard/`.
 22. `config/systemd/kibot-dashboard.service` is now the canonical systemd unit for the visual control plane, dan `bin/kibotctl` ikut mengelolanya sebagai service operasional supaya dashboard tetap online seperti core services lain. Dashboard launcher uses short graceful shutdown and systemd has `TimeoutStopSec=8` / `KillMode=mixed`, so stale SSE browser connections no longer make dashboard restarts hang.
 23. Indodax equity snapshot now separates `idr_cash` and `coin_holdings_idr`, then exposes total `equity_idr`, so held coins are no longer invisible in portfolio/equity displays.
+24. Daily PnL is now mark-to-market instead of holdings-as-profit: `risk_state.daily_pnl` + open trade unrealized PnL from `active_trades.json` (`current_value_idr - cost_idr`) + Polymarket daily PnL. Dashboard also reprices active holdings from live Indodax tickers, so stale telemetry prices do not make PnL lie. This prevents Dashboard/Council from showing GREEN just because the account holds coins.
+25. `MasterNode.pnl_watchdog_loop` now consumes the same aggregator portfolio snapshot, so the 5-minute PnL watchdog and dashboard use one shared mark-to-market contract.
 
 ---
 

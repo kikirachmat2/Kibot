@@ -142,6 +142,95 @@ class CouncilDataAggregator:
             
         return sorted(opportunities, key=lambda x: x["gain_missed"], reverse=True)[:5]
 
+    def _load_state_json(self, name: str, default):
+        path = ROOT_DIR / "state" / name
+        try:
+            if path.exists():
+                return json.loads(path.read_text(encoding="utf-8"))
+        except Exception:
+            pass
+        return default
+
+    def _coin_from_pair(self, pair: str) -> str:
+        raw = str(pair or "").strip().lower()
+        if "/" in raw:
+            return raw.split("/", 1)[0]
+        if "_" in raw:
+            return raw.split("_", 1)[0]
+        return raw.replace("idr", "")
+
+    def _realized_daily_pnl_idr(self) -> float:
+        risk_state = self._load_state_json("risk_state.json", {})
+        if not isinstance(risk_state, dict):
+            return 0.0
+        today = datetime.now().strftime("%Y-%m-%d")
+        state_date = str(risk_state.get("last_reset_date") or "")
+        if state_date and state_date != today:
+            return 0.0
+        try:
+            return float(risk_state.get("daily_pnl", 0.0) or 0.0)
+        except Exception:
+            return 0.0
+
+    def _active_trade_unrealized_pnl(self, active_positions: list) -> dict:
+        active_trades = self._load_state_json("active_trades.json", {})
+        if not isinstance(active_trades, dict):
+            return {"unrealized_pnl_idr": 0.0, "position_cost_basis_idr": 0.0, "positions": []}
+
+        values_by_coin = {}
+        for position in active_positions:
+            if not isinstance(position, dict):
+                continue
+            coin = str(position.get("coin") or position.get("symbol") or "").lower().strip()
+            if not coin or coin == "idr":
+                continue
+            try:
+                values_by_coin[coin] = {
+                    "amount": float(position.get("amount", 0.0) or 0.0),
+                    "price_idr": float(position.get("price_idr", 0.0) or 0.0),
+                    "value_idr": float(position.get("value_idr", 0.0) or 0.0),
+                }
+            except Exception:
+                continue
+
+        total_pnl = 0.0
+        total_cost = 0.0
+        details = []
+        for pair, trade in active_trades.items():
+            if not isinstance(trade, dict):
+                continue
+            coin = self._coin_from_pair(pair)
+            if not coin:
+                continue
+            try:
+                cost = float(trade.get("cost") or trade.get("budget_idr") or trade.get("notional_idr") or 0.0)
+                amount = float(trade.get("amount", 0.0) or 0.0)
+            except Exception:
+                continue
+            if cost <= 0:
+                continue
+            position = values_by_coin.get(coin, {})
+            current_value = float(position.get("value_idr", 0.0) or 0.0)
+            current_price = float(position.get("price_idr", 0.0) or 0.0)
+            if current_value <= 0.0 and amount > 0.0 and current_price > 0.0:
+                current_value = amount * current_price
+            pnl = current_value - cost
+            total_pnl += pnl
+            total_cost += cost
+            details.append({
+                "pair": str(pair).upper(),
+                "cost_idr": round(cost, 0),
+                "current_value_idr": round(current_value, 0),
+                "unrealized_pnl_idr": round(pnl, 0),
+                "current_price_idr": current_price,
+            })
+
+        return {
+            "unrealized_pnl_idr": total_pnl,
+            "position_cost_basis_idr": total_cost,
+            "positions": details,
+        }
+
     async def _get_portfolio_snapshot(self):
         """Gets current holdings and PnL from live exchange/state endpoints."""
         snapshot = {
@@ -246,10 +335,14 @@ class CouncilDataAggregator:
         poly_equity_idr = usdc_balance * usd_idr_rate
         active_bets = list(poly_state.get("active_bets") or poly_state.get("top_opportunities") or [])
 
-        session_start_balance = float(getattr(self.master, "_pnl_session_start_balance", 0.0) or 0.0)
         combined_equity_idr = idr_balance + poly_equity_idr
-        daily_pnl_idr = combined_equity_idr - session_start_balance if session_start_balance > 0 else 0.0
-        daily_pnl_pct = (daily_pnl_idr / session_start_balance * 100.0) if session_start_balance > 0 else 0.0
+        realized_daily_pnl_idr = self._realized_daily_pnl_idr()
+        open_pnl = self._active_trade_unrealized_pnl(active_positions)
+        unrealized_daily_pnl_idr = float(open_pnl.get("unrealized_pnl_idr", 0.0) or 0.0)
+        position_cost_basis_idr = float(open_pnl.get("position_cost_basis_idr", 0.0) or 0.0)
+        daily_pnl_idr = realized_daily_pnl_idr + unrealized_daily_pnl_idr + poly_daily_pnl_idr
+        pnl_base = max(combined_equity_idr - daily_pnl_idr, position_cost_basis_idr, 1.0)
+        daily_pnl_pct = (daily_pnl_idr / pnl_base * 100.0)
         green_state = "GREEN" if daily_pnl_idr > 0 else "RECOVERY" if daily_pnl_idr < 0 else "FLAT"
 
         snapshot.update({
@@ -260,11 +353,15 @@ class CouncilDataAggregator:
             "return_pct": daily_pnl_pct,
             "daily_pnl_idr": daily_pnl_idr,
             "daily_pnl_pct": daily_pnl_pct,
+            "realized_pnl_idr": realized_daily_pnl_idr,
+            "unrealized_pnl_idr": unrealized_daily_pnl_idr,
+            "position_cost_basis_idr": position_cost_basis_idr,
+            "open_position_pnl": open_pnl.get("positions", []),
             "daily_state": {
                 "color": green_state,
                 "hold_winners": green_state == "GREEN",
                 "take_profit_multiplier": 1.75 if green_state == "GREEN" else 1.0,
-                "reason": "green_state" if green_state == "GREEN" else "recovery_state" if green_state == "RECOVERY" else "flat_state",
+                "reason": "open_trade_mark_to_market" if open_pnl.get("positions") else "realized_daily_pnl",
             },
             "active_positions": active_positions,
             "combined_equity_idr": combined_equity_idr,

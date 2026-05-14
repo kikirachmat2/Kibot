@@ -33,6 +33,7 @@
 - **Self-Healing & Resilience**: Pemulihan mandiri instan dari kegagalan infrastruktur (Ollama, Network, Disk).
 - **Explicit Live Gate**: order real-money hanya jalan jika `KIBOT_LIVE_TRADING_ENABLED=true` atau `KIBOT_TRADING_MODE=live`.
 - **Visual Control Plane**: workflow delegasi dan state runtime bisa dilihat lewat dashboard web interaktif di port `8787` melalui `bin/kibot-dashboard`.
+- **PnL Mark-to-Market**: daily PnL memakai realized PnL + unrealized open trade PnL, bukan sekadar nilai holdings.
 
 ### 📱 Notification Protocol
 - **Urgent Only**: Hanya mengirim pesan darurat dan tindakan kritis ke Telegram.
