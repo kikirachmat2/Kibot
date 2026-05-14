@@ -9,6 +9,13 @@ from Core.Support.ki_config import WIB
 
 logger = logging.getLogger("RiskGate")
 
+# ─────────────────────────────────────────────
+# Capital State Machine thresholds (§16.1)
+# ─────────────────────────────────────────────
+CAPITAL_MICRO_MAX  =     150_000   # IDR
+CAPITAL_SMALL_MAX  =   1_000_000
+CAPITAL_NORMAL_MAX =  50_000_000
+
 # Configuration
 STATE_DIR = Path(__file__).resolve().parent.parent / "state"
 RISK_STATE_FILE = STATE_DIR / "risk_state.json"
@@ -135,3 +142,106 @@ class RiskGate:
 
     def calculate_amount(self, symbol: str, price: float, budget_idr: float) -> float:
         return round(budget_idr / price, 8)
+
+    # ──────────────────────────────────────────
+    # §16.1 — Capital State Machine
+    # ──────────────────────────────────────────
+
+    def get_capital_state(
+        self,
+        balance_idr: float,
+        active_slots: int = 0,
+        pending_idr: float = 0.0,
+    ) -> Dict:
+        """
+        Determine capital state and derive sizing_mode.
+
+        Returns:
+          {
+            "capital_state": "MICRO|SMALL|NORMAL|LARGE",
+            "cash_idr": float,
+            "equity_idr": float,
+            "active_slots": int,
+            "max_allowed_slots": int,
+            "sizing_mode": "ONE_SHOT|PROBE|NORMAL|REDUCED|PROTECT"
+          }
+        """
+        net_cash = max(0.0, balance_idr - pending_idr)
+
+        if net_cash < CAPITAL_MICRO_MAX:
+            state      = "MICRO"
+            max_slots  = 1
+            sizing     = "ONE_SHOT"
+        elif net_cash < CAPITAL_SMALL_MAX:
+            state      = "SMALL"
+            max_slots  = 3
+            sizing     = "PROBE"
+        elif net_cash < CAPITAL_NORMAL_MAX:
+            state      = "NORMAL"
+            max_slots  = 10
+            sizing     = "NORMAL"
+        else:
+            state      = "LARGE"
+            max_slots  = self.config["max_active_positions"]
+            sizing     = "NORMAL"
+
+        # Override sizing_mode when slots almost full
+        if active_slots >= max_slots:
+            sizing = "PROTECT"
+        elif active_slots >= max_slots * 0.8:
+            sizing = "REDUCED"
+
+        logger.debug(
+            f"[CapitalState] {state} | cash={net_cash:,.0f} IDR | "
+            f"slots={active_slots}/{max_slots} | sizing={sizing}"
+        )
+        return {
+            "capital_state":    state,
+            "cash_idr":         round(net_cash, 2),
+            "equity_idr":       round(balance_idr, 2),
+            "active_slots":     active_slots,
+            "max_allowed_slots": max_slots,
+            "sizing_mode":      sizing,
+        }
+
+    def size_from_capital_state(
+        self,
+        capital_state: Dict,
+        daily_context: Optional[Dict] = None,
+    ) -> float:
+        """
+        Derive fractional allocation from capital state + daily context.
+        Returns fraction of available cash to deploy per position (0.0–1.0).
+
+        §4 — Entry Sizing Rules:
+          MICRO    → use most of cash (one-shot)
+          SMALL    → 30-50% per position
+          NORMAL   → 10-25% per position
+          LARGE    → 5-15% per position
+        Daily color modifies: GREEN = reduce, RECOVERY = reduce, FLAT = normal
+        """
+        base = {
+            "MICRO":  0.90,
+            "SMALL":  0.40,
+            "NORMAL": 0.20,
+            "LARGE":  0.10,
+        }.get(capital_state.get("capital_state", "NORMAL"), 0.20)
+
+        if daily_context:
+            color   = daily_context.get("daily_color", "FLAT")
+            urgency = daily_context.get("urgency_level", "LOW")
+            quality = daily_context.get("required_trade_quality", "NORMAL")
+
+            # §4: GREEN near midnight → protect sizing
+            if color == "GREEN" and urgency in ("HIGH", "CRITICAL"):
+                base *= 0.50
+            elif color == "GREEN":
+                base *= 0.70
+            elif color == "RECOVERY":
+                base *= 0.60
+
+            # Exceptional quality unlock slightly larger sizing
+            if quality == "EXCEPTIONAL":
+                base = min(base * 1.15, 0.95)
+
+        return round(min(max(base, 0.05), 0.95), 3)

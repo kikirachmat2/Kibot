@@ -72,6 +72,17 @@ class PairStats:
     consecutive_losses: int = 0
     regime_stats: Dict[str, Dict[str, float]] = field(default_factory=dict)
     lessons: List[str] = field(default_factory=list)
+    # ─────────────────────────────────────────────
+    # Long-horizon historian fields (§12, §12.1)
+    # ─────────────────────────────────────────────
+    historian_verdict:          str   = "UNKNOWN"  # GOOD|MIXED|DEAD|TRAP_PRONE|UNKNOWN
+    flatness_score:             float = 0.5  # 0.0=very active, 1.0=flat/dead
+    pump_frequency_score:       float = 0.5  # how often this pair genuinely pumps
+    pump_continuation_score:    float = 0.5  # how often pumps continue after entry
+    retracement_risk_score:     float = 0.5  # how often it retraces sharply
+    liquidity_decay_score:      float = 0.5  # how often liquidity collapses post-entry
+    trap_count:                 int   = 0    # number of confirmed trap events
+    historian_updated_at:       float = 0.0
 
     def to_dict(self) -> dict:
         return asdict(self)
@@ -179,6 +190,76 @@ class PairStats:
             self.regime_stats[regime] = {"count": 0, "sum_pnl": 0.0}
         self.regime_stats[regime]["count"] += 1
         self.regime_stats[regime]["sum_pnl"] += pnl
+
+    # ─────────────────────────────────────────────
+    # §12 — Historian Verdict (Long-Horizon Profile)
+    # ─────────────────────────────────────────────
+
+    def compute_historian_verdict(self, ohlc_quality: Optional[dict] = None) -> str:
+        """
+        Derive long-horizon historian verdict from KiBot's own trade history.
+        §12.1: Historian profile must be updated from real trade data, not vibes.
+
+        Verdict: GOOD | MIXED | DEAD | TRAP_PRONE | UNKNOWN
+        """
+        if self.trade_count < 3:
+            self.historian_verdict = "UNKNOWN"
+            self.historian_updated_at = time.time()
+            return self.historian_verdict
+
+        win_rate = self.win_probability
+        pf       = self.profit_factor
+        trap_rate = self.trap_count / max(1, self.trade_count)
+
+        # Flatness from OHLC quality (if provided from scanner's _fetch_ohlc_quality)
+        if ohlc_quality:
+            distinct = ohlc_quality.get("distinct_close_levels", 999)
+            zero_vol = ohlc_quality.get("zero_volume_ratio", 0.0)
+            self.flatness_score = round(
+                min(1.0, max(0.0, (zero_vol * 0.6) + (1.0 - min(1.0, distinct / 20.0)) * 0.4)),
+                3
+            )
+
+        # Compute sub-scores from trade history
+        self.pump_continuation_score = round(win_rate, 3)
+        self.retracement_risk_score  = round(min(1.0, self.max_drawdown * 5), 3)
+        self.liquidity_decay_score   = round(trap_rate, 3)
+
+        # Derive verdict
+        if self.flatness_score > 0.7:
+            verdict = "DEAD"
+        elif trap_rate >= 0.30 or self.consecutive_losses >= 4:
+            verdict = "TRAP_PRONE"
+        elif win_rate >= 0.60 and pf >= 1.5 and trap_rate < 0.15:
+            verdict = "GOOD"
+        elif win_rate >= 0.45 and pf >= 1.0:
+            verdict = "MIXED"
+        else:
+            verdict = "MIXED"
+
+        self.historian_verdict   = verdict
+        self.historian_updated_at = time.time()
+
+        return verdict
+
+    def get_historian_profile(self, ohlc_quality: Optional[dict] = None) -> dict:
+        """Return historian profile dict for scanner output (§17.2 historian_profile field)."""
+        # Refresh verdict
+        self.compute_historian_verdict(ohlc_quality)
+        return {
+            "verdict":               self.historian_verdict,
+            "trade_count":           self.trade_count,
+            "win_probability":       round(self.win_probability, 3),
+            "profit_factor":         round(self.profit_factor, 3),
+            "pump_continuation":     self.pump_continuation_score,
+            "retracement_risk":      self.retracement_risk_score,
+            "liquidity_decay":       self.liquidity_decay_score,
+            "flatness_score":        self.flatness_score,
+            "trap_count":            self.trap_count,
+            "consecutive_losses":    self.consecutive_losses,
+            "cumulative_pnl":        round(self.cumulative_pnl, 6),
+            "historian_updated_at":  self.historian_updated_at,
+        }
 
 def _get_signing_key() -> bytes:
     # Use the same root of trust as kibot_security

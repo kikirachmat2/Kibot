@@ -1106,3 +1106,337 @@ class SovereignCouncil:
         if issue_context.get("type") == "PROACTIVE_ORACLE":
              return await self.run_strategic_planning(issue_context.get("snapshot", {}))
         return await self.deliberate_system(issue_context)
+
+    # ──────────────────────────────────────────────────────────────────────
+    # §13.1 Fast Council — 4 roles, quick filter, deterministic-first
+    # ──────────────────────────────────────────────────────────────────────
+
+    async def fast_council(
+        self,
+        signal: Dict,
+        daily_context: Dict,
+        capital_state: Optional[Dict] = None,
+    ) -> Dict:
+        """
+        Fast Council (§13.1 — Pre-filter before Deep Council).
+        Roles: Hunter, Risk Officer, Liquidity Engineer (det.), Deadline Keeper (det.)
+
+        Returns:
+          {"pass": bool, "reason": str, "veto_by": str|None, "fast_confidence": float}
+
+        Only signals that PASS fast council proceed to deep_council().
+        """
+        pair    = signal.get("symbol", "UNKNOWN")
+        lifecycle = signal.get("lifecycle", "IGNITION")
+        trade_grade = signal.get("trade_grade", "C")
+        confidence  = float(signal.get("confidence", 0.0))
+        spread_pct  = float(signal.get("spread_pct") or 0.0)
+        obi         = float(signal.get("obi", 0.0))
+        tick_pct    = float(signal.get("tick_size_pct", 0.0))
+        levels      = int(signal.get("price_levels_24h", 0) or 0)
+
+        daily_color  = daily_context.get("daily_color", "FLAT")
+        urgency      = daily_context.get("urgency_level", "LOW")
+        deadline_mode = daily_context.get("deadline_mode", "PATIENT")
+        risk_mode    = daily_context.get("allowed_risk_mode", "NORMAL")
+        quality_req  = daily_context.get("required_trade_quality", "NORMAL")
+
+        # ── Deterministic gate: Liquidity Engineer (§13.3) ──
+        if lifecycle in ("TRAP", "LOCAL_TRAP"):
+            return {"pass": False, "reason": "TRAP lifecycle rejected", "veto_by": "LiquidityEngineer", "fast_confidence": 0.0}
+        if spread_pct > 1.20:
+            return {"pass": False, "reason": f"Spread {spread_pct:.2f}% > 1.20% — unsellable", "veto_by": "LiquidityEngineer", "fast_confidence": 0.0}
+        if tick_pct > 3.0 or levels < 8:
+            return {"pass": False, "reason": f"Tick trap: tick={tick_pct:.2f}%, levels={levels}", "veto_by": "LiquidityEngineer", "fast_confidence": 0.0}
+        market_quality = signal.get("market_quality", {})
+        if isinstance(market_quality, dict) and market_quality.get("ok") is False:
+            return {"pass": False, "reason": f"Market quality: {market_quality.get('reason')}", "veto_by": "LiquidityEngineer", "fast_confidence": 0.0}
+
+        # ── Deterministic gate: Deadline Keeper (§13.4) ──
+        if risk_mode == "WAIT":
+            return {"pass": False, "reason": f"risk_mode=WAIT — daily context prohibits new entries", "veto_by": "DeadlineKeeper", "fast_confidence": 0.0}
+        if deadline_mode == "LOCK_GREEN" and trade_grade not in ("A",):
+            return {"pass": False, "reason": "LOCK_GREEN: only grade A allowed", "veto_by": "DeadlineKeeper", "fast_confidence": 0.0}
+        if quality_req == "EXCEPTIONAL" and trade_grade not in ("A",):
+            return {"pass": False, "reason": f"EXCEPTIONAL quality required, got {trade_grade}", "veto_by": "DeadlineKeeper", "fast_confidence": 0.0}
+        if quality_req == "HIGH" and trade_grade not in ("A", "B"):
+            return {"pass": False, "reason": f"HIGH quality required, got {trade_grade}", "veto_by": "DeadlineKeeper", "fast_confidence": 0.0}
+        if lifecycle == "DISTRIBUTION":
+            return {"pass": False, "reason": "DISTRIBUTION lifecycle: anti-top rule", "veto_by": "DeadlineKeeper", "fast_confidence": 0.0}
+
+        # ── AI gate: Hunter + Risk Officer (§13.1, §13.2) ──
+        # Fast AI deliberation — qwen2.5:1.5b speed
+        ai_payload = {
+            "signal_summary": {
+                "pair":         pair,
+                "lifecycle":    lifecycle,
+                "trade_grade":  trade_grade,
+                "confidence":   confidence,
+                "obi":          obi,
+                "spread_pct":   spread_pct,
+            },
+            "daily_context": {
+                "color":        daily_color,
+                "urgency":      urgency,
+                "deadline_mode": deadline_mode,
+                "minutes":      daily_context.get("minutes_to_midnight", 480),
+            },
+            "question": (
+                "Is this signal worth sending to Deep Council? "
+                "Reply: PASS or REJECT with one-line reason."
+            ),
+        }
+        hunter_result  = await self._query_ai_guarded("fast_hunter", ai_payload, timeout=8.0)
+        risk_result    = await self._query_ai_guarded("fast_risk_officer", ai_payload, timeout=8.0)
+
+        # Parse AI results conservatively
+        def _ai_says_pass(result: dict) -> bool:
+            if result.get("is_fallback"):
+                return confidence >= 0.65  # fallback: trust scanner confidence
+            text = str(result.get("decision", result.get("action", result.get("response", "")))).upper()
+            return "PASS" in text or "BUY" in text or "ENTER" in text
+
+        hunter_pass = _ai_says_pass(hunter_result)
+        risk_pass   = _ai_says_pass(risk_result)
+
+        if not hunter_pass and not risk_result.get("is_fallback"):
+            return {
+                "pass":             False,
+                "reason":           f"Hunter rejected: {hunter_result.get('reason', 'weak signal')}",
+                "veto_by":          "Hunter",
+                "fast_confidence":  round(confidence * 0.8, 4),
+            }
+        if not risk_pass and not risk_result.get("is_fallback"):
+            return {
+                "pass":             False,
+                "reason":           f"RiskOfficer rejected: {risk_result.get('reason', 'risk too high')}",
+                "veto_by":          "RiskOfficer",
+                "fast_confidence":  round(confidence * 0.85, 4),
+            }
+
+        return {
+            "pass":             True,
+            "reason":           "Passed fast council (Liquidity, Deadline, Hunter, Risk)",
+            "veto_by":          None,
+            "fast_confidence":  round(confidence, 4),
+        }
+
+    # ──────────────────────────────────────────────────────────────────────
+    # §13.2 Deep Council — 6 roles, full deliberation before buy mandate
+    # ──────────────────────────────────────────────────────────────────────
+
+    async def deep_council(
+        self,
+        signal: Dict,
+        daily_context: Dict,
+        exit_plan: Optional[Dict] = None,
+        pair_memory: Optional[Dict] = None,
+        capital_state: Optional[Dict] = None,
+    ) -> Dict:
+        """
+        Deep Council (§13.2 — Final gate before real money order).
+        Roles: Exit Planner, Antagonist, Historian, Regime Analyst, Allocator, Auditor/Judge
+
+        Returns:
+          {
+            "decision_state": "ENTER|WAIT|EXIT",
+            "deadline_mode":  str,
+            "confidence":     float,
+            "breakdown":      dict,   # §16.8
+            "trade_grade":    str,    # §16.9
+            "reason":         str,
+            "veto_by":        str|None,
+            "budget_fraction": float,
+          }
+        """
+        pair        = signal.get("symbol", "UNKNOWN")
+        lifecycle   = signal.get("lifecycle", "IGNITION")
+        trade_grade = signal.get("trade_grade", "C")
+        confidence  = float(signal.get("confidence", 0.0))
+        historian_verdict = (pair_memory or {}).get("verdict", signal.get("historian_profile", {}).get("verdict", "UNKNOWN"))
+
+        daily_color   = daily_context.get("daily_color", "FLAT")
+        urgency       = daily_context.get("urgency_level", "LOW")
+        deadline_mode = daily_context.get("deadline_mode", "PATIENT")
+        minutes       = daily_context.get("minutes_to_midnight", 480)
+
+        # ── Auditor/Judge hard rules (§13.5 — vetoes rule violations) ──
+        if trade_grade == "F":
+            return self._deep_reject("Auditor", "F-grade signal — hard reject by Auditor", deadline_mode, confidence, trade_grade)
+        if historian_verdict == "DEAD":
+            return self._deep_reject("Historian", "Pair verdict DEAD — Historian blocks", deadline_mode, confidence, trade_grade)
+
+        # ── Antagonist — raises trap concern (deepseek-r1:7b if available) ──
+        antagonist_payload = {
+            "signal": {
+                "pair":               pair,
+                "lifecycle":          lifecycle,
+                "confidence":         confidence,
+                "trade_grade":        trade_grade,
+                "historian_verdict":  historian_verdict,
+                "confidence_breakdown": signal.get("confidence_breakdown", {}),
+                "exit_quality":       signal.get("exit_quality", "C"),
+            },
+            "daily_context":   daily_context,
+            "exit_plan":       exit_plan or {},
+            "question":        "Find the strongest reason this trade could fail or trap KiBot. Reply: SAFE or RISKY with explanation.",
+        }
+        antagonist = await self._query_ai_guarded("antagonist", antagonist_payload, timeout=15.0)
+
+        # Antagonist veto on TRAP_PRONE pairs
+        antagonist_text = str(antagonist.get("decision", antagonist.get("response", ""))).upper()
+        if "RISKY" in antagonist_text and historian_verdict == "TRAP_PRONE":
+            return self._deep_reject("Antagonist", f"Antagonist+Historian veto: TRAP_PRONE pair rejected", deadline_mode, confidence, trade_grade)
+
+        # ── Exit Planner — check exit plan quality (deterministic) ──
+        exit_verdict = "EXIT_OK"
+        if exit_plan:
+            hard_stop = float(exit_plan.get("hard_stop_pct", 2.5))
+            max_hold  = int(exit_plan.get("max_hold_minutes", 120))
+            if max_hold < 10:
+                return self._deep_reject("ExitPlanner", f"Exit plan: max_hold={max_hold}m is dangerously short", deadline_mode, confidence, trade_grade)
+            if hard_stop > 5.0:
+                return self._deep_reject("ExitPlanner", f"Hard stop {hard_stop}% is too wide for capital protection", deadline_mode, confidence, trade_grade)
+            exit_verdict = exit_plan.get("distribution_exit_rules", {}).get("exit_if_obi_below", "ok")
+
+        # ── Regime Analyst + Historian — AI deliberation ──
+        regime_payload = {
+            "signal":         {"pair": pair, "lifecycle": lifecycle, "confidence": confidence},
+            "daily_context":  daily_context,
+            "pair_memory":    pair_memory or {},
+            "question":       "Does market regime and pair history support this entry? Reply: SUPPORT or OPPOSE.",
+        }
+        regime_result   = await self._query_ai_guarded("regime_analyst", regime_payload, timeout=12.0)
+        historian_result = await self._query_ai_guarded("historian", regime_payload, timeout=10.0)
+
+        def _supports(r: dict) -> bool:
+            if r.get("is_fallback"):
+                return True  # fallback = neutral, let through
+            t = str(r.get("decision", r.get("response", ""))).upper()
+            return "SUPPORT" in t or "PASS" in t or "BUY" in t or "ENTER" in t
+
+        regime_ok    = _supports(regime_result)
+        historian_ok = _supports(historian_result)
+
+        # Need at least one positive vote from regime/historian
+        if not regime_ok and not historian_ok:
+            return self._deep_reject(
+                "RegimeAnalyst+Historian",
+                "Both Regime Analyst and Historian oppose entry",
+                deadline_mode, confidence, trade_grade,
+            )
+
+        # ── Allocator — determine budget_fraction (deterministic) ──
+        cap_state = (capital_state or {}).get("capital_state", "NORMAL")
+        sizing_mode = (capital_state or {}).get("sizing_mode", "NORMAL")
+        budget_fraction_map = {
+            "MICRO":   0.90,
+            "SMALL":   0.35,
+            "NORMAL":  0.20,
+            "LARGE":   0.10,
+        }
+        budget_fraction = budget_fraction_map.get(cap_state, 0.20)
+        if sizing_mode == "PROBE":
+            budget_fraction = min(budget_fraction, 0.25)
+        elif sizing_mode in ("REDUCED", "PROTECT"):
+            budget_fraction = min(budget_fraction, 0.10)
+
+        # Reduce if GREEN + urgency
+        if daily_color == "GREEN" and urgency in ("HIGH", "CRITICAL"):
+            budget_fraction *= 0.5
+        budget_fraction = round(min(0.95, max(0.05, budget_fraction)), 3)
+
+        # ── Build §16.8 confidence breakdown ──
+        breakdown = signal.get("confidence_breakdown", {})
+        if "antagonist_penalty" not in breakdown:
+            breakdown["antagonist_penalty"] = -0.05 if "RISKY" in antagonist_text else 0.0
+        if not regime_ok:
+            breakdown["regime_penalty"] = -0.04
+        if not historian_ok:
+            breakdown["historian_penalty"] = -0.03
+
+        final_confidence = round(min(0.98, max(0.0, confidence + sum(
+            v for v in breakdown.values() if isinstance(v, (int, float)) and v < 0
+        ))), 4)
+
+        return {
+            "decision_state":   "ENTER",
+            "deadline_mode":    deadline_mode,
+            "confidence":       final_confidence,
+            "breakdown":        breakdown,
+            "trade_grade":      trade_grade,
+            "reason":           (
+                f"Deep Council passed: lifecycle={lifecycle}, grade={trade_grade}, "
+                f"historian={historian_verdict}, regime={'ok' if regime_ok else 'neutral'}"
+            ),
+            "veto_by":          None,
+            "budget_fraction":  budget_fraction,
+            "sizing_mode":      sizing_mode,
+            "capital_state":    cap_state,
+        }
+
+    @staticmethod
+    def _deep_reject(role: str, reason: str, deadline_mode: str, confidence: float, trade_grade: str) -> Dict:
+        """Helper: build a standardized deep council REJECT response."""
+        return {
+            "decision_state":  "WAIT",
+            "deadline_mode":   deadline_mode,
+            "confidence":      round(confidence * 0.5, 4),  # downgrade
+            "breakdown":       {},
+            "trade_grade":     trade_grade,
+            "reason":          reason,
+            "veto_by":         role,
+            "budget_fraction": 0.0,
+        }
+
+    async def council_mandate(
+        self,
+        signal: Dict,
+        daily_context: Dict,
+        capital_state: Optional[Dict] = None,
+        exit_plan: Optional[Dict] = None,
+        pair_memory: Optional[Dict] = None,
+    ) -> Dict:
+        """
+        Full two-phase council pipeline per §13:
+        1. fast_council() — eliminates obvious rejects quickly
+        2. deep_council() — full deliberation for survivors
+
+        Returns final mandate dict with decision_state, trade_grade, confidence, etc.
+        """
+        # Phase 1: Fast filter
+        fast = await self.fast_council(signal, daily_context, capital_state)
+        if not fast.get("pass"):
+            logger.info(
+                f"[FastCouncil] REJECT {signal.get('symbol')} — "
+                f"veto={fast.get('veto_by')} reason={fast.get('reason')}"
+            )
+            return {
+                "decision_state":  "WAIT",
+                "deadline_mode":   daily_context.get("deadline_mode", "PATIENT"),
+                "confidence":      fast.get("fast_confidence", 0.0),
+                "breakdown":       {},
+                "trade_grade":     signal.get("trade_grade", "F"),
+                "reason":          fast.get("reason", "rejected by fast council"),
+                "veto_by":         fast.get("veto_by"),
+                "budget_fraction": 0.0,
+                "phase":           "FAST_COUNCIL",
+            }
+
+        # Phase 2: Deep deliberation
+        deep = await self.deep_council(
+            signal, daily_context, exit_plan, pair_memory, capital_state
+        )
+        deep["phase"] = "DEEP_COUNCIL"
+        if deep["decision_state"] == "ENTER":
+            logger.info(
+                f"[DeepCouncil] MANDATE {signal.get('symbol')} | "
+                f"conf={deep['confidence']:.3f} | grade={deep['trade_grade']} | "
+                f"budget={deep['budget_fraction']:.1%}"
+            )
+        else:
+            logger.info(
+                f"[DeepCouncil] REJECT {signal.get('symbol')} — "
+                f"veto={deep.get('veto_by')} reason={deep.get('reason')}"
+            )
+        return deep

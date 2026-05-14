@@ -1,8 +1,19 @@
 import json, os, time, requests
 from datetime import datetime
 import logging
+from typing import Optional
 
 logger = logging.getLogger("IndodaxScanner")
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Pair memory integration (§12, §17.2 historian_profile)
+# ─────────────────────────────────────────────────────────────────────────────
+try:
+    from Core.Intelligence.kibot_learning_engine import get_engine as _get_learning_engine
+    _LEARNING_ENGINE_AVAILABLE = True
+except ImportError:
+    _LEARNING_ENGINE_AVAILABLE = False
+    _get_learning_engine = None
 
 # Thresholds untuk small cap pump detection (Aggressive V4.0)
 # Fokus: coins yang sedang naik kuat, dekat high harian, dan masih punya volume persistence.
@@ -482,17 +493,252 @@ class IndodaxSmallCapScanner:
             "ts": int(now * 1000)
         }
 
-    def collect_signals(self):
-        """Standard interface for ScannerEngine."""
-        tickers = self.fetch_all_tickers()
-        signals = []
+    # ─────────────────────────────────────────────────────────────────────────────
+    # §17.2 Formal Lifecycle Output + §16.8 Confidence Breakdown
+    # ─────────────────────────────────────────────────────────────────────────────
+
+    @staticmethod
+    def _map_lifecycle(pump_stage: str, distance_to_high_pct: float, obi: float) -> str:
+        """
+        Convert internal pump_stage to formal lifecycle enum per §2 + £17.2.
+        Lifecycle: IGNITION | CONFIRMATION | RIDE | DISTRIBUTION | TRAP
+                   LOCAL_IGNITION | LOCAL_CONFIRMATION | LOCAL_BLOWOFF | LOCAL_TRAP
+        """
+        if pump_stage in ("CONTINUATION",):
+            return "CONFIRMATION"
+        if pump_stage in ("RECLAIM",):
+            return "CONFIRMATION"
+        if pump_stage in ("LATE_RECLAIM", "RANGE_BREAK_RECLAIM"):
+            return "RIDE"
+        if pump_stage in ("SUPPORT_BOUNCE", "PIVOT_RECLAIM"):
+            # Very far from high = local-only, not broad pump
+            if distance_to_high_pct > 40:
+                return "LOCAL_CONFIRMATION"
+            return "RIDE"
+        if pump_stage == "MATURE":
+            # Mature near high = DISTRIBUTION risk; with bad OBI = TRAP
+            if obi < -0.05:
+                return "TRAP"
+            if distance_to_high_pct <= 5:
+                return "DISTRIBUTION"
+            return "RIDE"
+        # Default IGNITION
+        return "IGNITION"
+
+    @staticmethod
+    def _compute_confidence_breakdown(
+        momentum_score: float,
+        volume_score: float,
+        obi_score: float,
+        persistence_score: float,
+        acceleration_score: float,
+        trend_score: float,
+        range_score: float,
+        near_high_score: float,
+        stage_bonus: float,
+        spread_pct: Optional[float],
+        lifecycle: str,
+    ) -> dict:
+        """
+        §16.8: Confidence must not be a magic number.
+        Returns per-factor contribution to the final confidence score.
+        """
+        # Positive contributors
+        volume_spike_contrib     = round(volume_score * 0.22, 4)
+        lifecycle_stage_contrib  = round(stage_bonus, 4)
+        orderbook_depth_contrib  = round(obi_score * 0.16, 4)
+        spread_quality_contrib   = round(max(0.0, 1.0 - (spread_pct or 0) / MAX_SCANNER_SPREAD_PCT) * 0.08, 4)
+        persistence_contrib      = round(persistence_score * 0.10, 4)
+        momentum_contrib         = round(momentum_score * 0.28, 4)
+        trend_range_contrib      = round((trend_score * 0.06 + range_score * 0.04 + near_high_score * 0.05), 4)
+
+        # Negative contributors (penalties)
+        trap_penalty             = round(-0.09 if lifecycle in ("TRAP", "DISTRIBUTION") else 0.0, 4)
+        liquidity_penalty        = round(-0.04 if spread_pct and spread_pct > (MAX_SCANNER_SPREAD_PCT * 0.8) else 0.0, 4)
+
+        return {
+            "volume_spike":      volume_spike_contrib,
+            "lifecycle_stage":   lifecycle_stage_contrib,
+            "orderbook_depth":   orderbook_depth_contrib,
+            "spread_quality":    spread_quality_contrib,
+            "persistence":       persistence_contrib,
+            "momentum":          momentum_contrib,
+            "trend_range":       trend_range_contrib,
+            "trap_penalty":      trap_penalty,
+            "liquidity_penalty": liquidity_penalty,
+        }
+
+    @staticmethod
+    def _compute_trade_grade(confidence: float, lifecycle: str, exit_quality: str, historian_verdict: str) -> str:
+        """
+        £16.9: Trade grade A|B|C|D|F.
+        A = clean edge, B = good, C = probe only, D = reject, F = hard reject.
+        """
+        if lifecycle in ("TRAP", "LOCAL_TRAP"):
+            return "F"
+        if lifecycle == "DISTRIBUTION":
+            return "D"
+        if historian_verdict == "DEAD":
+            return "D"
+        if historian_verdict == "TRAP_PRONE" and lifecycle not in ("IGNITION", "CONFIRMATION"):
+            return "D"
+
+        exit_grade_bonus = 1 if exit_quality == "A" else (0 if exit_quality in ("B", "C") else -1)
+
+        if confidence >= 0.80 and lifecycle in ("IGNITION", "CONFIRMATION") and exit_grade_bonus >= 0:
+            return "A"
+        if confidence >= 0.70 and exit_grade_bonus >= 0:
+            return "B"
+        if confidence >= 0.55:
+            return "C"
+        if confidence >= 0.40:
+            return "D"
+        return "F"
+
+    @staticmethod
+    def _compute_exit_quality(
+        spread_pct: Optional[float],
+        obi: float,
+        obi_source: str,
+        lifecycle: str,
+    ) -> str:
+        """
+        £17.3: Scanner must be exit-aware.
+        A = clean exit, B = manageable, C = risky, D = difficult, F = cannot exit
+        """
+        if lifecycle in ("TRAP", "LOCAL_TRAP", "DISTRIBUTION"):
+            return "F"
+
+        spread = spread_pct or 0.0
+        score  = 0
+
+        if spread < 0.3:
+            score += 3
+        elif spread < 0.7:
+            score += 2
+        elif spread < 1.0:
+            score += 1
+        else:
+            score -= 1
+
+        # OBI from real orderbook gets more weight
+        if obi_source == "ORDERBOOK":
+            if obi > 0.20:
+                score += 2
+            elif obi > 0.05:
+                score += 1
+            elif obi < -0.10:
+                score -= 2
+        else:
+            score += 1  # proxy — neutral
+
+        if score >= 5:
+            return "A"
+        if score >= 3:
+            return "B"
+        if score >= 1:
+            return "C"
+        if score >= -1:
+            return "D"
+        return "F"
+
+    def _enrich_signal(self, sig: dict, ticker_fetch_ts: float) -> dict:
+        """
+        Enrich a raw detect_pump() result with formal §17.2 fields:
+        lifecycle, confidence_breakdown, entry_quality, exit_quality,
+        trade_grade, historian_profile, opportunity_score, freshness.
+        """
+        if sig is None:
+            return sig
+
+        pump_stage       = sig.get("pump_stage", "IGNITION")
+        distance_to_high = sig.get("distance_to_high_pct", 50.0)
+        obi              = sig.get("obi", 0.0)
+        obi_source       = sig.get("obi_source", "PROXY")
+        spread_pct       = sig.get("spread_pct")
+        confidence       = sig.get("confidence", 0.5)
+
+        lifecycle = self._map_lifecycle(pump_stage, distance_to_high, obi)
+
+        breakdown = self._compute_confidence_breakdown(
+            momentum_score     = sig.get("momentum_score", 0),
+            volume_score       = sig.get("volume_score", 0),
+            obi_score          = max(0.0, min(1.0, (obi + 1.0) / 2.0)),
+            persistence_score  = sig.get("persistence_score", 0),
+            acceleration_score = sig.get("acceleration_score", 0),
+            trend_score        = sig.get("trend_score", 0),
+            range_score        = sig.get("range_score", 0),
+            near_high_score    = sig.get("near_high_score", 0),
+            stage_bonus        = 0.06 if sig.get("trend_continuation") else 0.03,
+            spread_pct         = spread_pct,
+            lifecycle          = lifecycle,
+        )
+
+        exit_quality = self._compute_exit_quality(spread_pct, obi, obi_source, lifecycle)
+
+        # Historian profile from pair memory
+        historian_profile = {"verdict": "UNKNOWN"}
+        historian_verdict = "UNKNOWN"
+        if _LEARNING_ENGINE_AVAILABLE and _get_learning_engine:
+            try:
+                engine = _get_learning_engine()
+                pair_lower = sig["symbol"].lower().replace("/", "_")
+                stats = engine.get(pair_lower)
+                historian_profile = stats.get_historian_profile(
+                    ohlc_quality=sig.get("market_quality")
+                )
+                historian_verdict = historian_profile.get("verdict", "UNKNOWN")
+            except Exception as e:
+                logger.debug(f"Historian profile failed for {sig.get('symbol')}: {e}")
+
+        trade_grade = self._compute_trade_grade(
+            confidence, lifecycle, exit_quality, historian_verdict
+        )
+
+        # Opportunity score: aggregate of confidence + exit quality bonus
+        exit_bonus = {"A": 0.10, "B": 0.05, "C": 0.0, "D": -0.05, "F": -0.15}.get(exit_quality, 0.0)
+        opportunity_score = round(min(1.0, max(0.0, confidence + exit_bonus)), 4)
+
+        now = time.time()
+        sig.update({
+            # §17.2 formal fields
+            "lifecycle":            lifecycle,
+            "opportunity_score":    opportunity_score,
+            "entry_quality":        trade_grade,   # entry quality == trade grade
+            "exit_quality":         exit_quality,
+            "confidence_breakdown": breakdown,
+            "historian_profile":    historian_profile,
+            "freshness": {
+                "ticker_age_s":     round(now - ticker_fetch_ts, 1),
+                "orderbook_age_s":  round(now - ticker_fetch_ts, 1),  # same batch
+                "is_fresh":         (now - ticker_fetch_ts) < 30,
+            },
+            # trade_grade also stored at top level for Council
+            "trade_grade":          trade_grade,
+        })
+        return sig
+
+    def collect_signals(self, daily_context: Optional[dict] = None):
+        """
+        Standard interface for ScannerEngine.
+        Produces fully §17.2-compliant signal dicts.
+        """
+        fetch_ts = time.time()
+        tickers  = self.fetch_all_tickers()
+        signals  = []
         for pair, ticker in tickers.items():
             if not pair.endswith("_idr"):
                 continue
             sig = self.detect_pump(pair, ticker)
             if sig:
-                signals.append(sig)
-        return {"signals": signals}
+                sig = self._enrich_signal(sig, fetch_ts)
+                if sig and sig.get("trade_grade", "F") not in ("F",):
+                    signals.append(sig)
+
+        # Sort by opportunity_score descending (£16.6)
+        signals.sort(key=lambda s: s.get("opportunity_score", 0), reverse=True)
+
+        return {"signals": signals, "fetch_ts": fetch_ts}
 
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
@@ -502,3 +748,4 @@ if __name__ == "__main__":
         if res["signals"]:
             print(f"Signals detected: {len(res['signals'])}")
         time.sleep(10)
+
