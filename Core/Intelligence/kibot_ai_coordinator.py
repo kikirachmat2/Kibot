@@ -487,6 +487,7 @@ PROMPT_TEMPLATES = {
         "If a coin has already pulled back from the high but is reclaiming with renewed volume and persistence, treat it as a valid second-leg or pullback-reclaim candidate rather than rejecting it as dead.\n"
         "If the coin is a bit farther from the high but still shows strong reclaiming momentum, treat it as a late-reclaim candidate only when the recovery score remains strong and the move is not exhausted.\n"
         "If a coin breaks out of an intraday range and then reclaims with sustained volume, treat it as a range-break reclaim candidate, but only if the thesis is still clean.\n"
+        "If a coin bounces from intraday support with meaningful run-up and strong reclaim behavior, treat it as a support-bounce candidate, but only if the move still has room and the edge is not stretched.\n"
         "Polymarket context: Focus on high-volume prediction shifts that correlate with tokens.\n"
         "Return strict compact JSON only with keys "
         "{\"possibilities\":[{\"title\":\"...\",\"description\":\"...\",\"probability\":0.0,\"assets\":[...],\"platforms\":[\"INDODAX\",\"POLYMARKET\",\"BINANCE\"],\"urgency\":\"LOW|MED|HIGH\"}]}"
@@ -506,6 +507,7 @@ PROMPT_TEMPLATES = {
         "Pump continuation rule: if a coin is already far above its day low, is still near the day high, and volume persistence stays strong, treat it as a valid continuation candidate even if the latest 5m change is modest.\n"
         "Pullback reclaim rule: if a coin has retraced from the high but is now reclaiming with positive 5m momentum, persistent volume, and a strong recovery score, treat it as a valid second-leg candidate instead of freezing.\n"
         "Late reclaim rule: if a coin is farther from the high but still reclaiming with a strong recovery score and robust volume persistence, you may consider it, but only if the thesis is still clean and not exhausted.\n"
+        "Support bounce rule: if a coin bounces from intraday support with meaningful run-up, healthy persistence, and a strong reclaim score, consider it as a valid wave-riding candidate, but only when the move still has room and the edge is not stretched.\n"
         "Do not sit idle just because the market is ugly. Search the supplied signals for the best available edge, but never force a low-quality trade.\n"
         "The target is GREEN, not a percentage threshold. If the day is already green and the edge still remains strong, prefer to stay with winners and exit only when the exit edge, risk, or deadline becomes stronger.\n"
         "If evidence is insufficient, choose NONE rather than force a trade.\n"
@@ -533,6 +535,7 @@ PROMPT_TEMPLATES = {
         "6. If a pullback-reclaim setup is present with strong recovery score, recommend it over stale continuation ideas.\n"
         "7. If a late-reclaim setup is present, only recommend it when the recovery score and volume persistence still justify the risk.\n"
         "8. If a range-break reclaim setup is present, prefer it over weaker reclaim ideas when the structure is still clean.\n"
+        "9. If a support-bounce setup is present, recommend it only when the bounce is reclaiming intraday support with room to run and the edge is not stretched.\n"
         "Return strict compact JSON: {\"verdict\":\"CHALLENGE|SUPPORT|ABORT\", \"counter_thesis\":\"...\", \"best_alternative_ticker\":\"SYMBOL/IDR\", \"best_alternative_action\":\"BUY|SELL|NONE\", \"best_alternative_confidence\":0.0, \"risk_focus\":[...], \"opportunity_focus\":[...], \"recovery_angle\":\"...\"}"
     ),
     "MOMENTUM_HAWK": (

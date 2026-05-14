@@ -37,6 +37,12 @@ RANGE_BREAK_MIN_BREAKOUT_FROM_LOW_PCT = 2.0
 RANGE_BREAK_MAX_DIST_TO_HIGH_PCT = 55.0
 RANGE_BREAK_MIN_VOLUME_RATIO = 1.10
 RANGE_BREAK_MIN_RECLAIM_SCORE = 0.70
+SUPPORT_BOUNCE_MIN_RUNUP_PCT = 8.0
+SUPPORT_BOUNCE_MIN_RANGE_POSITION = 0.12
+SUPPORT_BOUNCE_MAX_DIST_TO_HIGH_PCT = 65.0
+SUPPORT_BOUNCE_MIN_BOUNCE_FROM_LOW_PCT = 2.0
+SUPPORT_BOUNCE_MIN_VOLUME_RATIO = 1.12
+SUPPORT_BOUNCE_MIN_RECLAIM_SCORE = 0.72
 
 class IndodaxSmallCapScanner:
     def __init__(self):
@@ -146,6 +152,8 @@ class IndodaxSmallCapScanner:
         late_reclaim_score = 0.0
         range_break_reclaim = False
         range_break_reclaim_score = 0.0
+        support_bounce_reclaim = False
+        support_bounce_reclaim_score = 0.0
         if not trend_continuation:
             recent_low_5m = min(recent_prices) if recent_prices else price
             reclaim_from_low_pct = ((price - recent_low_5m) / recent_low_5m * 100) if recent_low_5m > 0 else 0.0
@@ -189,6 +197,16 @@ class IndodaxSmallCapScanner:
                 and reclaim_score >= RANGE_BREAK_MIN_RECLAIM_SCORE
             )
             range_break_reclaim_score = round(reclaim_score, 3)
+            support_bounce_reclaim = (
+                runup_from_low_pct >= SUPPORT_BOUNCE_MIN_RUNUP_PCT
+                and range_position >= SUPPORT_BOUNCE_MIN_RANGE_POSITION
+                and distance_to_high_pct <= SUPPORT_BOUNCE_MAX_DIST_TO_HIGH_PCT
+                and vol_ratio >= SUPPORT_BOUNCE_MIN_VOLUME_RATIO
+                and persistence >= 0.58
+                and reclaim_from_low_pct >= SUPPORT_BOUNCE_MIN_BOUNCE_FROM_LOW_PCT
+                and reclaim_score >= SUPPORT_BOUNCE_MIN_RECLAIM_SCORE
+            )
+            support_bounce_reclaim_score = round(reclaim_score, 3)
         mature_pump = (
             runup_from_low_pct >= MATURE_MIN_RUNUP_PCT
             and range_position >= MATURE_MIN_RANGE_POSITION
@@ -210,6 +228,9 @@ class IndodaxSmallCapScanner:
         if range_break_reclaim:
             price_floor = min(price_floor, 0.16)
             volume_floor = min(volume_floor, RANGE_BREAK_MIN_VOLUME_RATIO)
+        if support_bounce_reclaim:
+            price_floor = min(price_floor, 0.16)
+            volume_floor = min(volume_floor, SUPPORT_BOUNCE_MIN_VOLUME_RATIO)
         if mature_pump:
             price_floor = min(price_floor, 0.15)
             volume_floor = min(volume_floor, MATURE_MIN_VOLUME_RATIO)
@@ -232,6 +253,8 @@ class IndodaxSmallCapScanner:
             stage_bonus = max(stage_bonus, 0.035)
         if range_break_reclaim:
             stage_bonus = max(stage_bonus, 0.045)
+        if support_bounce_reclaim:
+            stage_bonus = max(stage_bonus, 0.05)
         obi = self.fetch_orderbook(pair)
         obi_available = obi is not None
         if obi_available and obi < OBI_MIN:
@@ -299,6 +322,7 @@ class IndodaxSmallCapScanner:
             "pullback_reclaim": pullback_reclaim,
             "late_reclaim": late_reclaim,
             "range_break_reclaim": range_break_reclaim,
+            "support_bounce_reclaim": support_bounce_reclaim,
             "mature_pump": mature_pump,
             "track_record": {
                 "persistence": round(persistence, 3),
@@ -309,8 +333,9 @@ class IndodaxSmallCapScanner:
                 "pullback_reclaim_score": pullback_reclaim_score,
                 "late_reclaim_score": late_reclaim_score,
                 "range_break_reclaim_score": range_break_reclaim_score,
+                "support_bounce_reclaim_score": support_bounce_reclaim_score,
             },
-            "pump_stage": "CONTINUATION" if trend_continuation else "RECLAIM" if pullback_reclaim else "LATE_RECLAIM" if late_reclaim else "RANGE_BREAK_RECLAIM" if range_break_reclaim else "MATURE" if mature_pump else "IGNITION",
+            "pump_stage": "CONTINUATION" if trend_continuation else "RECLAIM" if pullback_reclaim else "LATE_RECLAIM" if late_reclaim else "RANGE_BREAK_RECLAIM" if range_break_reclaim else "SUPPORT_BOUNCE" if support_bounce_reclaim else "MATURE" if mature_pump else "IGNITION",
             "regime": "PUMP_DETECTED",
             "exchange": "INDODAX",
             "ts": int(now * 1000)
