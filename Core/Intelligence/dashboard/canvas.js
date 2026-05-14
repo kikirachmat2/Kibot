@@ -158,32 +158,83 @@ function renderLane(id, countId, tasks) {
 }
 
 function renderWorkflow(summary) {
-  const services = summary?.services || {};
-  const portfolio = summary?.portfolio || {};
-  const council = summary?.council || {};
-  const strategy = summary?.strategy || {};
+  const services    = summary?.services    || {};
+  const portfolio   = summary?.portfolio   || {};
+  const council     = summary?.council     || {};
+  const strategy    = summary?.strategy    || {};
+  const signal      = summary?.last_signal || summary?.council?.last_signal || {};
+  const ot          = summary?.order_tracker || {};
+  const openOrders  = Array.isArray(ot.open_orders) ? ot.open_orders : [];
+  const otSummary   = ot.today_summary || {};
+
   const activeTrades = Object.keys(summary?.active_trades || {}).length;
-  const decision = String(council.decision_state || "WAIT").toUpperCase();
+  const decision     = String(council.decision_state || "WAIT").toUpperCase();
 
-  renderLane("lane-scheduled", "scheduled-count", [
-    taskCard("World Scout", `${statusLabel(services["kibot-ai-scout"])} · ${summary?.world_model?.market_regime || "NEUTRAL"}`, normalizedStatus(services["kibot-ai-scout"]) === "active" ? "live" : ""),
+  // ── SCHEDULED: scanner candidates + world scout ──
+  const scheduledCards = [
+    taskCard(
+      "World Scout",
+      `${statusLabel(services["kibot-ai-scout"])} · ${summary?.world_model?.market_regime || "NEUTRAL"}`,
+      normalizedStatus(services["kibot-ai-scout"]) === "active" ? "live" : ""
+    ),
     taskCard("What-If Batch", `${summary?.whatif?.count || 0} pairs simulated`),
-  ]);
+  ];
+  if (signal?.pair) {
+    const lifecycle = String(signal.lifecycle || "--").toUpperCase();
+    const grade     = String(signal.trade_grade || "?");
+    const conf      = Number(signal.confidence || 0);
+    scheduledCards.push(
+      taskCard(
+        `🎯 ${String(signal.pair || "").toUpperCase()}`,
+        `${lifecycle} · grade ${grade} · conf ${(conf * 100).toFixed(0)}%`,
+        grade === "A" || grade === "B" ? "live" : ""
+      )
+    );
+  }
+  renderLane("lane-scheduled", "scheduled-count", scheduledCards);
 
+  // ── ON HOLD: council waiting ──
   renderLane("lane-hold", "hold-count", decision === "WAIT"
     ? [taskCard("Council Holding", `conf ${Number(council.confidence || 0).toFixed(2)} below gate`)]
     : []);
 
-  renderLane("lane-progress", "progress-count", [
+  // ── IN PROGRESS: scanner + deliberation + open orders ──
+  const progressCards = [
     taskCard("Scanner Stream", statusLabel(services["kibot-scanner"]), "live"),
     taskCard("Council Deliberation", `${decision} · ${council.ticker || "no ticker"}`, "live"),
     taskCard("Execution Watch", `${activeTrades} active trades`, activeTrades ? "live" : ""),
-  ]);
+  ];
+  openOrders.slice(0, 3).forEach((o) => {
+    const pair  = String(o.pair || "--").toUpperCase();
+    const state = String(o.state || "").toUpperCase();
+    const budget = Number(o.budget_idr || 0);
+    progressCards.push(
+      taskCard(
+        `📦 ${pair}`,
+        `${state} · ${window.KiBotLive?.fmtRp?.(budget) || "Rp --"}`,
+        state === "FILLED" ? "live" : state === "STALE" ? "" : "live"
+      )
+    );
+  });
+  renderLane("lane-progress", "progress-count", progressCards);
 
-  renderLane("lane-done", "done-count", [
+  // ── DONE: ledger + reconciled trades ──
+  const doneCards = [
     taskCard("Ledger Snapshot", window.KiBotLive?.fmtRp?.(portfolio.combined_equity_idr || 0) || "portfolio", "done"),
     taskCard("Risk Contract", strategy.global_mode || "strategy loaded", "done"),
-  ]);
+  ];
+  const reconciled = Number(otSummary.reconciled || 0);
+  const pnl        = Number(otSummary.pnl_idr || 0);
+  if (reconciled > 0) {
+    doneCards.push(
+      taskCard(
+        `✅ ${reconciled} reconciled`,
+        `PnL ${window.KiBotLive?.fmtRp?.(pnl) || "Rp --"}`,
+        "done"
+      )
+    );
+  }
+  renderLane("lane-done", "done-count", doneCards);
 }
 
 function bindCanvasInteractions() {

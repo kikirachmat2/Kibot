@@ -219,6 +219,32 @@ class ScannerEngine:
             await self._dispatch(9991, data, secret)
             logger.info(f"🧠 Dispatched {len(all_signals)} HMAC-signed signals to Sovereign Council.")
 
+        # ── §17.2 Persist best Indodax signal for dashboard Signal Intel panel ──
+        if indo_signals:
+            try:
+                from Core.Support.ki_config import STATE_DIR
+                import tempfile
+                best = max(
+                    indo_signals,
+                    key=lambda s: float(s.get("opportunity_score") or s.get("confidence") or 0)
+                )
+                payload = {
+                    **best,
+                    "saved_at": datetime.now(timezone.utc).isoformat(),
+                }
+                state_path = Path(STATE_DIR) / "last_signal.json"
+                state_path.parent.mkdir(parents=True, exist_ok=True)
+                tmp = tempfile.NamedTemporaryFile(
+                    mode="w", encoding="utf-8",
+                    dir=str(state_path.parent), delete=False, suffix=".tmp"
+                )
+                json.dump(payload, tmp, ensure_ascii=False, default=str)
+                tmp.flush()
+                tmp.close()
+                Path(tmp.name).replace(state_path)
+            except Exception as _sig_err:
+                logger.debug(f"[Scanner] last_signal.json write failed: {_sig_err}")
+
     def run(self) -> None:
         logger.info(f"🚀 KiBot HFT Scanner Engine Started ({self.interval_s}s interval).")
         async def _run_async():
