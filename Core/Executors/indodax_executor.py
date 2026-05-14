@@ -231,6 +231,8 @@ class IndodaxExecutor:
         change_pct = abs(signal.get("change_5m_pct", signal.get("change_pct", 0)))
         pump_stage = str(signal.get("pump_stage", "IGNITION") or "IGNITION").upper()
         trend_continuation = bool(signal.get("trend_continuation", False))
+        pullback_reclaim = bool(signal.get("pullback_reclaim", False))
+        late_reclaim = bool(signal.get("late_reclaim", False))
         mature_pump = bool(signal.get("mature_pump", False))
         learning_probe = bool(signal.get("learning_probe", False))
 
@@ -315,6 +317,10 @@ class IndodaxExecutor:
                     max_spread = float(indo_strat.get("max_spread_pct", 0.45))
                     if trend_continuation:
                         max_spread = max(max_spread, 0.50)
+                    if pullback_reclaim:
+                        max_spread = max(max_spread, 0.47)
+                    if late_reclaim:
+                        max_spread = max(max_spread, 0.48)
                     if mature_pump:
                         max_spread = max(max_spread, 0.60)
                     if spread_pct > max_spread:
@@ -335,6 +341,10 @@ class IndodaxExecutor:
             required_confidence = probe_confidence_floor if learning_probe else min_confidence
             if trend_continuation:
                 required_confidence = max(0.58 if not learning_probe else 0.55, required_confidence - 0.06)
+            elif pullback_reclaim:
+                required_confidence = max(0.57 if not learning_probe else 0.54, required_confidence - 0.05)
+            elif late_reclaim:
+                required_confidence = max(0.56 if not learning_probe else 0.53, required_confidence - 0.06)
             elif mature_pump:
                 required_confidence = max(0.56 if not learning_probe else 0.54, required_confidence - 0.08)
 
@@ -346,6 +356,10 @@ class IndodaxExecutor:
             momentum_floor = float(indo_strat.get("buy_threshold_pct", 0.35))
             if trend_continuation:
                 momentum_floor = max(0.20, momentum_floor - 0.15)
+            elif pullback_reclaim:
+                momentum_floor = max(0.25, momentum_floor - 0.10)
+            elif late_reclaim:
+                momentum_floor = max(0.18, momentum_floor - 0.17)
             elif mature_pump:
                 momentum_floor = max(0.15, momentum_floor - 0.20)
 

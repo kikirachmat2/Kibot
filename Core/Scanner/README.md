@@ -14,6 +14,8 @@ Scanner layer untuk membaca peluang pasar dan mengirim sinyal HMAC-signed ke exe
   - Polymarket: `exchange:market_id[:outcome_index]`
   - Universal: `exchange:topic`
 - Indodax pump scanner sekarang tidak hanya baca 5m momentum, tetapi juga 24h proxy run-up, jarak ke high harian, dan volume persistence supaya pump continuation tetap bisa ditembus.
+- Mode `pullback_reclaim` juga ada: jika coin sempat retrace dari high tapi mulai reclaim lagi dengan volume dan persistence yang kuat, scanner tetap menganggapnya kandidat second-leg, bukan coin mati.
+- Mode `late_reclaim` juga ada untuk wave yang lebih jauh dari high, tapi hanya kalau recovery score dan volume persistence masih cukup sehat. Ini menjaga sistem tetap agresif tanpa jadi liar.
 - Kalau depth/OBI Indodax sedang tidak bisa diakses dari server, scanner memakai proxy struktural dari run-up, range position, persistence, dan volume sehingga pump detection tetap hidup.
 - Interval scanner default lebih agresif untuk flow cepat.
 - Universal scanner dijalankan aman dari thread context.
