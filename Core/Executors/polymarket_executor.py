@@ -129,6 +129,10 @@ class PolymarketExecutor:
                 logger.warning("🚨 EMERGENCY PAUSE: Polymarket execution blocked.")
                 return
 
+            if signal.get("type") != "COUNCIL_MANDATE" and os.getenv("KIBOT_POLY_ACCEPT_RAW_SIGNALS", "0").strip().lower() not in {"1", "true", "yes", "on"}:
+                logger.debug(f"🛡️ Raw Polymarket signal ignored; waiting for Council mandate: {signal.get('symbol')}")
+                return
+
             if not self.live_trading_enabled:
                 logger.warning("🧪 PAPER MODE: live trading disabled; skipping Polymarket entry.")
                 return

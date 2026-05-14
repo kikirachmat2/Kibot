@@ -28,7 +28,7 @@ import signal
 load_sovereign_env()
 
 # Core Imports (Unified Structure)
-from Core.Support.ki_config import STATE_DIR, LOGS_DIR, PROJECT_ROOT as ROOT_DIR, OLLAMA_TAGS_URL
+from Core.Support.ki_config import STATE_DIR, LOGS_DIR, PROJECT_ROOT as ROOT_DIR, OLLAMA_TAGS_URL, WIB, KiConfig
 from Core.circuit_breaker import CircuitBreaker
 from Core.sovereign_council import SovereignCouncil
 from Core.sovereign_notifier import SovereignNotifier
@@ -298,7 +298,7 @@ class KiBotMaster:
                         logger.info(f"🏛️ Received {len(signals)} signed signals from {addr}. Deliberating...")
                         
                         async def deliberate_and_dispatch(sigs):
-                            now = datetime.now()
+                            now = datetime.now(WIB)
                             is_midnight = (now.hour == 23 and now.minute >= 45)
                             minutes_to_midnight = self.council._minutes_to_midnight_wib()
                             portfolio_state = dict(self.last_state.get("portfolio", {}) or {})
@@ -322,27 +322,48 @@ class KiBotMaster:
                                 ticker = decision.get("ticker", "UNKNOWN")
                                 logger.info(f"🚀 [MANDATE] Council approved {action} {ticker}.")
                                 
-                                # Prepare mandate for Executor
-                                mandate_data = {
+                                source_signal = decision.get("source_signal", {})
+                                if not isinstance(source_signal, dict):
+                                    source_signal = {}
+
+                                # Prepare mandate for the right executor. Start with the
+                                # source signal so pump-stage, quality, spread, and
+                                # Polymarket metadata survive the Council hop.
+                                mandate_data = dict(source_signal)
+                                mandate_data.update({
                                     "type": "COUNCIL_MANDATE",
-                                    "symbol": decision["ticker"],
+                                    "symbol": decision.get("ticker") or source_signal.get("symbol"),
                                     "side": decision["action"],
-                                    "price": decision.get("source_signal", {}).get("price", 0),
+                                    "price": source_signal.get("price", decision.get("price", 0)),
                                     "confidence": decision.get("confidence", 0),
                                     "reason": decision.get("logic", "Council Mandate")[:100],
                                     "learning_probe": bool(decision.get("learning_probe", False)),
                                     "probe_confidence_floor": float(decision.get("probe_confidence_floor", 0.0) or 0.0),
                                     "trade_profile": decision.get("trade_profile", "STANDARD"),
                                     "daily_state": dict(self.last_state.get("portfolio", {}).get("daily_state", {}) or {}),
-                                }
+                                    "council_score": decision.get("decision_score"),
+                                    "council_wait_reason": decision.get("wait_reason", ""),
+                                })
+
+                                exchange = str(source_signal.get("exchange") or "").upper()
+                                mandate_symbol = str(mandate_data.get("symbol") or "").upper()
+                                if exchange == "POLYMARKET":
+                                    target_port = KiConfig.POLY_SIGNAL_PORT
+                                elif exchange == "INDODAX" or mandate_symbol.endswith("/IDR") or mandate_symbol.endswith("_IDR"):
+                                    target_port = KiConfig.INDO_SIGNAL_PORT
+                                else:
+                                    logger.warning(
+                                        f"⚠️ Council mandate has unsupported route: exchange={exchange}, ticker={mandate_symbol}"
+                                    )
+                                    return
                                 
-                                # Send HMAC-signed mandate to Indodax Executor (Port 9998)
+                                # Send HMAC-signed mandate to the selected executor.
                                 envelope_out = {
                                     "data": mandate_data,
                                     "signature": sign_payload(mandate_data, secret)
                                 }
                                 sock_out = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-                                sock_out.sendto(json.dumps(envelope_out).encode(), ("127.0.0.1", 9998))
+                                sock_out.sendto(json.dumps(envelope_out).encode(), ("127.0.0.1", target_port))
                                 
                         asyncio.create_task(deliberate_and_dispatch(signals))
                 else:
@@ -407,13 +428,14 @@ class KiBotMaster:
                 await self.deliberate_issue("EMERGENCY", {"type": "SYSTEM_ANOMALY", "snapshot": telemetry}, alert=False)
             # 3. PERSISTENCE & REPORTING
             try:
-                now = datetime.now()
+                now = datetime.now(WIB)
                 # A. Midnight Report (00:00 WIB)
-                if now.hour == 0 and now.minute == 0:
-                    if not hasattr(self, '_midnight_sent') or self._midnight_sent != now.day:
+                if now.hour == 0 and now.minute <= 4:
+                    midnight_key = now.date().isoformat()
+                    if not hasattr(self, '_midnight_sent') or self._midnight_sent != midnight_key:
                         logger.info("Midnight reached. Sending Sovereign Daily Report...")
                         await self.notifier.send_status_reply(telemetry)
-                        self._midnight_sent = now.day
+                        self._midnight_sent = midnight_key
                 
                 # B. Periodic Council Deliberation (Scouting) - SILENT (No Telegram)
                 if iteration % 60 == 0:

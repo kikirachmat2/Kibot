@@ -11,6 +11,8 @@ import httpx
 from pathlib import Path
 from datetime import datetime, timedelta
 
+from Core.Support.ki_config import WIB
+
 class CouncilDataAggregator:
     """
     Council Data Aggregator
@@ -163,7 +165,7 @@ class CouncilDataAggregator:
         risk_state = self._load_state_json("risk_state.json", {})
         if not isinstance(risk_state, dict):
             return 0.0
-        today = datetime.now().strftime("%Y-%m-%d")
+        today = datetime.now(WIB).strftime("%Y-%m-%d")
         state_date = str(risk_state.get("last_reset_date") or "")
         if state_date and state_date != today:
             return 0.0

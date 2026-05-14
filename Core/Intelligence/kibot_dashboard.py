@@ -119,7 +119,7 @@ def _ticker_price_idr_sync(coin: str) -> float:
         return _safe_float(cached.get("price"), 0.0)
 
     try:
-        response = httpx.get(f"https://indodax.com/api/{coin}_idr/ticker", timeout=2.2)
+        response = httpx.get(f"https://indodax.com/api/ticker/{coin}_idr", timeout=2.2)
         payload = response.json() if response.status_code == 200 else {}
         price = _safe_float((payload.get("ticker") or {}).get("last"), 0.0)
         PRICE_CACHE[coin] = {"ts": now, "price": price}

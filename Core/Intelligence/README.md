@@ -20,6 +20,13 @@ AI Orchestration, Learning, and Market Intelligence models.
 - `bin/kibotctl` sekarang ikut mengelola `kibot-dashboard`, jadi visual control plane masuk ke wrapper operasional satu pintu.
 - `aggregator.py` sekarang menghitung equity Indodax sebagai `idr_cash + coin_holdings_idr`, sehingga saldo koin yang sedang dipegang ikut tampil di dashboard dan council snapshot.
 - Daily PnL sekarang mark-to-market: realized PnL dari `risk_state.json` + unrealized open trades dari `active_trades.json` (`current_value - cost`), bukan lagi menganggap seluruh coin holdings sebagai profit.
+- Scanner mentah sekarang hanya menjadi input Council. Indodax/Polymarket executor default-nya menolak raw scanner signal dan hanya menerima `COUNCIL_MANDATE`.
+- Pump intelligence sekarang menolak tick-trap: `price_increment / price` terlalu besar, level harga 24h terlalu sedikit, spread terlalu lebar, OBI condong jual, atau OHLC terlalu datar / zero-volume.
+- Indodax gateway memakai endpoint resmi `ticker/{pair}` dan `depth/{compact_pair}`; orderbook kini benar-benar terbaca untuk slippage/OBI.
+- Executor mensinkronkan amount sell dengan live balance dan metadata minimum order Indodax supaya tidak spam gagal exit ketika state amount berbeda dari saldo aktual.
+- Indodax executor sekarang melakukan wallet/open-order reconciliation berkala: posisi yang tidak punya balance/open order dibuang sebagai stale, sedangkan holding yang muncul di wallet dan memenuhi minimum order otomatis di-attach kembali ke `active_trades.json`.
+- Council trading deliberation sekarang bounded: `COUNCIL_ANTAGONIST`, `COUNCIL_SPEAKER`, dan evidence web search punya timeout. Jika AI/provider lambat, deterministic fallback memilih `ENTER/WAIT` dari local evidence (confidence, spread, tick trap, OHLC quality, what-if), bukan menggantung.
+- RiskGate dan aggregator memakai business day WIB, sehingga daily PnL/report tidak salah tanggal ketika server masih UTC.
 
 ## Live Server Atlas
 Source of truth untuk keadaan server yang sebenarnya:
@@ -47,6 +54,7 @@ Server-only artifacts yang tidak kelihatan dari code tree biasa:
 - Council tidak lagi buta skenario: hasil `whatif_results.json` ikut dibaca saat deliberasi strategis dan trading.
 - Council juga tidak buta web: evidence bundle menghitung coverage, catalyst hit, risk flags, dan track-record proxy sebelum action `EXECUTING`.
 - Indodax pump hunting kini menganggap 24h run-up, jarak ke high harian, dan volume persistence sebagai sinyal valid untuk continuation, bukan hanya lonjakan 5m.
+- Low-price leaderboard pump seperti harga 1↔2 IDR tidak lagi dianggap edge; tick-size, sellable minimum amount, orderbook spread, dan distinct candle levels harus lolos dulu.
 - `support_bounce_reclaim` menambahkan jalur wave-riding yang memantul dari intraday support lalu reclaim lagi, tapi tetap dibatasi room-to-run dan recovery score supaya tidak liar.
 - `pivot_reclaim` menambahkan jalur reclaim yang lebih awal lagi untuk menangkap rebound awal, tetapi masih dibatasi supaya tidak berubah jadi entry liar.
 - Jika depth/OBI Indodax tidak tersedia dari server, scanner memakai proxy struktural agar pump hunting tetap berjalan alih-alih mati di hard gate.
@@ -83,6 +91,7 @@ Server-only artifacts yang tidak kelihatan dari code tree biasa:
 - `POLYMARKET_WALLET_ADDRESS` / `POLYMARKET_PRIVATE_KEY` sudah terisi di env lokal untuk eksekusi Polymarket otomatis.
 - `kibotctl` adalah entrypoint operasional satu command; gunakan `status`, `doctor`, `restart`, dan `sync-models` untuk menjaga sinkronisasi server.
 - Live trading executor tetap menunggu gate eksplisit `KIBOT_LIVE_TRADING_ENABLED=true` atau `KIBOT_TRADING_MODE=live`.
+- Telegram status path sudah diverifikasi lagi via shared throttled notifier; manual status bisa dikirim tanpa membuka spam loop, sedangkan report harian tetap di window midnight WIB.
 
 ## Key Files
 - `kibot_ai_coordinator.py`: Main AI signal processor.

@@ -1,15 +1,22 @@
 import logging
 import json
 import os
-from datetime import date
+from datetime import datetime
 from pathlib import Path
 from typing import Dict, Optional, Tuple
+
+from Core.Support.ki_config import WIB
 
 logger = logging.getLogger("RiskGate")
 
 # Configuration
 STATE_DIR = Path(__file__).resolve().parent.parent / "state"
 RISK_STATE_FILE = STATE_DIR / "risk_state.json"
+
+
+def _today_wib() -> str:
+    """Business day boundary follows WIB, not the server's UTC clock."""
+    return str(datetime.now(WIB).date())
 
 class RiskGate:
     """
@@ -29,7 +36,7 @@ class RiskGate:
             "blacklist": ["USDT_IDR"] 
         }
         self.daily_pnl = 0.0
-        self.last_reset_date = str(date.today())
+        self.last_reset_date = _today_wib()
         self._load_state()
 
     def _load_state(self):
@@ -37,11 +44,11 @@ class RiskGate:
             try:
                 with open(RISK_STATE_FILE, "r") as f:
                     state = json.load(f)
-                    if state.get("last_reset_date") == str(date.today()):
+                    if state.get("last_reset_date") == _today_wib():
                         self.daily_pnl = state.get("daily_pnl", 0.0)
                     else:
                         self.daily_pnl = 0.0
-                        self.last_reset_date = str(date.today())
+                        self.last_reset_date = _today_wib()
                         self._save_state()
             except Exception as e:
                 logger.error(f"Failed to load risk state: {e}")
@@ -64,7 +71,7 @@ class RiskGate:
         logger.info(f"💰 Sovereign PnL Tracking: {self.daily_pnl:.2f} IDR")
 
     def _check_reset(self):
-        today = str(date.today())
+        today = _today_wib()
         if self.last_reset_date != today:
             logger.info("♻️ New day detected. Resetting sovereign PnL.")
             self.daily_pnl = 0.0

@@ -35,6 +35,18 @@ class SovereignCouncil:
         # Load environment
         load_sovereign_env()
 
+    async def _query_ai_guarded(self, role: str, payload: Dict[str, Any], *, timeout: float = 18.0) -> Dict[str, Any]:
+        """Bound AI calls so one slow provider cannot freeze the trading loop."""
+        try:
+            result = await asyncio.wait_for(query_ai(role, payload), timeout=timeout)
+            return result if isinstance(result, dict) else {"is_fallback": True, "reason": "non_dict_ai_response"}
+        except asyncio.TimeoutError:
+            logger.warning(f"⏱️ Council AI timeout: {role} exceeded {timeout:.1f}s; using deterministic fallback.")
+            return {"is_fallback": True, "reason": f"{role}_timeout"}
+        except Exception as e:
+            logger.warning(f"⚠️ Council AI error from {role}: {e}")
+            return {"is_fallback": True, "reason": f"{role}_error:{e}"}
+
     def _load_whatif_snapshot(self) -> Dict[str, Any]:
         if not self.whatif_file.exists():
             return {"pairsSimulated": 0, "topOpportunities": [], "results": {}}
@@ -339,6 +351,137 @@ class SovereignCouncil:
             "probe_confidence_floor": float(decision.get("probe_confidence_floor", 0.0) or 0.0),
         }
 
+    def _signal_quality_score(self, signal: Dict[str, Any], whatif_snapshot: Dict[str, Any]) -> tuple[float, str]:
+        """Local evidence scorer used when AI is slow/unavailable."""
+        if not isinstance(signal, dict):
+            return 0.0, "invalid_signal"
+        symbol_text = str(signal.get("symbol") or signal.get("ticker") or "").upper()
+        exchange = str(signal.get("exchange") or "").upper()
+        if exchange and exchange != "INDODAX":
+            return 0.0, f"fallback_unsupported_exchange:{exchange}"
+        if symbol_text and not (symbol_text.endswith("/IDR") or symbol_text.endswith("_IDR")):
+            return 0.0, f"fallback_requires_idr_pair:{symbol_text}"
+        try:
+            confidence = float(signal.get("confidence", 0.0) or 0.0)
+            change = abs(float(signal.get("change_5m_pct", signal.get("change_pct", 0.0)) or 0.0))
+            vol_ratio = float(signal.get("vol_ratio", 1.0) or 1.0)
+            spread = float(signal.get("spread_pct", 9.9) if signal.get("spread_pct") is not None else 9.9)
+            tick = float(signal.get("tick_size_pct", 99.0) if signal.get("tick_size_pct") is not None else 99.0)
+            levels = int(float(signal.get("price_levels_24h", 0) or 0))
+        except Exception:
+            return 0.0, "malformed_numeric_fields"
+
+        market_quality = signal.get("market_quality") if isinstance(signal.get("market_quality"), dict) else {}
+        if market_quality and market_quality.get("ok") is False:
+            return 0.0, f"market_quality:{market_quality.get('reason')}"
+        if tick > 3.0 or levels < 8:
+            return 0.0, f"tick_trap tick={tick:.2f}% levels={levels}"
+        if spread > 1.20:
+            return 0.0, f"spread_too_wide {spread:.2f}%"
+        if confidence <= 0:
+            return 0.0, "missing_confidence"
+
+        symbol = str(signal.get("symbol") or signal.get("ticker") or "").upper()
+        base = symbol.split("/")[0].replace("_IDR", "")
+        whatif_bonus = 0.0
+        results = whatif_snapshot.get("results") if isinstance(whatif_snapshot, dict) else {}
+        if isinstance(results, dict):
+            for key, payload in results.items():
+                if base and base in str(key).upper() and isinstance(payload, dict):
+                    ev = float(payload.get("expectedValue") or 0.0)
+                    whatif_bonus = min(0.08, max(0.0, ev * 8.0))
+                    break
+
+        stage = str(signal.get("pump_stage") or "").upper()
+        stage_bonus = {
+            "CONTINUATION": 0.055,
+            "RECLAIM": 0.045,
+            "RANGE_BREAK_RECLAIM": 0.050,
+            "SUPPORT_BOUNCE": 0.040,
+            "PIVOT_RECLAIM": 0.035,
+            "MATURE": 0.025,
+            "IGNITION": 0.020,
+        }.get(stage, 0.0)
+
+        spread_score = max(0.0, 1.0 - (spread / 1.20))
+        score = (
+            (confidence * 0.42)
+            + (min(1.0, change / 4.0) * 0.16)
+            + (min(1.0, max(0.0, vol_ratio - 1.0) / 2.5) * 0.12)
+            + (spread_score * 0.12)
+            + (min(1.0, levels / 30.0) * 0.06)
+            + whatif_bonus
+            + stage_bonus
+        )
+        return round(max(0.0, min(0.98, score)), 4), "ok"
+
+    def _deterministic_trade_decision(
+        self,
+        signals_context: Dict[str, Any],
+        evidence_bundle: Dict[str, Any],
+        whatif_snapshot: Dict[str, Any],
+        portfolio_ctx: Dict[str, Any],
+        today_trade_activity: Dict[str, Any],
+        minutes_to_midnight: int,
+        confidence_floor: float,
+        fallback_reason: str,
+    ) -> Dict[str, Any]:
+        """Make a bounded local decision when online AI deliberation cannot finish."""
+        signals = [sig for sig in list(signals_context.get("signals") or []) if isinstance(sig, dict)]
+        ranked = []
+        for signal in signals:
+            score, reason = self._signal_quality_score(signal, whatif_snapshot)
+            if score <= 0:
+                ranked.append({"signal": signal, "score": score, "reject_reason": reason})
+                continue
+            ranked.append({"signal": signal, "score": score, "reject_reason": reason})
+
+        ranked.sort(key=lambda row: row.get("score", 0.0), reverse=True)
+        best = ranked[0] if ranked else {}
+        best_signal = best.get("signal") if isinstance(best.get("signal"), dict) else {}
+        best_score = float(best.get("score", 0.0) or 0.0)
+        best_conf = float(best_signal.get("confidence", 0.0) or 0.0)
+        has_trade_today = int(today_trade_activity.get("entries", 0) or 0) > 0
+        deadline_pressure = self._deadline_pressure(minutes_to_midnight)
+        adaptive_floor = confidence_floor
+        if not has_trade_today and minutes_to_midnight <= 720:
+            adaptive_floor = max(0.70, adaptive_floor - min(0.035, deadline_pressure * 0.04))
+
+        if (
+            best_signal
+            and best_score >= 0.58
+            and best_conf >= max(0.70, adaptive_floor - 0.03)
+            and float(evidence_bundle.get("risk_penalty", 0.0) or 0.0) <= 0.60
+        ):
+            symbol = str(best_signal.get("symbol") or best_signal.get("ticker") or "").upper()
+            return {
+                "status": "EXECUTING",
+                "action": "BUY",
+                "ticker": symbol,
+                "confidence": round(max(best_conf, min(0.92, best_score)), 4),
+                "logic": (
+                    "deterministic fallback: signal passed tick/spread/history/what-if gates "
+                    f"after AI fallback ({fallback_reason})"
+                ),
+                "source": "DETERMINISTIC_COUNCIL_FALLBACK",
+                "fallback_decision": True,
+                "ranked_candidates": ranked[:5],
+            }
+
+        return {
+            "status": "WAIT",
+            "action": "NONE",
+            "ticker": str(best_signal.get("symbol") or "") if best_score > 0 else "",
+            "confidence": round(best_conf, 4),
+            "logic": f"deterministic fallback waited: no signal cleared local score/floor after {fallback_reason}",
+            "wait_reason": (
+                f"deterministic fallback waited: {best.get('reject_reason') or 'score/floor not cleared'}"
+            ),
+            "source": "DETERMINISTIC_COUNCIL_FALLBACK",
+            "fallback_decision": True,
+            "ranked_candidates": ranked[:5],
+        }
+
     def _get_today_trade_activity(self) -> Dict[str, Any]:
         """Read today's trade activity so the council can avoid blind repetition."""
         try:
@@ -357,6 +500,47 @@ class SovereignCouncil:
         except Exception as e:
             logger.debug(f"Failed to load today trade activity: {e}")
             return {"entries": 0, "open": 0, "closed": 0, "win_rate": 0.5, "pnl_idr": 0.0}
+
+    def _sanitize_indodax_strategy(self, candidate: Dict[str, Any], current: Dict[str, Any]) -> Dict[str, Any]:
+        """Keep AI strategy useful without letting it lock the bot into hallucinated single-pair tunnel vision."""
+        base = dict(current.get("indodax", {}) if isinstance(current.get("indodax"), dict) else {})
+        if isinstance(candidate, dict):
+            base.update(candidate)
+
+        if os.getenv("KIBOT_ALLOW_AI_PAIR_LOCK", "0").strip().lower() not in {"1", "true", "yes", "on"}:
+            base["allowed_pairs"] = ["*"]
+            base["pairs"] = ["*"]
+
+        fee_roundtrip = float(base.get("fee_roundtrip_pct", 1.02) or 1.02)
+        take_profit = max(float(base.get("take_profit_pct", 1.5) or 1.5), fee_roundtrip + 0.30)
+        base.update({
+            "strategy": "PUMP_HUNTER",
+            "buy_threshold_pct": max(0.30, min(float(base.get("buy_threshold_pct", 0.40) or 0.40), 1.20)),
+            "trailing_stop_pct": max(0.25, min(float(base.get("trailing_stop_pct", 0.35) or 0.35), 1.20)),
+            "hard_stop_pct": max(1.2, min(float(base.get("hard_stop_pct", 2.0) or 2.0), 3.0)),
+            "max_exposure_idr": float(base.get("max_exposure_idr", 0) or 0),
+            "max_slots": max(1, min(int(base.get("max_slots", 3) or 3), 5)),
+            "min_confidence": max(0.70, min(float(base.get("min_confidence", 0.74) or 0.74), 0.88)),
+            "take_profit_pct": round(take_profit, 3),
+            "fee_roundtrip_pct": fee_roundtrip,
+            "max_spread_pct": max(0.35, min(float(base.get("max_spread_pct", 0.55) or 0.55), 0.90)),
+            "reject_tick_traps": True,
+            "min_price_levels_24h": int(base.get("min_price_levels_24h", 8) or 8),
+            "max_tick_size_pct": float(base.get("max_tick_size_pct", 3.0) or 3.0),
+        })
+        return base
+
+    def _sanitize_polymarket_strategy(self, candidate: Dict[str, Any], current: Dict[str, Any]) -> Dict[str, Any]:
+        base = dict(current.get("polymarket", {}) if isinstance(current.get("polymarket"), dict) else {})
+        if isinstance(candidate, dict):
+            base.update(candidate)
+        base.update({
+            "strategy": str(base.get("strategy") or "CONTROLLED_AGGRESSIVE"),
+            "min_liquidity_usd": max(500.0, float(base.get("min_liquidity_usd", 500) or 500)),
+            "min_confidence": max(0.70, min(float(base.get("min_confidence", 0.78) or 0.78), 0.92)),
+            "max_bet_usd": float(base.get("max_bet_usd", 0) or 0),
+        })
+        return base
 
     async def _build_trade_evidence(self, signals_context: Dict[str, Any]) -> Dict[str, Any]:
         signals = list(signals_context.get("signals") or [])
@@ -397,13 +581,19 @@ class SovereignCouncil:
                 f"{pair} track record volume trend Indodax",
                 f"{symbol} site:coingecko.com crypto",
             ]
+            async def safe(coro, default):
+                try:
+                    return await asyncio.wait_for(coro, timeout=5.5)
+                except Exception:
+                    return default
+
             tavily, serper, ddg, finnhub, brave, cryptopanic = await asyncio.gather(
-                self.search_service.tavily_search_async(queries[0], search_depth="advanced"),
-                self.search_service.serper_search_async(queries[1]),
-                self.search_service.ddg_search_async(queries[2], max_results=3),
-                self.search_service.finnhub_news_async(symbol.lower()),
-                self.search_service.brave_search_async(queries[0]),
-                self.search_service.cryptopanic_news_async("hot"),
+                safe(self.search_service.tavily_search_async(queries[0], search_depth="advanced"), {}),
+                safe(self.search_service.serper_search_async(queries[1]), {}),
+                safe(self.search_service.ddg_search_async(queries[2], max_results=3), []),
+                safe(self.search_service.finnhub_news_async(symbol.lower()), []),
+                safe(self.search_service.brave_search_async(queries[0]), {}),
+                safe(self.search_service.cryptopanic_news_async("hot"), []),
             )
             return {
                 "symbol": symbol,
@@ -416,7 +606,14 @@ class SovereignCouncil:
                 "cryptopanic": cryptopanic or [],
             }
 
-        symbol_payloads = await asyncio.gather(*(gather_for_symbol(symbol) for symbol in targets))
+        try:
+            symbol_payloads = await asyncio.wait_for(
+                asyncio.gather(*(gather_for_symbol(symbol) for symbol in targets)),
+                timeout=float(os.getenv("KIBOT_TRADE_EVIDENCE_TIMEOUT_SEC", "8.0") or 8.0),
+            )
+        except Exception as e:
+            logger.warning(f"⚠️ Trade evidence timeout/error; using local signal evidence only: {e}")
+            symbol_payloads = []
 
         for payload in symbol_payloads:
             symbol = payload.get("symbol")
@@ -570,7 +767,7 @@ class SovereignCouncil:
             health = {"health_status": "STABLE", "action": "NONE", "reason": "System resources within safe limits (Auto-Stable)"}
         else:
             health_context = f"CPU: {cpu}%, MEM: {ram}%, DISK: {disk}%"
-            health = await query_ai("SYSTEM_ENGINEER", {"netdata_snapshot": health_context})
+            health = await self._query_ai_guarded("SYSTEM_ENGINEER", {"netdata_snapshot": health_context}, timeout=12)
         
         if health and health.get("action") == "PAUSE":
             cpu_critical = float(cpu) >= 95.0
@@ -591,17 +788,17 @@ class SovereignCouncil:
                 return {"status": "PAUSED", "reason": health.get("reason")}
 
         # 2. Market Synthesis
-        scout_res = await query_ai("MARKET_SCOUT", {"raw_scan_results": market_snapshot})
-        sentiment = await query_ai("SENTIMENT_SYNTHESIZER", {"news_context": "Global Crypto Trends"})
+        scout_res = await self._query_ai_guarded("MARKET_SCOUT", {"raw_scan_results": market_snapshot}, timeout=15)
+        sentiment = await self._query_ai_guarded("SENTIMENT_SYNTHESIZER", {"news_context": "Global Crypto Trends"}, timeout=15)
         whatif_snapshot = self._load_whatif_snapshot()
         portfolio_ctx = self._portfolio_context(market_snapshot)
 
         # [NEW V3.1] Forensic and Cross-Market Intelligence
-        whale_intel = await query_ai("WHALE_WATCHER", {"orderbook_snapshot": market_snapshot.get("indodax")})
-        bridge_alpha = await query_ai("CROSS_BRIDGE_STRATEGIST", {
+        whale_intel = await self._query_ai_guarded("WHALE_WATCHER", {"orderbook_snapshot": market_snapshot.get("indodax")}, timeout=12)
+        bridge_alpha = await self._query_ai_guarded("CROSS_BRIDGE_STRATEGIST", {
             "indodax_data": market_snapshot.get("indodax"),
             "poly_data": market_snapshot.get("polymarket")
-        })
+        }, timeout=12)
 
         # 3. Final Strategic Decision (Strategy Dean)
         current = load_strategy()
@@ -609,14 +806,13 @@ class SovereignCouncil:
         runtime_daily_state = current.get("daily_state") if isinstance(current.get("daily_state"), dict) else portfolio_ctx.get("daily_state", {})
         
         # [MIDNIGHT ORACLE LOGIC]
-        from datetime import datetime
-        now = datetime.now()
+        now = self._now_wib()
         # If between 23:45 and 00:00, force 'EXIT_ALL' mode
         is_midnight_approaching = (now.hour == 23 and now.minute >= 45)
         minutes_to_midnight = self._minutes_to_midnight_wib()
         deadline_pressure = self._deadline_pressure(minutes_to_midnight)
 
-        antagonist_view = await query_ai("COUNCIL_ANTAGONIST", {
+        antagonist_view = await self._query_ai_guarded("COUNCIL_ANTAGONIST", {
             "signals": market_snapshot.get("signals", market_snapshot),
             "evidence_bundle": market_snapshot.get("evidence_bundle", {}),
             "whatif_snapshot": whatif_snapshot,
@@ -626,16 +822,16 @@ class SovereignCouncil:
             "minutes_to_midnight": minutes_to_midnight,
             "deadline_pressure": deadline_pressure,
             "current_strategy": current,
-        })
-        possibility_view = await query_ai("POSSIBILITY_MINING", {
+        }, timeout=14)
+        possibility_view = await self._query_ai_guarded("POSSIBILITY_MINING", {
             "raw_data": market_snapshot,
             "current_strategy": current,
             "daily_state": runtime_daily_state,
             "deadline_pressure": deadline_pressure,
             "minutes_to_midnight": minutes_to_midnight,
-        })
+        }, timeout=14)
         
-        dean_res = await query_ai("STRATEGY_DEAN", {
+        dean_res = await self._query_ai_guarded("STRATEGY_DEAN", {
             "market_data": scout_res,
             "system_health": health,
             "current_strategy": current,
@@ -651,11 +847,17 @@ class SovereignCouncil:
             "antagonist_view": antagonist_view,
             "possibility_view": possibility_view,
             "philosophy": "ORGANIZED_GREED" # Never satisfied
-        })
+        }, timeout=20)
 
         if not isinstance(dean_res, dict):
             logger.error(f"❌ [FATAL] AI Strategy Dean returned invalid response type: {type(dean_res)}")
             return {"status": "FAILED", "reason": "AI strategy generation failed - invalid type"}
+
+        if dean_res.get("is_fallback"):
+            logger.warning(
+                "⏱️ Strategy Dean unavailable; preserving current strategy instead of hallucinating a new posture."
+            )
+            return {"status": "SKIPPED", "reason": dean_res.get("reason", "strategy_dean_unavailable")}
 
         if dean_res:
             raw_mode = str(dean_res.get("global_mode", "NEUTRAL")).upper().strip()
@@ -691,8 +893,8 @@ class SovereignCouncil:
             new_strategy = {
                 "version": "3.0.0",
                 "global_mode": raw_mode,
-                "indodax": dean_res.get("indodax", current["indodax"]),
-                "polymarket": dean_res.get("polymarket", current["polymarket"]),
+                "indodax": self._sanitize_indodax_strategy(dean_res.get("indodax", {}), current),
+                "polymarket": self._sanitize_polymarket_strategy(dean_res.get("polymarket", {}), current),
                 "antagonist_view": antagonist_view,
                 "possibility_view": possibility_view,
                 "deadline_pressure": deadline_pressure,
@@ -743,23 +945,33 @@ class SovereignCouncil:
         
         # 1. Council Consensus
         # First gather an explicit antagonistic view, then let the speaker reconcile both sides.
-        antagonist_view = await query_ai("COUNCIL_ANTAGONIST", {
+        antagonist_view = await self._query_ai_guarded("COUNCIL_ANTAGONIST", {
             **signals_context,
             "current_strategy": load_strategy(),
             "is_midnight_approaching": signals_context.get("is_midnight_approaching", False),
-        })
+        }, timeout=float(os.getenv("KIBOT_COUNCIL_ANTAGONIST_TIMEOUT_SEC", "14") or 14))
 
         # We use COUNCIL_SPEAKER to synthesize the final verdict from signals
         is_midnight = signals_context.get("is_midnight_approaching", False)
-        decision = await query_ai("COUNCIL_SPEAKER", {
+        decision = await self._query_ai_guarded("COUNCIL_SPEAKER", {
             **signals_context,
             "antagonist_view": antagonist_view,
             "is_midnight_approaching": is_midnight
-        })
+        }, timeout=float(os.getenv("KIBOT_COUNCIL_SPEAKER_TIMEOUT_SEC", "18") or 18))
         
         if not decision or not isinstance(decision, dict) or decision.get("is_fallback"):
-            logger.warning(f"⚠️ Council failed to reach consensus or returned fallback/invalid: {type(decision)}")
-            return {"status": "REJECTED", "reason": "No AI consensus or malformed response"}
+            reason = decision.get("reason", "invalid_ai_decision") if isinstance(decision, dict) else str(type(decision))
+            logger.warning(f"⚠️ Council AI unavailable; using deterministic trade fallback: {reason}")
+            decision = self._deterministic_trade_decision(
+                signals_context=signals_context,
+                evidence_bundle=evidence_bundle,
+                whatif_snapshot=whatif_snapshot,
+                portfolio_ctx=portfolio_ctx,
+                today_trade_activity=today_trade_activity,
+                minutes_to_midnight=minutes_to_midnight,
+                confidence_floor=self._evidence_floor(evidence_bundle, whatif_snapshot),
+                fallback_reason=reason,
+            )
 
         # 2. Add metadata and match source signal
         decision["timestamp"] = time.time()
@@ -771,7 +983,7 @@ class SovereignCouncil:
         
         # Find matching signal from context for price/metadata parity
         signals = signals_context.get("signals", [])
-        target_ticker = decision.get("ticker", "UNKNOWN").upper()
+        target_ticker = str(decision.get("ticker") or "UNKNOWN").upper()
         source_signal = self._find_matching_signal(signals, target_ticker)
         decision["source_signal"] = source_signal
 
@@ -844,7 +1056,9 @@ class SovereignCouncil:
                 f"learning probe triggered: confidence {decision.get('confidence', 0):.3f} >= probe floor {probe_floor:.3f}"
             )
         elif decision.get("status") == "WAIT" and decision.get("decision_state") == "WAIT":
-            if decision.get("recovery_mode"):
+            if decision.get("fallback_decision") and decision.get("wait_reason"):
+                decision["wait_reason"] = str(decision.get("wait_reason"))
+            elif decision.get("recovery_mode"):
                 decision["wait_reason"] = (
                     f"recovery posture active: pnl {decision.get('daily_pnl_pct', 0):+.2f}% with {decision.get('minutes_to_midnight', 0)}m to midnight"
                 )
@@ -857,6 +1071,15 @@ class SovereignCouncil:
                 f"exit posture signaled: score {decision.get('exit_score', 0):.1f}"
             )
 
+        logger.info(
+            "🏛️ Council verdict: %s %s %s conf=%.3f score=%s reason=%s",
+            decision.get("decision_state"),
+            decision.get("status"),
+            decision.get("ticker"),
+            float(decision.get("confidence", 0.0) or 0.0),
+            decision.get("decision_score"),
+            decision.get("wait_reason") or decision.get("logic", ""),
+        )
         self._log_decision(decision)
         return decision
 
@@ -864,6 +1087,10 @@ class SovereignCouncil:
         try:
             with open(self.decision_log, "a") as f:
                 f.write(json.dumps(decision) + "\n")
+            max_mb = float(os.getenv("KIBOT_COUNCIL_DECISION_LOG_MAX_MB", "32") or 32)
+            if self.decision_log.stat().st_size > max_mb * 1024 * 1024:
+                lines = self.decision_log.read_text(encoding="utf-8", errors="ignore").splitlines()[-5000:]
+                self.decision_log.write_text("\n".join(lines) + "\n", encoding="utf-8")
         except Exception as e:
             logger.error(f"Failed to log decision: {e}")
 

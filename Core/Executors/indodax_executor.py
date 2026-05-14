@@ -54,6 +54,8 @@ class IndodaxExecutor:
         self.state_file = Path(ROOT_DIR) / "state" / "active_trades.json"
         self.lock = asyncio.Lock()
         self.reservations = {} # To prevent race conditions
+        self._last_wallet_reconcile = 0.0
+        self._wallet_reconcile_interval = float(os.getenv("KIBOT_EXECUTOR_RECONCILE_INTERVAL_S", "60") or 60)
         self._load_active_trades()
 
     def _load_active_trades(self):
@@ -120,6 +122,11 @@ class IndodaxExecutor:
         """Pure script-based monitoring for fast Exit/Trailing-Stop."""
         while self.running:
             try:
+                now = time.time()
+                if now - self._last_wallet_reconcile >= self._wallet_reconcile_interval:
+                    await self.reconcile_wallet_positions()
+                    self._last_wallet_reconcile = now
+
                 strategy = load_strategy()
                 indo_strat = strategy.get("indodax", {})
                 daily_state = strategy.get("daily_state", {}) if isinstance(strategy.get("daily_state"), dict) else {}
@@ -133,6 +140,13 @@ class IndodaxExecutor:
                     logger.warning(f"🚨 EMERGENCY PAUSE DETECTED: {urgency.get('reason')}")
                 else:
                     for symbol, data in list(self.active_trades.items()):
+                        if await self._handle_pending_exit(symbol, data):
+                            continue
+
+                        blocked_until = float(data.get("exit_blocked_until", 0) or 0)
+                        if blocked_until > time.time():
+                            continue
+
                         current_price_data = await self.indodax.get_ticker(symbol.lower().replace("/", "_"))
                         last_price = float(current_price_data.get("last", 0))
                         entry_price = data.get("price")
@@ -185,29 +199,286 @@ class IndodaxExecutor:
             finally:
                 await asyncio.sleep(5)
 
+    @staticmethod
+    def _extract_orders(payload: Dict[str, Any]) -> List[Dict[str, Any]]:
+        """Normalize Indodax openOrders return shapes into a flat order list."""
+        if not isinstance(payload, dict):
+            return []
+        raw = payload.get("return", payload)
+        if isinstance(raw, dict):
+            orders = raw.get("orders", raw.get("order", []))
+            if isinstance(orders, dict):
+                flattened = []
+                for item in orders.values():
+                    if isinstance(item, list):
+                        flattened.extend([x for x in item if isinstance(x, dict)])
+                    elif isinstance(item, dict):
+                        flattened.append(item)
+                return flattened
+            if isinstance(orders, list):
+                return [x for x in orders if isinstance(x, dict)]
+        if isinstance(raw, list):
+            return [x for x in raw if isinstance(x, dict)]
+        return []
+
+    @staticmethod
+    def _order_matches(order: Dict[str, Any], *, order_id: str = "", side: str = "") -> bool:
+        if not isinstance(order, dict):
+            return False
+        if order_id:
+            candidate = str(order.get("order_id") or order.get("id") or "")
+            if candidate and candidate != order_id:
+                return False
+        if side:
+            order_side = str(order.get("type") or order.get("side") or "").lower()
+            if order_side and order_side != side.lower():
+                return False
+        return True
+
+    async def _handle_pending_exit(self, symbol: str, data: Dict[str, Any]) -> bool:
+        """Keep pending exits honest until Indodax confirms the asset really left the wallet."""
+        order_id = str(data.get("exit_pending_order_id") or "")
+        if not order_id:
+            return False
+
+        pair = symbol.lower().replace("/", "_")
+        if "_" not in pair:
+            pair = f"{pair}_idr"
+        coin_symbol = pair.split("_")[0]
+
+        orders = self._extract_orders(await self.indodax.get_open_orders(pair))
+        if any(self._order_matches(order, order_id=order_id, side="sell") for order in orders):
+            self.active_trades.setdefault(symbol, {}).update({
+                "exit_blocked_until": time.time() + 60,
+                "exit_blocked_reason": f"EXIT_ORDER_OPEN:{order_id}",
+            })
+            self._save_active_trades()
+            return True
+
+        live_amount = await self.indodax.get_balance(coin_symbol)
+        pending_amount = float(data.get("exit_pending_amount") or data.get("amount") or 0.0)
+        exit_price = float(data.get("exit_pending_price") or 0.0)
+        entry_price = float(data.get("price") or 0.0)
+
+        if live_amount <= 1e-8:
+            if pending_amount > 0 and exit_price > 0 and entry_price > 0:
+                self.risk.update_pnl((exit_price - entry_price) * pending_amount)
+            logger.info(f"✅ EXIT FILLED: {symbol} pending order {order_id} settled; state cleared.")
+            self.active_trades.pop(symbol, None)
+            self._save_active_trades()
+            self.report_to_batam(symbol, "EXIT_FILLED", f"Pending exit filled @ {exit_price}")
+            return True
+
+        # Order is gone but the balance remains. It was cancelled/expired or not
+        # actually filled. Clear pending markers and let normal exit rules retry.
+        logger.warning(
+            f"⚠️ EXIT PENDING CLEARED: {symbol} order {order_id} no longer open, "
+            f"but live balance remains {live_amount:.8f} {coin_symbol.upper()}."
+        )
+        trade = self.active_trades.setdefault(symbol, {})
+        for key in [
+            "exit_pending_order_id",
+            "exit_pending_amount",
+            "exit_pending_price",
+            "exit_pending_reason",
+            "exit_pending_since",
+        ]:
+            trade.pop(key, None)
+        trade["amount"] = live_amount
+        self._save_active_trades()
+        return False
+
+    async def reconcile_wallet_positions(self):
+        """
+        Make `active_trades.json` follow the exchange wallet, not wishful state.
+
+        This protects the council from blind spots: if a sell did not fill, the
+        holding is re-attached; if a stale state has no wallet/open-order backing,
+        it is removed before PnL and daily color are computed.
+        """
+        try:
+            info = await self.indodax.get_info()
+            if info.get("success") != 1:
+                return
+
+            balances = info.get("return", {}).get("balance", {}) or {}
+            changed = False
+
+            async with self.lock:
+                # Existing active trades must be backed by a live wallet balance
+                # or an open order. Otherwise they are stale ghosts.
+                for symbol, data in list(self.active_trades.items()):
+                    pair = symbol.lower().replace("/", "_")
+                    if "_" not in pair:
+                        pair = f"{pair}_idr"
+                    coin = pair.split("_")[0]
+                    live_amount = float(balances.get(coin, 0.0) or 0.0)
+                    if live_amount <= 1e-8:
+                        orders = self._extract_orders(await self.indodax.get_open_orders(pair))
+                        if orders:
+                            data["exit_blocked_until"] = time.time() + 60
+                            data["exit_blocked_reason"] = "OPEN_ORDER_PRESENT_DURING_RECONCILE"
+                        else:
+                            logger.warning(f"🧹 RECONCILE: removing stale {symbol}; no live balance/open orders.")
+                            self.active_trades.pop(symbol, None)
+                        changed = True
+                        continue
+
+                    state_amount = float(data.get("amount", 0.0) or 0.0)
+                    if abs(state_amount - live_amount) / max(live_amount, state_amount, 1e-9) > 0.002:
+                        logger.info(
+                            f"🔄 RECONCILE: {symbol} amount adjusted "
+                            f"{state_amount:.8f} -> {live_amount:.8f}"
+                        )
+                        data["amount"] = live_amount
+                        changed = True
+
+                # Wallet holdings that are large enough to trade must be visible
+                # to the council/executor even if they were created outside this
+                # process or survived a restart/order mismatch.
+                known_coins = {
+                    symbol.lower().replace("/", "_").split("_")[0]
+                    for symbol in self.active_trades.keys()
+                }
+                for coin, raw_amount in balances.items():
+                    coin = str(coin or "").lower()
+                    if coin == "idr" or coin in known_coins:
+                        continue
+                    try:
+                        amount = float(raw_amount or 0.0)
+                    except Exception:
+                        continue
+                    if amount <= 1e-8:
+                        continue
+
+                    pair = f"{coin}_idr"
+                    ticker = await self.indodax.get_ticker(pair)
+                    price = float(ticker.get("last", 0.0) or 0.0)
+                    if price <= 0:
+                        continue
+
+                    pair_info = await self.indodax.get_pair_info(pair)
+                    min_base = float(pair_info.get("trade_min_base_currency", 10_000) or 10_000)
+                    min_coin = float(pair_info.get("trade_min_traded_currency", 0) or 0)
+                    value_idr = amount * price
+                    if value_idr < min_base or (min_coin and amount < min_coin):
+                        continue
+
+                    symbol = f"{coin.upper()}/IDR"
+                    self.active_trades[symbol] = {
+                        "price": price,
+                        "amount": amount,
+                        "high_price": price,
+                        "time": time.time(),
+                        "cost": value_idr,
+                        "trade_profile": "WALLET_RECONCILED",
+                        "learning_probe": False,
+                        "reconciled_at": datetime.now().isoformat(),
+                    }
+                    logger.warning(
+                        f"🔄 RECONCILE: attached wallet holding {symbol} "
+                        f"{amount:.8f} worth Rp{value_idr:,.0f}"
+                    )
+                    changed = True
+
+                if changed:
+                    self._save_active_trades()
+        except Exception as e:
+            logger.error(f"Wallet reconcile failed: {e}")
+
     async def execute_exit(self, symbol, price, reason):
         """Unified exit logic with reporting to Batam."""
         pair = symbol.lower().replace("/", "_")
         if "_" not in pair: pair = f"{pair}_idr"
         
         trade = self.active_trades.get(symbol, {})
-        amount = trade.get("amount", 0)
+        coin_symbol = pair.split("_")[0]
+        state_amount = float(trade.get("amount", 0) or 0)
+        live_amount = await self.indodax.get_balance(coin_symbol)
+        amount = min(state_amount, live_amount) if live_amount > 0 else state_amount
         
         if amount <= 0:
-            logger.warning(f"⚠️ EXIT SKIPPED: No amount for {symbol}")
+            logger.warning(f"⚠️ EXIT SKIPPED: No live amount for {symbol}; removing stale state.")
+            self.active_trades.pop(symbol, None)
+            self._save_active_trades()
+            return
+
+        pair_info = await self.indodax.get_pair_info(pair)
+        min_coin = float(pair_info.get("trade_min_traded_currency", 0) or 0)
+        min_base = float(pair_info.get("trade_min_base_currency", 10_000) or 10_000)
+        if (min_coin and amount < min_coin) or (amount * price < min_base):
+            reason_text = (
+                f"EXIT_MINIMUM_NOT_MET: live {amount:.8f} {coin_symbol.upper()} "
+                f"worth Rp{amount * price:,.0f}; min coin {min_coin:g}, min base Rp{min_base:,.0f}"
+            )
+            logger.warning(f"⚠️ {symbol} exit blocked: {reason_text}")
+            self.active_trades.setdefault(symbol, {}).update({
+                "amount": amount,
+                "exit_blocked_until": time.time() + 900,
+                "exit_blocked_reason": reason_text,
+            })
+            self._save_active_trades()
             return
 
         res = await self.indodax.trade(pair=pair, type="sell", price=price, amount_coin=amount)
         
         if res.get("success") == 1:
-            # Calculate PnL for RiskGate
-            pnl_amount = (price - trade.get("price", 0)) * amount
+            trade_data = res.get("return", {}) if isinstance(res.get("return"), dict) else {}
+            order_id = str(trade_data.get("order_id") or trade_data.get("orderId") or "")
+            await asyncio.sleep(1.5)
+
+            open_orders = self._extract_orders(await self.indodax.get_open_orders(pair))
+            live_after = await self.indodax.get_balance(coin_symbol)
+            filled_amount = max(0.0, live_amount - live_after)
+            sell_still_open = bool(order_id and any(
+                self._order_matches(order, order_id=order_id, side="sell") for order in open_orders
+            ))
+
+            if sell_still_open:
+                logger.info(f"⏳ EXIT PENDING: {symbol} sell order {order_id} accepted but still open.")
+                self.active_trades.setdefault(symbol, {}).update({
+                    "amount": amount,
+                    "exit_pending_order_id": order_id,
+                    "exit_pending_amount": amount,
+                    "exit_pending_price": price,
+                    "exit_pending_reason": reason,
+                    "exit_pending_since": time.time(),
+                    "exit_blocked_until": time.time() + 60,
+                    "exit_blocked_reason": f"EXIT_ORDER_OPEN:{order_id}",
+                })
+                self._save_active_trades()
+                self.report_to_batam(symbol, "EXIT_PENDING", f"Sell order open @ {price}")
+                return
+
+            if filled_amount <= max(1e-8, amount * 0.005) and live_after > 1e-8:
+                logger.warning(
+                    f"⚠️ EXIT ACCEPTED WITHOUT WALLET DELTA: {symbol}; keeping state. "
+                    f"live_before={live_amount:.8f}, live_after={live_after:.8f}"
+                )
+                self.active_trades.setdefault(symbol, {}).update({
+                    "amount": live_after,
+                    "exit_blocked_until": time.time() + 120,
+                    "exit_blocked_reason": "EXIT_ACCEPTED_NO_WALLET_DELTA",
+                })
+                self._save_active_trades()
+                return
+
+            exit_amount = filled_amount if filled_amount > 0 else amount
+            pnl_amount = (price - float(trade.get("price", 0) or 0)) * exit_amount
             self.risk.update_pnl(pnl_amount)
-            
-            logger.info(f"✅ EXIT SUCCESS: {symbol} via {reason} @ {price}")
-            self.active_trades.pop(symbol, None)
+
+            logger.info(f"✅ EXIT FILLED: {symbol} via {reason} @ {price} amount={exit_amount:.8f}")
+            if live_after > 1e-8:
+                remaining_cost = max(0.0, float(trade.get("cost", 0.0) or 0.0) * (live_after / max(state_amount, 1e-9)))
+                self.active_trades.setdefault(symbol, {}).update({
+                    "amount": live_after,
+                    "cost": remaining_cost,
+                    "price": float(trade.get("price", price) or price),
+                })
+            else:
+                self.active_trades.pop(symbol, None)
             self._save_active_trades()
-            self.report_to_batam(symbol, reason, f"Exit @ {price}")
+            self.report_to_batam(symbol, reason, f"Exit filled @ {price}")
         else:
             logger.error(f"❌ EXIT FAILED: {symbol} - {res.get('error')}")
 
@@ -215,6 +486,10 @@ class IndodaxExecutor:
         """Script-based signal processing using Council-defined parameters."""
         urgency = check_urgency()
         if urgency.get("flag") == "EMERGENCY_PAUSE": return
+
+        if signal.get("type") != "COUNCIL_MANDATE" and os.getenv("KIBOT_EXECUTOR_ACCEPT_RAW_SIGNALS", "0").strip().lower() not in {"1", "true", "yes", "on"}:
+            logger.debug(f"🛡️ Raw scanner signal ignored; waiting for Council mandate: {signal.get('symbol', 'UNKNOWN')}")
+            return
 
         if not KiConfig.LIVE_TRADING_ENABLED:
             symbol = signal.get("symbol", "UNKNOWN")
@@ -298,7 +573,7 @@ class IndodaxExecutor:
                 f"📊 FEE CALC: TP={tp_pct:.2f}%, Fee={fee_roundtrip_pct:.2f}%, Net={expected_net_pct:.2f}%"
             )
 
-            affordable, afford_reason = self._can_afford(symbol, price, budget, indo_strat)
+            affordable, afford_reason = await self._can_afford(symbol, price, budget, indo_strat)
             if not affordable:
                 logger.warning(f"🛡️ REJECTED (Balance-Aware): {afford_reason} for {symbol}")
                 return
@@ -395,6 +670,8 @@ class IndodaxExecutor:
             pair = symbol.lower().replace("/", "_")
             if "_" not in pair: pair = f"{pair}_idr"
 
+            coin_symbol = pair.split("_")[0]
+            coin_before = await self.indodax.get_balance(coin_symbol)
             res = await self.indodax.trade(
                 pair=pair,
                 type=side.lower(),
@@ -405,9 +682,23 @@ class IndodaxExecutor:
 
             if res.get("success") == 1:
                 trade_data = res.get("return", {})
-                filled_rp = float(trade_data.get("filled_rp", budget))
-                filled_coin = float(trade_data.get("filled_coin", amount))
+                filled_rp = float(trade_data.get("filled_rp") or 0.0)
+                filled_coin = float(trade_data.get("filled_coin") or 0.0)
                 actual_price = float(trade_data.get("price", price))
+                await asyncio.sleep(1.5)
+                coin_after = await self.indodax.get_balance(coin_symbol)
+                acquired_coin = max(filled_coin, max(0.0, coin_after - coin_before))
+                if acquired_coin <= 1e-8:
+                    order_id = str(trade_data.get("order_id") or trade_data.get("orderId") or "")
+                    logger.warning(
+                        f"⏳ ENTRY PENDING: {symbol} order accepted but no filled coin yet. "
+                        f"order_id={order_id or 'unknown'}"
+                    )
+                    self.report_to_batam(symbol, "ENTRY_PENDING", f"Buy order pending @ {actual_price}")
+                    return
+                filled_coin = acquired_coin
+                if filled_rp <= 0:
+                    filled_rp = filled_coin * actual_price
                 
                 logger.info(f"✅ SUCCESS: {symbol} (Filled: Rp{filled_rp}, Coin: {filled_coin})")
                 self.active_trades[symbol] = {
@@ -433,7 +724,7 @@ class IndodaxExecutor:
                 self.reservations.pop(symbol, None)
                 logger.info(f"🔓 RELEASED reservation for {symbol}")
 
-    def _can_afford(self, symbol: str, price: float, budget: float, indo_strat: Dict[str, Any]) -> tuple[bool, str]:
+    async def _can_afford(self, symbol: str, price: float, budget: float, indo_strat: Dict[str, Any]) -> tuple[bool, str]:
         fee_rate = float(indo_strat.get("fee_roundtrip_pct", 1.02)) / 100.0
         effective_budget = budget * (1 - fee_rate)
         if price <= 0:
@@ -445,6 +736,24 @@ class IndodaxExecutor:
         coin_amount = effective_budget / price
         if coin_amount < 1e-6:
             return False, f"DUST_ORDER: Amount terlalu kecil ({coin_amount:.8f} koin)"
+
+        pair = symbol.lower().replace("/", "_")
+        if "_" not in pair:
+            pair = f"{pair}_idr"
+        pair_info = await self.indodax.get_pair_info(pair)
+        min_base = float(pair_info.get("trade_min_base_currency", 10_000) or 10_000)
+        min_coin = float(pair_info.get("trade_min_traded_currency", 0) or 0)
+        if budget < min_base:
+            return False, f"BELOW_MIN_BASE_ORDER: budget Rp{budget:,.0f} < Rp{min_base:,.0f}"
+        min_sellable_buffer_pct = float(indo_strat.get("min_sellable_buffer_pct", 2.0) or 2.0)
+        min_sellable_amount = min_coin * (1.0 + min_sellable_buffer_pct / 100.0)
+        if min_coin and coin_amount < min_sellable_amount:
+            required_budget = (min_coin * price) / max(1e-9, 1 - fee_rate)
+            return False, (
+                f"BELOW_SELLABLE_MIN_AMOUNT: would buy {coin_amount:.8f}, "
+                f"min sellable {min_coin:g} (+{min_sellable_buffer_pct:.1f}% buffer); "
+                f"need budget ~Rp{required_budget:,.0f}"
+            )
 
         tp_pct = float(indo_strat.get("take_profit_pct", 1.5))
         if tp_pct <= float(indo_strat.get("fee_roundtrip_pct", 1.02)):

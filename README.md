@@ -34,11 +34,17 @@
 - **Explicit Live Gate**: order real-money hanya jalan jika `KIBOT_LIVE_TRADING_ENABLED=true` atau `KIBOT_TRADING_MODE=live`.
 - **Visual Control Plane**: workflow delegasi dan state runtime bisa dilihat lewat dashboard web interaktif di port `8787` melalui `bin/kibot-dashboard`.
 - **PnL Mark-to-Market**: daily PnL memakai realized PnL + unrealized open trade PnL, bukan sekadar nilai holdings.
+- **Council-Gated Execution**: scanner tidak lagi boleh bypass Council; executor menerima order real-money hanya dari `COUNCIL_MANDATE` kecuali override env eksplisit.
+- **Anti Tick-Trap Pump Filter**: pump hunter menolak coin dengan tick-size kasar, level harga 24h terlalu sedikit, spread/OBI buruk, atau riwayat candle datar seperti jebakan 1↔2 IDR.
 
 ### 📱 Notification Protocol
 - **Urgent Only**: Hanya mengirim pesan darurat dan tindakan kritis ke Telegram.
 - **Throttle & Dedupe**: Telegram diproteksi dengan cooldown global, dedupe pesan, dan incident cooldown supaya tidak spam.
 - **Midnight Report**: Laporan PnL harian otomatis setiap pukul 00:00 WIB.
+- **No Spam Recovery**: posisi yang tidak bisa dijual karena minimum order exchange ditandai `exit_blocked_until`, bukan dicoba setiap 5 detik tanpa henti.
+- **Wallet-Reconciled State**: executor menyamakan `active_trades.json` dengan wallet/open-orders Indodax live, jadi posisi palsu tidak lagi membuat Council salah hitung.
+- **Bounded Council Thinking**: AI/websearch tetap dipakai, tetapi setiap deliberasi punya timeout dan deterministic fallback berbasis evidence lokal agar sistem tidak freeze saat provider lambat.
+- **WIB Business Day**: RiskGate, dashboard, midnight report, dan PnL harian memakai tanggal WIB, bukan timezone UTC server.
 
 ---
 *Operational Status: **SOVEREIGN ACTIVE** | 2026*

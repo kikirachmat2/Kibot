@@ -11,6 +11,7 @@ from pathlib import Path
 import httpx
 import logging
 import threading
+from typing import Any, Dict
 
 from Core.Support.ki_config import STATE_DIR
 
@@ -33,6 +34,9 @@ class IndodaxGateway:
     _CACHE_TTL = 2  # 2 seconds cache for get_info
     _nonce_lock = threading.Lock()
     _nonce_file = STATE_DIR / "indodax_nonce.json"
+    _pairs_cache: Dict[str, Dict[str, Any]] | None = None
+    _pairs_cache_time = 0.0
+    _pairs_cache_ttl = 3600
 
     def __init__(self, api_key=None, api_secret=None):
         self.api_key = (api_key or os.environ.get("INDODAX_API_KEY", "")).strip()
@@ -192,10 +196,16 @@ class IndodaxGateway:
 
     async def trade(self, pair, type, price, amount_coin=None, amount_idr=None):
         pair = self._normalize_pair(pair)
+        price_value = float(price)
+        normalized_price = (
+            int(price_value)
+            if "_idr" in pair and price_value >= 1 and price_value.is_integer()
+            else self.round_step(price_value, "0.00000001")
+        )
         params = {
             "pair": pair,
             "type": type.lower(),
-            "price": int(price) if "_idr" in pair else self.round_step(price, "0.00000001")
+            "price": normalized_price
         }
         
         if amount_coin is not None and amount_coin > 0:
@@ -211,18 +221,63 @@ class IndodaxGateway:
         pair = self._normalize_pair(pair)
         async with httpx.AsyncClient() as client:
             try:
-                resp = await client.get(f"{self.public_url}/{pair}/ticker")
+                resp = await client.get(f"{self.public_url}/ticker/{pair}", timeout=8.0)
                 return resp.json().get("ticker", {})
-            except:
+            except Exception as e:
+                logger.debug(f"Ticker fetch failed for {pair}: {e}")
                 return {}
 
     async def get_orderbook(self, pair):
         """Fetch orderbook depth for slippage protection."""
         pair = self._normalize_pair(pair)
+        depth_pair = pair.replace("_", "")
         async with httpx.AsyncClient() as client:
             try:
-                resp = await client.get(f"{self.public_url}/{pair}/depth")
-                return resp.json()
+                resp = await client.get(f"{self.public_url}/depth/{depth_pair}", timeout=8.0)
+                data = resp.json()
+                buys = data.get("buy", []) or data.get("bids", [])
+                sells = data.get("sell", []) or data.get("asks", [])
+                return {
+                    "buy": buys,
+                    "sell": sells,
+                    "bids": buys,
+                    "asks": sells,
+                }
             except Exception as e:
                 logger.error(f"❌ Orderbook Fetch Error: {e}")
                 return {"bids": [], "asks": []}
+
+    async def get_pair_info(self, pair: str) -> Dict[str, Any]:
+        """Return Indodax pair metadata, including minimum base/coin trade sizes."""
+        pair = self._normalize_pair(pair)
+        now = time.time()
+        if (
+            IndodaxGateway._pairs_cache is not None
+            and now - IndodaxGateway._pairs_cache_time < IndodaxGateway._pairs_cache_ttl
+        ):
+            return IndodaxGateway._pairs_cache.get(pair, {})
+
+        async with httpx.AsyncClient() as client:
+            try:
+                resp = await client.get(f"{self.public_url}/pairs", timeout=10.0)
+                rows = resp.json()
+                cache: Dict[str, Dict[str, Any]] = {}
+                if isinstance(rows, list):
+                    for row in rows:
+                        if not isinstance(row, dict):
+                            continue
+                        ticker_id = str(row.get("ticker_id") or "").lower()
+                        if ticker_id:
+                            cache[ticker_id] = row
+                IndodaxGateway._pairs_cache = cache
+                IndodaxGateway._pairs_cache_time = now
+                return cache.get(pair, {})
+            except Exception as e:
+                logger.debug(f"Pair metadata fetch failed: {e}")
+                return {}
+
+    async def get_open_orders(self, pair: str | None = None) -> Dict[str, Any]:
+        params = {}
+        if pair:
+            params["pair"] = self._normalize_pair(pair)
+        return await self._post_private("openOrders", params)

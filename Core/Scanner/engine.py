@@ -22,6 +22,8 @@ class ScannerEngine:
         self.interval_s = int(interval_s or os.getenv("SCAN_INTERVAL_S", "2"))
         self.poly_interval_s = int(os.getenv("POLY_SCAN_INTERVAL_S", "30"))
         self.scanners: List[Any] = list(scanners or self._build_scanners())
+        self.direct_indodax_dispatch = os.getenv("KIBOT_SCANNER_DIRECT_INDODAX", "0").strip().lower() in {"1", "true", "yes", "on"}
+        self.direct_polymarket_dispatch = os.getenv("KIBOT_SCANNER_DIRECT_POLYMARKET", "0").strip().lower() in {"1", "true", "yes", "on"}
         
         # Now centralized on localhost (Batam Internal)
         self.target_host = "127.0.0.1"
@@ -181,8 +183,9 @@ class ScannerEngine:
             logger.error("❌ CRITICAL: KIBOT_SECRET missing. Scanner will not dispatch signals.")
             return
 
-        # Dispatch Indodax
-        if indo_signals:
+        # Raw scanner signals are council input by default. Direct executor dispatch is
+        # opt-in only so the Council cannot be bypassed by a misleading leaderboard pump.
+        if indo_signals and self.direct_indodax_dispatch:
             data = {
                 "seq_id": self.seq_id,
                 "ts": int(started_at * 1000),
@@ -190,9 +193,11 @@ class ScannerEngine:
             }
             await self._dispatch(KiConfig.INDO_SIGNAL_PORT, data, secret)
             logger.debug(f"[SCANNER] Seq:{self.seq_id} | Dispatched {len(indo_signals)} HMAC-signed INDO signals.")
+        elif indo_signals:
+            logger.debug(f"[SCANNER] Seq:{self.seq_id} | {len(indo_signals)} INDO signals routed to Council only.")
 
         # Dispatch Polymarket
-        if poly_signals:
+        if poly_signals and self.direct_polymarket_dispatch:
             data = {
                 "seq_id": self.seq_id,
                 "ts": int(started_at * 1000),
@@ -200,6 +205,8 @@ class ScannerEngine:
             }
             await self._dispatch(KiConfig.POLY_SIGNAL_PORT, data, secret)
             logger.debug(f"[SCANNER] Seq:{self.seq_id} | Dispatched {len(poly_signals)} HMAC-signed POLY signals.")
+        elif poly_signals:
+            logger.debug(f"[SCANNER] Seq:{self.seq_id} | {len(poly_signals)} POLY signals routed to Council only.")
 
         # NEW: Dispatch to MasterNode (Council) for high-level deliberation
         all_signals = indo_signals + poly_signals + getattr(self, 'universal_signals', [])

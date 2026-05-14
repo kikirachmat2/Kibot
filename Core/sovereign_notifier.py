@@ -18,10 +18,12 @@ try:
         TELEGRAM_BOT_TOKEN as TELEGRAM_TOKEN,
         TELEGRAM_CHAT_ID,
         KiConfig,
+        WIB,
     )
 except ImportError:
     TELEGRAM_TOKEN = os.getenv("KIBOT_TELEGRAM_TOKEN")
     TELEGRAM_CHAT_ID = os.getenv("KIBOT_TELEGRAM_CHAT_ID")
+    WIB = None
     class _FallbackConfig:
         TELEGRAM_GLOBAL_MIN_INTERVAL_SEC = int(os.getenv("KIBOT_TELEGRAM_MIN_INTERVAL_SEC", "30"))
         TELEGRAM_DEDUPE_WINDOW_SEC = int(os.getenv("KIBOT_TELEGRAM_DEDUPE_WINDOW_SEC", "900"))
@@ -109,7 +111,7 @@ class SovereignNotifier:
     def _format_status_template(self, data):
         """The User's specific /status template - EXACT FORMAT."""
         # Current Time WIB
-        now_wib = datetime.now().strftime("%H:%M:%S")
+        now_wib = (datetime.now(WIB) if WIB else datetime.now()).strftime("%H:%M:%S")
         
         # Helper for System Stats Emojis
         def get_stat_emoji(val):
@@ -164,11 +166,23 @@ class SovereignNotifier:
         portfolio = data.get("portfolio", {})
         equity = portfolio.get("equity_idr", 0)
         combined_equity = portfolio.get("combined_equity_idr", equity)
-        pnl_val = portfolio.get("pnl_idr", 0)
-        ret_pct = portfolio.get("return_pct", 0.0)
+        idr_cash = portfolio.get("idr_cash", 0)
+        coin_holdings = portfolio.get("coin_holdings_idr", 0)
+        pnl_val = portfolio.get("daily_pnl_idr", portfolio.get("pnl_idr", 0))
+        ret_pct = portfolio.get("daily_pnl_pct", portfolio.get("return_pct", 0.0))
+        daily_state = portfolio.get("daily_state", {}) if isinstance(portfolio.get("daily_state"), dict) else {}
+        try:
+            pnl_num = float(pnl_val or 0)
+        except Exception:
+            pnl_num = 0.0
+        try:
+            ret_num = float(ret_pct or 0)
+        except Exception:
+            ret_num = 0.0
+        daily_color = str(daily_state.get("color") or ("GREEN" if pnl_num > 0 else "RECOVERY" if pnl_num < 0 else "FLAT")).upper()
         wl_ratio = portfolio.get("wl_ratio", "0W / 0L")
-        pnl_emoji = get_fin_emoji(pnl_val)
-        ret_emoji = get_fin_emoji(ret_pct)
+        pnl_emoji = get_fin_emoji(pnl_num)
+        ret_emoji = get_fin_emoji(ret_num)
         wl_emoji = "📊"
 
         pnl_today = portfolio.get("pnl_today", "+0.00%")
@@ -179,12 +193,18 @@ class SovereignNotifier:
         asset_str = ""
         if active_pos:
             for pos in active_pos:
-                asset_str += f"• {pos.get('coin', '???').upper()}: {float(pos.get('amount', 0)):.4f}\n"
+                value_idr = float(pos.get("value_idr", 0) or 0)
+                pnl_idr = pos.get("pnl_idr")
+                pnl_text = f" | PnL Rp {float(pnl_idr):+,.0f}" if pnl_idr is not None else ""
+                asset_str += (
+                    f"• {pos.get('coin', '???').upper()}: {float(pos.get('amount', 0)):.4f} "
+                    f"≈ Rp {value_idr:,.0f}{pnl_text}\n"
+                )
         else:
             asset_str = "• No active positions"
 
         # 4. Polymarket Financials
-        poly = data.get("polymarket", {})
+        poly = data.get("polymarket", {}) or portfolio.get("polymarket", {})
         poly_equity = poly.get("equity_idr", 0)
         poly_ret = poly.get("return_pct", 0.0)
         poly_pnl = poly.get("pnl_idr", 0)
@@ -204,6 +224,7 @@ class SovereignNotifier:
 ━━━━━━━━━━━━━━━━━━━━━━
 
 💼 Combined Equity : Rp {combined_equity:,.0f}
+🎯 Daily State     : {daily_color}
 
 {batam_str}
 
@@ -217,8 +238,10 @@ class SovereignNotifier:
 🇮🇩 INDODAX
 
 💰 Total Saldo : Rp {equity:,.0f}
-{ret_emoji} Return      : {ret_pct:+.2f}%
-{pnl_emoji} PnL         : Rp {pnl_val:,.0f}
+💵 Cash        : Rp {float(idr_cash or 0):,.0f}
+🪙 Coin Value  : Rp {float(coin_holdings or 0):,.0f}
+{ret_emoji} Return      : {ret_num:+.2f}%
+{pnl_emoji} PnL         : Rp {pnl_num:,.0f}
 {wl_emoji} Trade W/L   : {wl_ratio}
 
 📂 Portofolio:

@@ -17,7 +17,7 @@ URGENT_FLAG_GRACE_SEC = int(os.getenv("KIBOT_URGENCY_GRACE_SEC", "300"))
 DEFAULT_STRATEGY = {
     "version": "4.0.0",
     "last_updated": 0,
-    "global_mode": "FULL_ATTACK",
+    "global_mode": "CONTROLLED_AGGRESSIVE",
     "daily_state": {
         "color": "RECOVERY",
         "hold_winners": False,
@@ -29,8 +29,8 @@ DEFAULT_STRATEGY = {
         "trailing_stop_pct": 0.3,
         "hard_stop_pct": 2.0,
         "max_exposure_idr": 0,
-        "max_slots": 100,
-        "min_confidence": 0.60,
+        "max_slots": 3,
+        "min_confidence": 0.74,
         "allowed_pairs": ["*"],
         "take_profit_pct": 1.5,
         "min_profit_after_fee_pct": 0.3,
@@ -39,13 +39,16 @@ DEFAULT_STRATEGY = {
         "fee_pph_sell_pct": 0.21,
         "fee_roundtrip_pct": 1.02,
         "prefer_limit_order": True,
-        "max_spread_pct": 0.45,
+        "max_spread_pct": 0.55,
         "green_hold_tp_multiplier": 1.0,
+        "reject_tick_traps": True,
+        "min_price_levels_24h": 8,
+        "max_tick_size_pct": 3.0,
     },
     "polymarket": {
         "min_liquidity_usd": 500,
         "max_bet_usd": 0,                 # 0 means "Use available USDC balance"
-        "min_confidence": 0.60,
+        "min_confidence": 0.78,
         "risk_limit": "AGGRESSIVE"
     }
 }

@@ -1,4 +1,4 @@
-import json, time, requests
+import json, os, time, requests
 from datetime import datetime
 import logging
 
@@ -49,12 +49,21 @@ PIVOT_RECLAIM_MAX_DIST_TO_HIGH_PCT = 82.0
 PIVOT_RECLAIM_MIN_BOUNCE_FROM_LOW_PCT = 1.0
 PIVOT_RECLAIM_MIN_VOLUME_RATIO = 1.06
 PIVOT_RECLAIM_MIN_RECLAIM_SCORE = 0.60
+MAX_TICK_SIZE_PCT = float(os.getenv("KIBOT_MAX_TICK_SIZE_PCT", "3.0"))
+MIN_24H_PRICE_LEVELS = int(os.getenv("KIBOT_MIN_24H_PRICE_LEVELS", "8"))
+MAX_SCANNER_SPREAD_PCT = float(os.getenv("KIBOT_SCANNER_MAX_SPREAD_PCT", "1.2"))
+MIN_CANDLE_DISTINCT_LEVELS = int(os.getenv("KIBOT_MIN_CANDLE_DISTINCT_LEVELS", "6"))
+MAX_ZERO_VOLUME_CANDLE_RATIO = float(os.getenv("KIBOT_MAX_ZERO_VOLUME_CANDLE_RATIO", "0.45"))
+OHLC_QUALITY_TTL_SEC = int(os.getenv("KIBOT_OHLC_QUALITY_TTL_SEC", "300"))
 
 class IndodaxSmallCapScanner:
     def __init__(self):
         self.exchange = "INDODAX"
         self.price_history = {}   # pair → list of (ts, price)
         self.volume_history = {}  # pair → list of (ts, volume_idr)
+        self._price_increments = {}
+        self._price_increments_ts = 0.0
+        self._ohlc_quality_cache = {}
 
     def fetch_all_tickers(self):
         try:
@@ -75,19 +84,102 @@ class IndodaxSmallCapScanner:
             return {}
 
     def fetch_orderbook(self, pair: str):
-        """Hitung OBI dari top 10 bid/ask."""
+        """Hitung OBI dan spread dari top 10 bid/ask."""
         try:
-            r = requests.get(f"https://indodax.com/api/{pair}/depth", timeout=4)
+            r = requests.get(f"https://indodax.com/api/depth/{pair.replace('_', '')}", timeout=4)
             if r.status_code != 200:
                 return None
             data = r.json()
-            bids = sum(float(b[1]) for b in data.get("buy", [])[:10])
-            asks = sum(float(a[1]) for a in data.get("sell", [])[:10])
+            buy_rows = data.get("buy", []) or []
+            sell_rows = data.get("sell", []) or []
+            bids = sum(float(b[1]) for b in buy_rows[:10])
+            asks = sum(float(a[1]) for a in sell_rows[:10])
             total = bids + asks
-            return (bids - asks) / total if total > 0 else None
+            obi = (bids - asks) / total if total > 0 else None
+            spread_pct = None
+            if buy_rows and sell_rows:
+                best_bid = float(buy_rows[0][0])
+                best_ask = float(sell_rows[0][0])
+                if best_bid > 0:
+                    spread_pct = ((best_ask - best_bid) / best_bid) * 100
+            return {
+                "obi": obi,
+                "spread_pct": spread_pct,
+                "best_bid": float(buy_rows[0][0]) if buy_rows else 0.0,
+                "best_ask": float(sell_rows[0][0]) if sell_rows else 0.0,
+            }
         except Exception as e:
             logger.error(f"Fetch orderbook failed for {pair}: {e}")
             return None
+
+    def fetch_price_increments(self):
+        now = time.time()
+        if self._price_increments and now - self._price_increments_ts < 3600:
+            return self._price_increments
+        try:
+            r = requests.get("https://indodax.com/api/price_increments", timeout=8)
+            r.raise_for_status()
+            data = r.json().get("increments", {})
+            self._price_increments = {
+                str(pair).lower(): float(value)
+                for pair, value in data.items()
+                if value not in (None, "")
+            }
+            self._price_increments_ts = now
+        except Exception as e:
+            logger.error(f"Fetch price increments failed: {e}")
+        return self._price_increments
+
+    def _fetch_ohlc_quality(self, pair: str) -> dict:
+        """Lightweight anti-flat-history check using official Indodax OHLC endpoint."""
+        now = time.time()
+        cached = self._ohlc_quality_cache.get(pair)
+        if cached and now - cached.get("ts", 0) < OHLC_QUALITY_TTL_SEC:
+            return dict(cached.get("quality", {}))
+
+        quality = {
+            "ok": True,
+            "distinct_close_levels": 0,
+            "zero_volume_ratio": 0.0,
+            "trend_efficiency": 0.0,
+            "reason": "ok",
+        }
+        try:
+            to_ts = int(now)
+            from_ts = to_ts - (18 * 3600)
+            symbol = pair.replace("_", "").upper()
+            url = (
+                "https://indodax.com/tradingview/history_v2"
+                f"?from={from_ts}&to={to_ts}&tf=15&symbol={symbol}"
+            )
+            rows = requests.get(url, timeout=8).json()
+            if not isinstance(rows, list) or len(rows) < 10:
+                quality.update({"ok": False, "reason": "insufficient_ohlc"})
+            else:
+                closes = [float(row.get("Close", 0) or 0) for row in rows if float(row.get("Close", 0) or 0) > 0]
+                volumes = [float(row.get("Volume", 0) or 0) for row in rows]
+                if len(closes) < 10:
+                    quality.update({"ok": False, "reason": "insufficient_close_history"})
+                else:
+                    distinct_levels = len(set(closes))
+                    zero_volume_ratio = sum(1 for vol in volumes if vol <= 0) / max(1, len(volumes))
+                    total_path = sum(abs(closes[i] - closes[i - 1]) for i in range(1, len(closes)))
+                    trend_efficiency = abs(closes[-1] - closes[0]) / total_path if total_path > 0 else 0.0
+                    quality.update({
+                        "distinct_close_levels": distinct_levels,
+                        "zero_volume_ratio": round(zero_volume_ratio, 3),
+                        "trend_efficiency": round(trend_efficiency, 3),
+                    })
+                    if distinct_levels < MIN_CANDLE_DISTINCT_LEVELS:
+                        quality.update({"ok": False, "reason": "flat_close_history"})
+                    elif zero_volume_ratio > MAX_ZERO_VOLUME_CANDLE_RATIO:
+                        quality.update({"ok": False, "reason": "too_many_zero_volume_candles"})
+        except Exception as e:
+            logger.debug(f"OHLC quality check failed for {pair}: {e}")
+            quality.update({"ok": True, "reason": "ohlc_unavailable"})
+
+        self._ohlc_quality_cache[pair] = {"ts": now, "quality": dict(quality)}
+        return quality
 
     def detect_pump(self, pair: str, ticker: dict) -> dict | None:
         now = time.time()
@@ -97,6 +189,17 @@ class IndodaxSmallCapScanner:
         vol_idr = float(ticker.get("vol_idr", 0))
 
         if price <= 0 or vol_idr < MIN_VOLUME_IDR or vol_idr > MAX_VOLUME_IDR:
+            return None
+
+        increments = self.fetch_price_increments()
+        price_increment = float(increments.get(pair, 1.0) or 1.0)
+        tick_size_pct = (price_increment / price * 100) if price > 0 else 100.0
+        day_range = max(day_high - day_low, 0.0)
+        price_levels_24h = int(day_range / price_increment) + 1 if price_increment > 0 else 0
+        if tick_size_pct > MAX_TICK_SIZE_PCT or price_levels_24h < MIN_24H_PRICE_LEVELS:
+            logger.debug(
+                f"Reject {pair}: tick trap tick={tick_size_pct:.2f}% levels={price_levels_24h}"
+            )
             return None
 
         # Simpan history (window 30 menit)
@@ -139,7 +242,6 @@ class IndodaxSmallCapScanner:
             vol_acceleration = (volume_window[-1] - volume_window[-4]) / max(volume_window[-4], 1.0)
 
         # 24h proxy: how far the pair has already run from day low, and how close it sits to day high.
-        day_range = max(day_high - day_low, 0.0)
         runup_from_low_pct = ((price - day_low) / day_low * 100) if day_low > 0 else 0.0
         distance_to_high_pct = ((day_high - price) / day_high * 100) if day_high > 0 else 100.0
         range_position = ((price - day_low) / day_range) if day_range > 0 else 0.0
@@ -278,10 +380,19 @@ class IndodaxSmallCapScanner:
             stage_bonus = max(stage_bonus, 0.05)
         if pivot_reclaim:
             stage_bonus = max(stage_bonus, 0.055)
-        obi = self.fetch_orderbook(pair)
+        orderbook = self.fetch_orderbook(pair)
+        obi = orderbook.get("obi") if isinstance(orderbook, dict) else None
+        spread_pct = orderbook.get("spread_pct") if isinstance(orderbook, dict) else None
         obi_available = obi is not None
+        if spread_pct is not None and spread_pct > MAX_SCANNER_SPREAD_PCT:
+            return None
         if obi_available and obi < OBI_MIN:
             return None  # Pump palsu, order book condong ke jual
+
+        ohlc_quality = self._fetch_ohlc_quality(pair)
+        if not ohlc_quality.get("ok", True):
+            logger.debug(f"Reject {pair}: OHLC quality {ohlc_quality.get('reason')}")
+            return None
         obi_proxy = max(
             0.0,
             min(
@@ -333,6 +444,11 @@ class IndodaxSmallCapScanner:
             "vol_ratio": round(vol_ratio, 1),
             "obi": round(obi if obi_available else obi_proxy * 2 - 1, 3),
             "obi_source": "ORDERBOOK" if obi_available else "PROXY",
+            "spread_pct": round(float(spread_pct), 3) if spread_pct is not None else None,
+            "tick_size_pct": round(tick_size_pct, 3),
+            "price_increment": price_increment,
+            "price_levels_24h": price_levels_24h,
+            "market_quality": ohlc_quality,
             "confidence": confidence,
             "momentum_score": round(momentum_score, 3),
             "volume_score": round(volume_score, 3),
