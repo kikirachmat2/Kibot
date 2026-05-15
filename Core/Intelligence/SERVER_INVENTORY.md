@@ -39,6 +39,10 @@
 | `kibot-commander` | retired / masked | Helper service lama |
 | `kibot-notifier` | retired / masked | Helper service lama |
 | `ki-telegram-monitor` | retired / masked | Helper service lama |
+| `kibot-analyst`, `kibot-healer`, `kibot-monitor`, `kibot-orchestrator` | retired / disabled | Unit lama yang menunjuk path `Batam/...` yang sudah tidak ada |
+| `kibot-guardian`, `kibot-security`, `kibot-sentiment` | retired / disabled | Unit lama non-canonical, digantikan SystemCommander / scout / dashboard health |
+| `kibot-ollama-gateway`, `kibot-command-center`, `kibot-high-command`, `kibot-scanner-consolidated`, `kibot-governor` | retired / disabled | Duplicate/legacy daemons yang tidak lagi jadi sumber kebenaran runtime |
+| `executor-healer.timer`, `kibot-memory-watchdog.timer`, `kibot-sovereign-backup.timer` | retired / disabled | Timer lama yang memicu failed legacy one-shot; digantikan janitor + pre-deploy backup |
 
 ### Ports
 | Port | Service | Protokol | Fungsi |
@@ -223,6 +227,7 @@ These exist on the server but are easy to miss if you only inspect the code tree
 50. `SystemCommander` is now the canonical non-trading system brain. It writes `state/system_commander.json` and `state/inventory_matrix.json`, classifies health (`HEALTHY/DEGRADED/BLIND/UNSAFE`), scores canonical services/models/tools/state, reads provider/source health, and exposes GitHub/server drift. It no longer treats absent Tailscale as a missing runtime dependency.
 51. Dashboard System Brain now consumes a stable `system_brain` summary contract, so inventory utilization, source health, and drift status are rendered from live state instead of mismatched frontend IDs.
 52. Backup automation now defaults to non-secret protected archives (`state/`, strategy docs, inventory) with private file permissions. Plaintext `.env` is excluded unless `KIBOT_BACKUP_INCLUDE_SECRETS=1` is deliberately set.
+53. Server-only legacy systemd restart loops were retired/disabled so missing historical `Batam/...` paths no longer spam logs or burn CPU. Canonical runtime remains `kibot-master`, `kibot-scanner`, `kibot-executor`, `kibot-executor-polymarket`, `kibot-ai-scout`, `kibot-janitor`, `kibot-dashboard`, `ollama`, and `redis-server`.
 
 ---
 

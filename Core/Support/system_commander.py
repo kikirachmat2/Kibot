@@ -463,8 +463,21 @@ class SystemCommander:
         if redis_status == "OFFLINE":
             return "DEGRADED"
 
+        has_live_telemetry = bool(
+            telemetry
+            and (
+                telemetry.get("timestamp")
+                or telemetry.get("last_update")
+                or telemetry.get("system_stats")
+                or telemetry.get("portfolio")
+            )
+        )
         telemetry_path = self.state_dir / "telemetry_snapshot.json"
-        if telemetry_path.exists() and time.time() - telemetry_path.stat().st_mtime > 180:
+        if (
+            not has_live_telemetry
+            and telemetry_path.exists()
+            and time.time() - telemetry_path.stat().st_mtime > 180
+        ):
             return "BLIND"
 
         return "HEALTHY"
