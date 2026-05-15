@@ -13,6 +13,8 @@ Security/Vault/
 # AI & Data State
 **/Logs/
 **/State/
+**/logs/
+**/state/
 **/backups/
 **/.tmp/
 *.log
@@ -28,6 +30,7 @@ venv/
 
 # OS Metadata
 .DS_Store
+._*
 Thumbs.db
 
 # Deployment Waste
