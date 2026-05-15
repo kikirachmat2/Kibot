@@ -29,7 +29,14 @@ from Core.sovereign_state import load_strategy, check_urgency
 # ── Phase 5: Order lifecycle tracking ──
 try:
     from Core.Intelligence.order_tracker import get_tracker as _get_tracker
-    from Core.Intelligence.exit_plan import build_exit_plan
+    from Core.Intelligence.exit_plan import (
+        build_exit_plan,
+        check_partial_tp,
+        check_trailing_stop,
+        load_plan,
+    )
+    from Core.Intelligence.pre_trade_simulator import simulate_indodax_entry
+    from Core.Intelligence.decision_journal import log_execution_event, log_pre_trade_simulation
     _ORDER_TRACKER_AVAILABLE = True
 except ImportError:
     _ORDER_TRACKER_AVAILABLE = False
@@ -164,7 +171,93 @@ class IndodaxExecutor:
                         if last_price <= 0: continue
 
                         change = (last_price - entry_price) / entry_price * 100
-                        
+
+                        # Phase 5 exit contract: every real entry should carry a
+                        # concrete plan. Use it first, then keep the legacy
+                        # strategy thresholds as fallback safety rails.
+                        high_price = data.get("high_price", entry_price)
+                        if last_price > high_price:
+                            self.active_trades[symbol]["high_price"] = last_price
+                            high_price = last_price
+
+                        exit_plan = data.get("exit_plan") if isinstance(data.get("exit_plan"), dict) else {}
+                        if not exit_plan and data.get("sovereign_order_id") and _ORDER_TRACKER_AVAILABLE:
+                            try:
+                                exit_plan = load_plan(str(data.get("sovereign_order_id"))) or {}
+                            except Exception:
+                                exit_plan = {}
+
+                        if exit_plan:
+                            try:
+                                age_min = (time.time() - float(data.get("time", time.time()) or time.time())) / 60.0
+                                max_hold_min = float(exit_plan.get("max_hold_minutes", 0) or 0)
+                                if max_hold_min > 0 and age_min >= max_hold_min:
+                                    logger.info(
+                                        f"⏰ EXIT PLAN MAX HOLD: {symbol} age={age_min:.1f}m "
+                                        f">= {max_hold_min:.1f}m"
+                                    )
+                                    await self.execute_exit(symbol, last_price, "MAX_HOLD_EXIT")
+                                    continue
+
+                                partial = check_partial_tp(
+                                    exit_plan,
+                                    last_price,
+                                    bool(data.get("partial_tp_done", False)),
+                                )
+                                if partial.get("should_partial") and float(partial.get("fraction", 0) or 0) > 0:
+                                    logger.info(
+                                        f"💚 EXIT PLAN PARTIAL: {symbol} {partial.get('reason')} "
+                                        f"fraction={float(partial.get('fraction')):.2f}"
+                                    )
+                                    await self.execute_exit(
+                                        symbol,
+                                        last_price,
+                                        "PARTIAL_TP",
+                                        fraction=float(partial.get("fraction", 0.0) or 0.0),
+                                    )
+                                    continue
+
+                                trail = check_trailing_stop(exit_plan, last_price, high_price)
+                                if trail.get("trail_stop_price"):
+                                    self.active_trades.setdefault(symbol, {})["trail_stop_price"] = trail.get("trail_stop_price")
+                                    self._save_active_trades()
+                                if trail.get("should_exit"):
+                                    logger.info(f"📉 EXIT PLAN TRIGGER: {symbol} {trail.get('reason')}")
+                                    await self.execute_exit(symbol, last_price, str(trail.get("reason") or "EXIT_PLAN"))
+                                    continue
+
+                                rules = exit_plan.get("distribution_exit_rules", {}) if isinstance(exit_plan.get("distribution_exit_rules"), dict) else {}
+                                spread_limit = float(rules.get("exit_if_spread_above_pct", 0) or 0)
+                                obi_limit = float(rules.get("exit_if_obi_below", -999) or -999)
+                                if spread_limit > 0 or obi_limit > -999:
+                                    try:
+                                        ob = await self.indodax.get_orderbook(symbol)
+                                        bids = ob.get("bids", [])
+                                        asks = ob.get("asks", [])
+                                        if bids and asks:
+                                            best_bid = float(bids[0][0])
+                                            best_ask = float(asks[0][0])
+                                            spread_now = ((best_ask - best_bid) / best_bid * 100.0) if best_bid else 99.0
+                                            bid_vol = sum(float(row[1]) for row in bids[:5])
+                                            ask_vol = sum(float(row[1]) for row in asks[:5])
+                                            obi_now = (bid_vol - ask_vol) / max(bid_vol + ask_vol, 1e-9)
+                                            if spread_limit > 0 and spread_now >= spread_limit:
+                                                logger.info(
+                                                    f"🚪 DISTRIBUTION EXIT: {symbol} spread {spread_now:.2f}% >= {spread_limit:.2f}%"
+                                                )
+                                                await self.execute_exit(symbol, last_price, "DISTRIBUTION_SPREAD_EXIT")
+                                                continue
+                                            if obi_now <= obi_limit:
+                                                logger.info(
+                                                    f"🚪 DISTRIBUTION EXIT: {symbol} OBI {obi_now:.2f} <= {obi_limit:.2f}"
+                                                )
+                                                await self.execute_exit(symbol, last_price, "DISTRIBUTION_OBI_EXIT")
+                                                continue
+                                    except Exception as ob_err:
+                                        logger.debug(f"Distribution exit check skipped for {symbol}: {ob_err}")
+                            except Exception as plan_err:
+                                logger.warning(f"Exit plan check failed for {symbol}: {plan_err}")
+
                         # 1. Hard Stop Loss
                         if change <= -indo_strat.get("hard_stop_pct", 1.5):
                             logger.warning(f"🛑 HARD STOP TRIGGERED: {symbol} @ {change:.2f}%")
@@ -172,11 +265,6 @@ class IndodaxExecutor:
                             continue
                         
                         # 2. Trailing Stop
-                        high_price = data.get("high_price", entry_price)
-                        if last_price > high_price:
-                            self.active_trades[symbol]["high_price"] = last_price
-                            high_price = last_price
-                        
                         from_high = (high_price - last_price) / high_price * 100
                         if from_high >= indo_strat.get("trailing_stop_pct", 0.25) and change > 0:
                             logger.info(f"📉 TRAILING STOP TRIGGERED: {symbol} @ {from_high:.2f}% from high")
@@ -285,6 +373,37 @@ class IndodaxExecutor:
             self.active_trades.pop(symbol, None)
             self._save_active_trades()
             self.report_to_batam(symbol, "EXIT_FILLED", f"Pending exit filled @ {exit_price}")
+            return True
+
+        state_amount = float(data.get("amount") or live_amount)
+        if pending_amount > 0 and live_amount < state_amount and exit_price > 0 and entry_price > 0:
+            filled_amount = max(0.0, state_amount - live_amount)
+            self.risk.update_pnl((exit_price - entry_price) * filled_amount)
+            logger.info(
+                f"✅ PARTIAL EXIT FILLED: {symbol} pending order {order_id} settled; "
+                f"remaining={live_amount:.8f}"
+            )
+            remaining_cost = max(
+                0.0,
+                float(data.get("cost", 0.0) or 0.0) * (live_amount / max(state_amount, 1e-9)),
+            )
+            trade = self.active_trades.setdefault(symbol, {})
+            trade.update({
+                "amount": live_amount,
+                "cost": remaining_cost,
+                "partial_tp_done": True,
+            })
+            for key in [
+                "exit_pending_order_id",
+                "exit_pending_amount",
+                "exit_pending_price",
+                "exit_pending_reason",
+                "exit_pending_fraction",
+                "exit_pending_since",
+            ]:
+                trade.pop(key, None)
+            self._save_active_trades()
+            self.report_to_batam(symbol, "PARTIAL_EXIT_FILLED", f"Partial exit filled @ {exit_price}")
             return True
 
         # Order is gone but the balance remains. It was cancelled/expired or not
@@ -404,7 +523,7 @@ class IndodaxExecutor:
         except Exception as e:
             logger.error(f"Wallet reconcile failed: {e}")
 
-    async def execute_exit(self, symbol, price, reason):
+    async def execute_exit(self, symbol, price, reason, fraction: float = 1.0):
         """Unified exit logic with reporting to Batam."""
         pair = symbol.lower().replace("/", "_")
         if "_" not in pair: pair = f"{pair}_idr"
@@ -413,7 +532,9 @@ class IndodaxExecutor:
         coin_symbol = pair.split("_")[0]
         state_amount = float(trade.get("amount", 0) or 0)
         live_amount = await self.indodax.get_balance(coin_symbol)
-        amount = min(state_amount, live_amount) if live_amount > 0 else state_amount
+        full_amount = min(state_amount, live_amount) if live_amount > 0 else state_amount
+        is_partial = 0.0 < float(fraction or 1.0) < 0.999
+        amount = full_amount * max(0.0, min(float(fraction or 1.0), 1.0))
         
         if amount <= 0:
             logger.warning(f"⚠️ EXIT SKIPPED: No live amount for {symbol}; removing stale state.")
@@ -425,6 +546,19 @@ class IndodaxExecutor:
         min_coin = float(pair_info.get("trade_min_traded_currency", 0) or 0)
         min_base = float(pair_info.get("trade_min_base_currency", 10_000) or 10_000)
         if (min_coin and amount < min_coin) or (amount * price < min_base):
+            if is_partial:
+                reason_text = (
+                    f"PARTIAL_EXIT_MINIMUM_NOT_MET: partial {amount:.8f} {coin_symbol.upper()} "
+                    f"worth Rp{amount * price:,.0f}; keeping full position under trailing plan"
+                )
+                logger.warning(f"⚠️ {symbol} partial exit skipped: {reason_text}")
+                self.active_trades.setdefault(symbol, {}).update({
+                    "partial_tp_done": True,
+                    "partial_tp_blocked_reason": reason_text,
+                    "exit_blocked_until": time.time() + 120,
+                })
+                self._save_active_trades()
+                return
             reason_text = (
                 f"EXIT_MINIMUM_NOT_MET: live {amount:.8f} {coin_symbol.upper()} "
                 f"worth Rp{amount * price:,.0f}; min coin {min_coin:g}, min base Rp{min_base:,.0f}"
@@ -455,11 +589,12 @@ class IndodaxExecutor:
             if sell_still_open:
                 logger.info(f"⏳ EXIT PENDING: {symbol} sell order {order_id} accepted but still open.")
                 self.active_trades.setdefault(symbol, {}).update({
-                    "amount": amount,
+                    "amount": full_amount,
                     "exit_pending_order_id": order_id,
                     "exit_pending_amount": amount,
                     "exit_pending_price": price,
                     "exit_pending_reason": reason,
+                    "exit_pending_fraction": fraction,
                     "exit_pending_since": time.time(),
                     "exit_blocked_until": time.time() + 60,
                     "exit_blocked_reason": f"EXIT_ORDER_OPEN:{order_id}",
@@ -488,7 +623,7 @@ class IndodaxExecutor:
             # ── §16.2 Order lifecycle reconcile ──
             if _ORDER_TRACKER_AVAILABLE:
                 ot_order_id = trade.get("sovereign_order_id")
-                if ot_order_id:
+                if ot_order_id and not is_partial:
                     try:
                         sell_value_idr = price * exit_amount
                         _get_tracker().reconcile(ot_order_id, sell_value_idr=sell_value_idr)
@@ -502,10 +637,24 @@ class IndodaxExecutor:
                     "amount": live_after,
                     "cost": remaining_cost,
                     "price": float(trade.get("price", price) or price),
+                    "partial_tp_done": bool(is_partial or trade.get("partial_tp_done", False)),
+                    "last_exit_reason": reason,
                 })
             else:
                 self.active_trades.pop(symbol, None)
             self._save_active_trades()
+            if _ORDER_TRACKER_AVAILABLE:
+                try:
+                    log_execution_event({
+                        "symbol": symbol,
+                        "status": "EXIT_FILLED",
+                        "reason": reason,
+                        "price": price,
+                        "amount": exit_amount,
+                        "partial": is_partial,
+                    })
+                except Exception:
+                    pass
             self.report_to_batam(symbol, reason, f"Exit filled @ {price}")
         else:
             logger.error(f"❌ EXIT FAILED: {symbol} - {res.get('error')}")
@@ -605,6 +754,57 @@ class IndodaxExecutor:
             if not affordable:
                 logger.warning(f"🛡️ REJECTED (Balance-Aware): {afford_reason} for {symbol}")
                 return
+
+            # Simulate the full buy-then-sell lifecycle against the live
+            # orderbook before spending real money. This blocks the exact
+            # failure mode that hurt the account: buying tiny/stuck books that
+            # cannot be exited cleanly after fees and minimum-order rules.
+            if _ORDER_TRACKER_AVAILABLE and side.lower() == "buy":
+                try:
+                    signal["max_spread_pct"] = float(indo_strat.get("max_spread_pct", 1.2) or 1.2)
+                    simulation = await simulate_indodax_entry(
+                        self.indodax,
+                        symbol=symbol,
+                        price=price,
+                        budget_idr=budget,
+                        signal=signal,
+                        fee_roundtrip_pct=fee_roundtrip_pct,
+                    )
+                    log_pre_trade_simulation(simulation)
+                    verdict = str(simulation.get("simulation_verdict") or "REJECT").upper()
+                    if verdict == "REDUCE_SIZE":
+                        reduced_budget = max(float(simulation.get("min_base_idr", 10_000) or 10_000), budget * 0.65)
+                        reduced_budget = min(reduced_budget, current_balance * 0.99)
+                        retry = await simulate_indodax_entry(
+                            self.indodax,
+                            symbol=symbol,
+                            price=price,
+                            budget_idr=reduced_budget,
+                            signal=signal,
+                            fee_roundtrip_pct=fee_roundtrip_pct,
+                        )
+                        log_pre_trade_simulation({**retry, "retry_after_reduce": True})
+                        if str(retry.get("simulation_verdict") or "REJECT").upper() == "PASS":
+                            budget = reduced_budget
+                            signal["budget_idr"] = budget
+                            simulation = retry
+                            logger.info(f"🧮 PRE-TRADE SIM: reduced {symbol} budget to Rp{budget:,.0f}")
+                        else:
+                            logger.warning(
+                                f"🛡️ REJECTED (PreTradeSim): reduce retry failed for {symbol}: "
+                                f"{retry.get('reasons')}"
+                            )
+                            return
+                    elif verdict != "PASS":
+                        logger.warning(
+                            f"🛡️ REJECTED (PreTradeSim): {symbol} verdict={verdict} "
+                            f"reasons={simulation.get('reasons')}"
+                        )
+                        return
+                    signal["pre_trade_simulation"] = simulation
+                except Exception as sim_err:
+                    logger.warning(f"🛡️ REJECTED (PreTradeSim error): {symbol} {sim_err}")
+                    return
             
             is_valid, reason = self.risk.validate_signal(signal, current_balance, total_slots)
             if not is_valid:
@@ -732,28 +932,37 @@ class IndodaxExecutor:
 
                 # ── §16.2 Register with OrderTracker ──
                 sovereign_order_id = None
+                ep = signal.get("exit_plan") if isinstance(signal.get("exit_plan"), dict) else {}
                 if _ORDER_TRACKER_AVAILABLE:
                     try:
-                        daily_ctx = {}
+                        daily_ctx = signal.get("daily_context") if isinstance(signal.get("daily_context"), dict) else {}
                         try:
                             from Core.Intelligence.daily_context import get_daily_context
-                            daily_ctx = get_daily_context()
+                            if not daily_ctx:
+                                daily_ctx = get_daily_context()
                         except Exception:
                             pass
 
                         capital_state_info = self.risk.get_capital_state(
                             current_balance, 0, len(self.active_trades)
                         )
-                        ep = build_exit_plan(
-                            signal,
-                            daily_ctx,
-                            capital_state_info.get("capital_state", "NORMAL"),
-                            {}
-                        )
+                        if not ep:
+                            ep = build_exit_plan(
+                                signal,
+                                daily_ctx,
+                                str(signal.get("capital_state") or capital_state_info.get("capital_state", "NORMAL")),
+                                signal.get("historian_profile") if isinstance(signal.get("historian_profile"), dict) else {},
+                            )
+                        pre_sim = signal.get("pre_trade_simulation") if isinstance(signal.get("pre_trade_simulation"), dict) else {}
+                        if pre_sim and not pre_sim.get("partial_tp_feasible", True):
+                            ep["partial_take_profit_fraction"] = 0.0
+                            ep["partial_take_profit_disabled_reason"] = "minimum order would make partial TP unsellable"
                         mandate = {
                             "source": str(signal.get("type", "SIGNAL")),
-                            "deadline_mode": daily_ctx.get("urgency_level", "PATIENT"),
+                            "deadline_mode": daily_ctx.get("deadline_mode", signal.get("deadline_mode", "PATIENT")),
                             "budget_fraction": round(budget / max(current_balance, 1), 3),
+                            "capital_state": signal.get("capital_state") or capital_state_info.get("capital_state", "NORMAL"),
+                            "trade_grade": signal.get("trade_grade"),
                         }
                         tracker = _get_tracker()
                         sovereign_order_id = tracker.create(
@@ -787,8 +996,28 @@ class IndodaxExecutor:
                     "trade_profile": "LEARNING_PROBE" if learning_probe else "STANDARD",
                     "learning_probe": learning_probe,
                     "sovereign_order_id": sovereign_order_id,
+                    "exit_plan": ep,
+                    "pre_trade_simulation": signal.get("pre_trade_simulation", {}),
+                    "trade_grade": signal.get("trade_grade"),
+                    "lifecycle": signal.get("lifecycle") or signal.get("pump_stage"),
+                    "deadline_mode": signal.get("deadline_mode"),
+                    "capital_state": signal.get("capital_state"),
                 }
                 self._save_active_trades()
+                if _ORDER_TRACKER_AVAILABLE:
+                    try:
+                        log_execution_event({
+                            "symbol": symbol,
+                            "status": "OPEN",
+                            "price": actual_price,
+                            "amount": filled_coin,
+                            "notional_idr": filled_rp,
+                            "sovereign_order_id": sovereign_order_id,
+                            "trade_grade": signal.get("trade_grade"),
+                            "lifecycle": signal.get("lifecycle") or signal.get("pump_stage"),
+                        })
+                    except Exception:
+                        pass
                 self.report_to_batam(
                     symbol,
                     "OPEN",

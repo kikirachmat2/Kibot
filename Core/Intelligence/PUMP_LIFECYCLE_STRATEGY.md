@@ -1553,3 +1553,1276 @@ Rejected candidates should be tracked after rejection so the scanner can learn:
 - which local-only pumps deserved earlier attention.
 
 Scanner learning should tune future candidate scoring, not silently rewrite hard safety rules.
+
+---
+
+## 18. Executor Upgrade Contract
+
+The executor must evolve from an order sender into an execution intelligence and position risk manager.
+
+Target flow:
+
+```text
+audited mandate
+  -> fresh balance/orderbook validation
+  -> sellability validation
+  -> execution style selection
+  -> order submission
+  -> fill confirmation
+  -> position state with exit plan
+  -> live monitoring
+  -> partial TP / trailing / hard stop / distribution exit
+  -> wallet reconciliation
+  -> PnL attribution
+  -> learning update
+```
+
+### 18.1 Mandate Validation
+
+Executor should only accept audited mandates.
+
+Required mandate fields:
+
+- pair,
+- side,
+- intended size,
+- lifecycle stage,
+- trade grade,
+- confidence breakdown,
+- deadline mode,
+- capital state,
+- exit plan,
+- Council approval,
+- Auditor / Judge pass,
+- freshness proof.
+
+If any critical field is missing, executor should default to `WAIT`, not guess.
+
+### 18.2 Fresh Pre-Order Checks
+
+Immediately before order submission, executor must refresh:
+
+- balance,
+- ticker,
+- orderbook,
+- pair rules,
+- risk state,
+- active positions,
+- open orders.
+
+Rules:
+
+- stale balance means no entry,
+- stale orderbook means no entry,
+- unsellable planned amount means no entry,
+- minimum order violation means no entry,
+- existing pending order conflict means no entry.
+
+### 18.3 Execution Style Selection
+
+Executor should choose execution style based on liquidity and urgency:
+
+| Style | Use Case |
+|---|---|
+| PASSIVE_LIMIT | Non-urgent entry with tight spread |
+| AGGRESSIVE_LIMIT | Pump entry where missing fill is costly but market order is risky |
+| SPLIT_ORDER | Larger capital where one order would move price |
+| CANCEL_REPRICE | Order stale but thesis still valid |
+| NO_TRADE | Fill quality would be too poor |
+
+For tiny accounts, executor should avoid complex splitting unless required by liquidity or minimum-order rules.
+
+### 18.4 Fill Confirmation
+
+Executor must never assume accepted order equals filled order.
+
+Fill confirmation should use:
+
+- wallet balance delta,
+- open order status,
+- trade history if available,
+- reconciled amount,
+- timestamp and order id.
+
+Entry should create an active position only after fill is verified or clearly marked as pending.
+
+Exit should remove or reduce a position only after fill is verified.
+
+### 18.5 Position State With Exit Plan
+
+Every position must include an exit plan from the moment it is created.
+
+Target position state:
+
+```json
+{
+  "pair": "coin_idr",
+  "entry_price": 0,
+  "entry_amount": 0,
+  "entry_value_idr": 0,
+  "entry_fee_estimate_idr": 0,
+  "entry_reason": "LOCAL_CONFIRMATION",
+  "entry_grade": "A | B | C",
+  "deadline_mode": "PATIENT | ACTIVE | URGENT | LOCK_GREEN",
+  "capital_state": "MICRO | SMALL | NORMAL | LARGE",
+  "hard_stop_price": 0,
+  "breakeven_price": 0,
+  "partial_tp_done": false,
+  "partial_tp_price": 0,
+  "partial_tp_fraction": 0.0,
+  "trailing_active": false,
+  "trail_stop_price": 0,
+  "max_hold_minutes": 0,
+  "distribution_exit_rules": {},
+  "pnl_unrealized_idr": 0,
+  "pnl_unrealized_pct": 0,
+  "current_exit_reason": "HOLD"
+}
+```
+
+### 18.6 Partial Take Profit
+
+Partial take profit is required for green protection.
+
+Rules:
+
+- Trigger partial TP when profit exceeds fee buffer and target threshold.
+- Partial TP should be earlier for local-only pumps.
+- Partial TP should be more aggressive near midnight if daily state is green.
+- Remaining runner should keep a trailing stop.
+- Partial TP must respect minimum sellable amount.
+
+If partial sell would create unsellable dust, executor should either skip partial TP or exit fully depending on exit plan.
+
+### 18.7 Dynamic Hard Stop and Trailing
+
+Stops must adapt to context.
+
+Inputs:
+
+- lifecycle stage,
+- local/global pump classification,
+- volatility,
+- spread,
+- bid depth,
+- unrealized profit,
+- daily color,
+- deadline mode,
+- position age,
+- market breadth.
+
+Behavior:
+
+- local-only pump: tighter initial stop and faster breakeven,
+- high-quality broad pump: allow wider runner trail,
+- green day near deadline: tighter trailing and profit protection,
+- red day recovery: avoid oversized loss and no revenge averaging,
+- weak liquidity: exit earlier.
+
+### 18.8 Distribution Exit
+
+Executor must exit when structure deteriorates, even before hard stop.
+
+Distribution triggers:
+
+- bid depth collapses,
+- spread widens beyond plan,
+- sell wall appears near price,
+- volume dries up,
+- price loses local support,
+- momentum flips,
+- orderbook imbalance turns sell-side,
+- candidate lifecycle degrades to `DISTRIBUTION`, `LOCAL_BLOWOFF`, or `TRAP`.
+
+This prevents the system from waiting for a price-only stop when liquidity has already disappeared.
+
+### 18.9 Order Replacement and Stale Orders
+
+Pending orders must be managed actively.
+
+Actions:
+
+- wait,
+- cancel,
+- reprice,
+- reduce size,
+- convert to more aggressive limit,
+- abandon trade,
+- emergency exit if already exposed.
+
+Rules:
+
+- stale entry order should not remain forever,
+- stale exit order should escalate faster,
+- if thesis changes while order is pending, cancel first,
+- never stack duplicate orders without explicit plan.
+
+### 18.10 Capital-Aware Execution
+
+Executor must respect account size.
+
+For MICRO/SMALL capital:
+
+- avoid dust,
+- avoid too many tiny slots,
+- prefer one clean position,
+- avoid partial TP if it creates unsellable remnants,
+- confirm exit path before entry,
+- do not use nominal fixed buys blindly.
+
+For NORMAL/LARGE capital:
+
+- simulate slippage more strictly,
+- split orders if required,
+- avoid moving local orderbook,
+- diversify only when quality supports it.
+
+### 18.11 Position Replacement Execution
+
+When Council chooses rotation, executor must safely perform it.
+
+Supported actions:
+
+- hold current,
+- partial rotate,
+- full rotate,
+- skip new opportunity,
+- emergency exit.
+
+Rules:
+
+- do not rotate unless expected value improves after exit cost,
+- do not sell a green runner just to chase a weaker pump,
+- do not keep a bad position only because it is uncomfortable to realize loss,
+- protect daily green during rotation.
+
+### 18.12 PnL Attribution
+
+Every trade must track:
+
+- entry price,
+- exit price,
+- amount,
+- gross PnL,
+- fee estimate,
+- slippage estimate,
+- realized PnL,
+- unrealized PnL,
+- exit reason,
+- initial trade grade,
+- final outcome class,
+- whether exit followed the plan.
+
+Target result:
+
+```json
+{
+  "pair": "coin_idr",
+  "entry_price": 0,
+  "exit_price": 0,
+  "amount": 0,
+  "gross_pnl_idr": 0,
+  "fee_estimate_idr": 0,
+  "slippage_idr": 0,
+  "realized_pnl_idr": 0,
+  "realized_pnl_pct": 0,
+  "exit_reason": "PARTIAL_TP | TRAILING_STOP | HARD_STOP | DISTRIBUTION_EXIT | ROTATION | MANUAL",
+  "outcome_class": "TRUE_POSITIVE | FALSE_POSITIVE | CONTROLLED_LOSS | UNKNOWN"
+}
+```
+
+### 18.13 Safety Mode Behavior
+
+If system intelligence is degraded:
+
+- stop new entries,
+- keep managing existing exits,
+- cancel stale orders,
+- protect active positions,
+- alert only if self-recovery fails.
+
+Executor must distinguish:
+
+```text
+Cannot safely enter
+```
+
+from:
+
+```text
+Cannot safely manage exits
+```
+
+The second case is more severe and may require operator escalation.
+
+### 18.14 Execution Audit Trail
+
+Every executor action should be explainable:
+
+- why buy,
+- why sell,
+- why hold,
+- why cancel,
+- why partial TP,
+- why trailing changed,
+- why hard stop changed,
+- why order was abandoned.
+
+Executor logs should be concise but structured enough for dashboard, daily postmortem, replay, and Council learning.
+
+---
+
+## 19. Final Trading-System Hardening Contracts
+
+This section finalizes the trading-system strategy after reviewing exchange API constraints and systematic trading design principles.
+
+Core conclusion:
+
+```text
+KiBot's edge should come from candidate quality, exit-aware execution, adaptive risk, and post-trade learning.
+It must not rely on AI confidence alone.
+```
+
+### 19.1 Exchange Constraint Awareness
+
+Trading strategy must be exchange-aware.
+
+Indodax-specific constraints:
+
+- balances must come from authenticated `getInfo`,
+- entries/exits must be reconciled with order and wallet state,
+- order status must be checked through `openOrders`, `orderHistory`, or `getOrder`,
+- trade history should be used for realized fill/PnL reconstruction when available,
+- accepted order response is not enough to prove final fill,
+- minimum order and pair rules must be checked before entry and before partial exit.
+
+Polymarket-specific constraints:
+
+- CLOB orders are signed and matched off-chain with settlement on Polygon,
+- API credential and wallet health are part of trading readiness,
+- orderbook/liquidity must be evaluated per market,
+- event markets require expiry/resolution/catalyst reasoning,
+- Polymarket strategy must not reuse Indodax pump logic.
+
+Rule:
+
+```text
+Strategy must adapt to the venue. No single trading logic should blindly span Indodax and Polymarket.
+```
+
+### 19.2 Pre-Trade Simulation Gate
+
+Before any real-money order, KiBot should simulate the trade.
+
+The simulation must estimate:
+
+- expected entry fill price,
+- expected exit fill price,
+- spread cost,
+- fee cost,
+- slippage,
+- minimum sellable amount,
+- orderbook depth required,
+- worst-case one-tick loss,
+- break-even price,
+- required price move to reach green after fees,
+- whether partial TP is feasible.
+
+Target payload:
+
+```json
+{
+  "pair": "coin_idr",
+  "planned_value_idr": 0,
+  "entry_price_est": 0,
+  "exit_price_est": 0,
+  "spread_cost_pct": 0.0,
+  "fee_cost_pct": 0.0,
+  "slippage_pct": 0.0,
+  "breakeven_price": 0,
+  "one_tick_loss_pct": 0.0,
+  "min_sellable_pass": true,
+  "partial_tp_feasible": true,
+  "simulation_verdict": "PASS | REDUCE_SIZE | REJECT"
+}
+```
+
+Rule:
+
+```text
+No simulation pass, no real entry.
+```
+
+### 19.3 Calibration Engine
+
+Thresholds should be calibrated from outcomes, not hand-tuned forever.
+
+Calibration inputs:
+
+- accepted trades,
+- rejected candidates,
+- missed opportunity review,
+- false positive review,
+- false negative review,
+- slippage,
+- fill quality,
+- trailing outcome,
+- deadline mode.
+
+Calibration outputs:
+
+- lifecycle score weights,
+- confidence floor,
+- spread tolerance,
+- volume spike requirement,
+- local pump sizing factor,
+- trailing schedule,
+- partial TP threshold,
+- risk gate loosen/tighten recommendation.
+
+Rule:
+
+```text
+Calibration may recommend changes. Auditor / Judge must approve changes before runtime use.
+```
+
+### 19.4 Exploration vs Exploitation Policy
+
+KiBot must balance learning and profit protection.
+
+Modes:
+
+| Mode | Meaning | Behavior |
+|---|---|---|
+| EXPLOIT | Known good edge | Normal size, standard controls |
+| EXPLORE | Uncertain but useful data | Tiny probe only |
+| PROTECT | Green day or degraded system | Avoid weak new entries |
+| RECOVERY | Red day with valid setup | Small controlled recovery |
+
+Rules:
+
+- exploration must never violate sellability,
+- exploration size must be smaller than normal,
+- no exploration in `LOCK_GREEN` unless exceptional edge,
+- exploration results must feed memory.
+
+### 19.5 Portfolio Exposure Policy
+
+Even with small capital, KiBot needs portfolio-level awareness.
+
+Exposure should consider:
+
+- total IDR cash at risk,
+- number of open positions,
+- correlated coins,
+- local pump concentration,
+- Polymarket event concentration,
+- daily drawdown,
+- deadline mode.
+
+Rule:
+
+```text
+One strong clean position is better than many tiny unmanageable positions.
+```
+
+### 19.6 Latency and Freshness Budget
+
+Pump trading is sensitive to stale data.
+
+KiBot should define a latency budget:
+
+| Step | Target |
+|---|---|
+| ticker/orderbook refresh | seconds |
+| scanner candidate age | under 30 seconds |
+| Council fast filter | seconds |
+| Deep Council | bounded timeout |
+| pre-trade simulation | immediately before order |
+| balance refresh | immediately before order |
+| order status reconcile | repeated until resolved |
+
+Rule:
+
+```text
+If the decision takes too long, the candidate must be revalidated before execution.
+```
+
+### 19.7 Kill Switch and Resume Protocol
+
+KiBot must have explicit stop/resume states.
+
+Stop triggers:
+
+- repeated failed exits,
+- stale price feed,
+- wallet mismatch,
+- risk state corruption,
+- daily loss breach,
+- exchange API inconsistency,
+- unresolved open order conflict,
+- critical server health issue.
+
+Resume requirements:
+
+- wallet reconciled,
+- open orders known,
+- services healthy,
+- risk state valid,
+- dashboard not stale,
+- Telegram health known,
+- operator not required unless state was `HUMAN_REQUIRED`.
+
+Rule:
+
+```text
+Safe resume is as important as safe stop.
+```
+
+### 19.8 Decision Replay as a Required Development Tool
+
+Every future trading upgrade should be evaluated with replay when possible.
+
+Replay should compare:
+
+- old vs new scanner scoring,
+- old vs new trailing,
+- strict vs adaptive risk gate,
+- buy/skip decisions,
+- partial TP schedules,
+- local pump classification.
+
+Rule:
+
+```text
+Runtime changes should be promoted after evidence, not after one lucky trade.
+```
+
+### 19.9 Final Architecture Target
+
+The final trading intelligence loop should be:
+
+```text
+daily context
+  -> capital state
+  -> market heatmap
+  -> scanner candidates
+  -> long-horizon track record
+  -> online evidence packet
+  -> opportunity ranking
+  -> pre-trade simulation
+  -> fast Council
+  -> deep Council
+  -> Auditor / Judge
+  -> executor
+  -> position manager
+  -> daily postmortem
+  -> calibration / replay
+```
+
+### 19.10 Final Trading Philosophy
+
+KiBot's trading intelligence should follow this hierarchy:
+
+1. Survive and remain operational.
+2. Protect sellability and avoid dust traps.
+3. Preserve daily green once achieved.
+4. Take high-quality pump opportunities.
+5. Use green-builder mode when no pump is clean.
+6. Learn from both traded and missed opportunities.
+7. Increase bravery only when evidence quality improves.
+
+Final rule:
+
+```text
+KiBot should be aggressive in searching, selective in entering, adaptive in managing, and ruthless in exiting when the thesis breaks.
+```
+
+---
+
+## 20. Probability, Data, and Unknown Scenario Contract
+
+No trading strategy can cover every market possibility or guarantee daily profit.
+
+KiBot's goal is not perfection. KiBot's goal is to continuously increase the probability of a green day through better data, better calibration, safer execution, and faster learning.
+
+### 20.1 What-If Coverage Philosophy
+
+The system must distinguish:
+
+1. **Known Scenarios**
+   - Conditions already modeled in code and strategy.
+   - Example: spread too wide, stale orderbook, local pump, failed exit.
+
+2. **Known Unknowns**
+   - Conditions the system knows may happen but cannot fully predict.
+   - Example: sudden whale dump, API degradation, catalyst reversal, spoofed orderbook.
+
+3. **Unknown Unknowns**
+   - New failure modes the system has never seen.
+   - Example: unusual exchange behavior, unexpected pair rule change, novel pump pattern.
+
+Rule:
+
+```text
+KiBot must not pretend it knows all possibilities.
+It must detect anomalies, reduce risk, record evidence, and learn.
+```
+
+### 20.2 Worst-Case / Best-Case Scenario Modeling
+
+Every high-impact candidate should include scenario analysis:
+
+```json
+{
+  "best_case": {
+    "expected_gain_pct": 0.0,
+    "path": "pump continuation / reclaim / catalyst"
+  },
+  "base_case": {
+    "expected_gain_pct": 0.0,
+    "path": "normal expected movement"
+  },
+  "bad_case": {
+    "expected_loss_pct": 0.0,
+    "path": "failed breakout / spread widening"
+  },
+  "worst_case": {
+    "expected_loss_pct": 0.0,
+    "path": "liquidity disappears / hard stop slip"
+  },
+  "scenario_verdict": "FAVORABLE | MIXED | UNFAVORABLE"
+}
+```
+
+The system should enter only when:
+
+- best/base case reward is worth the risk,
+- bad case is survivable,
+- worst case has a defined response,
+- exit path exists before entry.
+
+### 20.3 Data Capture Requirements
+
+KiBot must collect data from both action and inaction.
+
+Required datasets:
+
+- scanner candidates,
+- rejected candidates,
+- accepted trades,
+- skipped opportunities,
+- orderbook snapshots,
+- ticker snapshots,
+- OHLC snapshots,
+- online evidence packets,
+- Council role votes,
+- confidence breakdowns,
+- pre-trade simulations,
+- order lifecycle events,
+- entry/exit fills,
+- wallet reconciliations,
+- realized/unrealized PnL,
+- daily postmortems,
+- replay/calibration outputs.
+
+Rule:
+
+```text
+No decision should vanish. Every decision is training data.
+```
+
+### 20.4 Data Quality Requirements
+
+Bad data creates fake intelligence.
+
+Every data record should include:
+
+- timestamp,
+- source,
+- freshness age,
+- pair/market id,
+- confidence in source,
+- whether data was complete,
+- whether fallback source was used,
+- whether data was stale,
+- whether data was used for a real-money decision.
+
+Critical data freshness:
+
+- stale balance blocks entry,
+- stale orderbook blocks entry,
+- stale risk state blocks entry,
+- stale online evidence may reduce confidence but should not block by itself,
+- stale pair memory is allowed but should be marked old.
+
+### 20.5 Probability Estimation
+
+KiBot should estimate green-day probability, but only with humility.
+
+Early probability estimates must be treated as weak until enough data exists.
+
+Suggested maturity:
+
+| Sample Size | Probability Trust |
+|---|---|
+| 0-10 trades | Very weak; descriptive only |
+| 10-50 trades | Early directional signal |
+| 50-100 trades | Usable but cautious |
+| 100+ trades | Better calibration possible |
+
+Target output:
+
+```json
+{
+  "estimated_green_probability": 0.0,
+  "confidence_quality": "WEAK | DEVELOPING | USABLE | STRONG",
+  "positive_drivers": [],
+  "negative_drivers": [],
+  "sample_size": 0,
+  "calibration_warning": "not enough data"
+}
+```
+
+Rule:
+
+```text
+Probability estimates must include evidence quality and sample size.
+```
+
+### 20.6 Confidence Calibration
+
+Council confidence must be tested against reality.
+
+Questions:
+
+- Did trades with confidence 0.80 actually win around 80% of the time?
+- Did grade-A trades outperform grade-B trades?
+- Did local pump confidence overestimate continuation?
+- Did Antagonist vetoes prevent losses?
+- Did Liquidity Engineer vetoes prevent unsellable positions?
+
+Calibration output:
+
+```json
+{
+  "confidence_bucket": "0.70-0.80",
+  "sample_size": 0,
+  "actual_win_rate": 0.0,
+  "average_pnl_pct": 0.0,
+  "calibration_error": 0.0,
+  "recommended_adjustment": "raise_threshold | lower_threshold | keep"
+}
+```
+
+Rule:
+
+```text
+Confidence is not probability until calibrated.
+```
+
+### 20.7 Daily Probability Drivers
+
+Daily green probability should consider:
+
+- market breadth,
+- number of grade-A/B candidates,
+- current capital state,
+- current daily color,
+- deadline pressure,
+- active position quality,
+- scanner signal quality,
+- executor health,
+- source health,
+- recent false positive/negative rate,
+- pair memory,
+- available liquidity,
+- Polymarket opportunity quality.
+
+Example:
+
+```text
+Estimated green probability: 62%
+Positive:
+- 3 grade-B Indodax candidates
+- broad pump regime
+- executor healthy
+Negative:
+- no grade-A setup
+- capital state MICRO
+- deadline pressure rising
+```
+
+### 20.8 Anomaly Detection
+
+Unknown scenarios should be handled through anomaly detection.
+
+Anomalies include:
+
+- price moves without matching volume,
+- orderbook changes too fast,
+- sudden disappearance of bid depth,
+- ticker/orderbook mismatch,
+- exchange response inconsistent with wallet,
+- PnL mismatch between dashboard and wallet,
+- repeated model/provider disagreement,
+- sudden source outage during active position,
+- coin behavior outside historical profile.
+
+Default anomaly behavior:
+
+- reduce size,
+- tighten exit,
+- block new entries if critical,
+- record anomaly,
+- alert only if self-recovery fails.
+
+### 20.9 Profit Probability vs Profit Maximization
+
+KiBot must distinguish:
+
+- maximizing expected return,
+- maximizing probability of green day,
+- protecting capital,
+- learning from exploration.
+
+These goals can conflict.
+
+Rule hierarchy:
+
+1. Safety and sellability.
+2. Daily green probability.
+3. Expected return.
+4. Exploration/learning.
+
+This means KiBot may skip a high-upside trade if it risks turning a green day red near deadline.
+
+### 20.10 Final Probability Principle
+
+The strategy document is not a profit guarantee.
+
+The document is a structure for:
+
+- better decisions,
+- fewer repeated mistakes,
+- stronger recovery,
+- clearer audit trails,
+- smarter confidence,
+- more adaptive risk.
+
+Final rule:
+
+```text
+KiBot should never claim perfect prediction.
+KiBot should continuously improve the odds and explain why each risk was worth taking or rejecting.
+```
+
+---
+
+## 21. Telegram Daily Report Contract
+
+Telegram is a scarce operator channel. It should provide high-signal daily intelligence, not noisy runtime spam.
+
+Default behavior:
+
+- one required daily report at midnight WIB,
+- emergency alerts only when the system cannot self-recover,
+- no repeated low-value status messages,
+- dedupe and throttle all non-midnight notifications.
+
+### 21.1 Midnight Report Purpose
+
+The midnight report should answer:
+
+```text
+Did KiBot end the day green?
+How did it get there?
+What did it avoid?
+What did it miss?
+What did it learn?
+What is tomorrow's posture?
+Does the operator need to do anything?
+```
+
+### 21.2 Daily Report Template
+
+Recommended Telegram format:
+
+```text
+KiBot Daily Report — YYYY-MM-DD WIB
+
+STATE
+Daily Color: GREEN / FLAT / RED
+Start Equity: Rp ...
+End Equity: Rp ...
+Realized PnL: Rp ... (...%)
+Unrealized PnL: Rp ... (...%)
+Combined Equity: Rp ...
+
+CAPITAL
+Cash IDR: Rp ...
+Coin Holdings: Rp ...
+Polymarket: $... / Rp ...
+Capital State: MICRO / SMALL / NORMAL / LARGE
+
+TRADING SUMMARY
+Trades Taken: ...
+Wins / Losses: ...
+Best Trade: PAIR +...% / Rp ...
+Worst Trade: PAIR -...% / Rp ...
+Open Positions: ...
+Exit Quality: OK / WARNING / ISSUE
+
+DECISION QUALITY
+Grade A/B/C Candidates: ...
+Rejected Candidates: ...
+Best Missed Opportunity: PAIR +...% after reject
+Worst Avoided Trap: PAIR reason...
+False Positive Count: ...
+False Negative Count: ...
+
+INTELLIGENCE
+Market Regime: BROAD_RISK_ON / SELECTIVE / ISOLATED_PUMP / RISK_OFF
+Top Council Reason: ...
+Top Risk Reason: ...
+Deadline Mode Used: PATIENT / ACTIVE / URGENT / LOCK_GREEN
+Estimated Green Probability Today: ...% (quality: WEAK / DEVELOPING / USABLE / STRONG)
+
+LEARNING
+Lesson Learned: ...
+Calibration Note: ...
+Pair Memory Update: ...
+Tomorrow Posture: CONTROLLED_AGGRESSIVE / GREEN_BUILDER / PROTECT / RECOVERY
+
+SYSTEM HEALTH
+Services: OK / DEGRADED / SAFE_MODE / HUMAN_REQUIRED
+Disk/RAM/CPU: OK / WARN / CRITICAL
+Data Freshness: OK / STALE
+Online Sources: OK / PARTIAL / FAILED
+
+OPERATOR ACTION
+None / Action required: ...
+```
+
+### 21.3 Report Compression Rules
+
+The report must stay readable.
+
+Rules:
+
+- include only top 1-3 examples per section,
+- hide noisy raw logs,
+- show reasons, not stack traces,
+- show exact action required only if needed,
+- if no trades happened, explain why in one concise line,
+- if no action is required, say `Operator Action: None`.
+
+### 21.4 Emergency Alert Policy
+
+Emergency Telegram alerts are allowed only when:
+
+- system enters `HUMAN_REQUIRED`,
+- executor cannot safely manage exits,
+- Indodax/Polymarket wallet mismatch cannot self-recover,
+- daily risk state is corrupted,
+- disk/server health threatens runtime,
+- Telegram daily report failed repeatedly,
+- live trading gate is inconsistent with runtime state,
+- open order conflict cannot be resolved.
+
+Emergency alert template:
+
+```text
+KiBot Emergency — HUMAN_REQUIRED
+Issue: ...
+Impact: entry blocked / exit blocked / system degraded
+Self-recovery tried: ...
+Operator action needed: ...
+Last safe state: ...
+```
+
+### 21.5 Non-Emergency Suppression
+
+Do not Telegram spam for:
+
+- ordinary scanner candidates,
+- every Council WAIT,
+- routine service restarts that self-recover,
+- temporary provider cooldowns,
+- normal market no-trade periods,
+- small expected PnL fluctuations,
+- repeated known warning inside cooldown window.
+
+These should go to dashboard/event journal, not Telegram.
+
+### 21.6 Optional Midday Digest
+
+Optional, disabled by default unless operator enables it.
+
+Purpose:
+
+- summarize day progress without spam,
+- useful only if the operator wants one checkpoint before midnight.
+
+Recommended schedule:
+
+- 12:00 WIB midday digest,
+- 00:00 WIB daily final report.
+
+Midday digest should be much shorter:
+
+```text
+KiBot Midday Snapshot
+Color: ...
+Equity: ...
+Open Positions: ...
+Best Candidate: ...
+Risk Mode: ...
+Action Needed: None
+```
+
+### 21.7 Report Data Sources
+
+The daily report should be generated from structured state, not raw logs:
+
+- daily context,
+- portfolio snapshot,
+- active trades,
+- realized PnL state,
+- order lifecycle journal,
+- decision journal,
+- missed opportunity tracker,
+- pair memory,
+- market heatmap,
+- online source health,
+- service health,
+- replay/calibration summary.
+
+If a source is missing, the report should say `UNKNOWN` rather than hallucinate.
+
+### 21.8 Final Telegram Rule
+
+Telegram should make the operator feel informed, not interrupted.
+
+Final rule:
+
+```text
+One rich daily report beats fifty noisy alerts.
+Only wake the operator when KiBot cannot safely handle the situation alone.
+```
+
+---
+
+## 22. Dashboard Strategy Alignment Contract
+
+The dashboard must evolve with the trading intelligence strategy.
+
+It should not only show whether services are active. It should show whether KiBot is thinking correctly, trading safely, and learning from its decisions.
+
+### 22.1 Dashboard Purpose
+
+The dashboard should answer:
+
+```text
+What is KiBot trying to do right now?
+Why is it waiting or entering?
+What candidates exist?
+What risk mode is active?
+What is the daily green probability?
+What positions are open and how are they protected?
+Is the data fresh?
+Is the system healthy?
+What will be reported at midnight?
+```
+
+### 22.2 Required Top-Level Widgets
+
+Header should include:
+
+- daily color,
+- combined equity,
+- realized PnL,
+- unrealized PnL,
+- estimated green probability,
+- deadline mode,
+- capital state,
+- server clock WIB,
+- live trading gate state.
+
+Recommended compact header:
+
+```text
+FLAT | Rp 85.762 | Realized Rp 0 | Unrealized Rp 0 | Green Prob 62% WEAK | ACTIVE | MICRO | Live ON
+```
+
+### 22.3 Agent Canvas Must Reflect Strategy Roles
+
+The visual agent canvas should show the actual intelligence roles:
+
+- Operator,
+- Council Director,
+- Scanner,
+- AI Brain,
+- Indodax Executor,
+- Polymarket Executor,
+- Verifier,
+- Janitor,
+- Hunter,
+- Risk Officer,
+- Liquidity Engineer,
+- Exit Planner,
+- Antagonist,
+- Historian,
+- Regime Analyst,
+- Deadline Keeper,
+- Allocator,
+- Auditor / Judge.
+
+Fast Council and Deep Council should be visually separated:
+
+```text
+Fast Council: Hunter + Risk Officer + Liquidity Engineer + Deadline Keeper
+Deep Council: Exit Planner + Antagonist + Historian + Regime Analyst + Allocator + Auditor
+```
+
+The canvas should show status per role:
+
+- ACTIVE,
+- WAITING,
+- THINKING,
+- VETO,
+- PASSED,
+- DEGRADED,
+- UNKNOWN.
+
+### 22.4 Candidate Ranking Panel
+
+Dashboard must expose top opportunities before they become trades.
+
+Each candidate row should show:
+
+- rank,
+- pair,
+- lifecycle,
+- grade,
+- opportunity score,
+- exit quality,
+- spread,
+- volume signal,
+- track record verdict,
+- local/global pump tag,
+- deadline fit,
+- reason for enter/wait/reject.
+
+Example:
+
+```text
+1. GXC/IDR | LOCAL_CONFIRMATION | B | score 0.81 | exit A | WAIT: spread widened
+2. PEPE/IDR | RIDE | C | score 0.66 | exit B | PROBE only
+3. XYZ/IDR | LOCAL_TRAP | F | REJECT: one-tick pump
+```
+
+### 22.5 Position Protection Panel
+
+Open positions should show protection state, not only amount/value.
+
+Required fields:
+
+- pair,
+- entry price,
+- current price,
+- realized/unrealized PnL,
+- trade grade,
+- hard stop,
+- breakeven price,
+- trailing active,
+- trail stop,
+- partial TP status,
+- max hold remaining,
+- exit reason if triggered,
+- liquidity status.
+
+This lets the operator see whether KiBot is protecting the day.
+
+### 22.6 Council Vote / Reason Panel
+
+Dashboard should show the latest role votes:
+
+```text
+Hunter: BUY, momentum strong
+Risk Officer: CAUTION, spread elevated
+Liquidity Engineer: PASS, exit depth enough
+Antagonist: WARNING, local-only pump
+Historian: MIXED, weak long history
+Auditor: WAIT, need fresh orderbook
+```
+
+This is more useful than a single opaque confidence number.
+
+### 22.7 Data Freshness and Source Health Panel
+
+Dashboard must show whether data is fresh enough for decisions:
+
+- balance age,
+- orderbook age,
+- ticker age,
+- scanner age,
+- world model age,
+- online evidence age,
+- pair memory freshness,
+- source health for Tavily/Serper/DDGS/Jina/Finnhub/GDELT/Polymarket/Indodax.
+
+If critical data is stale, dashboard should show:
+
+```text
+ENTRY BLOCKED: stale orderbook
+```
+
+### 22.8 Probability and Calibration Panel
+
+Dashboard should display:
+
+- estimated green probability,
+- confidence quality,
+- sample size,
+- positive drivers,
+- negative drivers,
+- calibration warning,
+- false positive/false negative counts.
+
+This prevents the operator from mistaking an early weak estimate for certainty.
+
+### 22.9 Daily Report Preview
+
+Dashboard should preview what Telegram will send at midnight:
+
+- current daily color,
+- expected report status,
+- known missing data,
+- operator action status,
+- whether report can be generated from structured state.
+
+This ensures Telegram reporting is not a surprise.
+
+### 22.10 Dashboard Anti-Noise Rule
+
+Dashboard may show detailed events. Telegram should not.
+
+Rule:
+
+```text
+Dashboard is for rich observability.
+Telegram is for daily intelligence and emergencies.
+```
+
+### 22.11 Dashboard Final Rule
+
+The dashboard must make KiBot's thinking visible.
+
+Final rule:
+
+```text
+If KiBot waits, the dashboard must explain why.
+If KiBot enters, the dashboard must show the evidence, risk, and exit plan.
+If KiBot exits, the dashboard must show whether the exit followed the plan.
+```

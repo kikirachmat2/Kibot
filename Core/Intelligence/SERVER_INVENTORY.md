@@ -204,6 +204,16 @@ These exist on the server but are easy to miss if you only inspect the code tree
 34. Council trading deliberation is bounded. Web evidence calls and AI roles have explicit timeouts; if provider/search stalls, a deterministic local scorer uses confidence, spread, tick-size, price levels, OHLC quality, what-if edge, and deadline pressure to produce a `WAIT` or `COUNCIL_MANDATE`.
 35. The deterministic fallback is restricted to tradeable Indodax IDR pairs for real execution. Universal lead-lag items such as exchange names can inform context, but cannot become buy mandates.
 36. A manual Telegram status report was verified through `SovereignNotifier.send_status_reply()` with the shared throttle helper; it returned `TELEGRAM_STATUS_SENT True`.
+37. `PUMP_LIFECYCLE_STRATEGY.md` is now the canonical trading-intelligence contract. It covers pump lifecycle, green-builder fallback, deadline discipline, role-agent debate, online evidence, scanner/executor gaps, Telegram report template, and dashboard requirements.
+38. `decision_journal.py` writes a daily JSONL audit trail under `state/decision_journal/`. Scanner candidates, council decisions, pre-trade simulations, and executor events can now be traced after the fact.
+39. `market_heatmap.py` snapshots Indodax market breadth from live tickers and persists `state/market_heatmap.json`, giving Council a market-regime input instead of relying on isolated pair signals.
+40. `probability_engine.py` persists `state/green_probability.json` from daily PnL color, deadline mode, market breadth, scanner slate, order quality, system health, and source health.
+41. `pre_trade_simulator.py` runs before buy-side execution. It blocks entries with empty depth, excessive spread/slippage, unsellable minimum amount, or partial-TP infeasibility, and can recommend smaller size before RiskGate.
+42. Indodax executor now stores `exit_plan`, `pre_trade_simulation`, `trade_grade`, `lifecycle`, `deadline_mode`, and `capital_state` inside `active_trades.json`, so every position carries its own reason, risk, and exit contract.
+43. Exit management now supports partial take-profit, trailing stop, max-hold timeout, and distribution exits while still falling back to legacy hard stop / take profit for old positions.
+44. Midnight Telegram reporting is routed through `SovereignNotifier.send_daily_report()` and `daily_report.py` with shared throttling, so the operator receives one compact report instead of spam.
+45. Dashboard V3.1 now surfaces strategy intelligence: deadline mode, risk mode, quality floor, green probability, scanner slate, decision journal count, and market breadth in the visual workflow board.
+46. Universal lead-lag signals are now context-only when they appear alone. They are persisted in scanner state, but Council is only awakened when there is at least one tradeable Indodax or Polymarket signal, preventing non-executable exchange names from consuming AI deliberation time.
 
 ---
 

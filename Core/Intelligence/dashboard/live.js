@@ -12,6 +12,8 @@ const LOG_COLORS = {
   Polymarket: "var(--poly)",
   Janitor: "var(--janitor)",
   Market: "var(--blue)",
+  Deadline: "var(--amber)",
+  Probability: "var(--green)",
   System: "var(--janitor)",
   Brain: "var(--brain)",
 };
@@ -141,6 +143,9 @@ function buildCandidateEvents(data) {
   const system = data?.system || {};
   const brain = data?.brain || {};
   const services = data?.services || {};
+  const intel = data?.strategy_intelligence || {};
+  const scanner = data?.scanner_candidates || {};
+  const journal = data?.decision_journal || {};
   const events = Array.isArray(data?.events) ? data.events.slice(0, 24) : [];
 
   const generated = [
@@ -153,6 +158,21 @@ function buildCandidateEvents(data) {
       agent: "Council",
       tag: council.decision_state === "ENTER" ? "SUCCESS" : "INFO",
       message: `${String(council.decision_state || "WAIT").toUpperCase()} | ${council.ticker || "no ticker"} | conf ${Number(council.confidence || 0).toFixed(2)}`,
+    },
+    {
+      agent: "Deadline",
+      tag: ["URGENT", "LOCK_GREEN"].includes(String(intel.deadline_mode || "").toUpperCase()) ? "WARN" : "INFO",
+      message: `${intel.deadline_mode || "PATIENT"} | risk ${intel.allowed_risk_mode || "NORMAL"} | gate ${intel.required_trade_quality || "NORMAL"}`,
+    },
+    {
+      agent: "Scanner",
+      tag: Number(scanner.total || 0) > 0 ? "SUCCESS" : "INFO",
+      message: `${scanner.total || 0} candidates | journal E/W/X ${journal.entries || 0}/${journal.waits || 0}/${journal.exits || 0}`,
+    },
+    {
+      agent: "Probability",
+      tag: Number(intel.green_probability_pct || 0) >= 60 ? "SUCCESS" : "INFO",
+      message: `green ${intel.green_probability_pct || 0}% | breadth ${intel.market_breadth || "UNKNOWN"}`,
     },
     {
       agent: "Market",
@@ -351,6 +371,9 @@ function renderSummary(data) {
   const council = snapshot.council || {};
   const system = snapshot.system || {};
   const services = snapshot.services || {};
+  const dailyContext = snapshot.daily_context || {};
+  const strategyIntel = snapshot.strategy_intelligence || {};
+  const greenProbability = snapshot.green_probability || {};
 
   const dailyColor = String(portfolio.daily_color || portfolio.daily_state?.color || "FLAT").toUpperCase();
   const badge = byId("state-badge");
@@ -385,6 +408,10 @@ function renderSummary(data) {
   updateText("s-tp", `${Number(indoStrategy.take_profit_pct || 0).toFixed(2)}%`);
   updateText("s-slots", `${Object.keys(snapshot.active_trades || {}).length}/${indoStrategy.max_slots || 100}`);
   updateText("s-stop", `${Number(indoStrategy.hard_stop_pct ?? -1.5).toFixed(2)}% day`);
+  updateText("s-deadline", String(dailyContext.deadline_mode || strategyIntel.deadline_mode || "--").toUpperCase());
+  updateText("s-risk-mode", String(dailyContext.allowed_risk_mode || strategyIntel.allowed_risk_mode || "--").toUpperCase());
+  updateText("s-quality", String(dailyContext.required_trade_quality || strategyIntel.required_trade_quality || "--").toUpperCase());
+  updateText("s-green-prob", `${Number(greenProbability.estimated_green_probability_pct || strategyIntel.green_probability_pct || 0).toFixed(0)}%`);
 
   const decision = String(council.decision_state || "WAIT").toUpperCase();
   const lens = byId("council-lens");

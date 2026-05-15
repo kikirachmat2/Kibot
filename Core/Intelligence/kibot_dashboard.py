@@ -351,9 +351,15 @@ def _build_events(summary: Dict[str, Any], limit: int = 30) -> List[Dict[str, st
     world_model = summary.get("world_model", {})
     system = summary.get("system", {})
     services = summary.get("services", {})
+    strategy_intel = summary.get("strategy_intelligence", {})
+    scanner = summary.get("scanner_candidates", {})
+    journal = summary.get("decision_journal", {})
     base_events = [
         ("Portfolio", f"Combined {portfolio.get('combined_equity_idr', 0):,.0f} IDR | cash {portfolio.get('idr_cash', 0):,.0f} | koin {portfolio.get('coin_holdings_idr', 0):,.0f}", "INFO"),
         ("Council", f"{council.get('decision_state', 'WAIT')} {council.get('ticker', '')} | conf {council.get('confidence', 0):.2f}", "INFO"),
+        ("Deadline", f"{strategy_intel.get('deadline_mode', 'PATIENT')} | risk {strategy_intel.get('allowed_risk_mode', 'NORMAL')} | quality {strategy_intel.get('required_trade_quality', 'NORMAL')}", "WARN" if strategy_intel.get("deadline_mode") in {"URGENT", "LOCK_GREEN"} else "INFO"),
+        ("Scanner", f"{scanner.get('total', 0)} candidates | journal E/W/X {journal.get('entries', 0)}/{journal.get('waits', 0)}/{journal.get('exits', 0)}", "INFO"),
+        ("Probability", f"green {strategy_intel.get('green_probability_pct', 0)}% | breadth {strategy_intel.get('market_breadth', 'UNKNOWN')}", "INFO"),
         ("Market", f"{world_model.get('market_regime', 'NEUTRAL')} | risk {world_model.get('risk_level', 'LOW')}", "INFO"),
         ("Janitor", f"CPU {system.get('cpu', 0):.1f}% | RAM {system.get('ram', 0):.1f}% | Disk {system.get('disk', 0):.1f}%", "WARN" if _safe_float(system.get("disk"), 0) > 85 else "INFO"),
         ("Services", " | ".join(f"{name}:{status}" for name, status in services.items() if name in ("kibot-master", "kibot-scanner", "kibot-executor", "ollama")), "INFO"),
@@ -509,6 +515,56 @@ def _build_summary() -> Dict[str, Any]:
     except Exception:
         pass
 
+    # Strategy vNext intelligence surfaces.
+    try:
+        from Core.Intelligence.daily_context import get_daily_context
+
+        summary["daily_context"] = get_daily_context(
+            realized_pnl_idr=portfolio.get("realized_pnl_idr", portfolio.get("daily_pnl_idr", 0.0)),
+            unrealized_pnl_idr=portfolio.get("unrealized_pnl_idr", 0.0),
+            combined_equity_idr=portfolio.get("combined_equity_idr", portfolio.get("equity_idr", 0.0)),
+            available_cash_idr=portfolio.get("idr_cash", 0.0),
+            current_positions=portfolio.get("active_positions", []),
+        )
+    except Exception:
+        summary["daily_context"] = _read_json(STATE / "daily_state.json", {})
+
+    summary["market_heatmap"] = _read_json(STATE / "market_heatmap.json", {})
+    summary["green_probability"] = _read_json(STATE / "green_probability.json", {})
+    summary["scanner_candidates"] = _read_json(STATE / "scanner_candidates.json", {})
+    if not summary["green_probability"]:
+        try:
+            from Core.Intelligence.probability_engine import estimate_green_probability
+
+            summary["green_probability"] = estimate_green_probability(
+                daily_context=summary.get("daily_context", {}),
+                heatmap=summary.get("market_heatmap", {}),
+                candidates=(summary.get("scanner_candidates", {}) or {}).get("top", []),
+                order_summary=(summary.get("order_tracker", {}) or {}).get("today_summary", {}),
+                system_health=summary.get("system", {}),
+                source_health={
+                    name: status
+                    for name, status in summary.get("services", {}).items()
+                    if name in {"kibot-master", "kibot-scanner", "kibot-executor", "ollama", "redis-server"}
+                },
+            )
+        except Exception:
+            summary["green_probability"] = {}
+    try:
+        from Core.Intelligence.decision_journal import summarize_today
+
+        summary["decision_journal"] = summarize_today()
+    except Exception:
+        summary["decision_journal"] = {}
+
+    summary["strategy_intelligence"] = {
+        "deadline_mode": summary.get("daily_context", {}).get("deadline_mode"),
+        "allowed_risk_mode": summary.get("daily_context", {}).get("allowed_risk_mode"),
+        "required_trade_quality": summary.get("daily_context", {}).get("required_trade_quality"),
+        "market_breadth": summary.get("market_heatmap", {}).get("market_breadth"),
+        "green_probability_pct": summary.get("green_probability", {}).get("estimated_green_probability_pct"),
+    }
+
     summary["events"] = _build_events(summary)
     return summary
 
@@ -554,6 +610,12 @@ async def canvas() -> JSONResponse:
         "council": snapshot["council"],
         "services": snapshot["services"],
         "system": snapshot["system"],
+        "daily_context": snapshot.get("daily_context", {}),
+        "market_heatmap": snapshot.get("market_heatmap", {}),
+        "green_probability": snapshot.get("green_probability", {}),
+        "scanner_candidates": snapshot.get("scanner_candidates", {}),
+        "decision_journal": snapshot.get("decision_journal", {}),
+        "strategy_intelligence": snapshot.get("strategy_intelligence", {}),
     })
 
 

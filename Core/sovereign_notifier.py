@@ -108,6 +108,27 @@ class SovereignNotifier:
             dedupe_window_sec=KiConfig.TELEGRAM_DEDUPE_WINDOW_SEC,
         )
 
+    async def send_daily_report(self, telemetry=None, *, force=False):
+        """Send the concise midnight strategy report. One message, no spam."""
+        try:
+            from Core.Intelligence.daily_report import build_daily_report
+
+            report = build_daily_report(telemetry)
+        except Exception as e:
+            logger.warning(f"Daily report builder failed, falling back to status: {e}")
+            report = self._format_status_template(telemetry or {})
+        day_key = (datetime.now(WIB) if WIB else datetime.now()).strftime("%Y-%m-%d")
+        return await self.send_message(
+            report,
+            parse_mode=None,
+            incident_key=f"DAILY_REPORT_{day_key}",
+            channel="daily_report",
+            min_interval_sec=max(300, KiConfig.TELEGRAM_GLOBAL_MIN_INTERVAL_SEC),
+            dedupe_window_sec=23 * 3600,
+            incident_cooldown_sec=23 * 3600,
+            force=force,
+        )
+
     def _format_status_template(self, data):
         """The User's specific /status template - EXACT FORMAT."""
         # Current Time WIB

@@ -267,6 +267,8 @@ def check_partial_tp(plan: Dict, current_price: float, already_partial: bool = F
 
     if entry <= 0:
         return {"should_partial": False, "fraction": 0, "reason": "invalid_entry"}
+    if fraction <= 0:
+        return {"should_partial": False, "fraction": 0, "reason": "partial_tp_disabled"}
 
     unrealized_pct = (current_price - entry) / entry * 100
     if unrealized_pct >= tp_pct:

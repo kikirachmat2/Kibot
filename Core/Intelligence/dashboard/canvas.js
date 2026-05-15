@@ -5,6 +5,8 @@ const AGENTS = {
     runtime: "systemd: kibot-scanner",
     copy: "Membaca pergerakan market, volume, pump candidate, dan mengirim sinyal mentah ke Council.",
     metric(summary) {
+      const candidates = Number(summary?.scanner_candidates?.total || 0);
+      if (candidates > 0) return `${candidates} candidates`;
       const count = Number(summary?.whatif?.count || 0);
       return count > 0 ? `${count} sims` : "scan live";
     },
@@ -24,7 +26,8 @@ const AGENTS = {
     runtime: "systemd: kibot-master",
     copy: "Tempat sinyal diperdebatkan. Council menggabungkan scanner, world model, risk gate, dan what-if sebelum mandate.",
     metric(summary) {
-      return `conf ${Number(summary?.council?.confidence || 0).toFixed(2)}`;
+      const mode = summary?.daily_context?.deadline_mode || "";
+      return `conf ${Number(summary?.council?.confidence || 0).toFixed(2)}${mode ? ` · ${mode}` : ""}`;
     },
   },
   indodax: {
@@ -163,6 +166,10 @@ function renderWorkflow(summary) {
   const council     = summary?.council     || {};
   const strategy    = summary?.strategy    || {};
   const signal      = summary?.last_signal || summary?.council?.last_signal || {};
+  const scanner     = summary?.scanner_candidates || {};
+  const dailyCtx    = summary?.daily_context || {};
+  const probability = summary?.green_probability || {};
+  const journal     = summary?.decision_journal || {};
   const ot          = summary?.order_tracker || {};
   const openOrders  = Array.isArray(ot.open_orders) ? ot.open_orders : [];
   const otSummary   = ot.today_summary || {};
@@ -178,6 +185,8 @@ function renderWorkflow(summary) {
       normalizedStatus(services["kibot-ai-scout"]) === "active" ? "live" : ""
     ),
     taskCard("What-If Batch", `${summary?.whatif?.count || 0} pairs simulated`),
+    taskCard("Scanner Slate", `${scanner.total || 0} live candidates`, Number(scanner.total || 0) ? "live" : ""),
+    taskCard("Deadline Brain", `${dailyCtx.deadline_mode || "PATIENT"} · ${dailyCtx.allowed_risk_mode || "NORMAL"}`),
   ];
   if (signal?.pair) {
     const lifecycle = String(signal.lifecycle || "--").toUpperCase();
@@ -195,7 +204,10 @@ function renderWorkflow(summary) {
 
   // ── ON HOLD: council waiting ──
   renderLane("lane-hold", "hold-count", decision === "WAIT"
-    ? [taskCard("Council Holding", `conf ${Number(council.confidence || 0).toFixed(2)} below gate`)]
+    ? [
+        taskCard("Council Holding", `conf ${Number(council.confidence || 0).toFixed(2)} below gate`),
+        taskCard("Green Probability", `${Number(probability.estimated_green_probability_pct || 0).toFixed(0)}% · ${probability.confidence_quality || "WEAK"}`),
+      ]
     : []);
 
   // ── IN PROGRESS: scanner + deliberation + open orders ──
@@ -203,6 +215,7 @@ function renderWorkflow(summary) {
     taskCard("Scanner Stream", statusLabel(services["kibot-scanner"]), "live"),
     taskCard("Council Deliberation", `${decision} · ${council.ticker || "no ticker"}`, "live"),
     taskCard("Execution Watch", `${activeTrades} active trades`, activeTrades ? "live" : ""),
+    taskCard("Decision Journal", `E/W/X ${journal.entries || 0}/${journal.waits || 0}/${journal.exits || 0}`, "live"),
   ];
   openOrders.slice(0, 3).forEach((o) => {
     const pair  = String(o.pair || "--").toUpperCase();

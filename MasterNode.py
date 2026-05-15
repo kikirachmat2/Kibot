@@ -169,6 +169,18 @@ class KiBotMaster:
                     f"Combined Rp{combined_equity_idr:,.0f} | PnL Rp{pnl_idr:+,.0f} ({pnl_pct:+.2f}%) | "
                     f"State {green_color}"
                 )
+                try:
+                    from Core.Intelligence.daily_context import update_daily_state
+
+                    update_daily_state(
+                        realized_pnl_idr=float(portfolio_snapshot.get("realized_pnl_idr", 0.0) or 0.0),
+                        unrealized_pnl_idr=float(portfolio_snapshot.get("unrealized_pnl_idr", 0.0) or 0.0),
+                        combined_equity_idr=combined_equity_idr,
+                        available_cash_idr=current_idr,
+                        current_positions=list(portfolio_snapshot.get("active_positions") or []),
+                    )
+                except Exception as daily_ctx_err:
+                    logger.debug(f"Daily context persist skipped: {daily_ctx_err}")
 
                 if green_color == "GREEN":
                     key = "green_state"
@@ -241,7 +253,20 @@ class KiBotMaster:
                 allowed = strategy.get("indodax", {}).get("allowed_pairs", ["*"])
                 pair_list = []
                 if "*" in allowed:
-                    pair_list = ["btc_idr", "eth_idr", "sol_idr", "xrp_idr"]
+                    try:
+                        candidates_path = ROOT_DIR / "state" / "scanner_candidates.json"
+                        if candidates_path.exists():
+                            candidates = json.loads(candidates_path.read_text(encoding="utf-8"))
+                            for sig in list(candidates.get("top") or [])[:8]:
+                                if not isinstance(sig, dict):
+                                    continue
+                                pair = str(sig.get("pair") or sig.get("symbol") or "").lower().replace("/", "_")
+                                if pair and pair.endswith("_idr"):
+                                    pair_list.append(pair)
+                    except Exception:
+                        pair_list = []
+                    if not pair_list:
+                        pair_list = ["btc_idr", "eth_idr", "sol_idr", "xrp_idr"]
                 else:
                     for pair in allowed:
                         pair = str(pair).strip().lower()
@@ -371,6 +396,17 @@ class KiBotMaster:
                                     "probe_confidence_floor": float(decision.get("probe_confidence_floor", 0.0) or 0.0),
                                     "trade_profile": decision.get("trade_profile", "STANDARD"),
                                     "daily_state": dict(self.last_state.get("portfolio", {}).get("daily_state", {}) or {}),
+                                    "daily_context": decision.get("daily_context", {}),
+                                    "deadline_mode": decision.get("deadline_mode"),
+                                    "capital_state": decision.get("capital_state"),
+                                    "budget_fraction": decision.get("budget_fraction"),
+                                    "trade_grade": decision.get("trade_grade") or source_signal.get("trade_grade"),
+                                    "lifecycle": source_signal.get("lifecycle") or source_signal.get("pump_stage"),
+                                    "exit_plan": decision.get("exit_plan", {}),
+                                    "green_probability": decision.get("green_probability", {}),
+                                    "confidence_breakdown": decision.get("confidence_breakdown") or source_signal.get("confidence_breakdown", {}),
+                                    "role_votes": decision.get("role_votes", []),
+                                    "two_phase_council": decision.get("two_phase_council", {}),
                                     "council_score": decision.get("decision_score"),
                                     "council_wait_reason": decision.get("wait_reason", ""),
                                 })
@@ -464,7 +500,10 @@ class KiBotMaster:
                     midnight_key = now.date().isoformat()
                     if not hasattr(self, '_midnight_sent') or self._midnight_sent != midnight_key:
                         logger.info("Midnight reached. Sending Sovereign Daily Report...")
-                        await self.notifier.send_status_reply(telemetry)
+                        if hasattr(self.notifier, "send_daily_report"):
+                            await self.notifier.send_daily_report(telemetry, force=True)
+                        else:
+                            await self.notifier.send_status_reply(telemetry)
                         self._midnight_sent = midnight_key
                 
                 # B. Periodic Council Deliberation (Scouting) - SILENT (No Telegram)

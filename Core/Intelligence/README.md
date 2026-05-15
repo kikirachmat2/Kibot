@@ -27,6 +27,14 @@ AI Orchestration, Learning, and Market Intelligence models.
 - Indodax executor sekarang melakukan wallet/open-order reconciliation berkala: posisi yang tidak punya balance/open order dibuang sebagai stale, sedangkan holding yang muncul di wallet dan memenuhi minimum order otomatis di-attach kembali ke `active_trades.json`.
 - Council trading deliberation sekarang bounded: `COUNCIL_ANTAGONIST`, `COUNCIL_SPEAKER`, dan evidence web search punya timeout. Jika AI/provider lambat, deterministic fallback memilih `ENTER/WAIT` dari local evidence (confidence, spread, tick trap, OHLC quality, what-if), bukan menggantung.
 - RiskGate dan aggregator memakai business day WIB, sehingga daily PnL/report tidak salah tanggal ketika server masih UTC.
+- `PUMP_LIFECYCLE_STRATEGY.md` adalah kontrak strategi utama untuk pump riding, green-builder fallback, deadline intelligence, role-agent debate, Telegram report, dan dashboard alignment.
+- `decision_journal.py` mencatat scanner slate, council vote, pre-trade simulation, dan execution event ke `state/decision_journal/YYYY-MM-DD.jsonl` supaya semua keputusan bisa diaudit.
+- `pre_trade_simulator.py` menolak entry yang tidak masuk akal sebelum order: spread terlalu lebar, slippage buruk, min sellable tidak tercapai, partial TP tidak feasible, atau depth kosong.
+- `market_heatmap.py` membangun snapshot breadth Indodax dari ticker live sehingga council tahu apakah pasar sedang pump-friendly, mixed, risk-off, atau thin.
+- `probability_engine.py` menghitung estimasi probabilitas harian untuk tetap/menjadi GREEN berdasarkan PnL, deadline, heatmap, kandidat scanner, order quality, health server, dan health sumber data.
+- `daily_report.py` membuat template Telegram midnight report yang singkat: state, PnL, cash/holdings, scanner/council/executor summary, risk flags, dan next posture.
+- Executor Indodax sekarang memakai `exit_plan` per posisi: hard stop, trailing stop, partial TP, max hold, distribution exit, dan fallback legacy jika plan belum ada.
+- Dashboard membaca `daily_context`, `green_probability`, `market_heatmap`, `scanner_candidates`, dan `decision_journal`, sehingga control plane menampilkan kecerdasan strategi yang sama dengan runtime.
 
 ## Live Server Atlas
 Source of truth untuk keadaan server yang sebenarnya:
@@ -92,6 +100,9 @@ Server-only artifacts yang tidak kelihatan dari code tree biasa:
 - `kibotctl` adalah entrypoint operasional satu command; gunakan `status`, `doctor`, `restart`, dan `sync-models` untuk menjaga sinkronisasi server.
 - Live trading executor tetap menunggu gate eksplisit `KIBOT_LIVE_TRADING_ENABLED=true` atau `KIBOT_TRADING_MODE=live`.
 - Telegram status path sudah diverifikasi lagi via shared throttled notifier; manual status bisa dikirim tanpa membuka spam loop, sedangkan report harian tetap di window midnight WIB.
+- Pump lifecycle runtime sekarang punya empat lapis sebelum real-money entry: scanner evidence, fast+deep council mandate, pre-trade orderbook simulation, lalu RiskGate/executor validation.
+- Green objective tidak diperlakukan sebagai angka statis. `daily_context` memberi deadline mode, color state, dan remaining time supaya council tahu kapan harus oportunistik, kapan harus preserve green, dan kapan harus stop mengejar setup buruk.
+- Universal lead-lag scanner tetap dicatat sebagai konteks, tetapi tidak lagi membangunkan Council sendirian jika tidak ada sinyal Indodax/Polymarket yang tradeable.
 
 ## Key Files
 - `kibot_ai_coordinator.py`: Main AI signal processor.
@@ -102,3 +113,9 @@ Server-only artifacts yang tidak kelihatan dari code tree biasa:
 - `kibot_ollama_gateway.py`: Local LLM gateway that now loads sovereign env explicitly and fails closed when the runtime secret is missing.
 - `SovereignCouncil`: deliberation engine yang menggabungkan what-if snapshot dan evidence web sebelum final mandate.
 - `kibot_ollama_gateway.py`: Local LLM gateway.
+- `daily_context.py`: WIB business-day context, daily color, deadline pressure, and trade posture.
+- `decision_journal.py`: Runtime audit trail for scanner, council, simulation, and executor decisions.
+- `pre_trade_simulator.py`: Pre-entry orderbook feasibility and size sanity check.
+- `market_heatmap.py`: Indodax breadth and pump-market regime snapshot.
+- `probability_engine.py`: Green-probability estimator for deadline-aware decisioning.
+- `daily_report.py`: Midnight Telegram report builder.

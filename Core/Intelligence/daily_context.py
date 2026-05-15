@@ -209,7 +209,10 @@ def get_daily_context(
     regime  = market_regime or _market_regime_from_state()
 
     minutes = _minutes_to_midnight_wib()
-    color   = _daily_color(r_pnl, equity)
+    # Daily color must reflect the live mark-to-market state, not just closed
+    # trades. This keeps the whole council aware when open holdings are already
+    # GREEN or in RECOVERY before the executor realizes the PnL.
+    color   = _daily_color(float(r_pnl or 0.0) + float(ur_pnl or 0.0), equity)
     urgency = _urgency_level(minutes)
 
     ctx = {

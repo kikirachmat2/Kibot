@@ -7,6 +7,11 @@ from Core.Support.ki_vault import load_sovereign_env
 from Core.Intelligence.kibot_ai_coordinator import query_ai
 from Core.Intelligence.kibot_ai_search import AISearchService
 from Core.sovereign_state import save_strategy, load_strategy, set_urgency, load_pnl_history
+from Core.Intelligence.daily_context import get_daily_context
+from Core.Intelligence.market_heatmap import load_heatmap
+from Core.Intelligence.probability_engine import estimate_green_probability
+from Core.Intelligence.decision_journal import log_council_decision
+from Core.Intelligence.exit_plan import build_exit_plan
 
 logger = logging.getLogger("SovereignCouncil")
 
@@ -931,6 +936,54 @@ class SovereignCouncil:
         portfolio_ctx = self._portfolio_context(signals_context)
         minutes_to_midnight = self._minutes_to_midnight_wib()
         deadline_pressure = self._deadline_pressure(minutes_to_midnight)
+
+        portfolio_live = portfolio_ctx.get("portfolio", {}) if isinstance(portfolio_ctx.get("portfolio"), dict) else {}
+        realized_raw = portfolio_live.get("realized_pnl_idr")
+        unrealized_raw = portfolio_live.get("unrealized_pnl_idr")
+        if realized_raw is None and unrealized_raw is None:
+            realized_pnl = float(portfolio_ctx.get("daily_pnl_idr", 0.0) or 0.0)
+            unrealized_pnl = 0.0
+        else:
+            realized_pnl = float(realized_raw or 0.0)
+            unrealized_pnl = float(unrealized_raw or 0.0)
+
+        daily_context = get_daily_context(
+            realized_pnl_idr=realized_pnl,
+            unrealized_pnl_idr=unrealized_pnl,
+            combined_equity_idr=float(portfolio_ctx.get("combined_equity_idr", 0.0) or 0.0),
+            available_cash_idr=float(portfolio_live.get("idr_cash", 0.0) or 0.0),
+            current_positions=portfolio_ctx.get("open_positions", []),
+            market_regime=(signals_context.get("market_context") or {}).get("regime") if isinstance(signals_context.get("market_context"), dict) else None,
+        )
+
+        heatmap = load_heatmap(default_fetch=False)
+        order_summary = {}
+        try:
+            from Core.Intelligence.order_tracker import get_tracker as _get_ot
+
+            order_summary = _get_ot().get_today_summary()
+        except Exception:
+            order_summary = {}
+        green_probability = estimate_green_probability(
+            daily_context=daily_context,
+            heatmap=heatmap,
+            candidates=list(signals_context.get("signals") or []),
+            order_summary=order_summary,
+            system_health=signals_context.get("system_health") or {},
+            source_health={
+                "coverage_score": evidence_bundle.get("coverage_score", 0.0),
+                "risk_penalty": evidence_bundle.get("risk_penalty", 0.0),
+                "source_count": len(evidence_bundle.get("sources") or []),
+            },
+        )
+        try:
+            (self.state_dir / "green_probability.json").write_text(
+                json.dumps(green_probability, indent=2, default=str),
+                encoding="utf-8",
+            )
+        except Exception as _gp_err:
+            logger.debug(f"Failed to persist green probability: {_gp_err}")
+
         signals_context = {
             **signals_context,
             "whatif_snapshot": whatif_snapshot,
@@ -939,6 +992,10 @@ class SovereignCouncil:
             "portfolio_state": portfolio_ctx.get("portfolio", {}),
             "polymarket_state": portfolio_ctx.get("polymarket", {}),
             "daily_state": portfolio_ctx.get("daily_state", {}),
+            "daily_context": daily_context,
+            "market_heatmap": heatmap,
+            "green_probability": green_probability,
+            "order_summary": order_summary,
             "minutes_to_midnight": minutes_to_midnight,
             "deadline_pressure": deadline_pressure,
         }
@@ -980,6 +1037,39 @@ class SovereignCouncil:
         decision["antagonist_view"] = antagonist_view or {}
         decision["deadline_pressure"] = deadline_pressure
         decision["daily_state"] = portfolio_ctx.get("daily_state", {})
+        confidence_floor = self._evidence_floor(evidence_bundle, whatif_snapshot)
+
+        # If the speaker says WAIT but the scanner has a clearly ranked A/B
+        # candidate, promote it into the formal role contract instead of letting
+        # the system sit blind. The Fast+Deep Council below can still veto.
+        if str(decision.get("action") or "NONE").upper() not in {"BUY", "SELL"}:
+            candidates = [
+                s for s in list(signals_context.get("signals") or [])
+                if isinstance(s, dict) and str(s.get("exchange") or "INDODAX").upper() == "INDODAX"
+            ]
+            candidates.sort(
+                key=lambda s: float(s.get("opportunity_score") or s.get("confidence") or 0.0),
+                reverse=True,
+            )
+            best_candidate = candidates[0] if candidates else {}
+            best_conf = float(best_candidate.get("confidence", 0.0) or 0.0) if best_candidate else 0.0
+            best_grade = str(best_candidate.get("trade_grade") or "C").upper()
+            best_lifecycle = str(best_candidate.get("lifecycle") or best_candidate.get("pump_stage") or "").upper()
+            if (
+                best_candidate
+                and best_conf >= max(0.68, confidence_floor - 0.04)
+                and best_grade in {"A", "B"}
+                and best_lifecycle not in {"TRAP", "LOCAL_TRAP", "DISTRIBUTION"}
+                and daily_context.get("allowed_risk_mode") != "WAIT"
+            ):
+                decision.update({
+                    "action": "BUY",
+                    "ticker": str(best_candidate.get("symbol") or best_candidate.get("ticker") or "").upper(),
+                    "confidence": max(float(decision.get("confidence", 0.0) or 0.0), best_conf),
+                    "logic": "scanner opportunity override routed to formal Fast+Deep Council",
+                    "source": "SCANNER_OPPORTUNITY_OVERRIDE",
+                    "fallback_decision": bool(decision.get("fallback_decision", False)),
+                })
         
         # Find matching signal from context for price/metadata parity
         signals = signals_context.get("signals", [])
@@ -987,12 +1077,90 @@ class SovereignCouncil:
         source_signal = self._find_matching_signal(signals, target_ticker)
         decision["source_signal"] = source_signal
 
+        # 2b. Formal Fast+Deep Council contract for any candidate that might
+        # touch money. This makes the role debate deterministic and auditable
+        # even when the speaker model is over-eager.
+        two_phase_mandate: Dict[str, Any] = {}
+        exit_plan: Dict[str, Any] = {}
+        if (
+            isinstance(source_signal, dict)
+            and source_signal
+            and str(decision.get("action") or "").upper() in {"BUY", "SELL"}
+        ):
+            try:
+                from Core.risk_gate import RiskGate
+
+                capital_state = RiskGate().get_capital_state(
+                    float(portfolio_live.get("idr_cash", 0.0) or 0.0),
+                    active_slots=len(portfolio_ctx.get("open_positions") or []),
+                )
+            except Exception:
+                capital_state = {"capital_state": "NORMAL", "sizing_mode": "NORMAL"}
+
+            pair_memory = source_signal.get("historian_profile") if isinstance(source_signal.get("historian_profile"), dict) else {}
+            try:
+                exit_plan = build_exit_plan(
+                    source_signal,
+                    daily_context,
+                    str(capital_state.get("capital_state", "NORMAL")),
+                    pair_memory,
+                )
+            except Exception as ep_err:
+                exit_plan = {"error": str(ep_err), "pair": source_signal.get("symbol")}
+
+            try:
+                two_phase_mandate = await self.council_mandate(
+                    source_signal,
+                    daily_context,
+                    capital_state=capital_state,
+                    exit_plan=exit_plan,
+                    pair_memory=pair_memory,
+                )
+            except Exception as mandate_err:
+                logger.warning(f"Fast+Deep Council contract failed; using speaker decision: {mandate_err}")
+                two_phase_mandate = {"phase": "CONTRACT_ERROR", "reason": str(mandate_err)}
+
+            decision["two_phase_council"] = two_phase_mandate
+            decision["exit_plan"] = exit_plan
+            if two_phase_mandate and two_phase_mandate.get("decision_state") != "ENTER":
+                decision["status"] = "WAIT"
+                decision["decision_state"] = "WAIT"
+                decision["action"] = "NONE"
+                decision["confidence"] = min(
+                    float(decision.get("confidence", 0.0) or 0.0),
+                    float(two_phase_mandate.get("confidence", 0.0) or 0.0),
+                )
+                decision["wait_reason"] = (
+                    f"{two_phase_mandate.get('phase', 'COUNCIL')} veto by "
+                    f"{two_phase_mandate.get('veto_by') or 'role'}: "
+                    f"{two_phase_mandate.get('reason')}"
+                )
+            elif two_phase_mandate and two_phase_mandate.get("decision_state") == "ENTER":
+                decision["confidence"] = max(
+                    float(decision.get("confidence", 0.0) or 0.0),
+                    float(two_phase_mandate.get("confidence", 0.0) or 0.0),
+                )
+                decision["trade_grade"] = two_phase_mandate.get("trade_grade", source_signal.get("trade_grade"))
+                decision["budget_fraction"] = two_phase_mandate.get("budget_fraction")
+                decision["capital_state"] = two_phase_mandate.get("capital_state")
+                decision["deadline_mode"] = two_phase_mandate.get("deadline_mode")
+                decision["confidence_breakdown"] = two_phase_mandate.get("breakdown", source_signal.get("confidence_breakdown", {}))
+
         # 3. Determine Execution Status
-        confidence_floor = self._evidence_floor(evidence_bundle, whatif_snapshot)
         decision["confidence_floor"] = confidence_floor
         decision["today_trade_activity"] = today_trade_activity
         decision["portfolio_state"] = portfolio_ctx.get("portfolio", {})
         decision["polymarket_state"] = portfolio_ctx.get("polymarket", {})
+        decision["daily_context"] = daily_context
+        decision["market_heatmap"] = {
+            "market_breadth": heatmap.get("market_breadth"),
+            "green_pairs": heatmap.get("green_pairs"),
+            "red_pairs": heatmap.get("red_pairs"),
+            "pump_candidates": heatmap.get("pump_candidates"),
+            "local_pump_candidates": heatmap.get("local_pump_candidates"),
+            "top_movers": list(heatmap.get("top_movers") or [])[:5],
+        }
+        decision["green_probability"] = green_probability
         decision.setdefault("learning_probe", False)
         decision.setdefault("trade_profile", "STANDARD")
 
@@ -1019,6 +1187,7 @@ class SovereignCouncil:
 
         decision.update(posture)
         decision["deadline_pressure"] = deadline_pressure
+        decision["deadline_mode"] = decision.get("deadline_mode") or daily_context.get("deadline_mode")
 
         if antagonist_view and isinstance(antagonist_view, dict):
             decision["antagonist_view"] = antagonist_view
@@ -1027,6 +1196,7 @@ class SovereignCouncil:
             best_alt_conf = float(antagonist_view.get("best_alternative_confidence", 0.0) or 0.0)
             if (
                 decision.get("decision_state") == "WAIT"
+                and not (isinstance(decision.get("two_phase_council"), dict) and decision["two_phase_council"].get("veto_by"))
                 and best_alt_action in {"BUY", "SELL"}
                 and best_alt_ticker
                 and best_alt_conf >= max(confidence_floor, 0.74)
@@ -1071,6 +1241,41 @@ class SovereignCouncil:
                 f"exit posture signaled: score {decision.get('exit_score', 0):.1f}"
             )
 
+        source_signal = decision.get("source_signal") if isinstance(decision.get("source_signal"), dict) else {}
+        two_phase = decision.get("two_phase_council") if isinstance(decision.get("two_phase_council"), dict) else {}
+        decision["role_votes"] = [
+            {
+                "role": "Hunter",
+                "vote": "PASS" if float(source_signal.get("confidence", decision.get("confidence", 0)) or 0) >= 0.60 else "WAIT",
+                "reason": f"signal confidence {float(source_signal.get('confidence', decision.get('confidence', 0)) or 0):.3f}",
+            },
+            {
+                "role": "LiquidityEngineer",
+                "vote": "PASS" if source_signal and float(source_signal.get("spread_pct", 0.0) or 0.0) <= 1.20 else "WAIT",
+                "reason": f"spread {float(source_signal.get('spread_pct', 0.0) or 0.0):.2f}%",
+            },
+            {
+                "role": "Historian",
+                "vote": (source_signal.get("historian_profile") or {}).get("verdict", "UNKNOWN") if isinstance(source_signal.get("historian_profile"), dict) else "UNKNOWN",
+                "reason": "pair memory verdict",
+            },
+            {
+                "role": "DeadlineKeeper",
+                "vote": daily_context.get("deadline_mode", "PATIENT"),
+                "reason": f"{daily_context.get('minutes_to_midnight')}m left, color={daily_context.get('daily_color')}",
+            },
+            {
+                "role": "Antagonist",
+                "vote": "VETO" if two_phase.get("veto_by") == "Antagonist" else "CHALLENGE",
+                "reason": str((decision.get("antagonist_view") or {}).get("reason") or two_phase.get("reason") or "searched for failure mode")[:160],
+            },
+            {
+                "role": "Auditor",
+                "vote": "PASS" if decision.get("status") == "EXECUTING" else "WAIT",
+                "reason": decision.get("wait_reason") or decision.get("logic") or "contract checked",
+            },
+        ]
+
         logger.info(
             "🏛️ Council verdict: %s %s %s conf=%.3f score=%s reason=%s",
             decision.get("decision_state"),
@@ -1080,6 +1285,11 @@ class SovereignCouncil:
             decision.get("decision_score"),
             decision.get("wait_reason") or decision.get("logic", ""),
         )
+        try:
+            self._save_directive(decision)
+            log_council_decision(decision)
+        except Exception as journal_err:
+            logger.debug(f"Council structured journal skipped: {journal_err}")
         self._log_decision(decision)
         return decision
 

@@ -7,6 +7,7 @@
 - [`Core/Executors/README.md`](./Core/Executors/README.md): eksekusi trade dan risk checks.
 - [`Core/Intelligence/README.md`](./Core/Intelligence/README.md): AI, aggregator, dan learning loop.
 - [`Core/Intelligence/SERVER_INVENTORY.md`](./Core/Intelligence/SERVER_INVENTORY.md): snapshot runtime server, AI models, API keys, dan artefak server-only.
+- [`Core/Intelligence/PUMP_LIFECYCLE_STRATEGY.md`](./Core/Intelligence/PUMP_LIFECYCLE_STRATEGY.md): kontrak strategi pump lifecycle, green-builder fallback, deadline intelligence, role-agent debate, dan Telegram/dashboard alignment.
 - [`Core/Intelligence/delegation_workflows.md`](./Core/Intelligence/delegation_workflows.md): playbook workflow delegasi formal untuk seluruh sistem.
 - [`Core/Intelligence/delegation_workflows.json`](./Core/Intelligence/delegation_workflows.json): manifest machine-readable untuk workflow delegasi.
 - [`Core/Intelligence/kibot_dashboard.py`](./Core/Intelligence/kibot_dashboard.py): control-plane web dashboard untuk memantau delegation flow secara visual, saldo, strategy, dan event stream.
@@ -36,11 +37,16 @@
 - **PnL Mark-to-Market**: daily PnL memakai realized PnL + unrealized open trade PnL, bukan sekadar nilai holdings.
 - **Council-Gated Execution**: scanner tidak lagi boleh bypass Council; executor menerima order real-money hanya dari `COUNCIL_MANDATE` kecuali override env eksplisit.
 - **Anti Tick-Trap Pump Filter**: pump hunter menolak coin dengan tick-size kasar, level harga 24h terlalu sedikit, spread/OBI buruk, atau riwayat candle datar seperti jebakan 1↔2 IDR.
+- **Pump Lifecycle Runtime**: setiap entry harus melewati scanner evidence, fast+deep council, pre-trade orderbook simulation, RiskGate, lalu executor exit-plan.
+- **Green-First Deadline Intelligence**: target harian adalah state hijau. Council memakai WIB deadline, PnL mark-to-market, dan market breadth untuk memilih antara pump riding, green-builder scalp, preserve green, atau stop.
+- **Decision Journal**: scanner slate, council vote, simulation, dan execution event dicatat ke `state/decision_journal/` supaya alasan buy/wait/exit bisa dilacak.
+- **Pre-Trade Simulation**: executor mengecek spread, slippage, sellable minimum, dan partial-take-profit feasibility sebelum order real-money.
 
 ### 📱 Notification Protocol
 - **Urgent Only**: Hanya mengirim pesan darurat dan tindakan kritis ke Telegram.
 - **Throttle & Dedupe**: Telegram diproteksi dengan cooldown global, dedupe pesan, dan incident cooldown supaya tidak spam.
 - **Midnight Report**: Laporan PnL harian otomatis setiap pukul 00:00 WIB.
+- **Compact Daily Intelligence**: midnight report memuat PnL, cash/holdings, green probability, scanner/council/executor summary, risk flags, dan posture berikutnya.
 - **No Spam Recovery**: posisi yang tidak bisa dijual karena minimum order exchange ditandai `exit_blocked_until`, bukan dicoba setiap 5 detik tanpa henti.
 - **Wallet-Reconciled State**: executor menyamakan `active_trades.json` dengan wallet/open-orders Indodax live, jadi posisi palsu tidak lagi membuat Council salah hitung.
 - **Bounded Council Thinking**: AI/websearch tetap dipakai, tetapi setiap deliberasi punya timeout dan deterministic fallback berbasis evidence lokal agar sistem tidak freeze saat provider lambat.

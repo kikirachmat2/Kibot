@@ -34,6 +34,8 @@ class ScannerEngine:
         self.seq_id = 0
         self.is_running = True
         self._last_poly_scan = 0.0
+        self._last_heatmap_refresh = 0.0
+        self._heatmap_interval_s = float(os.getenv("KIBOT_HEATMAP_REFRESH_SEC", "60") or 60)
 
     def _extract_signals(self, res: Any) -> List[Dict[str, Any]]:
         if isinstance(res, dict):
@@ -208,16 +210,68 @@ class ScannerEngine:
         elif poly_signals:
             logger.debug(f"[SCANNER] Seq:{self.seq_id} | {len(poly_signals)} POLY signals routed to Council only.")
 
-        # NEW: Dispatch to MasterNode (Council) for high-level deliberation
-        all_signals = indo_signals + poly_signals + getattr(self, 'universal_signals', [])
-        if all_signals:
+        # NEW: Dispatch to MasterNode (Council) for high-level deliberation.
+        # Universal lead-lag items are useful context, but they are not directly
+        # executable. Do not wake Council for universal-only slates or it wastes
+        # AI budget debating non-tradeable exchange names.
+        universal_signals = getattr(self, 'universal_signals', [])
+        all_signals = indo_signals + poly_signals + universal_signals
+        tradeable_signals = indo_signals + poly_signals
+        dispatch_signals = all_signals if tradeable_signals else []
+        if dispatch_signals:
             data = {
                 "type": "COUNCIL_SIGNAL_DATA",
-                "signals": all_signals,
+                "signals": dispatch_signals,
                 "ts": int(started_at * 1000)
             }
             await self._dispatch(9991, data, secret)
-            logger.info(f"🧠 Dispatched {len(all_signals)} HMAC-signed signals to Sovereign Council.")
+            logger.info(f"🧠 Dispatched {len(dispatch_signals)} HMAC-signed signals to Sovereign Council.")
+
+        # Persist a compact, human/auditor-readable signal slate every cycle.
+        # Even an empty slate is useful: dashboard/reporting can distinguish
+        # "no candidates" from "scanner state is stale or missing".
+        try:
+            from Core.Support.ki_config import STATE_DIR
+            from Core.Intelligence.decision_journal import log_scanner_candidates
+            import tempfile
+
+            ranked = sorted(
+                all_signals,
+                key=lambda s: float(s.get("opportunity_score") or s.get("confidence") or 0),
+                reverse=True,
+            )
+            payload = {
+                "seq_id": self.seq_id,
+                "generated_at": datetime.now(timezone.utc).isoformat(),
+                "total": len(all_signals),
+                "indodax_count": len(indo_signals),
+                "polymarket_count": len(poly_signals),
+                "universal_count": len(getattr(self, "universal_signals", [])),
+                "top": ranked[:25],
+            }
+            state_path = Path(STATE_DIR) / "scanner_candidates.json"
+            state_path.parent.mkdir(parents=True, exist_ok=True)
+            tmp = tempfile.NamedTemporaryFile(
+                mode="w", encoding="utf-8",
+                dir=str(state_path.parent), delete=False, suffix=".tmp"
+            )
+            json.dump(payload, tmp, ensure_ascii=False, default=str)
+            tmp.flush()
+            tmp.close()
+            Path(tmp.name).replace(state_path)
+            if ranked:
+                log_scanner_candidates(ranked[:25], context={"seq_id": self.seq_id})
+        except Exception as _cand_err:
+            logger.debug(f"[Scanner] scanner_candidates write failed: {_cand_err}")
+
+        if started_at - self._last_heatmap_refresh >= self._heatmap_interval_s:
+            self._last_heatmap_refresh = started_at
+            try:
+                from Core.Intelligence.market_heatmap import fetch_indodax_heatmap
+
+                fetch_indodax_heatmap(persist=True, timeout=6.0)
+            except Exception as _heatmap_err:
+                logger.debug(f"[Scanner] heatmap refresh skipped: {_heatmap_err}")
 
         # ── §17.2 Persist best Indodax signal for dashboard Signal Intel panel ──
         if indo_signals:
