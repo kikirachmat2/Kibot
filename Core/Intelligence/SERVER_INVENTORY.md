@@ -214,6 +214,8 @@ These exist on the server but are easy to miss if you only inspect the code tree
 44. Midnight Telegram reporting is routed through `SovereignNotifier.send_daily_report()` and `daily_report.py` with shared throttling, so the operator receives one compact report instead of spam.
 45. Dashboard V3.1 now surfaces strategy intelligence: deadline mode, risk mode, quality floor, green probability, scanner slate, decision journal count, and market breadth in the visual workflow board.
 46. Universal lead-lag signals are now context-only when they appear alone. They are persisted in scanner state, but Council is only awakened when there is at least one tradeable Indodax or Polymarket signal, preventing non-executable exchange names from consuming AI deliberation time.
+47. Fallback category intelligence is implemented in `Core/Intelligence/coin_category.py`. Scanner now labels each Indodax candidate with deterministic category policy (`HIGH_LIQUIDITY_MAJOR`, `BTC_ETH_BETA`, `AI_BIG_DATA`, `RWA_DEFI`, `MEME_ROTATION`, `LOCAL_MOMENTUM`) so Council can switch from pump riding to structured green-builder mode without buying random dead coins.
+48. The Indodax unit-price law is enforced by both `RiskGate` and `IndodaxExecutor`: a BUY is rejected when `price_idr >= total_equity_idr`. This makes the operator rule explicit: KiBot may only buy coins whose one-unit price is below the current total balance/equity.
 
 ---
 

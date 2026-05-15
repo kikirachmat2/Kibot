@@ -103,6 +103,8 @@ Server-only artifacts yang tidak kelihatan dari code tree biasa:
 - Pump lifecycle runtime sekarang punya empat lapis sebelum real-money entry: scanner evidence, fast+deep council mandate, pre-trade orderbook simulation, lalu RiskGate/executor validation.
 - Green objective tidak diperlakukan sebagai angka statis. `daily_context` memberi deadline mode, color state, dan remaining time supaya council tahu kapan harus oportunistik, kapan harus preserve green, dan kapan harus stop mengejar setup buruk.
 - Universal lead-lag scanner tetap dicatat sebagai konteks, tetapi tidak lagi membangunkan Council sendirian jika tidak ada sinyal Indodax/Polymarket yang tradeable.
+- `coin_category.py` menjadi intelligence layer untuk fallback non-pump: `HIGH_LIQUIDITY_MAJOR`, `BTC_ETH_BETA`, `AI_BIG_DATA`, `RWA_DEFI`, `MEME_ROTATION`, dan `LOCAL_MOMENTUM`. Scanner menempelkan `fallback_category`; Council dan Executor mempertahankannya sampai active trade audit.
+- Unit-price law aktif: setiap BUY Indodax wajib harga 1 unit koinnya strict di bawah total saldo/equity saat itu. `RiskGate` dan `IndodaxExecutor` sama-sama menolak `price_idr >= total_equity_idr`.
 
 ## Key Files
 - `kibot_ai_coordinator.py`: Main AI signal processor.

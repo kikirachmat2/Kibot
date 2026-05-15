@@ -15,6 +15,15 @@ except ImportError:
     _LEARNING_ENGINE_AVAILABLE = False
     _get_learning_engine = None
 
+try:
+    from Core.Intelligence.coin_category import classify_coin_category, category_score_adjustment
+except ImportError:
+    def classify_coin_category(symbol: str):
+        return {"category": "UNKNOWN", "fallback_priority": 99, "allowed_for_green_builder": False}
+
+    def category_score_adjustment(category: str, signal=None) -> float:
+        return 0.0
+
 # Thresholds untuk small cap pump detection (Aggressive V4.0)
 # Fokus: coins yang sedang naik kuat, dekat high harian, dan masih punya volume persistence.
 VOLUME_SPIKE_MULTIPLIER = 1.35
@@ -657,6 +666,9 @@ class IndodaxSmallCapScanner:
         obi_source       = sig.get("obi_source", "PROXY")
         spread_pct       = sig.get("spread_pct")
         confidence       = sig.get("confidence", 0.5)
+        base_symbol      = sig.get("base_symbol") or str(sig.get("symbol", "")).split("/")[0]
+        category_policy  = classify_coin_category(base_symbol)
+        category_adjust  = category_score_adjustment(category_policy.get("category"), sig)
 
         lifecycle = self._map_lifecycle(pump_stage, distance_to_high, obi)
 
@@ -673,6 +685,7 @@ class IndodaxSmallCapScanner:
             spread_pct         = spread_pct,
             lifecycle          = lifecycle,
         )
+        breakdown["category_rotation"] = round(category_adjust, 4)
 
         exit_quality = self._compute_exit_quality(spread_pct, obi, obi_source, lifecycle)
 
@@ -697,7 +710,7 @@ class IndodaxSmallCapScanner:
 
         # Opportunity score: aggregate of confidence + exit quality bonus
         exit_bonus = {"A": 0.10, "B": 0.05, "C": 0.0, "D": -0.05, "F": -0.15}.get(exit_quality, 0.0)
-        opportunity_score = round(min(1.0, max(0.0, confidence + exit_bonus)), 4)
+        opportunity_score = round(min(1.0, max(0.0, confidence + exit_bonus + category_adjust)), 4)
 
         now = time.time()
         sig.update({
@@ -708,6 +721,9 @@ class IndodaxSmallCapScanner:
             "exit_quality":         exit_quality,
             "confidence_breakdown": breakdown,
             "historian_profile":    historian_profile,
+            "fallback_category":    category_policy.get("category"),
+            "category_policy":      category_policy,
+            "category_score_adjustment": round(category_adjust, 4),
             "freshness": {
                 "ticker_age_s":     round(now - ticker_fetch_ts, 1),
                 "orderbook_age_s":  round(now - ticker_fetch_ts, 1),  # same batch
@@ -748,4 +764,3 @@ if __name__ == "__main__":
         if res["signals"]:
             print(f"Signals detected: {len(res['signals'])}")
         time.sleep(10)
-

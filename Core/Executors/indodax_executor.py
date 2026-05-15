@@ -719,6 +719,19 @@ class IndodaxExecutor:
             if current_balance <= 0:
                 logger.warning(f"🛡️ REJECTED: Zero balance, cannot trade {symbol}.")
                 return
+            total_equity_idr = max(
+                float(signal.get("total_equity_idr") or signal.get("combined_equity_idr") or signal.get("equity_idr") or 0.0),
+                float(current_balance or 0.0),
+            )
+            signal["total_equity_idr"] = total_equity_idr
+            if side.lower() == "buy" and price >= total_equity_idr:
+                logger.warning(
+                    "🛡️ REJECTED (Unit Price Rule): %s 1 coin Rp%,.0f >= total balance/equity Rp%,.0f",
+                    symbol,
+                    price,
+                    total_equity_idr,
+                )
+                return
             
             # 2. Risk Validation
             # 2. Dynamic Budget Allocation (V3.1 Sovereign Balance Awareness)
@@ -750,7 +763,13 @@ class IndodaxExecutor:
                 f"📊 FEE CALC: TP={tp_pct:.2f}%, Fee={fee_roundtrip_pct:.2f}%, Net={expected_net_pct:.2f}%"
             )
 
-            affordable, afford_reason = await self._can_afford(symbol, price, budget, indo_strat)
+            affordable, afford_reason = await self._can_afford(
+                symbol,
+                price,
+                budget,
+                indo_strat,
+                total_equity_idr=total_equity_idr,
+            )
             if not affordable:
                 logger.warning(f"🛡️ REJECTED (Balance-Aware): {afford_reason} for {symbol}")
                 return
@@ -1000,6 +1019,13 @@ class IndodaxExecutor:
                     "pre_trade_simulation": signal.get("pre_trade_simulation", {}),
                     "trade_grade": signal.get("trade_grade"),
                     "lifecycle": signal.get("lifecycle") or signal.get("pump_stage"),
+                    "fallback_category": signal.get("fallback_category"),
+                    "category_policy": signal.get("category_policy", {}),
+                    "unit_price_rule": {
+                        "must_be_below_total_equity": True,
+                        "price_idr": actual_price,
+                        "total_equity_idr": signal.get("total_equity_idr"),
+                    },
                     "deadline_mode": signal.get("deadline_mode"),
                     "capital_state": signal.get("capital_state"),
                 }
@@ -1015,6 +1041,7 @@ class IndodaxExecutor:
                             "sovereign_order_id": sovereign_order_id,
                             "trade_grade": signal.get("trade_grade"),
                             "lifecycle": signal.get("lifecycle") or signal.get("pump_stage"),
+                            "fallback_category": signal.get("fallback_category"),
                         })
                     except Exception:
                         pass
@@ -1031,11 +1058,24 @@ class IndodaxExecutor:
                 self.reservations.pop(symbol, None)
                 logger.info(f"🔓 RELEASED reservation for {symbol}")
 
-    async def _can_afford(self, symbol: str, price: float, budget: float, indo_strat: Dict[str, Any]) -> tuple[bool, str]:
+    async def _can_afford(
+        self,
+        symbol: str,
+        price: float,
+        budget: float,
+        indo_strat: Dict[str, Any],
+        total_equity_idr: float | None = None,
+    ) -> tuple[bool, str]:
         fee_rate = float(indo_strat.get("fee_roundtrip_pct", 1.02)) / 100.0
         effective_budget = budget * (1 - fee_rate)
         if price <= 0:
             return False, "INVALID_PRICE"
+
+        if total_equity_idr is not None and price >= float(total_equity_idr or 0.0):
+            return False, (
+                f"UNIT_PRICE_ABOVE_TOTAL_BALANCE: Rp{price:,.0f} must be below "
+                f"total balance/equity Rp{float(total_equity_idr or 0.0):,.0f}"
+            )
 
         if price > effective_budget * 0.8:
             return False, f"COIN_TOO_EXPENSIVE: Rp{price:,.0f} > 80% budget Rp{effective_budget * 0.8:,.0f}"

@@ -125,6 +125,19 @@ class RiskGate:
 
         fee_roundtrip_pct = float(signal.get("fee_roundtrip_pct", 1.02)) / 100.0
         effective_budget = budget * (1 - fee_roundtrip_pct)
+        total_equity_idr = float(
+            signal.get("total_equity_idr")
+            or signal.get("combined_equity_idr")
+            or signal.get("equity_idr")
+            or balance_idr
+            or 0.0
+        )
+        if side == "BUY" and price >= total_equity_idr:
+            return False, (
+                "UNIT_PRICE_ABOVE_TOTAL_BALANCE: "
+                f"1 coin = Rp{price:,.0f} must be strictly below total balance/equity "
+                f"Rp{total_equity_idr:,.0f}"
+            )
         if price > 0 and price > effective_budget:
             return False, f"COIN_PRICE_EXCEEDS_BUDGET: 1 coin = Rp{price:,.0f} > fee-adjusted budget Rp{effective_budget:,.0f}"
         if price > 0:

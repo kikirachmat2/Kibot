@@ -405,6 +405,12 @@ class KiBotMaster:
                                     "exit_plan": decision.get("exit_plan", {}),
                                     "green_probability": decision.get("green_probability", {}),
                                     "confidence_breakdown": decision.get("confidence_breakdown") or source_signal.get("confidence_breakdown", {}),
+                                    "fallback_category": decision.get("fallback_category") or source_signal.get("fallback_category"),
+                                    "category_policy": decision.get("category_policy") or source_signal.get("category_policy", {}),
+                                    "unit_price_rule": decision.get("unit_price_rule") or {
+                                        "must_be_below_total_equity": True,
+                                        "basis": "total_equity_idr",
+                                    },
                                     "role_votes": decision.get("role_votes", []),
                                     "two_phase_council": decision.get("two_phase_council", {}),
                                     "council_score": decision.get("decision_score"),

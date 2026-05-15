@@ -2826,3 +2826,129 @@ If KiBot waits, the dashboard must explain why.
 If KiBot enters, the dashboard must show the evidence, risk, and exit plan.
 If KiBot exits, the dashboard must show whether the exit followed the plan.
 ```
+
+---
+
+## 23. Fallback Category Intelligence and Unit Price Law
+
+When no clean pump is available, KiBot must not become blind or idle. It should
+switch into a fallback hunting mode, but still obey hard execution safety.
+
+### 23.1 Absolute Unit Price Law
+
+This rule is non-negotiable:
+
+```text
+For every Indodax BUY, the price of 1 full coin must be strictly below current total account balance/equity.
+If price_idr >= total_equity_idr, the trade is rejected.
+```
+
+Rationale:
+
+- The operator wants KiBot to avoid expensive unit-price assets while the account is small.
+- Fractional buying may be technically possible, but it can create trapped dust, sell-minimum issues, and poor learning data.
+- This rule is enforced twice: first by `RiskGate`, then by `IndodaxExecutor` immediately before order placement.
+
+Runtime fields:
+
+```json
+{
+  "unit_price_rule": {
+    "must_be_below_total_equity": true,
+    "basis": "total_equity_idr",
+    "enforced_by": ["RiskGate", "IndodaxExecutor"]
+  }
+}
+```
+
+### 23.2 Fallback Category Priority
+
+If no pump is worth riding, KiBot may search for green-builder trades in this
+order:
+
+1. `HIGH_LIQUIDITY_MAJOR` — BTC/ETH/SOL/XRP/TRX/LINK style assets with clean exit depth.
+2. `BTC_ETH_BETA` — assets that historically rotate with BTC/ETH or major L1/L2 momentum.
+3. `AI_BIG_DATA` — AI/data coins only when world model and web intelligence support the narrative.
+4. `RWA_DEFI` — sector rotation candidates when liquidity and trend confirm.
+5. `MEME_ROTATION` — meme coins only for short scalp, never passive holding.
+6. `LOCAL_MOMENTUM` — Indodax-only/local movers, short window only, evidence must be strong.
+7. `AVOID_STABLE` / `UNKNOWN` — do not use for alpha unless manually reclassified later.
+
+Fallback mode is not a permission to force bad trades. It is a structured way to
+keep looking for good asymmetric opportunities when the market is quiet.
+
+### 23.3 Category-Specific Behavior
+
+`HIGH_LIQUIDITY_MAJOR`
+
+- Purpose: slow green-builder when no pump is clean.
+- Requires: spread clean, orderbook healthy, market regime not panic.
+- Holding style: may hold longer if trailing profit remains strong.
+
+`BTC_ETH_BETA`
+
+- Purpose: capture rotation after BTC/ETH strength.
+- Requires: BTC/ETH trend alignment and fresh volume.
+- Holding style: medium-short, exit if BTC/ETH weakens.
+
+`AI_BIG_DATA`
+
+- Purpose: narrative trade if AI sector is being validated by web/news/heatmap.
+- Requires: online evidence or sector breadth.
+- Holding style: do not chase if only one isolated candle.
+
+`MEME_ROTATION`
+
+- Purpose: ride hype only when liquidity proves it.
+- Requires: high volume persistence, clean spread, exit simulation pass.
+- Holding style: short scalp, trailing profit strict, no averaging down.
+
+`LOCAL_MOMENTUM`
+
+- Purpose: catch local exchange-specific moves like sudden GXC-style pumps.
+- Requires: strong local volume, distinct price levels, healthy sell path.
+- Holding style: very short. If it stalls, leave.
+
+### 23.4 Scanner and Council Contract
+
+Scanner must attach:
+
+```json
+{
+  "fallback_category": "MEME_ROTATION",
+  "category_policy": {
+    "fallback_priority": 5,
+    "allowed_for_green_builder": true,
+    "default_mode": "short_scalp_only",
+    "unit_price_must_be_below_total_equity": true
+  },
+  "category_score_adjustment": -0.015
+}
+```
+
+Council must preserve category fields into the mandate so Executor can log the
+reason and active trade state can later be audited.
+
+### 23.5 What-If for No Pump Day
+
+If no pump candidate passes:
+
+1. Switch to green-builder category scan.
+2. Prefer liquid majors and BTC/ETH beta.
+3. Allow small probe only if exit simulation passes and unit price law passes.
+4. Keep the daily objective as GREEN, not arbitrary trade count.
+5. If deadline pressure is high, lower confidence only after data quality,
+   exit path, and hard stop remain acceptable.
+
+### 23.6 Anti-Dead-Coin Rule
+
+KiBot must avoid coins whose historical behavior shows:
+
+- repeated same-price churn,
+- too few distinct price levels,
+- low/no real candle diversity,
+- thin orderbook,
+- pump history that fails to continue,
+- sell-minimum trap risk.
+
+These are not learning opportunities. They are noisy traps.

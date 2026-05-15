@@ -1161,6 +1161,14 @@ class SovereignCouncil:
             "top_movers": list(heatmap.get("top_movers") or [])[:5],
         }
         decision["green_probability"] = green_probability
+        if isinstance(source_signal, dict):
+            decision["fallback_category"] = source_signal.get("fallback_category")
+            decision["category_policy"] = source_signal.get("category_policy", {})
+        decision["unit_price_rule"] = {
+            "must_be_below_total_equity": True,
+            "basis": "total_equity_idr",
+            "enforced_by": ["RiskGate", "IndodaxExecutor"],
+        }
         decision.setdefault("learning_probe", False)
         decision.setdefault("trade_profile", "STANDARD")
 
