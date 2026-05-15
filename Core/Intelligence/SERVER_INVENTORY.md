@@ -27,6 +27,8 @@
 | `kibot-executor` | active | Executor Indodax (canonical unit name) |
 | `kibot-executor-polymarket` | active | Executor Polymarket |
 | `kibot-ai-scout` | active | Intel / scouting loop |
+| `kibot-janitor` | active | Disk/service self-healing |
+| `kibot-dashboard` | active | Visual control plane / System Brain |
 | `ollama` | active | Local AI server |
 | `redis-server` | active | Runtime state store |
 
@@ -45,6 +47,7 @@
 | 9991 | MasterNode Council | UDP | Council deliberation |
 | 9998 | IndodaxExecutor | UDP | Receive signals |
 | 11434 | Ollama | TCP | AI model API |
+| 8787 | KiBot Dashboard | TCP | Visual control plane |
 | 11600 | PolymarketExecutor | TCP | State API |
 | 6379 | Redis | TCP | State store |
 | 22 | SSH | TCP | Remote access |
@@ -217,6 +220,9 @@ These exist on the server but are easy to miss if you only inspect the code tree
 47. Fallback category intelligence is implemented in `Core/Intelligence/coin_category.py`. Scanner now labels each Indodax candidate with deterministic category policy (`HIGH_LIQUIDITY_MAJOR`, `BTC_ETH_BETA`, `AI_BIG_DATA`, `RWA_DEFI`, `MEME_ROTATION`, `LOCAL_MOMENTUM`) so Council can switch from pump riding to structured green-builder mode without buying random dead coins.
 48. The Indodax unit-price law is enforced by both `RiskGate` and `IndodaxExecutor`: a BUY is rejected when `price_idr >= total_equity_idr`. This makes the operator rule explicit: KiBot may only buy coins whose one-unit price is below the current total balance/equity.
 49. Strategy documentation is now split by responsibility: `TRADING_STRATEGY.md` for trading, `SYSTEM_STRATEGY.md` for non-trading autonomy, `AUTONOMY_GAP_REGISTER.md` for gap tracking, `IMPLEMENTATION_ROADMAP.md` for phased execution, `INVENTORY_UTILIZATION.md` for server asset usage, `SYSTEM_COMMANDER_SPEC.md` for the missing non-trading brain, `POLYMARKET_RUNTIME_ROADMAP.md` for Polymarket V2, and `OBSERVABILITY_DASHBOARD_SPEC.md` for dashboard/control-plane visibility.
+50. `SystemCommander` is now the canonical non-trading system brain. It writes `state/system_commander.json` and `state/inventory_matrix.json`, classifies health (`HEALTHY/DEGRADED/BLIND/UNSAFE`), scores canonical services/models/tools/state, reads provider/source health, and exposes GitHub/server drift. It no longer treats absent Tailscale as a missing runtime dependency.
+51. Dashboard System Brain now consumes a stable `system_brain` summary contract, so inventory utilization, source health, and drift status are rendered from live state instead of mismatched frontend IDs.
+52. Backup automation now defaults to non-secret protected archives (`state/`, strategy docs, inventory) with private file permissions. Plaintext `.env` is excluded unless `KIBOT_BACKUP_INCLUDE_SECRETS=1` is deliberately set.
 
 ---
 

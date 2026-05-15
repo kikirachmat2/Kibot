@@ -99,15 +99,22 @@ function renderPositions(positions) {
 }
 
 function renderInventory(matrix) {
-  const container = byId("inventory-bars");
-  if (!container || !matrix) return;
+  if (!matrix) return;
 
-  const total = Number(matrix.total_slots || 100);
+  const total = Number(matrix.total_slots || 0);
   const used = Number(matrix.used_slots || 0);
-  const pct = Math.round((used / total) * 100);
+  const score = Number.isFinite(Number(matrix.utilization_score))
+    ? Number(matrix.utilization_score)
+    : (total > 0 ? used / total : 0);
+  const pct = Math.max(0, Math.min(100, Math.round(score * 100)));
 
-  updateText("inv-count", `${used}/${total}`);
-  const bar = byId("inv-bar");
+  const scoreEl = byId("inventory-score") || byId("inv-count");
+  if (scoreEl) {
+    scoreEl.textContent = total > 0 ? `${pct}%` : "--%";
+    scoreEl.title = total > 0 ? `${used}/${total} inventory checks active` : "waiting for inventory telemetry";
+  }
+
+  const bar = byId("inventory-bar") || byId("inv-bar");
   if (bar) bar.style.width = `${pct}%`;
 
   const details = byId("inv-details");
@@ -123,8 +130,9 @@ function renderSourceHealth(sources) {
   if (!container || !sources) return;
 
   container.innerHTML = Object.entries(sources).map(([name, data]) => {
-    const health = String(data.health || "healthy");
-    const lat = data.avg_latency ? `${(data.avg_latency * 1000).toFixed(0)}ms` : "--";
+    const payload = data && typeof data === "object" ? data : { health: String(data || "unknown") };
+    const health = String(payload.health || payload.status || "unknown").toLowerCase();
+    const lat = payload.avg_latency ? `${(payload.avg_latency * 1000).toFixed(0)}ms` : "--";
     return `
       <div class="source-tag">
         <div class="source-dot ${health}"></div>

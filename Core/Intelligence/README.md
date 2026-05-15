@@ -35,6 +35,8 @@ AI Orchestration, Learning, and Market Intelligence models.
 - `daily_report.py` membuat template Telegram midnight report yang singkat: state, PnL, cash/holdings, scanner/council/executor summary, risk flags, dan next posture.
 - Executor Indodax sekarang memakai `exit_plan` per posisi: hard stop, trailing stop, partial TP, max hold, distribution exit, dan fallback legacy jika plan belum ada.
 - Dashboard membaca `daily_context`, `green_probability`, `market_heatmap`, `scanner_candidates`, dan `decision_journal`, sehingga control plane menampilkan kecerdasan strategi yang sama dengan runtime.
+- `SystemCommander` sekarang menjadi otak non-trading yang menilai service canonical, model Ollama, provider/source health, inventory utilization, GitHub/server drift, state files, dan resource server lalu menulis `state/system_commander.json` + `state/inventory_matrix.json`.
+- Dashboard System Brain membaca kontrak `system_brain` yang sama dari backend, sehingga inventory utilization, source health, dan drift status tidak lagi panel dekoratif.
 
 ## Live Server Atlas
 Source of truth untuk keadaan server yang sebenarnya:

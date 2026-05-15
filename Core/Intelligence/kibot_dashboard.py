@@ -414,6 +414,17 @@ def _build_summary() -> Dict[str, Any]:
     # [G-007] System Brain metrics
     inventory = _read_json(STATE / "inventory_matrix.json", {})
     source_health = _read_json(STATE / "source_health.json", {})
+    commander_state = {}
+    if isinstance(telemetry, dict) and isinstance(telemetry.get("commander"), dict):
+        commander_state = telemetry.get("commander", {})
+    if not commander_state:
+        commander_state = _read_json(STATE / "system_commander.json", {})
+    if not isinstance(commander_state, dict):
+        commander_state = {}
+    config_drift = commander_state.get("config_drift")
+    if not isinstance(config_drift, dict):
+        config_drift = {"status": str(commander_state.get("drift") or "UNKNOWN")}
+    source_health_map = source_health.get("sources", {}) if isinstance(source_health, dict) else {}
 
     intelligence = world_model.get("intelligence") if isinstance(world_model, dict) else {}
     intelligence = intelligence if isinstance(intelligence, dict) else {}
@@ -467,7 +478,7 @@ def _build_summary() -> Dict[str, Any]:
             "ram": _safe_float(sys_stats.get("ram"), 0.0),
             "disk": _safe_float(sys_stats.get("disk"), 0.0),
         },
-        "commander": telemetry.get("commander", {}),
+        "commander": commander_state,
         "whatif": {
             "top": top_whatif,
             "count": _safe_int(whatif.get("pairsSimulated") or whatif.get("pairs_simulated"), 0) if isinstance(whatif, dict) else 0,
@@ -479,7 +490,14 @@ def _build_summary() -> Dict[str, Any]:
             "world_model": _latest_mtime(STATE / "world_model.json"),
         },
         "inventory": inventory,
-        "source_health": source_health.get("sources", {}),
+        "source_health": source_health_map,
+        "system_brain": {
+            "system_state": commander_state.get("system_state", "UNKNOWN"),
+            "commander": commander_state,
+            "inventory_matrix": commander_state.get("inventory_matrix") if isinstance(commander_state.get("inventory_matrix"), dict) else inventory,
+            "source_health": source_health_map or commander_state.get("source_health", {}),
+            "config_drift": config_drift,
+        },
     }
     # ── §16.2 Order Tracker ──────────────────────────
     try:

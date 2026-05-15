@@ -7,6 +7,8 @@
 
 ## Phase 0 — Documentation Sync
 
+Status: DONE.
+
 Goal: make the repo and server agree on the new strategy file layout.
 
 Tasks:
@@ -23,6 +25,8 @@ Exit criteria:
 ---
 
 ## Phase 1 — System Commander Foundation
+
+Status: DONE, with continuous hardening.
 
 Goal: build the missing non-trading control brain.
 
@@ -43,6 +47,8 @@ Exit criteria:
 
 ## Phase 2 — Inventory Utilization Runtime
 
+Status: DONE, with ongoing inventory expansion.
+
 Goal: make server inventory machine-readable and actionable.
 
 Tasks:
@@ -60,6 +66,8 @@ Exit criteria:
 ---
 
 ## Phase 3 — RiskGate V4
+
+Status: PARTIAL-RUNTIME.
 
 Goal: make RiskGate the adaptive risk brain.
 
@@ -82,6 +90,8 @@ Exit criteria:
 
 ## Phase 4 — Polymarket Runtime V2
 
+Status: PARTIAL-RUNTIME.
+
 Goal: raise Polymarket from basic executor to event intelligence system.
 
 Tasks:
@@ -103,6 +113,8 @@ Exit criteria:
 
 ## Phase 5 — Data Warehouse and Learning Loop
 
+Status: FOUNDATION ACTIVE.
+
 Goal: learn from executed, rejected, and missed decisions.
 
 Tasks:
@@ -121,6 +133,8 @@ Exit criteria:
 ---
 
 ## Phase 6 — Dashboard V4
+
+Status: PARTIAL-RUNTIME, System Brain wired.
 
 Goal: show the system brain, not only trading cards.
 
@@ -144,6 +158,8 @@ Exit criteria:
 
 ## Phase 7 — Backup, Restore, Deployment Guard
 
+Status: BACKUP/GUARD ACTIVE, restore drills pending.
+
 Goal: make system changes safer.
 
 Tasks:
@@ -163,6 +179,8 @@ Exit criteria:
 
 ## Phase 8 — Mobile/API Bridge
 
+Status: PLANNED.
+
 Goal: make APK a cockpit, not a second brain.
 
 Tasks:
@@ -177,4 +195,3 @@ Tasks:
 Exit criteria:
 
 - mobile can show health and account state without bypassing core runtime.
-

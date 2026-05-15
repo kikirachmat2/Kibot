@@ -518,6 +518,9 @@ class IndodaxSmallCapScanner:
         if pump_stage in ("RECLAIM",):
             return "CONFIRMATION"
         if pump_stage in ("LATE_RECLAIM", "RANGE_BREAK_RECLAIM"):
+            # If we are reclaiming but OBI is negative, it's often a trap reclaim
+            if obi < -0.15:
+                return "LOCAL_TRAP"
             return "RIDE"
         if pump_stage in ("SUPPORT_BOUNCE", "PIVOT_RECLAIM"):
             # Very far from high = local-only, not broad pump
@@ -525,10 +528,12 @@ class IndodaxSmallCapScanner:
                 return "LOCAL_CONFIRMATION"
             return "RIDE"
         if pump_stage == "MATURE":
-            # Mature near high = DISTRIBUTION risk; with bad OBI = TRAP
-            if obi < -0.05:
+            # [REFINED V3.3] Mature near high = DISTRIBUTION risk; with bad OBI = TRAP
+            # Stricter OBI threshold for TRAP detection
+            if obi < -0.02:
                 return "TRAP"
-            if distance_to_high_pct <= 5:
+            # Stricter distance threshold for DISTRIBUTION
+            if distance_to_high_pct <= 8.0:
                 return "DISTRIBUTION"
             return "RIDE"
         # Default IGNITION

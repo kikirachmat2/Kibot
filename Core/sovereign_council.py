@@ -1041,6 +1041,21 @@ class SovereignCouncil:
         decision["daily_state"] = portfolio_ctx.get("daily_state", {})
         confidence_floor = self._evidence_floor(evidence_bundle, whatif_snapshot)
 
+        # [REFINED V3.3] Strict Midnight WIB Hard Gate (§11.2)
+        # If GREEN and close to midnight, we stop almost everything.
+        if (
+            daily_context.get("daily_color") == "GREEN"
+            and daily_context.get("urgency_level") in ("HIGH", "CRITICAL")
+            and float(decision.get("confidence", 0.0) or 0.0) < 0.96
+        ):
+            logger.info("🛡️ Midnight Protocol: LOCK_GREEN active. Rebuffing non-exceptional signals.")
+            decision.update({
+                "action": "NONE",
+                "status": "WAIT",
+                "decision_state": "WAIT",
+                "wait_reason": "LOCK_GREEN: protecting daily profit before midnight deadline"
+            })
+
         # If the speaker says WAIT but the scanner has a clearly ranked A/B
         # candidate, promote it into the formal role contract instead of letting
         # the system sit blind. The Fast+Deep Council below can still veto.
@@ -1199,22 +1214,33 @@ class SovereignCouncil:
         decision["deadline_pressure"] = deadline_pressure
         decision["deadline_mode"] = decision.get("deadline_mode") or daily_context.get("deadline_mode")
         
-        # 4. Polymarket Intelligence Integration (G-003)
-        if str(source_signal.get("market_type", "")).lower() == "polymarket" or str(source_signal.get("exchange", "")).upper() == "POLYMARKET":
-            logger.info(f"🔮 Triggering Polymarket Intelligence Engine for {source_signal.get('symbol')}")
-            poly_intel = await self.polymarket_engine.analyze_market(source_signal)
-            decision["polymarket_intelligence"] = {
-                "edge": poly_intel.edge,
-                "confidence": poly_intel.confidence,
-                "liquidity_score": poly_intel.liquidity_score,
-                "resolution_risk": poly_intel.resolution_risk,
-                "recommendation": poly_intel.recommendation
+        # 4. Event-market Intelligence Integration (G-003)
+        # Resolution-risk logic is valid for Polymarket/event markets only.
+        # Do not apply event wording/resolution vetoes to Indodax pump signals;
+        # those are handled by scanner lifecycle, liquidity, risk gate, and the
+        # fast+deep Council contract above.
+        market_type = str(source_signal.get("market_type", "")).lower()
+        exchange = str(source_signal.get("exchange", "")).upper()
+        is_event_market = (
+            market_type in {"polymarket", "event", "event_probability", "prediction_market"}
+            or exchange == "POLYMARKET"
+        )
+
+        if is_event_market:
+            logger.info(f"🔮 Triggering Event Intelligence Engine for {source_signal.get('symbol')}")
+            intel = await self.polymarket_engine.analyze_market(source_signal)
+            decision["market_intelligence"] = {
+                "edge": intel.edge,
+                "confidence": intel.confidence,
+                "liquidity_score": intel.liquidity_score,
+                "resolution_risk": intel.resolution_risk,
+                "recommendation": intel.recommendation
             }
-            # Override decision if risk is too high
-            if poly_intel.recommendation == "AVOID":
+            # [STRICT V3.3] Event Resolution Risk Veto
+            if intel.recommendation == "AVOID" or intel.resolution_risk > 0.70:
                 decision["status"] = "WAIT"
                 decision["action"] = "NONE"
-                decision["wait_reason"] = f"Polymarket Intelligence Veto: Resolution Risk ({poly_intel.resolution_risk:.2f})"
+                decision["wait_reason"] = f"Intelligence Engine Veto: High Resolution Risk ({intel.resolution_risk:.2f})"
 
         if antagonist_view and isinstance(antagonist_view, dict):
             decision["antagonist_view"] = antagonist_view
@@ -1385,6 +1411,11 @@ class SovereignCouncil:
             return {"pass": False, "reason": f"Spread {spread_pct:.2f}% > 1.20% — unsellable", "veto_by": "LiquidityEngineer", "fast_confidence": 0.0}
         if tick_pct > 3.0 or levels < 8:
             return {"pass": False, "reason": f"Tick trap: tick={tick_pct:.2f}%, levels={levels}", "veto_by": "LiquidityEngineer", "fast_confidence": 0.0}
+
+        # [NEW V3.3] Liquidity Score Check (Generalized Intelligence)
+        if signal.get("liquidity_score", 1.0) < 0.25:
+            return {"pass": False, "reason": "Critically low liquidity score", "veto_by": "LiquidityEngineer", "fast_confidence": 0.0}
+
         market_quality = signal.get("market_quality", {})
         if isinstance(market_quality, dict) and market_quality.get("ok") is False:
             return {"pass": False, "reason": f"Market quality: {market_quality.get('reason')}", "veto_by": "LiquidityEngineer", "fast_confidence": 0.0}
@@ -1392,11 +1423,20 @@ class SovereignCouncil:
         # ── Deterministic gate: Deadline Keeper (§13.4) ──
         if risk_mode == "WAIT":
             return {"pass": False, "reason": f"risk_mode=WAIT — daily context prohibits new entries", "veto_by": "DeadlineKeeper", "fast_confidence": 0.0}
-        if deadline_mode == "LOCK_GREEN" and trade_grade not in ("A",):
-            return {"pass": False, "reason": "LOCK_GREEN: only grade A allowed", "veto_by": "DeadlineKeeper", "fast_confidence": 0.0}
-        if quality_req == "EXCEPTIONAL" and trade_grade not in ("A",):
+
+        # [REFINED V3.3] Organized Greed Quality Gate (§11.2)
+        if daily_color == "GREEN":
+            # Proteksi profit: Hanya Grade A/A+ yang boleh lewat
+            if trade_grade not in ("A", "A+"):
+                return {"pass": False, "reason": f"LOCK_GREEN: Grade {trade_grade} rejected (A/A+ required)", "veto_by": "DeadlineKeeper", "fast_confidence": 0.0}
+            if confidence < 0.85:
+                 return {"pass": False, "reason": f"LOCK_GREEN: Confidence {confidence:.2f} below protection floor 0.85", "veto_by": "DeadlineKeeper", "fast_confidence": 0.0}
+
+        if deadline_mode == "LOCK_GREEN" and trade_grade not in ("A", "A+"):
+            return {"pass": False, "reason": "LOCK_GREEN: only grade A/A+ allowed", "veto_by": "DeadlineKeeper", "fast_confidence": 0.0}
+        if quality_req == "EXCEPTIONAL" and trade_grade not in ("A", "A+"):
             return {"pass": False, "reason": f"EXCEPTIONAL quality required, got {trade_grade}", "veto_by": "DeadlineKeeper", "fast_confidence": 0.0}
-        if quality_req == "HIGH" and trade_grade not in ("A", "B"):
+        if quality_req == "HIGH" and trade_grade not in ("A", "A+", "B"):
             return {"pass": False, "reason": f"HIGH quality required, got {trade_grade}", "veto_by": "DeadlineKeeper", "fast_confidence": 0.0}
         if lifecycle == "DISTRIBUTION":
             return {"pass": False, "reason": "DISTRIBUTION lifecycle: anti-top rule", "veto_by": "DeadlineKeeper", "fast_confidence": 0.0}
@@ -1520,10 +1560,20 @@ class SovereignCouncil:
         }
         antagonist = await self._query_ai_guarded("antagonist", antagonist_payload, timeout=15.0)
 
-        # Antagonist veto on TRAP_PRONE pairs
+        # [REFINED V3.3] Strict Deterministic Antagonist (Trap Simulation)
         antagonist_text = str(antagonist.get("decision", antagonist.get("response", ""))).upper()
+
+        # Veto if AI detects RISKY AND historian has ever flagged this as TRAP_PRONE
         if "RISKY" in antagonist_text and historian_verdict == "TRAP_PRONE":
             return self._deep_reject("Antagonist", f"Antagonist+Historian veto: TRAP_PRONE pair rejected", deadline_mode, confidence, trade_grade)
+
+        # Veto if AI detects RISKY AND we are in GREEN state (Organized Greed protection)
+        if "RISKY" in antagonist_text and daily_color == "GREEN":
+            return self._deep_reject("Antagonist", "Antagonist Veto: RISKY detected in GREEN state (Protect Profit)", deadline_mode, confidence, trade_grade)
+
+        # Fallback Antagonist logic: If spread is widening or OBI is dropping, it's a trap
+        if float(signal.get("spread_pct", 0)) > 0.85 and float(signal.get("obi", 0)) < -0.30:
+            return self._deep_reject("Antagonist", "Deterministic Trap Veto: Widening spread + Negative OBI", deadline_mode, confidence, trade_grade)
 
         # ── Exit Planner — check exit plan quality (deterministic) ──
         exit_verdict = "EXIT_OK"

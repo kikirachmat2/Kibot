@@ -58,6 +58,8 @@
 - **Wallet-Reconciled State**: executor menyamakan `active_trades.json` dengan wallet/open-orders Indodax live, jadi posisi palsu tidak lagi membuat Council salah hitung.
 - **Bounded Council Thinking**: AI/websearch tetap dipakai, tetapi setiap deliberasi punya timeout dan deterministic fallback berbasis evidence lokal agar sistem tidak freeze saat provider lambat.
 - **WIB Business Day**: RiskGate, dashboard, midnight report, dan PnL harian memakai tanggal WIB, bukan timezone UTC server.
+- **System Commander**: health non-trading dipusatkan di `Core/Support/system_commander.py`, yang menilai service, resource, model, inventory, provider/source health, drift GitHub/server, dan operator-required state.
+- **Honest Autonomy Register**: strategy docs membedakan blueprint matang vs runtime maturity, supaya dashboard dan operator tidak salah menganggap dokumen “100%” sebagai bukti runtime tanpa smoke test.
 
 ---
 *Operational Status: **SOVEREIGN ACTIVE** | 2026*

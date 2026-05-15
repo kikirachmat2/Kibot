@@ -1241,22 +1241,23 @@ not confuse strategy completeness with runtime autonomy.
 
 | Dimension | Blueprint Maturity | Runtime Maturity | Notes |
 |---|---:|---:|---|
-| Trading intelligence | 95-98% | 60-70% | Strategy is strong; runtime still needs full implementation of every contract |
-| System autonomy | 90-95% | 45-55% | System strategy is broad; runtime self-healing is partial |
-| Server self-maintenance | 85-90% | 50-60% | Disk/service checks exist, but SLO/backup/rollback are incomplete |
-| AI/tool orchestration | 80-85% | 50-60% | Providers and Ollama exist; role-aware routing and cooldown are partial |
-| Dashboard observability | 85-90% | 60-70% | Dashboard exists; system-brain panels still need deeper visibility |
-| Telegram discipline | 85-90% | 60-70% | Policy exists; daily/system health summaries can be improved |
-| Deployment/GitHub discipline | 80-90% | 55-65% | Manual agent workflow works; automated deployment guard is missing |
-| Disaster recovery | 80-85% | 25-40% | Strategy exists; backup/restore automation is not complete |
+| Trading intelligence | 95-98% | 80-88% | Scanner/Council/RiskGate/Executor are active; remaining lift is outcome calibration |
+| System autonomy | 90-95% | 72-82% | System Commander now classifies health, drift, inventory, and operator-required states |
+| Server self-maintenance | 85-90% | 68-78% | Disk/service checks and backup guard exist; restore drills/off-server backup still needed |
+| AI/tool orchestration | 80-85% | 70-82% | Provider/source health and Ollama model inventory are surfaced; role calibration continues |
+| Dashboard observability | 85-90% | 78-88% | System Brain, source health, inventory, drift, Council Lens, and strategy panels are wired |
+| Telegram discipline | 85-90% | 70-80% | Policy exists; midnight report is canonical; only critical alerts should break silence |
+| Deployment/GitHub discipline | 80-90% | 72-82% | Pre-deploy guard exists; server/GitHub drift is now visible |
+| Disaster recovery | 80-85% | 60-72% | Backup automation exists; restore validation and off-server copy remain future hardening |
 
 Plain-language assessment:
 
 ```text
 KiBot is already partially autonomous.
 It can run, trade, observe, and recover some common problems.
-But it is not yet a fully self-governing system.
-The next upgrade is not more raw tooling; it is a stronger system brain.
+It now has a central System Commander foundation.
+The next upgrade is not more raw tooling; it is repeated runtime calibration
+from real outcomes, restore drills, and stricter SLO enforcement.
 ```
 
 ### 36.2 Runtime Reality
@@ -1276,12 +1277,11 @@ Current runtime can already do some of this:
 Current runtime does not yet fully do:
 
 - automatic deployment rollback,
-- complete state backup/restore,
+- complete restore validation/off-server backup,
 - full SLO freshness enforcement,
 - full incident postmortem generation,
 - full config validation before service start,
-- complete system-health severity routing,
-- complete dashboard command layer,
+- complete dashboard command layer for safe pause/recover/report actions,
 - autonomous server migration,
 - full mobile/APK release control.
 
@@ -1310,20 +1310,26 @@ Already covered in strategy:
 
 Still needs runtime modules:
 
-- `system_commander.py`,
 - `service_slo_monitor.py`,
-- `state_backup.py`,
 - `config_validator.py`,
 - `incident_postmortem.py`,
-- `deployment_guard.py`,
-- dashboard system-brain panels.
+- restore drill runner,
+- off-server backup sync,
+- dashboard command layer.
+
+Runtime modules now present:
+
+- `Core/Support/system_commander.py`,
+- `bin/kibot-backup.sh`,
+- `bin/kibot-pre-deploy.sh`,
+- dashboard System Brain panels.
 
 ### 36.4 Server Adaptation Maturity
 
 Current server adaptation estimate:
 
 ```text
-50-60% runtime maturity.
+68-78% runtime maturity.
 ```
 
 Already adapts to:
@@ -1350,7 +1356,7 @@ Needs stronger adaptation:
 Current control estimate:
 
 ```text
-55-65% runtime control.
+72-82% runtime control.
 ```
 
 Current controlled areas:
@@ -1366,13 +1372,20 @@ Current controlled areas:
 
 Missing central control:
 
-- one `System Commander` coordinating non-trading recovery,
 - deployment controller,
 - config validator,
 - backup/restore controller,
 - incident/postmortem automation,
 - dashboard command layer for safe pause/recover/report actions,
 - mobile/APK sync controller.
+
+Central control now present:
+
+- `System Commander` coordinating health, drift, inventory, provider/source,
+  and operator-required state,
+- deployment guard wrapper,
+- backup wrapper,
+- dashboard System Brain visibility.
 
 ### 36.6 Installation and Tooling Assessment
 
@@ -1413,22 +1426,20 @@ Build the system brain first.
 
 Priority order:
 
-1. `System Commander`
-2. `Service SLO Monitor`
-3. `State Backup + Restore`
-4. `Config Validator`
-5. `Incident Postmortem Logger`
-6. `Deployment Guard`
-7. Dashboard system-brain panel
-8. Telegram system-health summary inside midnight report
-9. GitHub/server drift detector
-10. Mobile/API endpoint health bridge
+1. `Service SLO Monitor`
+2. `Config Validator`
+3. Restore Drill Runner
+4. Incident Postmortem Logger
+5. Off-server Backup Sync
+6. Dashboard command layer
+7. Telegram system-health summary inside midnight report
+8. Mobile/API endpoint health bridge
 
 Expected improvement:
 
 ```text
-Current runtime autonomy: ~45-55%.
-After these modules: ~75-85%.
+Current runtime autonomy: ~72-82%.
+After these modules: ~85-92%.
 ```
 
 ---
