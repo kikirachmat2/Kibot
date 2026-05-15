@@ -93,6 +93,29 @@
           <span id="deadline">deadline --</span>
         </div>
       </section>
+      
+      <!-- [G-007] Row 1.5: System Brain & Inventory Banner -->
+      <section class="system-brain-banner" id="system-brain-panel">
+        <div class="brain-stat">
+          <small>INVENTORY UTILIZATION</small>
+          <div class="progress-wrap">
+            <div class="progress-bar" id="inventory-bar" style="width: 0%"></div>
+          </div>
+          <strong id="inventory-score">--%</strong>
+        </div>
+        <div class="brain-divider"></div>
+        <div class="brain-stat">
+          <small>SOURCE HEALTH</small>
+          <div class="source-list" id="source-health-list">
+            <span>waiting for telemetry...</span>
+          </div>
+        </div>
+        <div class="brain-divider"></div>
+        <div class="brain-stat">
+          <small>DRIFT STATUS</small>
+          <strong id="drift-status" class="neutral">UNKNOWN</strong>
+        </div>
+      </section>
 
       <!-- Row 2: Agent Stage -->
       <section class="stage-shell" id="stage-shell">

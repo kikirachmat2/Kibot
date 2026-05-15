@@ -41,6 +41,8 @@ Usage:
   kibotctl install-tools
   kibotctl pull <model>
   kibotctl logs [service...]
+  kibotctl deploy
+  kibotctl backup
 EOF
   exit 1
 fi
@@ -282,6 +284,28 @@ cmd_logs() {
   journalctl -n 80 --no-pager "${args[@]}"
 }
 
+cmd_deploy() {
+  local script_dir
+  script_dir="$(dirname "$0")"
+  if [[ -x "${script_dir}/kibot-pre-deploy.sh" ]]; then
+    "${script_dir}/kibot-pre-deploy.sh"
+  else
+    echo "kibot-pre-deploy.sh not found or not executable." >&2
+    exit 1
+  fi
+}
+
+cmd_backup() {
+  local script_dir
+  script_dir="$(dirname "$0")"
+  if [[ -x "${script_dir}/kibot-backup.sh" ]]; then
+    "${script_dir}/kibot-backup.sh"
+  else
+    echo "kibot-backup.sh not found or not executable." >&2
+    exit 1
+  fi
+}
+
 case "${1:-}" in
   status) shift; cmd_status "$@" ;;
   doctor) shift; cmd_doctor "$@" ;;
@@ -293,7 +317,9 @@ case "${1:-}" in
   tools) shift; cmd_tools "$@" ;;
   install-tools) shift; cmd_install_tools "$@" ;;
   pull) cmd_pull "$@" ;;
-  logs) cmd_logs "$@" ;;
+  logs) shift; cmd_logs "$@" ;;
+  deploy) shift; cmd_deploy "$@" ;;
+  backup) shift; cmd_backup "$@" ;;
   *)
     echo "Unknown command: ${1:-}" >&2
     exit 1

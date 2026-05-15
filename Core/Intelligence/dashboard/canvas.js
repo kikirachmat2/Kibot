@@ -176,6 +176,16 @@ function renderWorkflow(summary) {
 
   const activeTrades = Object.keys(summary?.active_trades || {}).length;
   const decision     = String(council.decision_state || "WAIT").toUpperCase();
+  
+  const commander   = summary?.commander || {};
+  const drift       = String(commander.drift || "UNKNOWN").toUpperCase();
+  const providers   = commander.providers || {};
+  const totalProviders = Object.keys(providers).length;
+  let activeProviders = 0;
+  const nowSec = Date.now() / 1000;
+  for (const p of Object.values(providers)) {
+      if (!p.cooldown_until || p.cooldown_until < nowSec) activeProviders++;
+  }
 
   // ── SCHEDULED: scanner candidates + world scout ──
   const scheduledCards = [
@@ -233,6 +243,7 @@ function renderWorkflow(summary) {
 
   // ── DONE: ledger + reconciled trades ──
   const doneCards = [
+    taskCard("System Commander", `Drift: ${drift} · ${activeProviders}/${totalProviders} AI Active`, drift === "SYNCED" ? "done" : (drift === "UNKNOWN" ? "" : "error")),
     taskCard("Ledger Snapshot", window.KiBotLive?.fmtRp?.(portfolio.combined_equity_idr || 0) || "portfolio", "done"),
     taskCard("Risk Contract", strategy.global_mode || "strategy loaded", "done"),
   ];

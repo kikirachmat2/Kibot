@@ -64,7 +64,7 @@ class AISearchService:
         # Keep for backward compatibility if needed, but internally it's now blocking call to async
         return asyncio.run(self._get_json_async(url, params, headers))
 
-    async def _cached_async(self, key: str, ttl: int, loader) -> Any:
+    async def _cached_async(self, key: str, ttl: int, loader, source_name: str = None) -> Any:
         now = time.time()
         cache = {}
         if self.cache_file.exists():
@@ -78,19 +78,39 @@ class AISearchService:
                 return entry.get("data")
         
         # Only execute loader if cache miss
-        if asyncio.iscoroutinefunction(loader):
-            data = await loader()
-        elif callable(loader):
-            data = loader()
-        else:
-            # If it's already a coroutine (legacy support), await it
-            data = await loader
+        start_time = time.time()
+        error = ""
+        success = False
+        try:
+            if asyncio.iscoroutinefunction(loader):
+                data = await loader()
+            elif callable(loader):
+                data = loader()
+            else:
+                data = await loader
+                
+            if data:
+                success = True
+                cache[key] = {"at": time.time(), "data": data}
+                try:
+                    self.cache_file.write_text(json.dumps(cache, indent=2), encoding="utf-8")
+                except: pass
+            else:
+                error = "Empty response"
+        except Exception as e:
+            data = None
+            error = str(e)
             
-        if data:
-            cache[key] = {"at": now, "data": data}
+        latency_ms = (time.time() - start_time) * 1000.0
+        
+        # Update metrics
+        if source_name:
             try:
-                self.cache_file.write_text(json.dumps(cache, indent=2), encoding="utf-8")
-            except: pass
+                from Core.Intelligence.kibot_ai_coordinator import update_source_metrics
+                update_source_metrics(source_name, success, latency_ms, error)
+            except Exception as e:
+                pass
+                
         return data
 
     def _cached(self, key: str, ttl: int, fn) -> Any:
@@ -115,7 +135,7 @@ class AISearchService:
             except: pass
             return {}
             
-        return await self._cached_async(f"tavily:{hashlib.md5(query.encode()).hexdigest()}", 3600, loader)
+        return await self._cached_async(f"tavily:{hashlib.md5(query.encode()).hexdigest()}", 3600, loader, "tavily")
 
     def tavily_search(self, query: str, search_depth: str = "basic") -> Dict:
         return asyncio.run(self.tavily_search_async(query, search_depth))
@@ -135,7 +155,7 @@ class AISearchService:
             except: pass
             return {}
             
-        return await self._cached_async(f"serper:{hashlib.md5(query.encode()).hexdigest()}", 3600, loader)
+        return await self._cached_async(f"serper:{hashlib.md5(query.encode()).hexdigest()}", 3600, loader, "serper")
 
     def serper_search(self, query: str) -> Dict:
         return asyncio.run(self.serper_search_async(query))
@@ -149,7 +169,7 @@ class AISearchService:
             async def loader():
                 with DDGS() as ddgs:
                     return list(ddgs.text(query, max_results=max_results))
-            return await self._cached_async(f"ddg:{hashlib.md5(query.encode()).hexdigest()}", 1800, loader)
+            return await self._cached_async(f"ddg:{hashlib.md5(query.encode()).hexdigest()}", 1800, loader, "duckduckgo")
         except ImportError:
             return []
 
@@ -185,7 +205,7 @@ class AISearchService:
                     return content
             except: return ""
             
-        return await self._cached_async(f"jina:{hashlib.md5(query.encode()).hexdigest()}", 3600, loader)
+        return await self._cached_async(f"jina:{hashlib.md5(query.encode()).hexdigest()}", 3600, loader, "jina")
 
     def jina_search(self, query: str) -> str:
         return asyncio.run(self.jina_search_async(query))
@@ -206,7 +226,7 @@ class AISearchService:
                 return await self._get_json_async(url, params=params, headers=headers)
             except: return {}
             
-        return await self._cached_async(f"brave:{hashlib.md5(query.encode()).hexdigest()}", 3600, loader)
+        return await self._cached_async(f"brave:{hashlib.md5(query.encode()).hexdigest()}", 3600, loader, "brave")
 
     def brave_search(self, query: str) -> Dict:
         return asyncio.run(self.brave_search_async(query))
@@ -229,7 +249,7 @@ class AISearchService:
                 return res.get("results", [])
             except: return []
             
-        return await self._cached_async(f"cryptopanic:{filter}", 600, loader)
+        return await self._cached_async(f"cryptopanic:{filter}", 600, loader, "cryptopanic")
 
     def cryptopanic_news(self, filter: str = "hot") -> List[Dict]:
         return asyncio.run(self.cryptopanic_news_async(filter))
@@ -327,7 +347,7 @@ class AISearchService:
                 "https://finnhub.io/api/v1/news",
                 params={"category": category, "token": api_key}
             )
-        return await self._cached_async(f"finnhub:{category}", 900, loader)
+        return await self._cached_async(f"finnhub:{category}", 900, loader, "finnhub")
 
     def finnhub_news(self, category: str = "crypto") -> List[Dict]:
         return asyncio.run(self.finnhub_news_async(category))
@@ -344,7 +364,7 @@ class AISearchService:
                 }
             )
             return payload.get("articles", []) if isinstance(payload, dict) else []
-        return await self._cached_async(f"gdelt:{hashlib.md5(query.encode()).hexdigest()}", 1800, loader)
+        return await self._cached_async(f"gdelt:{hashlib.md5(query.encode()).hexdigest()}", 1800, loader, "gdelt")
 
     def gdelt_news(self, query: str = "crypto") -> List[Dict]:
         return asyncio.run(self.gdelt_news_async(query))

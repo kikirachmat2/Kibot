@@ -98,6 +98,51 @@ function renderPositions(positions) {
   }).join("");
 }
 
+function renderInventory(matrix) {
+  const container = byId("inventory-bars");
+  if (!container || !matrix) return;
+
+  const total = Number(matrix.total_slots || 100);
+  const used = Number(matrix.used_slots || 0);
+  const pct = Math.round((used / total) * 100);
+
+  updateText("inv-count", `${used}/${total}`);
+  const bar = byId("inv-bar");
+  if (bar) bar.style.width = `${pct}%`;
+
+  const details = byId("inv-details");
+  if (details) {
+    const caps = matrix.captured_opportunities || 0;
+    const rej = matrix.rejected_today || 0;
+    details.textContent = `· cap ${caps} · rej ${rej}`;
+  }
+}
+
+function renderSourceHealth(sources) {
+  const container = byId("source-health-list");
+  if (!container || !sources) return;
+
+  container.innerHTML = Object.entries(sources).map(([name, data]) => {
+    const health = String(data.health || "healthy");
+    const lat = data.avg_latency ? `${(data.avg_latency * 1000).toFixed(0)}ms` : "--";
+    return `
+      <div class="source-tag">
+        <div class="source-dot ${health}"></div>
+        <span>${escapeHtml(name)} <small>${lat}</small></span>
+      </div>
+    `;
+  }).join("");
+}
+
+function renderDrift(drift) {
+  const el = byId("drift-status");
+  if (!el || !drift) return;
+
+  const status = String(drift.status || "SYNCED").toUpperCase();
+  el.textContent = status.replace(/_/g, " ");
+  el.className = status;
+}
+
 function renderBets(bets) {
   if (!bets || !bets.length) {
     return `<div class="empty-row">No active bets</div>`;
@@ -435,6 +480,12 @@ function renderSummary(data) {
   renderLogs(snapshot);
   renderSignalIntel(snapshot);
   renderOrderTracker(snapshot);
+
+  const brain = snapshot.system_brain || {};
+  renderInventory(brain.inventory_matrix);
+  renderSourceHealth(brain.source_health);
+  renderDrift(brain.config_drift);
+
   window.KiBotCanvas?.render(snapshot);
 }
 

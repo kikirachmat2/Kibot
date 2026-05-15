@@ -35,6 +35,7 @@ from Core.sovereign_notifier import SovereignNotifier
 from Core.Intelligence.aggregator import CouncilDataAggregator
 from Core.sovereign_state import load_strategy, save_strategy
 from Core.Intelligence.kibot_whatif_engine import run_simulation
+from Core.Support.system_commander import SystemCommander
 
 # Configure Logging
 LOGS_DIR.mkdir(parents=True, exist_ok=True)
@@ -82,6 +83,7 @@ class KiBotMaster:
         self.council = SovereignCouncil()
         self.council.brain = self.brain # Inject brain
         self.aggregator = CouncilDataAggregator(self)
+        self.system_commander = SystemCommander(str(ROOT_DIR))
         self.is_running = True
         self.last_state = {"portfolio": {"equity_idr": 0, "daily_pnl": "0.0%", "active_positions": []}}
         self.market_mood = "NEUTRAL"
@@ -350,6 +352,14 @@ class KiBotMaster:
                 if verify_signature(payload, signature, secret):
                     if payload.get("type") == "COUNCIL_SIGNAL_DATA":
                         signals = payload.get("signals", [])
+                        
+                        # [G-001] Sovereign Execution Block
+                        sys_state = self.system_commander.get_system_state({})
+                        if sys_state.get("system_state") in ["UNSAFE", "BLIND"]:
+                            logger.error(f"🚨 [COMMANDER BLOCK] System is {sys_state['system_state']}. Rejecting incoming signals.")
+                            await self.notifier.send_urgent_alert(f"🚨 **COMMANDER BLOCK**\nSystem is `{sys_state['system_state']}`. Signals rejected to protect capital.", "SYSTEM_BLOCK")
+                            continue
+                            
                         logger.info(f"🏛️ Received {len(signals)} signed signals from {addr}. Deliberating...")
                         
                         async def deliberate_and_dispatch(sigs):
@@ -768,6 +778,7 @@ class KiBotMaster:
             "difficulty": difficulty
         }
         telemetry["ai_online"] = True # Assuming Ollama is reachable
+        telemetry["commander"] = self.system_commander.get_system_state(telemetry)
         
         return telemetry
 

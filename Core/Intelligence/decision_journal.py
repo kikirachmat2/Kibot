@@ -118,6 +118,27 @@ def log_pre_trade_simulation(simulation: Dict[str, Any]) -> None:
     log_event("PRE_TRADE_SIMULATION", simulation)
 
 
+def log_missed_opportunity(opportunity: Dict[str, Any]) -> None:
+    log_event("MISSED_OPPORTUNITY", opportunity)
+
+
+def log_ai_accuracy(role: str, accuracy_data: Dict[str, Any]) -> None:
+    log_event("AI_ACCURACY", {
+        "role": role,
+        **accuracy_data
+    })
+
+
+def log_rejected_candidate(candidate: Dict[str, Any], reason: str, context: Optional[Dict[str, Any]] = None) -> None:
+    """Log a candidate that was rejected by the Council or RiskGate."""
+    payload = {
+        "candidate": candidate,
+        "reason": reason,
+        "context": context or {}
+    }
+    log_event("REJECTED_CANDIDATE", payload)
+
+
 def read_today_events(limit: int = 500) -> List[Dict[str, Any]]:
     path = JOURNAL_DIR / f"{_now_wib().date().isoformat()}.jsonl"
     if not path.exists():
@@ -146,7 +167,10 @@ def summarize_today() -> Dict[str, Any]:
         "exits": 0,
         "pre_trade_pass": 0,
         "pre_trade_reject": 0,
+        "rejected_candidates": 0,
+        "missed_opportunities": 0,
         "best_missed_opportunity": None,
+        "ai_accuracy_events": 0,
         "top_candidates": [],
         "latest_decision": None,
     }
@@ -167,11 +191,18 @@ def summarize_today() -> Dict[str, Any]:
             else:
                 summary["waits"] += 1
         elif et == "PRE_TRADE_SIMULATION":
-            verdict = str(row.get("simulation_verdict") or "").upper()
-            if verdict == "PASS":
+            if row.get("passed"):
                 summary["pre_trade_pass"] += 1
-            elif verdict:
+            else:
                 summary["pre_trade_reject"] += 1
+        elif et == "MISSED_OPPORTUNITY":
+            summary["missed_opportunities"] += 1
+            if not summary["best_missed_opportunity"] or row.get("pnl_pct", 0) > summary["best_missed_opportunity"].get("pnl_pct", 0):
+                summary["best_missed_opportunity"] = row
+        elif et == "AI_ACCURACY":
+            summary["ai_accuracy_events"] += 1
+        elif et == "REJECTED_CANDIDATE":
+            summary["rejected_candidates"] += 1
     top_candidates.sort(key=lambda item: float(item.get("opportunity_score") or item.get("confidence") or 0), reverse=True)
     summary["top_candidates"] = top_candidates[:5]
     return summary

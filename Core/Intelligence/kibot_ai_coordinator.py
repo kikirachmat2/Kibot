@@ -53,7 +53,8 @@ load_sovereign_env()
 from Core.Support.ki_config import STATE_DIR, PROJECT_ROOT as ROOT
 RATE_STATE_FILE = STATE_DIR / "ai_coordinator_rate.json"
 RESPONSE_CACHE = STATE_DIR / "ai_coordinator_cache.json"
-PROVIDER_STATE_FILE = STATE_DIR / "ai_coordinator_providers.json"
+PROVIDER_STATE_FILE = STATE_DIR / "provider_health.json"
+SOURCE_STATE_FILE = STATE_DIR / "source_health.json"
 REQUEST_TIMEOUT_SEC = float(os.getenv("KIBOT_AI_COORDINATOR_TIMEOUT_SEC", "12"))
 OLLAMA_FAST_MODEL = os.getenv("KIBOT_OLLAMA_FAST_MODEL", "qwen2.5:0.5b")
 OLLAMA_DEFAULT_MODEL = os.getenv("KIBOT_OLLAMA_MODEL", "qwen2.5:1.5b")
@@ -409,6 +410,16 @@ PROMPT_TEMPLATES = {
         "Analyze WebSearch results: {news_context}.\n"
         "Task: Convert qualitative news into a Quantitative Sentiment Score (-1.0 to 1.0).\n"
         "Return strict JSON: {\"sentiment_score\":0.0, \"key_catalyst\":\"...\", \"impact_duration\":\"SHORT|LONG\"}"
+    ),
+    "EVENT_PROBABILITY_RESEARCH": (
+        "You are an elite geopolitical and market research analyst.\n"
+        "Your task is to provide a 'Fair Probability' estimate for a specific binary event (Yes/No).\n"
+        "Research the provided event, consider latest news, and output strict JSON.\n"
+        "Event Title: {title}\n"
+        "Event Description: {description}\n"
+        "Current Market Price (as prob): {current_price}\n"
+        "Search Context: {search_query}\n"
+        "Return strict JSON: {\"fair_probability\": 0.0, \"evidence_quality\": 0.0, \"rationale\": \"...\", \"key_risk_factors\": [...]}"
     ),
 
     "SOVEREIGN_DAILY_REVIEW": (
@@ -786,6 +797,65 @@ def _provider_state_entry(provider: str) -> Dict[str, Any]:
     return entry if isinstance(entry, dict) else {}
 
 
+def _load_source_state() -> Dict[str, Any]:
+    if not SOURCE_STATE_FILE.exists():
+        return {"sources": {}}
+    try:
+        payload = json.loads(SOURCE_STATE_FILE.read_text(encoding="utf-8"))
+    except Exception:
+        return {"sources": {}}
+    if not isinstance(payload, dict):
+        return {"sources": {}}
+    sources = payload.get("sources")
+    if not isinstance(sources, dict):
+        payload["sources"] = {}
+    return payload
+
+
+def _save_source_state(state: Dict[str, Any]) -> None:
+    _atomic_write(SOURCE_STATE_FILE, state)
+
+
+def update_source_metrics(source: str, success: bool, latency_ms: float, error: str = "") -> None:
+    state = _load_source_state()
+    sources = state.setdefault("sources", {})
+    entry = sources.get(source)
+    if not isinstance(entry, dict):
+        entry = {"success_count": 0, "fail_count": 0, "avg_latency_ms": 0.0, "last_latency_ms": 0.0, "status": "UNKNOWN", "last_error": ""}
+    
+    if success:
+        entry["success_count"] += 1
+        entry["status"] = "HEALTHY"
+        entry["last_error"] = ""
+    else:
+        entry["fail_count"] += 1
+        entry["status"] = "DEGRADED"
+        entry["last_error"] = str(error)[:200]
+    
+    # Simple rolling average
+    total_reqs = entry["success_count"] + entry["fail_count"]
+    old_avg = entry.get("avg_latency_ms", 0.0)
+    entry["avg_latency_ms"] = old_avg + (latency_ms - old_avg) / max(1, min(total_reqs, 50))
+    entry["last_latency_ms"] = latency_ms
+    entry["last_updated"] = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+    
+    sources[source] = entry
+    _save_source_state(state)
+
+
+def get_source_health_summary() -> str:
+    """Returns a string summary of all search sources health."""
+    state = _load_source_state().get("sources", {})
+    if not state:
+        return "🌐 Source Health: No data yet."
+    lines = ["🌐 Source Health:"]
+    for name, data in state.items():
+        status = data.get("status", "UNKNOWN")
+        latency = data.get("avg_latency_ms", 0)
+        lines.append(f"- {name}: {status} ({latency:.0f}ms avg)")
+    return "\n".join(lines)
+
+
 def reset_all_cooldowns() -> str:
     """Resets all provider cooldowns to zero."""
     state = _load_provider_state()
@@ -812,11 +882,18 @@ def _provider_cooldown_remaining(provider: str) -> float:
     return max(0.0, cooldown_until - time.time())
 
 
-def _set_provider_cooldown(provider: str, seconds: int, reason: str) -> None:
+def _set_provider_cooldown(provider: str, seconds: int, reason: str, status_code: int = 0) -> None:
     state = _load_provider_state()
     providers = state.setdefault("providers", {})
+    provider_data = providers.get(provider) if isinstance(providers.get(provider), dict) else {}
+    
+    if status_code in (401, 403):
+        provider_data["error_401_count"] = provider_data.get("error_401_count", 0) + 1
+    elif status_code == 429:
+        provider_data["error_429_count"] = provider_data.get("error_429_count", 0) + 1
+
     providers[provider] = {
-        **(providers.get(provider) if isinstance(providers.get(provider), dict) else {}),
+        **provider_data,
         "cooldown_until": time.time() + max(0, int(seconds)),
         "last_failure_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
         "last_failure_reason": str(reason or "unknown")[:200],
@@ -824,13 +901,19 @@ def _set_provider_cooldown(provider: str, seconds: int, reason: str) -> None:
     _save_provider_state(state)
 
 
-def _clear_provider_cooldown(provider: str) -> None:
+def _clear_provider_cooldown(provider: str, latency: float = 0.0) -> None:
     state = _load_provider_state()
     providers = state.setdefault("providers", {})
+    provider_data = providers.get(provider) if isinstance(providers.get(provider), dict) else {}
+    
+    prev_latency = float(provider_data.get("latency", 0.0))
+    new_latency = (prev_latency * 0.7 + latency * 0.3) if prev_latency > 0 else latency
+    
     providers[provider] = {
-        **(providers.get(provider) if isinstance(providers.get(provider), dict) else {}),
+        **provider_data,
         "cooldown_until": 0.0,
         "last_success_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+        "latency": round(new_latency, 3),
     }
     _save_provider_state(state)
 
@@ -1030,6 +1113,7 @@ async def _call_provider(provider_raw: str, prompt: str, prompt_type: str = "") 
     timeout_sec = _provider_timeout(provider, prompt_type)
     
     try:
+        start_time = time.time()
         async with httpx.AsyncClient(timeout=timeout_sec) as client:
             if str(provider).lower() == "ollama":
                 url = config["base_url"]
@@ -1086,28 +1170,47 @@ async def _call_provider(provider_raw: str, prompt: str, prompt_type: str = "") 
                         headers["X-Title"] = "KiBot"
                 response = await client.post(url, json=payload, headers=headers)
 
+            latency = time.time() - start_time
+            
+            if response.status_code in (401, 403):
+                _set_provider_cooldown(provider, 3600, f"auth_error_{response.status_code}", status_code=response.status_code)
+                return None
+            if response.status_code == 429:
+                _set_provider_cooldown(provider, 1800, "rate_limit_429", status_code=429)
+                return None
+
             response.raise_for_status()
             data = response.json()
 
             if str(provider).lower() == "ollama":
                 content = data.get("message", {}).get("content")
-                _clear_provider_cooldown(provider)
+                _clear_provider_cooldown(provider, latency=latency)
                 return content
             if provider == "gemini":
-                _clear_provider_cooldown(provider)
+                _clear_provider_cooldown(provider, latency=latency)
                 return data["candidates"][0]["content"]["parts"][0]["text"]
             if provider == "cohere":
-                _clear_provider_cooldown(provider)
+                _clear_provider_cooldown(provider, latency=latency)
                 return data.get("text") or data.get("message", {}).get("content", [{}])[0].get("text")
             
-            _clear_provider_cooldown(provider)
+            _clear_provider_cooldown(provider, latency=latency)
             return data["choices"][0]["message"]["content"]
 
-    except Exception:
-        if str(provider).lower() == "ollama":
-            _set_provider_cooldown(provider, AI_OLLAMA_COOLDOWN_SEC, "exception")
+    except httpx.HTTPStatusError as e:
+        status = e.response.status_code
+        if status in (401, 403):
+            _set_provider_cooldown(provider, 3600, f"auth_error_{status}", status_code=status)
+        elif status == 429:
+            _set_provider_cooldown(provider, 1800, "rate_limit_429", status_code=429)
         else:
-            _set_provider_cooldown(provider, AI_NETWORK_COOLDOWN_SEC, "exception")
+            _set_provider_cooldown(provider, AI_NETWORK_COOLDOWN_SEC, f"http_error_{status}", status_code=status)
+        return None
+    except Exception as e:
+        reason = f"exception: {str(e)[:50]}"
+        if str(provider).lower() == "ollama":
+            _set_provider_cooldown(provider, AI_OLLAMA_COOLDOWN_SEC, reason)
+        else:
+            _set_provider_cooldown(provider, AI_NETWORK_COOLDOWN_SEC, reason)
         return None
 
 

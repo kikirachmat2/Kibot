@@ -410,6 +410,10 @@ def _build_summary() -> Dict[str, Any]:
     brain_state = _read_json(STATE / "brain_status.json", {})
     services = _service_statuses(telemetry if isinstance(telemetry, dict) else {})
     portfolio = _build_portfolio(telemetry if isinstance(telemetry, dict) else {})
+    
+    # [G-007] System Brain metrics
+    inventory = _read_json(STATE / "inventory_matrix.json", {})
+    source_health = _read_json(STATE / "source_health.json", {})
 
     intelligence = world_model.get("intelligence") if isinstance(world_model, dict) else {}
     intelligence = intelligence if isinstance(intelligence, dict) else {}
@@ -463,6 +467,7 @@ def _build_summary() -> Dict[str, Any]:
             "ram": _safe_float(sys_stats.get("ram"), 0.0),
             "disk": _safe_float(sys_stats.get("disk"), 0.0),
         },
+        "commander": telemetry.get("commander", {}),
         "whatif": {
             "top": top_whatif,
             "count": _safe_int(whatif.get("pairsSimulated") or whatif.get("pairs_simulated"), 0) if isinstance(whatif, dict) else 0,
@@ -473,6 +478,8 @@ def _build_summary() -> Dict[str, Any]:
             "whatif": _latest_mtime(STATE / "whatif_results.json"),
             "world_model": _latest_mtime(STATE / "world_model.json"),
         },
+        "inventory": inventory,
+        "source_health": source_health.get("sources", {}),
     }
     # ── §16.2 Order Tracker ──────────────────────────
     try:

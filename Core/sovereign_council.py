@@ -12,6 +12,7 @@ from Core.Intelligence.market_heatmap import load_heatmap
 from Core.Intelligence.probability_engine import estimate_green_probability
 from Core.Intelligence.decision_journal import log_council_decision
 from Core.Intelligence.exit_plan import build_exit_plan
+from Core.Intelligence.strategy.polymarket_intelligence import PolymarketIntelligenceEngine
 
 logger = logging.getLogger("SovereignCouncil")
 
@@ -39,6 +40,7 @@ class SovereignCouncil:
         
         # Load environment
         load_sovereign_env()
+        self.polymarket_engine = PolymarketIntelligenceEngine(coordinator=query_ai)
 
     async def _query_ai_guarded(self, role: str, payload: Dict[str, Any], *, timeout: float = 18.0) -> Dict[str, Any]:
         """Bound AI calls so one slow provider cannot freeze the trading loop."""
@@ -1045,7 +1047,7 @@ class SovereignCouncil:
         if str(decision.get("action") or "NONE").upper() not in {"BUY", "SELL"}:
             candidates = [
                 s for s in list(signals_context.get("signals") or [])
-                if isinstance(s, dict) and str(s.get("exchange") or "INDODAX").upper() == "INDODAX"
+                if isinstance(s, dict) and str(s.get("exchange") or "INDODAX").upper() in {"INDODAX", "POLYMARKET"}
             ]
             candidates.sort(
                 key=lambda s: float(s.get("opportunity_score") or s.get("confidence") or 0.0),
@@ -1196,6 +1198,23 @@ class SovereignCouncil:
         decision.update(posture)
         decision["deadline_pressure"] = deadline_pressure
         decision["deadline_mode"] = decision.get("deadline_mode") or daily_context.get("deadline_mode")
+        
+        # 4. Polymarket Intelligence Integration (G-003)
+        if str(source_signal.get("market_type", "")).lower() == "polymarket" or str(source_signal.get("exchange", "")).upper() == "POLYMARKET":
+            logger.info(f"🔮 Triggering Polymarket Intelligence Engine for {source_signal.get('symbol')}")
+            poly_intel = await self.polymarket_engine.analyze_market(source_signal)
+            decision["polymarket_intelligence"] = {
+                "edge": poly_intel.edge,
+                "confidence": poly_intel.confidence,
+                "liquidity_score": poly_intel.liquidity_score,
+                "resolution_risk": poly_intel.resolution_risk,
+                "recommendation": poly_intel.recommendation
+            }
+            # Override decision if risk is too high
+            if poly_intel.recommendation == "AVOID":
+                decision["status"] = "WAIT"
+                decision["action"] = "NONE"
+                decision["wait_reason"] = f"Polymarket Intelligence Veto: Resolution Risk ({poly_intel.resolution_risk:.2f})"
 
         if antagonist_view and isinstance(antagonist_view, dict):
             decision["antagonist_view"] = antagonist_view
