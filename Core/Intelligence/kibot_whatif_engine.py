@@ -1,7 +1,7 @@
 """
 KiBot What-If Simulation Engine v2.0
 ======================================
-Upgraded per PUMP_LIFECYCLE_STRATEGY.md §15.3, §16.3, §16.6
+Upgraded per TRADING_STRATEGY.md §15.3, §16.3, §16.6
 
 v2 adds:
 - Exit simulation (§17.3): sellability, spread risk, slippage, deadline risk

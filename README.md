@@ -7,7 +7,14 @@
 - [`Core/Executors/README.md`](./Core/Executors/README.md): eksekusi trade dan risk checks.
 - [`Core/Intelligence/README.md`](./Core/Intelligence/README.md): AI, aggregator, dan learning loop.
 - [`Core/Intelligence/SERVER_INVENTORY.md`](./Core/Intelligence/SERVER_INVENTORY.md): snapshot runtime server, AI models, API keys, dan artefak server-only.
-- [`Core/Intelligence/PUMP_LIFECYCLE_STRATEGY.md`](./Core/Intelligence/PUMP_LIFECYCLE_STRATEGY.md): kontrak strategi pump lifecycle, green-builder fallback, deadline intelligence, role-agent debate, dan Telegram/dashboard alignment.
+- [`Core/Intelligence/strategy/TRADING_STRATEGY.md`](./Core/Intelligence/strategy/TRADING_STRATEGY.md): kontrak strategi trading utama untuk Indodax pump lifecycle, green-builder fallback, Polymarket event trading, cross-exchange capital commander, deadline intelligence, role-agent debate, dan Telegram/dashboard alignment.
+- [`Core/Intelligence/strategy/SYSTEM_STRATEGY.md`](./Core/Intelligence/strategy/SYSTEM_STRATEGY.md): kontrak strategi sistem di luar trading, termasuk health, recovery, deployment, security, inventory utilization, dan agent automation.
+- [`Core/Intelligence/strategy/AUTONOMY_GAP_REGISTER.md`](./Core/Intelligence/strategy/AUTONOMY_GAP_REGISTER.md): daftar gap autonomy yang harus ditutup sebelum KiBot mendekati full autonomous runtime.
+- [`Core/Intelligence/strategy/IMPLEMENTATION_ROADMAP.md`](./Core/Intelligence/strategy/IMPLEMENTATION_ROADMAP.md): roadmap fase implementasi dari strategy menjadi runtime.
+- [`Core/Intelligence/strategy/INVENTORY_UTILIZATION.md`](./Core/Intelligence/strategy/INVENTORY_UTILIZATION.md): matriks pemanfaatan server inventory, model, API, tools, dan state.
+- [`Core/Intelligence/strategy/SYSTEM_COMMANDER_SPEC.md`](./Core/Intelligence/strategy/SYSTEM_COMMANDER_SPEC.md): spesifikasi System Commander sebagai otak non-trading untuk health/recovery/drift.
+- [`Core/Intelligence/strategy/POLYMARKET_RUNTIME_ROADMAP.md`](./Core/Intelligence/strategy/POLYMARKET_RUNTIME_ROADMAP.md): roadmap runtime Polymarket V2 untuk probability, resolution, liquidity, evidence, dan PnL.
+- [`Core/Intelligence/strategy/OBSERVABILITY_DASHBOARD_SPEC.md`](./Core/Intelligence/strategy/OBSERVABILITY_DASHBOARD_SPEC.md): spesifikasi dashboard observability/control-plane berikutnya.
 - [`Core/Intelligence/delegation_workflows.md`](./Core/Intelligence/delegation_workflows.md): playbook workflow delegasi formal untuk seluruh sistem.
 - [`Core/Intelligence/delegation_workflows.json`](./Core/Intelligence/delegation_workflows.json): manifest machine-readable untuk workflow delegasi.
 - [`Core/Intelligence/kibot_dashboard.py`](./Core/Intelligence/kibot_dashboard.py): control-plane web dashboard untuk memantau delegation flow secara visual, saldo, strategy, dan event stream.

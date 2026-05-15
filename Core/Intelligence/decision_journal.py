@@ -2,7 +2,7 @@
 
 This module is intentionally lightweight: JSONL files are easy to inspect,
 replay, and ship to dashboards without introducing a heavy database first.
-It implements the data-capture contracts from PUMP_LIFECYCLE_STRATEGY.md.
+It implements the data-capture contracts from TRADING_STRATEGY.md.
 """
 
 from __future__ import annotations

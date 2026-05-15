@@ -27,7 +27,7 @@ AI Orchestration, Learning, and Market Intelligence models.
 - Indodax executor sekarang melakukan wallet/open-order reconciliation berkala: posisi yang tidak punya balance/open order dibuang sebagai stale, sedangkan holding yang muncul di wallet dan memenuhi minimum order otomatis di-attach kembali ke `active_trades.json`.
 - Council trading deliberation sekarang bounded: `COUNCIL_ANTAGONIST`, `COUNCIL_SPEAKER`, dan evidence web search punya timeout. Jika AI/provider lambat, deterministic fallback memilih `ENTER/WAIT` dari local evidence (confidence, spread, tick trap, OHLC quality, what-if), bukan menggantung.
 - RiskGate dan aggregator memakai business day WIB, sehingga daily PnL/report tidak salah tanggal ketika server masih UTC.
-- `PUMP_LIFECYCLE_STRATEGY.md` adalah kontrak strategi utama untuk pump riding, green-builder fallback, deadline intelligence, role-agent debate, Telegram report, dan dashboard alignment.
+- `TRADING_STRATEGY.md` adalah kontrak strategi utama untuk Indodax pump riding, green-builder fallback, Polymarket event trading, cross-exchange capital commander, deadline intelligence, role-agent debate, Telegram report, dan dashboard alignment.
 - `decision_journal.py` mencatat scanner slate, council vote, pre-trade simulation, dan execution event ke `state/decision_journal/YYYY-MM-DD.jsonl` supaya semua keputusan bisa diaudit.
 - `pre_trade_simulator.py` menolak entry yang tidak masuk akal sebelum order: spread terlalu lebar, slippage buruk, min sellable tidak tercapai, partial TP tidak feasible, atau depth kosong.
 - `market_heatmap.py` membangun snapshot breadth Indodax dari ticker live sehingga council tahu apakah pasar sedang pump-friendly, mixed, risk-off, atau thin.
@@ -39,6 +39,14 @@ AI Orchestration, Learning, and Market Intelligence models.
 ## Live Server Atlas
 Source of truth untuk keadaan server yang sebenarnya:
 - [`SERVER_INVENTORY.md`](./SERVER_INVENTORY.md)
+- [`TRADING_STRATEGY.md`](./strategy/TRADING_STRATEGY.md)
+- [`SYSTEM_STRATEGY.md`](./strategy/SYSTEM_STRATEGY.md)
+- [`AUTONOMY_GAP_REGISTER.md`](./strategy/AUTONOMY_GAP_REGISTER.md)
+- [`IMPLEMENTATION_ROADMAP.md`](./strategy/IMPLEMENTATION_ROADMAP.md)
+- [`INVENTORY_UTILIZATION.md`](./strategy/INVENTORY_UTILIZATION.md)
+- [`SYSTEM_COMMANDER_SPEC.md`](./strategy/SYSTEM_COMMANDER_SPEC.md)
+- [`POLYMARKET_RUNTIME_ROADMAP.md`](./strategy/POLYMARKET_RUNTIME_ROADMAP.md)
+- [`OBSERVABILITY_DASHBOARD_SPEC.md`](./strategy/OBSERVABILITY_DASHBOARD_SPEC.md)
 
 Snapshot singkat yang paling penting:
 - Server: `BrainSystem` di Batam.

@@ -2,7 +2,7 @@
 Daily Context Engine
 =====================
 Shared situational awareness payload injected into every subsystem each cycle.
-Contract: PUMP_LIFECYCLE_STRATEGY.md §11 — Deadline Intelligence Layer
+Contract: TRADING_STRATEGY.md §11 — Deadline Intelligence Layer
 
 All agents — Scanner, Council, Executor, Risk Gate, Dashboard — must receive
 the same daily_context so they speak the same language.

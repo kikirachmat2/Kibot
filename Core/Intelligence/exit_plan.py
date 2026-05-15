@@ -2,7 +2,7 @@
 Exit Plan Engine
 =================
 Generates a complete, per-trade exit plan at the moment of buy mandate.
-Contract: PUMP_LIFECYCLE_STRATEGY.md §5, §6, §15.4
+Contract: TRADING_STRATEGY.md §5, §6, §15.4
 
 Every entry must have an exit plan. No executor may receive a buy mandate
 without a concrete exit-aware scenario.

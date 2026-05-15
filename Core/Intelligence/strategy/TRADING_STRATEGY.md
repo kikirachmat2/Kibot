@@ -1334,6 +1334,9 @@ Rule:
 Polymarket trades require event reasoning, not chart pump reasoning.
 ```
 
+Polymarket strategy is expanded in section 25 and section 26. Section 16.11 is
+the short rule; later sections are the operational contract.
+
 ---
 
 ## 16.12 Emergency Protocol
@@ -2952,3 +2955,1652 @@ KiBot must avoid coins whose historical behavior shows:
 - sell-minimum trap risk.
 
 These are not learning opportunities. They are noisy traps.
+
+---
+
+## 24. RiskGate V4 Roadmap — Adaptive Risk Brain
+
+Current RiskGate is safe enough as a hard guard, but it is not yet the full
+adaptive risk brain described by this strategy. It must evolve from a simple
+"reject/pass" door into a context-aware risk contract validator.
+
+### 24.1 Current RiskGate Strengths
+
+Already implemented:
+
+- WIB business-day reset for daily risk state.
+- Hard daily loss cap.
+- Capital state machine: `MICRO`, `SMALL`, `NORMAL`, `LARGE`.
+- Sizing mode vocabulary: `ONE_SHOT`, `PROBE`, `NORMAL`, `REDUCED`, `PROTECT`.
+- Minimum notional guard.
+- Max notional sovereign cap.
+- Slot cap.
+- Blacklist guard.
+- Budget guard.
+- Dust prevention.
+- Unit-price law: reject if `price_idr >= total_equity_idr`.
+
+This means RiskGate is already a valid safety layer, but not yet a fully
+situational one.
+
+### 24.2 Current Gaps
+
+RiskGate still needs these upgrades:
+
+1. Category-specific risk policy.
+2. Daily deadline awareness.
+3. Daily color awareness.
+4. Starting-equity based daily drawdown.
+5. Top-level spread support.
+6. Exit-quality enforcement.
+7. Pre-trade simulation awareness.
+8. Trade-grade awareness.
+9. What-if score awareness.
+10. Evidence freshness awareness.
+11. Adaptive sizing as the single source of truth.
+12. Distinct policy for pump riding vs green-builder fallback.
+
+### 24.3 Category-Specific Risk Rules
+
+RiskGate must read:
+
+```json
+{
+  "fallback_category": "MEME_ROTATION",
+  "category_policy": {},
+  "lifecycle": "IGNITION",
+  "trade_grade": "A",
+  "exit_quality": "B"
+}
+```
+
+Then apply different risk requirements.
+
+`HIGH_LIQUIDITY_MAJOR`
+
+- May accept slightly lower momentum if spread and exit depth are clean.
+- Allowed for green-builder fallback.
+- Can hold longer if trailing profit remains healthy.
+- Reject if market regime is panic/risk-off unless confidence is exceptional.
+
+`BTC_ETH_BETA`
+
+- Requires BTC/ETH or major market alignment.
+- Reject if BTC/ETH trend is negative and candidate has no independent catalyst.
+- Sizing should be moderate, not one-shot, unless account is `MICRO`.
+
+`AI_BIG_DATA`
+
+- Requires narrative evidence from online intelligence or sector heatmap.
+- If no online/source support exists, downgrade confidence or reject.
+- Avoid isolated candles without sector confirmation.
+
+`RWA_DEFI`
+
+- Requires sector confirmation or clear liquidity improvement.
+- Do not buy just because it is a known DeFi/RWA ticker.
+
+`MEME_ROTATION`
+
+- Must be treated as short-scalp only.
+- Requires stricter spread and persistence than majors.
+- Requires pre-trade exit simulation PASS.
+- No averaging down.
+- Prefer smaller sizing unless signal is A-grade and liquidity is excellent.
+
+`LOCAL_MOMENTUM`
+
+- Must be treated as very short-window local pump.
+- Requires distinct price levels, volume persistence, and sell path.
+- Reject dead-flat histories.
+- Reject if exit quality is below B unless confidence and simulation are exceptional.
+
+`AVOID_STABLE` / `UNKNOWN`
+
+- Reject for alpha trades by default.
+- Only allow if manually reclassified by future strategy update.
+
+### 24.4 Daily Context Rules
+
+RiskGate must read `daily_context`:
+
+```json
+{
+  "daily_color": "GREEN|FLAT|RECOVERY",
+  "deadline_mode": "PATIENT|ACTIVE|PRESSURE|MIDNIGHT",
+  "urgency_level": "LOW|MEDIUM|HIGH|CRITICAL",
+  "required_trade_quality": "NORMAL|HIGH|EXCEPTIONAL",
+  "allowed_risk_mode": "NORMAL|REDUCED|WAIT"
+}
+```
+
+Rules:
+
+- If `daily_color=GREEN`, RiskGate should preserve green. New entries must be
+  cleaner, smaller, or clearly additive.
+- If `daily_color=RECOVERY`, RiskGate may allow bolder entries, but only if
+  exit simulation, spread, and trade grade are strong.
+- If `allowed_risk_mode=WAIT`, BUY is rejected unless the trade is an explicit
+  emergency exit or operator override.
+- If `deadline_mode=MIDNIGHT`, RiskGate should avoid late low-quality entries
+  that can carry red past the daily report.
+- Deadline pressure may lower confidence only if safety quality remains intact;
+  it must never bypass hard safety gates.
+
+### 24.5 Daily Drawdown Must Use Starting Equity
+
+Current daily loss cap uses current balance. V4 should use:
+
+```text
+daily_starting_equity_idr
+```
+
+Better formula:
+
+```text
+max_daily_loss_idr = daily_starting_equity_idr * max_daily_loss_pct
+```
+
+Why:
+
+- Current balance can shrink after buys.
+- Held positions can distort available cash.
+- Drawdown should be measured against the start-of-day account size, not only
+  free cash.
+
+Required state:
+
+```json
+{
+  "daily_starting_equity_idr": 100273,
+  "daily_realized_pnl_idr": -1200,
+  "daily_unrealized_pnl_idr": 450,
+  "daily_total_pnl_idr": -750,
+  "last_reset_date": "YYYY-MM-DD"
+}
+```
+
+### 24.6 Spread Source Normalization
+
+RiskGate must normalize spread from all possible locations:
+
+```python
+spread_pct = (
+    signal.get("spread_pct")
+    or signal.get("meta", {}).get("spread_pct")
+    or signal.get("pre_trade_simulation", {}).get("spread_pct")
+)
+```
+
+This prevents a bug where scanner sends `spread_pct` top-level but RiskGate only
+looks inside `meta`.
+
+### 24.7 Exit Quality and Simulation Gates
+
+RiskGate must read:
+
+```json
+{
+  "exit_quality": "A|B|C|D|F",
+  "pre_trade_simulation": {
+    "simulation_verdict": "PASS|REDUCE_SIZE|REJECT",
+    "exit_feasible": true,
+    "roundtrip_net_pct": 0.42
+  }
+}
+```
+
+Rules:
+
+- `simulation_verdict=REJECT` means reject.
+- `exit_quality=F` means reject.
+- `exit_quality=D` only allowed for tiny learning probe if no better option and
+  daily risk is safe.
+- `MEME_ROTATION` and `LOCAL_MOMENTUM` require `exit_quality` A/B unless
+  reduced-size probe is explicitly chosen by Council.
+- If partial TP is infeasible, RiskGate must ensure exit plan does not rely on
+  partial take-profit.
+
+### 24.8 Trade Grade Rules
+
+RiskGate must treat trade grade as a hard-ish policy:
+
+`A`
+
+- Full eligible sizing by capital state.
+- Allowed during most deadline modes.
+
+`B`
+
+- Allowed, but sizing may be reduced.
+
+`C`
+
+- Probe only. Never full size.
+
+`D`
+
+- Reject unless explicitly tagged as learning probe and daily risk is green-safe.
+
+`F`
+
+- Always reject.
+
+### 24.9 Adaptive Sizing Source of Truth
+
+Executor currently has its own budget logic. V4 should make RiskGate the
+canonical sizing authority.
+
+Expected flow:
+
+```text
+Council mandate
+→ RiskGate.validate_signal()
+→ RiskGate.recommend_position_size()
+→ Executor uses approved budget exactly
+```
+
+RiskGate should output:
+
+```json
+{
+  "approved": true,
+  "reason": "ADAPTIVE_PASS",
+  "approved_budget_idr": 10000,
+  "sizing_mode": "ONE_SHOT",
+  "risk_mode": "MICRO_GREEN_BUILDER",
+  "risk_notes": []
+}
+```
+
+Sizing inputs:
+
+- capital state,
+- daily color,
+- deadline mode,
+- category,
+- trade grade,
+- exit quality,
+- liquidity simulation,
+- current active slots,
+- current PnL,
+- unit-price rule.
+
+### 24.10 Pump vs Green-Builder Mode
+
+RiskGate must distinguish:
+
+`PUMP_RIDE`
+
+- Momentum and lifecycle are primary.
+- Requires fresh evidence.
+- Hard stop and trailing plan are mandatory.
+- Meme/local pumps need stricter exit safety.
+
+`GREEN_BUILDER`
+
+- Used when no clean pump exists.
+- Prefers liquid majors, BTC/ETH beta, and strong sector rotation.
+- Lower urgency, cleaner exits, smaller sizing.
+- Must be able to switch out immediately if a stronger pump appears.
+
+Runtime field:
+
+```json
+{
+  "trade_mode": "PUMP_RIDE|GREEN_BUILDER|LEARNING_PROBE"
+}
+```
+
+### 24.11 RiskGate V4 Final Target
+
+Final target:
+
+```text
+RiskGate should not merely stop bad trades.
+RiskGate should shape the safest viable version of a good trade.
+```
+
+Meaning:
+
+- reject truly bad trades,
+- reduce size for medium trades,
+- preserve green when already green,
+- allow controlled aggression when recovery is needed,
+- prevent dust and minimum-order traps,
+- respect the unit-price law,
+- enforce category-specific behavior,
+- make every pass/reject auditable.
+
+---
+
+## 25. Polymarket Event Trading Strategy
+
+Polymarket is not a coin exchange. It is a probability market. KiBot must treat
+each trade as buying or selling a probability claim, not as riding a candle.
+
+Core principle:
+
+```text
+On Indodax, KiBot asks: "Can this coin move enough before risk catches us?"
+On Polymarket, KiBot asks: "Is the market price wrong compared to evidence, time, and liquidity?"
+```
+
+### 25.1 Mental Model
+
+Polymarket outcomes are usually priced between 0 and 1.
+
+Example:
+
+```text
+YES price = 0.62
+Market implies roughly 62% probability.
+If KiBot estimates fair probability at 72%, edge = +10 percentage points.
+```
+
+KiBot should only enter when:
+
+```text
+estimated_probability - market_price > required_edge
+```
+
+For NO positions:
+
+```text
+estimated_probability_of_NO - no_price > required_edge
+```
+
+### 25.2 Polymarket Opportunity Types
+
+`EVENT_MISPRICE`
+
+- Market probability appears wrong versus evidence.
+- Best for liquid markets with clear external facts.
+- Example: market prices YES at 0.42, but evidence supports 0.55+.
+
+`CATALYST_RIDE`
+
+- KiBot expects upcoming news/data/event to move odds before final resolution.
+- Goal is often to exit before resolution, not hold until the final answer.
+- Requires catalyst calendar and liquidity.
+
+`NEWS_REACTION`
+
+- Market is slow to react to fresh reliable news.
+- Requires source freshness and cross-source validation.
+- Avoid if the market has already repriced.
+
+`HEDGE_EVENT`
+
+- Polymarket position offsets Indodax exposure.
+- Example: Indodax holds crypto beta, Polymarket takes a position that benefits
+  if a macro/news event weakens crypto.
+
+`LOW_RISK_YIELD`
+
+- Short-duration high-probability market with limited uncertainty.
+- Only allowed if liquidity is clean and resolution criteria are explicit.
+- Must avoid tiny upside with large tail risk.
+
+`NO_EDGE`
+
+- Evidence does not beat market price after fees/spread/liquidity.
+- No position.
+
+### 25.3 Market Selection Filters
+
+KiBot should reject Polymarket markets when:
+
+- market title is ambiguous,
+- resolution source is unclear,
+- market is close to expiry but criteria are disputed,
+- orderbook is too thin,
+- spread is too wide,
+- one wallet or one level dominates depth,
+- outcome has low volume and stale last trade,
+- API/wallet/CLOB credential health is not confirmed,
+- event cannot be validated by at least two independent information paths,
+- market has binary wording traps such as "by", "before", "at", "officially",
+  "announced", or "confirmed" without resolution clarity.
+
+### 25.4 Required Market Metadata
+
+Every Polymarket candidate must carry:
+
+```json
+{
+  "market_id": "...",
+  "condition_id": "...",
+  "question": "...",
+  "outcome": "YES|NO",
+  "price": 0.62,
+  "best_bid": 0.61,
+  "best_ask": 0.63,
+  "spread": 0.02,
+  "liquidity_usd": 12000,
+  "volume_24h_usd": 5000,
+  "expiry": "YYYY-MM-DDTHH:MM:SSZ",
+  "resolution_source": "...",
+  "category": "crypto|politics|sports|macro|other",
+  "evidence_bundle_id": "...",
+  "estimated_probability": 0.72,
+  "edge_points": 0.10,
+  "liquidity_score": 0.84,
+  "resolution_risk": "LOW|MEDIUM|HIGH",
+  "time_risk": "LOW|MEDIUM|HIGH"
+}
+```
+
+Without these fields, Council must treat the opportunity as incomplete.
+
+### 25.5 Probability Engine
+
+Polymarket requires a dedicated probability engine.
+
+Inputs:
+
+- market price,
+- orderbook midpoint,
+- spread,
+- historical price movement,
+- volume and liquidity,
+- time to expiry,
+- resolution rules,
+- external evidence,
+- source reliability,
+- contradiction score,
+- social/news momentum,
+- relation to Indodax/BTC/ETH regime if crypto-related.
+
+Output:
+
+```json
+{
+  "estimated_probability": 0.72,
+  "market_probability": 0.62,
+  "edge_points": 0.10,
+  "edge_quality": "A|B|C|D|F",
+  "confidence": 0.78,
+  "evidence_quality": "STRONG",
+  "contradiction_score": 0.18,
+  "recommended_action": "BUY_YES|BUY_NO|WAIT|EXIT"
+}
+```
+
+### 25.6 Required Edge Thresholds
+
+Default minimum edge:
+
+| Market Type | Minimum Edge |
+|---|---:|
+| Very liquid, clear resolution | 4-6 percentage points |
+| Normal liquid event | 7-10 percentage points |
+| Thin market | 12-18 percentage points |
+| Ambiguous resolution | Reject |
+| Near-expiry disputed market | Reject |
+
+Rule:
+
+```text
+Small edge is not enough if liquidity or resolution risk is poor.
+```
+
+### 25.7 Liquidity and Spread Rules
+
+Polymarket liquidity is not equal to Indodax liquidity.
+
+KiBot must check:
+
+- top-of-book spread,
+- depth within 2-5 cents of target price,
+- expected slippage for intended size,
+- whether exit depth exists,
+- whether liquidity disappears between scans,
+- marketable-limit fill feasibility,
+- stale orderbook age.
+
+Reject if:
+
+```text
+expected_exit_slippage + spread > expected_edge * 0.50
+```
+
+Meaning: if half the edge disappears into spread/slippage, the trade is not
+clean enough.
+
+### 25.8 Order Type Rules
+
+Polymarket execution must be limit-first.
+
+Rules:
+
+- Prefer limit orders at or better than max acceptable price.
+- Marketable limit is allowed only when missing the move is worse than a small
+  slippage loss.
+- Never submit blind marketable orders without max price guard.
+- Cancel stale unfilled orders.
+- Re-check orderbook before retrying.
+- Store order id, market id, side, outcome, price, size, and reason.
+
+Required execution payload:
+
+```json
+{
+  "order_style": "LIMIT|MARKETABLE_LIMIT",
+  "max_yes_price": 0.64,
+  "min_no_price": null,
+  "size_usdc": 8.0,
+  "time_in_force": "FOK|FAK|GTC",
+  "cancel_if_unfilled_sec": 30
+}
+```
+
+### 25.9 Position Sizing
+
+Polymarket sizing must be smaller than Indodax until live track record proves
+edge.
+
+Default account states:
+
+`MICRO`
+
+- $1-$5 probes only if fees/gas/account mechanics make sense.
+- Prefer paper/observe if size is too small to exit meaningfully.
+
+`SMALL`
+
+- 2-8% of Polymarket USDC per position.
+- Max 1-2 active markets.
+
+`NORMAL`
+
+- 3-10% per position.
+- Max 3-5 active markets.
+
+`LARGE`
+
+- More diversified, but still cap by event correlation.
+
+Hard caps:
+
+```text
+No single Polymarket event should be able to ruin the daily GREEN objective.
+No ambiguous market gets full size.
+No market with weak exit depth gets full size.
+```
+
+### 25.10 Exit Strategy
+
+Polymarket exits are different from coin exits.
+
+Exit triggers:
+
+- target probability reached,
+- edge compressed below minimum,
+- evidence invalidated,
+- contradiction score rises,
+- resolution risk rises,
+- liquidity deteriorates,
+- approaching expiry with uncertain resolution,
+- daily GREEN preservation,
+- better Indodax opportunity needs capital,
+- market moved favorably enough to lock green.
+
+Default profit-taking:
+
+```text
+If price moves +10-20% relative in KiBot's favor, reassess.
+If edge is gone, exit even if final event has not resolved.
+If daily account is GREEN near midnight, prefer locking realized green over holding unresolved event risk.
+```
+
+### 25.11 Holding to Resolution
+
+Holding to final resolution is allowed only when:
+
+- resolution source is explicit,
+- evidence confidence is high,
+- market is liquid enough to exit if needed,
+- daily risk allows it,
+- no contradictory late evidence appears,
+- position size is small enough to survive binary loss.
+
+Otherwise:
+
+```text
+Polymarket is used for odds movement, not blind final settlement gambling.
+```
+
+### 25.12 Resolution Risk
+
+Resolution risk is a first-class risk.
+
+High-risk wording:
+
+- "officially announced",
+- "will X happen by date",
+- "will X be confirmed",
+- "according to source Y",
+- "before/after" timing boundaries,
+- subjective or committee-based decisions,
+- markets dependent on one opaque institution.
+
+If resolution risk is high:
+
+```text
+No trade unless edge is exceptional and size is probe-only.
+```
+
+### 25.13 Evidence Stack
+
+Polymarket evidence should be layered:
+
+1. Market rules and resolution text.
+2. Official source.
+3. Trusted news/source aggregation.
+4. Search/web evidence.
+5. Social/momentum only as weak signal.
+6. Polymarket price/orderbook behavior.
+7. Cross-market comparison when available.
+
+Council must not let social hype override official resolution text.
+
+### 25.14 Crypto-Related Polymarket Markets
+
+Crypto Polymarket markets can support Indodax decisions.
+
+Examples:
+
+- BTC price prediction market rising may support BTC beta sentiment.
+- ETF/regulatory/news market may affect crypto risk regime.
+- Macro market may affect risk-on/risk-off posture.
+
+But:
+
+```text
+Polymarket does not replace Indodax orderbook evidence.
+It is a probability clue, not a direct coin-entry trigger.
+```
+
+### 25.15 Polymarket Anti-Patterns
+
+Avoid:
+
+- buying 0.95 YES for tiny upside with hidden tail risk,
+- chasing markets after the price already moved,
+- trading unclear resolution wording,
+- holding large binary exposure into uncertain expiry,
+- entering thin markets just because the probability model says edge,
+- averaging down on a binary thesis after evidence worsens,
+- using Indodax pump logic on event markets.
+
+### 25.16 Polymarket Role-Agent Debate
+
+Council should include these Polymarket-specific roles:
+
+| Role | Job |
+|---|---|
+| Event Judge | Reads question, resolution source, expiry, ambiguity |
+| Probability Quant | Estimates fair probability and edge |
+| Liquidity Maker | Checks spread, depth, slippage, exit feasibility |
+| Evidence Scout | Collects source/news/search validation |
+| Skeptic / Antagonist | Finds wording traps and contradiction |
+| Portfolio Commander | Checks daily GREEN and cross-exchange capital impact |
+
+No Polymarket BUY should pass if Event Judge or Liquidity Maker has a hard veto.
+
+### 25.17 Polymarket Trade Grades
+
+`A`
+
+- Clear rules, strong evidence, liquid book, edge > threshold, exit path clean.
+
+`B`
+
+- Good edge and liquidity, minor uncertainty.
+
+`C`
+
+- Probe only. Learning or early catalyst setup.
+
+`D`
+
+- Watchlist only.
+
+`F`
+
+- Reject. Ambiguous, illiquid, stale, or no edge.
+
+### 25.18 Polymarket Runtime Contract
+
+Every Polymarket mandate must carry:
+
+```json
+{
+  "type": "COUNCIL_MANDATE",
+  "exchange": "POLYMARKET",
+  "market_id": "...",
+  "condition_id": "...",
+  "outcome": "YES|NO",
+  "side": "BUY|SELL",
+  "price": 0.62,
+  "max_price": 0.64,
+  "size_usdc": 5.0,
+  "estimated_probability": 0.72,
+  "edge_points": 0.10,
+  "liquidity_score": 0.84,
+  "resolution_risk": "LOW",
+  "evidence_quality": "STRONG",
+  "exit_plan": {},
+  "daily_context": {},
+  "role_votes": []
+}
+```
+
+Missing critical fields means no execution.
+
+---
+
+## 26. Cross-Exchange Capital Commander
+
+KiBot needs one capital brain above Indodax and Polymarket.
+
+The Capital Commander decides:
+
+- where capital is most useful,
+- when to hold cash,
+- when to lock green,
+- when to recover,
+- when Polymarket can hedge Indodax,
+- when Indodax pump opportunities outrank Polymarket event opportunities,
+- when neither exchange should trade.
+
+### 26.1 Combined Daily GREEN
+
+Daily GREEN is combined across:
+
+- Indodax realized PnL,
+- Indodax unrealized PnL,
+- Polymarket realized PnL,
+- Polymarket mark-to-market PnL,
+- fees/slippage where measurable.
+
+Rule:
+
+```text
+The system is GREEN only when combined account equity is above daily starting equity.
+```
+
+### 26.2 Exchange Priority Modes
+
+`INDODAX_PRIMARY`
+
+- Active pump or strong green-builder setup exists.
+- Polymarket only supports context or hedge.
+
+`POLYMARKET_PRIMARY`
+
+- No clean Indodax setup.
+- Strong event mispricing exists with good liquidity.
+
+`BALANCED`
+
+- Both have independent A/B grade opportunities and correlation is manageable.
+
+`CASH_PROTECT`
+
+- Daily GREEN is already achieved near deadline.
+- No clean low-risk opportunity exists.
+
+`RECOVERY_SELECTIVE`
+
+- Daily state is red/flat and deadline pressure exists.
+- Only A/B grade setups across either venue are allowed.
+
+### 26.3 Allocation Rules
+
+When account is small:
+
+- prioritize the cleanest single opportunity,
+- avoid splitting into many tiny positions,
+- Indodax gets priority for fast realized PnL if pump quality is high,
+- Polymarket gets priority only when event edge is clearer than coin momentum.
+
+When account grows:
+
+- split capital by opportunity grade,
+- reserve emergency cash,
+- cap correlated exposure,
+- use Polymarket as hedge/context more often.
+
+### 26.4 Cross-Exchange Conflict Rules
+
+If Indodax and Polymarket conflict:
+
+- Indodax signal says risk-on, Polymarket event says crypto risk-off:
+  reduce Indodax size or wait.
+- Indodax signal is weak, Polymarket event edge is strong:
+  Polymarket can take priority.
+- Indodax position is open and Polymarket offers hedge:
+  hedge is allowed only if it improves combined daily risk.
+- Both are weak:
+  hold cash.
+
+### 26.5 Capital Commander Output
+
+Expected output:
+
+```json
+{
+  "mode": "INDODAX_PRIMARY|POLYMARKET_PRIMARY|BALANCED|CASH_PROTECT|RECOVERY_SELECTIVE",
+  "combined_daily_color": "GREEN|FLAT|RECOVERY",
+  "capital_to_indodax_pct": 0.80,
+  "capital_to_polymarket_pct": 0.20,
+  "cash_reserve_pct": 0.10,
+  "reason": "...",
+  "blocking_risks": [],
+  "preferred_next_action": "INDODAX_BUY|POLYMARKET_BUY|EXIT|WAIT"
+}
+```
+
+### 26.6 Combined Stop Rules
+
+Even if one exchange looks good, combined risk matters.
+
+Stop or reduce new entries when:
+
+- combined daily drawdown hits hard cap,
+- server/API health is degraded,
+- Indodax and Polymarket both have stale data,
+- Telegram daily report cannot be generated,
+- wallet/account reconciliation fails,
+- dashboard shows unknown balance state.
+
+### 26.7 Final Cross-Exchange Rule
+
+```text
+Indodax is for price movement.
+Polymarket is for probability mispricing.
+Capital Commander decides which one deserves money now.
+```
+
+---
+
+## 27. Polymarket Implementation Roadmap
+
+Runtime implementation should happen in layers.
+
+### Phase 1 — Readiness and Data
+
+- Verify Phantom/Polygon wallet address.
+- Verify USDC balance.
+- Verify CLOB API credentials.
+- Verify market fetch through Gamma/CLOB.
+- Cache market metadata.
+- Cache orderbook snapshots.
+- Track open positions and orders.
+
+### Phase 2 — Market Scoring
+
+- Build `polymarket_probability_engine.py`.
+- Build `polymarket_liquidity_simulator.py`.
+- Build `polymarket_resolution_risk.py`.
+- Build `polymarket_evidence_bundle.py`.
+- Emit structured `POLYMARKET_EVENT_EDGE` signals.
+
+### Phase 3 — Council Contract
+
+- Add Event Judge, Probability Quant, Liquidity Maker, Evidence Scout,
+  Antagonist, and Portfolio Commander role votes.
+- Reject incomplete mandates.
+- Require explicit exit plan.
+
+### Phase 4 — Executor Hardening
+
+- Limit-first execution.
+- Max price guard.
+- Cancel stale orders.
+- Reconcile fills/orders/positions.
+- Mark-to-market PnL.
+- Daily GREEN integration.
+
+### Phase 5 — Cross-Exchange Capital Commander
+
+- Compare Indodax and Polymarket opportunities.
+- Allocate capital to the best risk-adjusted opportunity.
+- Lock combined green near deadline.
+- Use Polymarket for hedge/context when appropriate.
+
+### 27.1 External References Used for Polymarket Strategy
+
+This strategy is aligned with the public Polymarket CLOB model:
+
+- Polymarket CLOB documentation describes hybrid off-chain matching with
+  on-chain settlement and authenticated order/trade APIs.
+- Polymarket order documentation describes marketable behavior as limit orders
+  that execute against the book.
+- Polymarket documentation notes tick-size constraints through market metadata.
+
+Implementation must always defer to live API behavior and current official
+documentation when placing real orders.
+
+---
+
+## 28. 100% Strategy Closure Map
+
+This section lists the remaining strategic gaps and closes them as operating
+contracts. The goal is not to promise perfect profit. The goal is to remove
+avoidable blindness from the system.
+
+Core closure principle:
+
+```text
+Every tradeable opportunity must be evaluated across market structure,
+probability, liquidity, capital state, deadline, execution feasibility,
+learning value, and post-trade accountability.
+```
+
+If any layer is missing, KiBot must label the decision as incomplete rather
+than pretending confidence is real.
+
+### 28.1 Full Decision Stack
+
+Every candidate must pass through this stack:
+
+1. Discovery — scanner or Polymarket market discovery finds candidate.
+2. Classification — pump, green-builder, event misprice, hedge, or no-edge.
+3. Evidence — market data, orderbook, history, online sources, resolution rules.
+4. Probability — estimated chance of favorable outcome.
+5. Liquidity — entry and exit feasibility.
+6. Capital Commander — exchange priority and sizing envelope.
+7. Council debate — role votes and antagonist challenge.
+8. RiskGate — hard safety and adaptive sizing.
+9. Executor — order style, fill confirmation, reconciliation.
+10. Exit Manager — trailing, stop, TP, expiry, resolution, green lock.
+11. Learning Journal — result, missed opportunity, reason quality.
+12. Dashboard/Telegram — explain what happened and why.
+
+No shortcut should bypass this stack for real money.
+
+### 28.2 Remaining Strategy Gaps Now Closed
+
+| Area | Prior Gap | Closure |
+|---|---|---|
+| Capital allocation | No single brain above exchanges | Capital Commander owns exchange priority and cash reserve |
+| Polymarket | Basic event strategy only | Add resolution intelligence, evidence stack, liquidity model, edge thresholds |
+| Scanner | Pump detection can be late or narrow | Add multi-timeframe and missed-pump analysis |
+| Executor | Order placement too simple | Add smart order style, retry/cancel, fill verification |
+| AI Council | Snapshot thinking can be shallow | Add role weighting, memory, post-trade review |
+| What-if | Mostly pair-level | Add scenario tree and deadline branches |
+| Daily GREEN | Philosophical but not formal enough | Add green lock, recovery escalation, stop conditions |
+| Learning | Learns from trades more than rejects | Add rejected/missed candidate warehouse |
+| Dashboard | Shows state, not all reasoning | Add candidate table, risk reason, what-if tree, missed opportunity |
+| Operations | Runtime health separate from strategy | Add system self-maintenance strategy |
+
+---
+
+## 29. Capital Commander V2
+
+Capital Commander is the highest financial authority in KiBot.
+
+It answers:
+
+```text
+Where should the next unit of money go, or should it stay in cash?
+```
+
+### 29.1 Inputs
+
+Capital Commander must read:
+
+- Indodax cash,
+- Indodax active holdings,
+- Indodax unrealized PnL,
+- Polymarket USDC balance,
+- Polymarket open positions,
+- combined daily starting equity,
+- combined current equity,
+- daily color,
+- deadline mode,
+- RiskGate state,
+- server health,
+- scanner candidates,
+- Polymarket candidates,
+- AI/source health,
+- open order status,
+- pending settlement/fill status.
+
+### 29.2 Output
+
+```json
+{
+  "capital_mode": "INDODAX_PRIMARY",
+  "daily_color": "FLAT",
+  "cash_reserve_idr": 15000,
+  "max_new_indodax_budget_idr": 70000,
+  "max_new_polymarket_budget_usdc": 3.5,
+  "preferred_exchange": "INDODAX",
+  "reason": "A-grade pump candidate beats current Polymarket edge",
+  "forbidden_actions": ["POLYMARKET_AMBIGUOUS_MARKET", "INDODAX_DEAD_FLAT_COIN"],
+  "green_lock": false
+}
+```
+
+### 29.3 Priority Rules
+
+Indodax gets priority when:
+
+- pump candidate grade A/B exists,
+- exit simulation passes,
+- unit-price law passes,
+- spread/liquidity are clean,
+- Polymarket has no strong event edge.
+
+Polymarket gets priority when:
+
+- event edge is A/B,
+- resolution risk is low,
+- liquidity is clean,
+- Indodax only has weak/choppy candidates.
+
+Cash gets priority when:
+
+- data is stale,
+- daily GREEN is already achieved near deadline,
+- both exchanges are weak,
+- server/API/wallet health is uncertain,
+- open positions already consume too much attention.
+
+Balanced mode is allowed when:
+
+- opportunities are independent,
+- position sizes are small,
+- combined drawdown remains safe,
+- system can monitor both exits.
+
+### 29.4 Green Lock
+
+When daily state is GREEN, KiBot must decide whether to continue.
+
+Rules:
+
+- If GREEN is tiny and time remains, only A-grade opportunities may continue.
+- If GREEN is meaningful and deadline is close, preserve.
+- If an open position has strong trailing profit, let it ride with a tighter exit.
+- If a new opportunity risks flipping daily state red, reject.
+
+`green_lock=true` means:
+
+```text
+No new position unless opportunity is exceptional and downside cannot erase daily GREEN.
+```
+
+---
+
+## 30. Indodax Scanner V2 — Multi-Timeframe Pump Intelligence
+
+Scanner must detect both early pumps and safe continuation, while avoiding
+late blowoff traps.
+
+### 30.1 Required Timeframes
+
+Every candidate should be scored on:
+
+- 1m micro impulse,
+- 5m pump ignition,
+- 15m continuation,
+- 1h trend context,
+- 24h run-up and range position,
+- multi-day history when available.
+
+Output:
+
+```json
+{
+  "timeframe_alignment": {
+    "1m": "UP",
+    "5m": "UP",
+    "15m": "CONFIRMING",
+    "1h": "CHOPPY",
+    "24h": "NEAR_HIGH"
+  },
+  "alignment_score": 0.76
+}
+```
+
+### 30.2 Pump Phase Classifier
+
+Phases:
+
+- `PRE_IGNITION`
+- `IGNITION`
+- `CONFIRMATION`
+- `RIDE`
+- `PULLBACK_RECLAIM`
+- `LATE_RECLAIM`
+- `BLOWOFF`
+- `DISTRIBUTION`
+- `TRAP`
+
+Rules:
+
+- `PRE_IGNITION` can be watchlist only unless liquidity is excellent.
+- `IGNITION` may enter if orderbook confirms.
+- `RIDE` may enter only if there is still room to high and volume persists.
+- `BLOWOFF`, `DISTRIBUTION`, and `TRAP` are reject.
+
+### 30.3 Missed Pump Analysis
+
+Scanner must track coins that pumped but were not bought.
+
+For each missed pump:
+
+```json
+{
+  "symbol": "AI/IDR",
+  "first_detected_at": "...",
+  "price_at_detection": 420,
+  "price_after_15m": 515,
+  "max_after_detection_pct": 22.6,
+  "why_not_bought": "RiskGate spread reject",
+  "was_reject_correct": false,
+  "lesson": "spread tightened after detection; retry rule needed"
+}
+```
+
+This prevents the system from repeating avoidable misses.
+
+### 30.4 Dead-Flat and Tick-Trap Upgrade
+
+Dead-flat rejection should consider:
+
+- distinct price levels,
+- candle diversity,
+- zero-volume candle ratio,
+- orderbook depth,
+- minimum sell amount,
+- historical pump continuation,
+- post-pump dump frequency.
+
+If a coin only oscillates at the same few price levels, it is not a learning
+trade. It is a trap.
+
+---
+
+## 31. Polymarket Resolution Intelligence V2
+
+Polymarket's biggest danger is not only wrong probability. It is wrong market
+interpretation.
+
+### 31.1 Resolution Parser
+
+Every market must be parsed into:
+
+```json
+{
+  "question": "...",
+  "deadline": "...",
+  "resolution_source": "...",
+  "required_event": "...",
+  "ambiguous_terms": [],
+  "official_source_needed": true,
+  "dispute_risk": "LOW|MEDIUM|HIGH"
+}
+```
+
+### 31.2 Wording Trap Detector
+
+Flag terms:
+
+- "officially",
+- "confirmed",
+- "announced",
+- "by date",
+- "before",
+- "at or above",
+- "will happen",
+- "recognized by",
+- "according to",
+- "substantially",
+- "majority",
+- "launch",
+- "release",
+- "approve".
+
+If wording has high ambiguity, trade grade cannot exceed C.
+
+### 31.3 Source Reliability
+
+Evidence hierarchy:
+
+1. Official resolution source.
+2. Primary institution/source.
+3. Reputable wire/news.
+4. Specialist domain source.
+5. Search aggregation.
+6. Social/media.
+7. Rumor.
+
+Social-only evidence is never enough for full-size Polymarket entry.
+
+### 31.4 Expiry Risk
+
+Near-expiry markets require special handling:
+
+- if outcome is nearly certain and liquidity is clean, maybe yield trade,
+- if outcome is disputed, reject,
+- if spread is wide, reject,
+- if official source may update late, reduce size or wait.
+
+---
+
+## 32. Executor V2 — Smart Execution and Reconciliation
+
+Executor must not just place orders. It must manage execution quality.
+
+### 32.1 Indodax Smart Execution
+
+Indodax executor should support:
+
+- market order only after simulation pass,
+- split entry if liquidity is thin,
+- retry only after orderbook re-check,
+- cancel/retry for stale orders,
+- fill confirmation via wallet delta,
+- open-order reconciliation,
+- partial TP only if sell minimum remains valid,
+- emergency exit if orderbook deteriorates,
+- dust-safe cleanup rules.
+
+### 32.2 Polymarket Smart Execution
+
+Polymarket executor should support:
+
+- limit-first entry,
+- max acceptable price,
+- marketable-limit only with guard,
+- cancel unfilled stale orders,
+- no blind chase after price moves,
+- position mark-to-market,
+- order/fill reconciliation,
+- expiry-aware exit.
+
+### 32.3 Execution Quality Log
+
+Every fill must record:
+
+```json
+{
+  "intended_price": 100,
+  "actual_price": 101,
+  "slippage_pct": 1.0,
+  "intended_size": 10000,
+  "filled_size": 9800,
+  "time_to_fill_sec": 2.4,
+  "exit_feasible_after_fill": true
+}
+```
+
+Bad execution quality lowers future confidence for similar conditions.
+
+---
+
+## 33. AI Council V2 — Weighted Memory and Accountability
+
+Council must become a learning organization, not just a voting room.
+
+### 33.1 Role Accuracy Tracking
+
+Each role gets a score:
+
+```json
+{
+  "role": "Liquidity Engineer",
+  "last_50_votes": 50,
+  "correct_vetoes": 12,
+  "false_vetoes": 4,
+  "missed_risks": 2,
+  "weight": 1.18
+}
+```
+
+Roles that repeatedly catch real risk gain weight. Roles that repeatedly block
+good trades for weak reasons lose weight.
+
+### 33.2 Required Roles by Venue
+
+Indodax:
+
+- Hunter,
+- Liquidity Engineer,
+- Risk Officer,
+- Historian,
+- Antagonist,
+- Deadline Manager,
+- Executor Liaison.
+
+Polymarket:
+
+- Event Judge,
+- Probability Quant,
+- Liquidity Maker,
+- Evidence Scout,
+- Resolution Skeptic,
+- Portfolio Commander.
+
+Cross-exchange:
+
+- Capital Commander,
+- Green Lock Officer,
+- Systems Auditor.
+
+### 33.3 Council Must Explain WAIT
+
+Every WAIT decision must include:
+
+```json
+{
+  "wait_reason": "...",
+  "recheck_after_sec": 120,
+  "what_would_change_decision": [
+    "spread below 0.7%",
+    "volume persistence above 0.65",
+    "Polymarket edge above 8 points"
+  ]
+}
+```
+
+This prevents passive waiting.
+
+---
+
+## 34. What-If Scenario Tree V2
+
+What-if must compare paths, not just score a pair.
+
+### 34.1 Required Branches
+
+For every candidate:
+
+- enter now,
+- wait for pullback,
+- use smaller size,
+- skip and monitor,
+- enter alternative candidate,
+- exit current position first,
+- hold cash.
+
+Each branch should estimate:
+
+- probability of green,
+- expected value,
+- downside,
+- time to result,
+- exit feasibility,
+- deadline impact,
+- learning value.
+
+### 34.2 Output
+
+```json
+{
+  "best_branch": "WAIT_PULLBACK",
+  "branches": [
+    {
+      "name": "ENTER_NOW",
+      "green_probability": 0.54,
+      "ev_idr": 420,
+      "max_loss_idr": 900,
+      "deadline_risk": "MEDIUM"
+    }
+  ]
+}
+```
+
+Council should not enter if the best branch is clearly wait/skip.
+
+---
+
+## 35. Data Warehouse and Learning Loop
+
+KiBot must learn from all candidates, not only executed trades.
+
+### 35.1 Store These Events
+
+- scanner candidates,
+- rejected candidates,
+- accepted candidates,
+- council decisions,
+- RiskGate rejects,
+- executor fills,
+- executor failures,
+- exits,
+- missed pumps,
+- Polymarket markets watched,
+- Polymarket markets entered,
+- Polymarket resolution outcomes,
+- Telegram reports,
+- system health incidents.
+
+### 35.2 Candidate Outcome Windows
+
+For every candidate, record outcome after:
+
+- 5 minutes,
+- 15 minutes,
+- 1 hour,
+- 4 hours,
+- end of day.
+
+Fields:
+
+```json
+{
+  "symbol": "PEPE/IDR",
+  "decision": "WAIT",
+  "price_at_decision": 10,
+  "price_after_15m": 12,
+  "max_favorable_pct": 22.0,
+  "max_adverse_pct": -4.5,
+  "decision_quality": "BAD_WAIT"
+}
+```
+
+### 35.3 Learning Goals
+
+Learning should improve:
+
+- scanner thresholds,
+- category scoring,
+- role weights,
+- RiskGate sizing,
+- executor order style,
+- exit timing,
+- Polymarket edge thresholds,
+- dashboard explanations.
+
+---
+
+## 36. Market Regime Engine V2
+
+KiBot needs market-regime awareness before selecting strategy.
+
+### 36.1 Regimes
+
+- `BROAD_RISK_ON`
+- `SELECTIVE_PUMP`
+- `ISOLATED_LOCAL_PUMP`
+- `MEME_SEASON`
+- `BTC_BETA_DAY`
+- `AI_SECTOR_ROTATION`
+- `CHOP_NOISE`
+- `LIQUIDITY_DROUGHT`
+- `RISK_OFF`
+- `NEWS_SHOCK`
+
+### 36.2 Strategy by Regime
+
+`BROAD_RISK_ON`
+
+- More candidates allowed.
+- Prefer high liquidity and BTC/ETH beta.
+
+`SELECTIVE_PUMP`
+
+- Be selective.
+- Let scanner rank only strongest continuation.
+
+`ISOLATED_LOCAL_PUMP`
+
+- Short scalp only.
+- Tight exit.
+
+`MEME_SEASON`
+
+- Meme allowed, but strict liquidity and trailing exit.
+
+`CHOP_NOISE`
+
+- Reduce size.
+- Prefer Polymarket clear events or cash.
+
+`LIQUIDITY_DROUGHT`
+
+- Avoid forced trades.
+- Cash protect unless A-grade.
+
+`NEWS_SHOCK`
+
+- Wait for spread normalization unless Polymarket has clear event edge.
+
+---
+
+## 37. Dashboard V4 Strategy Visibility
+
+Dashboard must expose the strategy brain, not just balances.
+
+### 37.1 Required Panels
+
+- Capital Commander mode.
+- Daily GREEN lock status.
+- Candidate leaderboard.
+- Rejected candidates and reasons.
+- Missed pump analysis.
+- What-if scenario tree.
+- RiskGate pass/reject reason.
+- Polymarket event edge panel.
+- Polymarket resolution risk panel.
+- Council role votes and weights.
+- Executor fill quality.
+- Learning loop summary.
+- Source health.
+
+### 37.2 Operator Questions Dashboard Must Answer
+
+- Why did KiBot buy this?
+- Why did KiBot not buy that pump?
+- Is KiBot green today?
+- Is KiBot preserving green or still hunting?
+- Which exchange deserves money right now?
+- What is the biggest current risk?
+- What data is stale?
+- What would make the system act next?
+
+---
+
+## 38. Telegram V2 — Important Only
+
+Telegram should remain scarce.
+
+### 38.1 Midnight Report Must Include
+
+- combined daily state,
+- starting equity,
+- ending/current equity,
+- realized PnL,
+- unrealized PnL,
+- Indodax summary,
+- Polymarket summary,
+- best decision,
+- worst decision,
+- missed opportunity,
+- biggest rejected risk,
+- lesson learned,
+- tomorrow posture.
+
+### 38.2 Emergency Alerts Only
+
+Send Telegram outside midnight only for:
+
+- live trading stuck,
+- wallet/API auth failure,
+- daily loss cap hit,
+- executor cannot exit,
+- server disk/RAM critical and unrecovered,
+- dashboard/telemetry blind,
+- Polymarket resolution/expiry emergency.
+
+No routine scanner/council chatter in Telegram.
+
+---
+
+## 39. System Self-Maintenance Strategy
+
+Autonomous trading requires autonomous maintenance.
+
+### 39.1 KiBot Must Monitor
+
+- systemd services,
+- disk,
+- RAM,
+- CPU,
+- network,
+- Indodax API,
+- Polymarket API,
+- Ollama,
+- Redis,
+- Telegram notifier,
+- dashboard health,
+- state file corruption,
+- git/runtime drift,
+- model availability.
+
+### 39.2 Self-Healing Order
+
+1. Detect.
+2. Diagnose.
+3. Restart local service if safe.
+4. Clear safe cache/log issue if needed.
+5. Re-check.
+6. Escalate to Telegram only if unrecovered.
+
+Trading must degrade safely during unresolved infra issues.
+
+---
+
+## 40. Final 100% Strategy Definition
+
+This strategy is considered complete when KiBot can:
+
+- evaluate Indodax pumps and fallback green-builder trades,
+- evaluate Polymarket event mispricing,
+- decide capital allocation between venues,
+- preserve daily GREEN,
+- recover selectively when red/flat,
+- reject dead coins and ambiguous event markets,
+- explain buys, waits, rejects, and exits,
+- learn from missed and rejected candidates,
+- adjust risk by regime, category, liquidity, deadline, and account size,
+- execute safely,
+- reconcile positions,
+- report only meaningful information,
+- self-maintain runtime health.
+
+Final doctrine:
+
+```text
+KiBot is not a signal follower.
+KiBot is a situational capital operator.
+Its job is to decide when money deserves to move, where it should move,
+how much should move, how it exits, and what the system learns afterward.
+```
