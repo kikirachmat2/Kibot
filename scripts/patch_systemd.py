@@ -44,10 +44,22 @@ def patch_services():
         else:
             content = content.replace("[Service]\n", "[Service]\nProtectHome=read-only\n")
 
-        # 5. Write back
+        # 5. Inject CPUQuota and MemoryMax
+        cpu_quota = "60%"
+        if svc in ["kibot-scanner"]:
+            cpu_quota = "80%"
+        elif svc in ["kibot-master", "kibot-executor"]:
+            cpu_quota = "70%"
+            
+        if "CPUQuota=" in content:
+            content = re.sub(r"CPUQuota=\S+", f"CPUQuota={cpu_quota}", content)
+        else:
+            content = content.replace("[Service]\n", f"[Service]\nCPUQuota={cpu_quota}\n")
+
+        # 6. Write back
         with open(path, "w", encoding="utf-8") as f:
             f.write(content)
-        print(f"✅ Hardened systemd service: {svc}")
+        print(f"✅ Hardened systemd service: {svc} (CPUQuota: {cpu_quota})")
 
 if __name__ == "__main__":
     patch_services()

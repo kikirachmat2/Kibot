@@ -1,30 +1,28 @@
 # 🛡️ KIBOT SOVEREIGN PROTECTION
 
 # Infrastructure & Secrets (STRICT)
-Infrastructure/
-Security/Vault/
+.env
+.env.*
+!.env.example
 *.pem
 *.key
 *.kiv
-.env
-.env*
-!Batam/Security/README.md
-
-# AI & Data State
-**/Logs/
-**/State/
-**/logs/
-**/state/
-**/backups/
-**/.tmp/
-*.log
 *.pid
 
-# Python Metadata
+# AI & Data State
+Logs/
+logs/
+state/
+backups/
+*.log
+
+# Python Metadata & Cache
 __pycache__/
-*.py[cod]
-*$py.class
+*.pyc
+*.pyo
 .pytest_cache/
+.mypy_cache/
+.ruff_cache/
 .venv/
 venv/
 
@@ -32,8 +30,11 @@ venv/
 .DS_Store
 ._*
 Thumbs.db
+*.tmp
+*.bak
+*.bak.*
 
-# Deployment Waste
+# Deployment & Legacy
 deploy_all.sh
 readyecho
 kibot-node.service

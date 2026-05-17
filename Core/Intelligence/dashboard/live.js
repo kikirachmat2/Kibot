@@ -449,12 +449,29 @@ function renderSummary(data) {
   const indoPositions = byId("indo-positions");
   if (indoPositions) indoPositions.innerHTML = renderPositions(portfolio.active_positions || []);
 
+  const mock = portfolio.mock || {};
+  updateText("indo-mock-total", fmtRp(mock.equity_idr || 0));
+  updateText("indo-mock-cash", `cash ${fmtRp(mock.idr_cash || 0)}`);
+  updateText("indo-mock-holdings", `koin ${fmtRp(mock.coin_holdings_idr || 0)}`);
+  const indoMockPositions = byId("indo-mock-positions");
+  const activeMock = mock.active_positions || [];
+  if (indoMockPositions) indoMockPositions.innerHTML = renderPositions(activeMock);
+  byId("no-mock-label")?.classList.toggle("visible", !activeMock.length);
+
   updateText("poly-total", `$${Number(poly.usdc_balance || 0).toFixed(2)} USDC`);
   updateText("poly-idr", `~ ${fmtRp(poly.equity_idr || 0)}`);
   const polyPositions = byId("poly-positions");
   const activeBets = poly.active_bets || [];
   if (polyPositions) polyPositions.innerHTML = renderBets(activeBets);
   byId("no-bets-label")?.classList.toggle("visible", !activeBets.length);
+
+  const phantom = portfolio.phantom || {};
+  const phantomOpps = phantom.opportunities || [];
+  updateText("phantom-total", `Sim: ${phantomOpps.length || 0} opps`);
+  updateText("phantom-subline", `RPC: ${phantom.rpc_latency ? (phantom.rpc_latency * 1000).toFixed(0) + 'ms' : '--'}`);
+  const phantomPositions = byId("phantom-positions");
+  if (phantomPositions) phantomPositions.innerHTML = renderBets(phantomOpps); // using renderBets for similar struct
+  byId("no-phantom-label")?.classList.toggle("visible", !phantomOpps.length);
 
   updateText("strategy-mode", String(strategy.global_mode || "UNKNOWN").toUpperCase());
   updateText("s-conf", Number(indoStrategy.min_confidence || 0).toFixed(2));

@@ -264,6 +264,12 @@ def _load_polymarket_state() -> Dict[str, Any]:
         return {}
 
 
+def _load_phantom_state() -> Dict[str, Any]:
+    return _read_json(STATE / "phantom_scout.json", {})
+
+def _load_mock_state() -> Dict[str, Any]:
+    return _read_json(STATE / "mock_portfolio.json", {})
+
 def _build_portfolio(telemetry: Dict[str, Any]) -> Dict[str, Any]:
     portfolio = telemetry.get("portfolio") if isinstance(telemetry, dict) else {}
     portfolio = portfolio if isinstance(portfolio, dict) else {}
@@ -348,6 +354,8 @@ def _build_portfolio(telemetry: Dict[str, Any]) -> Dict[str, Any]:
             "active_bets": _normalize_list(polymarket.get("active_bets") or polymarket.get("active_positions") or [], limit=5),
             "wallet_ready": bool(polymarket.get("wallet_ready")),
         },
+        "phantom": _load_phantom_state(),
+        "mock": _load_mock_state(),
     }
 
 
