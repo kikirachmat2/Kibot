@@ -49,8 +49,8 @@ function initCanvas() {
 
   canvas.addEventListener('pointermove', e => {
     if (!cs.dragging) return;
-    cs.x += e.clientX - cs.lx;
-    cs.y += e.clientY - cs.ly;
+    cs.x += (e.clientX - cs.lx) * 0.55;
+    cs.y += (e.clientY - cs.ly) * 0.55;
     cs.lx=e.clientX; cs.ly=e.clientY;
     applyTransform();
   });
@@ -86,13 +86,14 @@ function drawConnectors() {
     {from:'card-operator',  to:'card-director',  style:'solid',  color:'#3b82f6'},
     {from:'card-director',  to:'card-scanner',   style:'solid',  color:'#3b82f6'},
     {from:'card-director',  to:'card-risk',      style:'solid',  color:'#3b82f6'},
-    {from:'card-director',  to:'card-executor',  style:'solid',  color:'#3b82f6'},
     {from:'card-scanner',   to:'card-leadlag',   style:'dotted', color:'#22c55e'},
-    {from:'card-risk',      to:'card-ev',        style:'dotted', color:'#f59e0b'},
-    {from:'card-executor',  to:'card-paperpnl',  style:'dotted', color:'#ef4444'},
+    {from:'card-leadlag',   to:'card-ev',        style:'dotted', color:'#22c55e'},
     {from:'card-leadlag',   to:'card-phantom',   style:'dashed', color:'#a855f7'},
+    {from:'card-ev',        to:'card-indodax',   style:'dotted', color:'#f59e0b'},
     {from:'card-ev',        to:'card-polymarket',style:'dashed', color:'#f97316'},
-    {from:'card-paperpnl',  to:'card-cashwait',  style:'dashed', color:'#64748b'},
+    {from:'card-risk',      to:'card-indodax',   style:'dotted', color:'#ef4444'},
+    {from:'card-indodax',   to:'card-paperpnl',  style:'dotted', color:'#ef4444'},
+    {from:'card-indodax',   to:'card-cashwait',  style:'dashed', color:'#64748b'},
   ];
 
   const layer = el('delegation-layer');
@@ -139,7 +140,7 @@ const AGENT_META = {
   leadlag:    { letter:'L', color:'green',  name:'LeadLag Alpha',         role:'Signal Engine',         desc:'Computes lead-lag correlations between BTC/ETH and altcoin pairs to detect early momentum shifts.', inputs:['scanner_runtime.json'], outputs:['signal_quality.json'], stateFile:'signal_quality.json' },
   risk:       { letter:'R', color:'yellow', name:'RiskGate',              role:'Risk Shield',           desc:'Hard enforces 1.5% max daily drawdown. Blocks any order that would breach the daily loss limit.', inputs:['portfolio_summary.json'], outputs:[], stateFile:null },
   ev:         { letter:'V', color:'yellow', name:'Expected Value Gate',   role:'EV Filter',             desc:'Evaluates expected value of each signal. Rejects trades with negative or near-zero EV after fees.', inputs:['signal_quality.json'], outputs:['expected_value.json'], stateFile:'expected_value.json' },
-  executor:   { letter:'E', color:'red',    name:'Executor',              role:'Order Placement',       desc:'Places orders on Indodax. Currently PAPER mode — all orders are simulated. Real orders only when live_trading_enabled=true AND canary gate is open.', inputs:['autonomous_director.json','risk_gate.json'], outputs:['paper_trades.json'], stateFile:null },
+  executor:   { letter:'I', color:'red',    name:'Indodax Executor',      role:'Order Placement',       desc:'Places orders on Indodax. Currently PAPER mode — all orders are simulated. Real orders only when live_trading_enabled=true AND canary gate is open.', inputs:['autonomous_director.json','risk_gate.json'], outputs:['paper_trades.json'], stateFile:null },
   paperpnl:   { letter:'P', color:'red',    name:'Paper PnL Tracker',     role:'PnL Accounting',        desc:'Tracks all paper/simulated orders and computes unrealized + realized PnL. Separated from real PnL.', inputs:['paper_trades.json'], outputs:['portfolio_summary.json'], stateFile:'portfolio_summary.json' },
   phantom:    { letter:'Φ', color:'purple', name:'Phantom Scout',         role:'Solana Scout',          desc:'Scouts Solana microstructure opportunities. Simulation only — no real SOL funds connected.', inputs:[], outputs:['phantom_scout.json'], stateFile:'phantom_scout.json' },
   polymarket: { letter:'M', color:'orange', name:'Polymarket Agent',      role:'Prediction Markets',    desc:'Monitors Polymarket prediction markets for arbitrage. Paper mode — no real USDC wallet connected.', inputs:[], outputs:[], stateFile:null },
@@ -385,9 +386,9 @@ function render(data) {
   setT('risk-status', rg.status||'SHIELDED');
   setT('risk-metric', `${rg.max_drawdown_limit||1.5}% cap`);
 
-  // Executor card
-  setT('executor-status', mode.live_trading_enabled ? 'LIVE' : 'PAPER');
-  setT('executor-metric', mode.live_trading_enabled ? '⚠ LIVE' : 'live off');
+  // Indodax Executor card
+  setT('indodax-status', mode.live_trading_enabled ? 'LIVE' : 'PAPER');
+  setT('indodax-metric', mode.live_trading_enabled ? '⚠ LIVE' : 'live off');
 
   // LeadLag
   const sq = gates.signal_quality || {};
