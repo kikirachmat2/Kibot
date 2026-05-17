@@ -28,10 +28,23 @@ This document serves as the official, comprehensive runtime audit and inventory 
 ## 2. Git Status & Codebase Synchronization
 
 *   **Repository Directory:** `/home/ubuntu/KiBot`
-*   **Local Commit (Batam):** `4ca3bf80beee982759e66db9f056461a6b0c2e39` (HEAD)
-*   **Remote Commit (GitHub `origin/main`):** `4ca3bf80beee982759e66db9f056461a6b0c2e39` (Fully synchronized)
-*   **Commit Message:** `fix: adjust clean-up exclusions for backups and bypass healthcheck systemd audits during test runs`
+*   **Inventory Capture Commit:** `4ca3bf80beee982759e66db9f056461a6b0c2e39` (The commit when the inventory data was gathered)
+*   **Documentation Commit:** `50dd2c44d17a6af1437a7755643182e4267685d5` (The commit integrating inventory/diagnostic reports)
+*   **Server HEAD After Pull:** `50dd2c44d17a6af1437a7755643182e4267685d5` (Fully updated codebase after final pull)
 *   **Working Directory State:** 100% Clean (no unstaged files or dirty modifications).
+
+### 2.1 Canary Truth Status & Risk Verification
+
+To prevent false assumptions regarding the "live" status of KiBot, the actual operational parameters running on the Batam server have been audited directly from the environment variables, active state database, and process environment:
+
+*   **KIBOT_LIVE_TRADING_ENABLED:** `false` (Strictly Mock/Paper Safe. No real-money trades can be sent to APIs)
+*   **KIBOT_TRADING_MODE:** `paper`
+*   **KIBOT_CANARY_LIVE_ENABLED:** `true` (Canary simulation path is active for execution flow analysis)
+*   **Real Order Verified:** `No` (All trades are synthetic/paper orders simulated locally)
+*   **Active Trade in State:** `PEPE/IDR` (Synthesized via wallet reconciliation log entry, holding 0.73288590 PEPE. Real balance remains 100% untouched)
+*   **Kill Switch:** `Not Active` (The `state/KILL_SWITCH` sentinel file is absent, allowing scanner and mock execution to run)
+*   **Risk Limits:** Strict daily loss threshold set to `1.5%` maximum drawdown.
+
 
 ---
 
