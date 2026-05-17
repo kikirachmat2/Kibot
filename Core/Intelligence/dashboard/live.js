@@ -527,11 +527,11 @@ function renderIntelligenceGates(snapshot) {
   const cycleStats = director.cycle_stats || {};
   
   // Update regime and badges
-  updateText("ig-regime", `REGIME: ${director.regime || "UNKNOWN"}`);
+  updateText("ig-regime", `REGIME: ${cycleStats.market_regime || "UNKNOWN"}`);
   
   const liveBadge = byId("ig-live-badge");
   if (liveBadge) {
-    if (director.live_gate) {
+    if (cycleStats.live_trading_enabled) {
       liveBadge.classList.add("active");
     } else {
       liveBadge.classList.remove("active");
@@ -540,7 +540,7 @@ function renderIntelligenceGates(snapshot) {
 
   const canaryBadge = byId("ig-canary-badge");
   if (canaryBadge) {
-    if (director.canary_gate) {
+    if (cycleStats.canary_enabled) {
       canaryBadge.classList.add("active");
     } else {
       canaryBadge.classList.remove("active");
@@ -548,9 +548,9 @@ function renderIntelligenceGates(snapshot) {
   }
 
   // Deliberation stats
-  updateText("ig-stat-approved", cycleStats.approved || 0);
-  updateText("ig-stat-paper", cycleStats.paper || 0);
-  updateText("ig-stat-rejected", cycleStats.rejected || 0);
+  updateText("ig-stat-approved", cycleStats.approved_count || 0);
+  updateText("ig-stat-paper", cycleStats.paper_count || 0);
+  updateText("ig-stat-rejected", cycleStats.rejected_count || 0);
 
   // Parse candidate list or focus on the latest/active signal candidates
   const evList = snapshot.expected_value || [];
@@ -562,11 +562,12 @@ function renderIntelligenceGates(snapshot) {
   if (evStatus) {
     if (evList.length > 0) {
       const latestEv = evList[evList.length - 1];
-      updateText("ev-projected-profit", `${(latestEv.profit_pct || 0).toFixed(2)}%`);
-      updateText("ev-kelly-rec", `${((latestEv.kelly_recommendation || 0) * 100).toFixed(1)}%`);
-      updateText("ev-decision", latestEv.decision || "WAIT");
-      evStatus.innerText = latestEv.decision || "WAIT";
-      evStatus.className = `layer-status-pill ${(latestEv.decision || "WAIT") === "APPROVED" || (latestEv.decision || "WAIT") === "PASS" ? "pass" : "fail"}`;
+      const evDecisionStr = latestEv.approved ? "PASS" : "REJECT";
+      updateText("ev-projected-profit", `${(latestEv.ev_pct || 0).toFixed(2)}%`);
+      updateText("ev-kelly-rec", `${((latestEv.kelly_fraction || 0) * 100).toFixed(1)}%`);
+      updateText("ev-decision", evDecisionStr);
+      evStatus.innerText = evDecisionStr;
+      evStatus.className = `layer-status-pill ${latestEv.approved ? "pass" : "fail"}`;
       byId("gate-layer-ev")?.classList.add("active-signal");
     } else {
       updateText("ev-projected-profit", "--");
@@ -583,11 +584,16 @@ function renderIntelligenceGates(snapshot) {
   if (sqStatus) {
     if (sqList.length > 0) {
       const latestSq = sqList[sqList.length - 1];
-      updateText("sq-spread", `${(latestSq.spread_pct || 0).toFixed(3)}%`);
-      updateText("sq-volume", latestSq.volume_24h_idr ? fmtRp(latestSq.volume_24h_idr) : "--");
-      updateText("sq-alignment", latestSq.alignment || "WAIT");
-      sqStatus.innerText = latestSq.decision || latestSq.alignment || "WAIT";
-      sqStatus.className = `layer-status-pill ${(latestSq.decision || latestSq.alignment || "WAIT") === "PASS" ? "pass" : "fail"}`;
+      const isSpreadOk = latestSq.spread_ok ? "PASS" : "FAIL";
+      const isVolumeOk = latestSq.volume_ok ? "PASS" : "FAIL";
+      const isAlignOk = latestSq.leadlag_aligned ? "PASS" : "FAIL";
+      updateText("sq-spread", isSpreadOk);
+      updateText("sq-volume", isVolumeOk);
+      updateText("sq-alignment", isAlignOk);
+      
+      const isPass = latestSq.grade === "PASS";
+      sqStatus.innerText = latestSq.grade || "REJECT";
+      sqStatus.className = `layer-status-pill ${isPass ? "pass" : "fail"}`;
       byId("gate-layer-sq")?.classList.add("active-signal");
     } else {
       updateText("sq-spread", "--");
@@ -604,11 +610,12 @@ function renderIntelligenceGates(snapshot) {
   if (ssStatus) {
     if (ssList.length > 0) {
       const latestSs = ssList[ssList.length - 1];
-      updateText("ss-grade", latestSs.composite_grade || "F");
-      updateText("ss-weight", `${((latestSs.score_weight || 0) * 100).toFixed(0)}%`);
+      const isPass = latestSs.verdict === "PASS" || latestSs.verdict === "APPROVED";
+      updateText("ss-grade", latestSs.composite_score ? latestSs.composite_score.toFixed(3) : "0.000");
+      updateText("ss-weight", latestSs.regime_score ? `${(latestSs.regime_score * 100).toFixed(0)}%` : "0%");
       updateText("ss-verdict", latestSs.verdict || "WAIT");
       ssStatus.innerText = latestSs.verdict || "WAIT";
-      ssStatus.className = `layer-status-pill ${(latestSs.verdict || "WAIT") === "PASS" ? "pass" : "fail"}`;
+      ssStatus.className = `layer-status-pill ${isPass ? "pass" : "fail"}`;
       byId("gate-layer-ss")?.classList.add("active-signal");
     } else {
       updateText("ss-grade", "--");
