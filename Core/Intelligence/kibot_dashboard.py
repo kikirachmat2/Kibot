@@ -98,6 +98,16 @@ def _latest_mtime(path: Path) -> str:
     return "missing"
 
 
+def _file_age_s(path: Path) -> float:
+    """Return seconds since file was last modified, or -1 if missing."""
+    try:
+        if path.exists():
+            return round(time.time() - path.stat().st_mtime, 1)
+    except Exception:
+        pass
+    return -1.0
+
+
 def _normalize_list(value: Any, limit: int = 8) -> List[Dict[str, Any]]:
     if isinstance(value, dict):
         items = []
@@ -843,6 +853,14 @@ def _build_control_plane_payload() -> Dict[str, Any]:
     merged_data = {**summary_data}
     merged_data.update({
         "timestamp": datetime.now(timezone.utc).isoformat(),
+        "freshness": {
+            "scanner_runtime_age_s": _file_age_s(STATE / "scanner_runtime.json"),
+            "autonomous_director_age_s": _file_age_s(STATE / "autonomous_director.json"),
+            "expected_value_age_s": _file_age_s(STATE / "expected_value.json"),
+            "signal_quality_age_s": _file_age_s(STATE / "signal_quality.json"),
+            "leadlag_alpha_age_s": _file_age_s(STATE / "leadlag_alpha.json"),
+            "telemetry_age_s": _file_age_s(STATE / "telemetry_snapshot.json"),
+        },
         "mode": mode,
         "portfolio": {
             **portfolio,

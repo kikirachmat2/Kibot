@@ -171,3 +171,80 @@ async def test_stream_endpoint():
         assert "venues" in json_data
         assert "gates" in json_data
         break  # exit immediately to prevent infinite loop
+
+
+def test_freshness_block_in_payload():
+    """Verify the freshness block is present in /api/control-plane."""
+    response = client.get("/api/control-plane")
+    assert response.status_code == 200
+    data = response.json()
+    assert "freshness" in data, "freshness block missing from control-plane payload"
+    freshness = data["freshness"]
+    expected_keys = [
+        "scanner_runtime_age_s",
+        "autonomous_director_age_s",
+        "expected_value_age_s",
+        "signal_quality_age_s",
+        "telemetry_age_s",
+    ]
+    for key in expected_keys:
+        assert key in freshness, f"freshness.{key} missing"
+        assert isinstance(freshness[key], (int, float)), f"freshness.{key} must be numeric"
+
+
+def test_html_contains_delegation_ids():
+    """Verify index.html contains required Delegation-style component IDs and classes."""
+    dashboard_dir = Path(__file__).parent.parent / "Core" / "Intelligence" / "dashboard"
+    html_path = dashboard_dir / "index.html"
+    assert html_path.exists(), "index.html not found"
+    html = html_path.read_text(encoding="utf-8")
+
+    required_ids = [
+        "delegation-canvas",
+        "agent-grid",
+        "queue-board",
+        "activity-log",
+        "project-info",
+    ]
+    # Check either id= or class= presence of each key string
+    for token in required_ids:
+        assert token in html, f"'{token}' not found in index.html"
+
+    required_classes = [
+        "agent-card",
+        "queue-lane",
+        "top-bar",
+        "workspace",
+        "left-panel",
+        "right-panel",
+    ]
+    for cls in required_classes:
+        assert cls in html, f"class '{cls}' not found in index.html"
+
+
+def test_css_contains_no_scroll_rules():
+    """Verify style.css enforces no body scroll and correct layout tokens."""
+    dashboard_dir = Path(__file__).parent.parent / "Core" / "Intelligence" / "dashboard"
+    css_path = dashboard_dir / "style.css"
+    assert css_path.exists(), "style.css not found"
+    css = css_path.read_text(encoding="utf-8")
+
+    assert "overflow: hidden" in css, "overflow: hidden must appear in style.css (no-body-scroll rule)"
+    assert ".workspace" in css, ".workspace class missing from style.css"
+    assert ".delegation-canvas" in css or "delegation-canvas" in css, ".delegation-canvas missing"
+    assert ".agent-card" in css, ".agent-card class missing from style.css"
+    assert "#f8fafc" in css or "#f1f5f9" in css, "light background token missing (expected #f8fafc or #f1f5f9)"
+
+
+def test_live_js_uses_control_plane():
+    """Verify live.js fetches only /api/control-plane (not legacy /api/summary)."""
+    dashboard_dir = Path(__file__).parent.parent / "Core" / "Intelligence" / "dashboard"
+    js_path = dashboard_dir / "live.js"
+    assert js_path.exists(), "live.js not found"
+    js = js_path.read_text(encoding="utf-8")
+
+    assert "/api/control-plane" in js, "/api/control-plane not referenced in live.js"
+    assert "renderPnlEl" in js or "renderPortfolio" in js, "PnL render helper missing in live.js"
+    # Ensure old legacy endpoint is not the primary source
+    legacy_count = js.count("/api/summary")
+    assert legacy_count == 0, f"/api/summary should not appear in live.js (found {legacy_count} times)"
