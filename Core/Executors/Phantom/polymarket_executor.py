@@ -18,7 +18,7 @@ from Core.sovereign_state import load_strategy, check_urgency
 
 # Configuration
 from Core.Support.ki_config import KiConfig
-BIND_HOST = "0.0.0.0"
+BIND_HOST = os.getenv("KIBOT_BIND_HOST", "127.0.0.1")
 STATE_PORT = 11600
 UDP_LISTEN_PORT = KiConfig.POLY_SIGNAL_PORT 
 REPORT_PORT = 9997     # Port to report back to Batam

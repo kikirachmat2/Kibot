@@ -687,4 +687,5 @@ if __name__ == "__main__":
     import uvicorn
 
     port = int(os.getenv("KIBOT_DASHBOARD_PORT", "8787"))
-    uvicorn.run("Core.Intelligence.kibot_dashboard:app", host="0.0.0.0", port=port, reload=False)
+    host = os.getenv("KIBOT_DASHBOARD_HOST", "127.0.0.1")
+    uvicorn.run("Core.Intelligence.kibot_dashboard:app", host=host, port=port, reload=False)
