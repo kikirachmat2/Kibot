@@ -12,6 +12,7 @@ import os
 import sys
 import asyncio
 import logging
+import pytest
 from unittest.mock import patch, MagicMock
 
 # Ensure project root is in the path
@@ -46,6 +47,7 @@ def test_riskgate_drawdown_lock():
     print("SUCCESS: RiskGate drawdown locked at 1.5% maximum daily loss.")
 
 
+@pytest.mark.anyio
 async def test_phantom_live_trading_gate():
     print("\n=========================================")
     print("[TEST 2/3] PhantomRouter Live Trading Gate")
@@ -79,6 +81,7 @@ async def test_phantom_live_trading_gate():
     print("SUCCESS: PhantomRouter on-chain operations correctly gated and simulated.")
 
 
+@pytest.mark.anyio
 async def test_search_service_resilience():
     print("\n=========================================")
     print("[TEST 3/3] AISearchService Safe Fallbacks")
@@ -126,6 +129,7 @@ async def test_search_service_resilience():
     print("SUCCESS: AISearchService safely recovered from exceptions with robust type-safe values.")
 
 
+@pytest.mark.anyio
 async def test_bridge_router_hardening():
     print("\n=========================================")
     print("[TEST 4/4] BridgeRouter Hardening & States")
