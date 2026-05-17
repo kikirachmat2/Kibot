@@ -201,10 +201,12 @@ def test_html_contains_delegation_ids():
 
     required_ids = [
         "delegation-canvas",
-        "agent-grid",
+        "delegation-layer",
         "queue-board",
         "activity-log",
         "project-info",
+        "agent-modal",
+        "modal-backdrop",
     ]
     # Check either id= or class= presence of each key string
     for token in required_ids:
@@ -231,7 +233,9 @@ def test_css_contains_no_scroll_rules():
 
     assert "overflow: hidden" in css, "overflow: hidden must appear in style.css (no-body-scroll rule)"
     assert ".workspace" in css, ".workspace class missing from style.css"
-    assert ".delegation-canvas" in css or "delegation-canvas" in css, ".delegation-canvas missing"
+    assert "delegation-layer" in css, ".delegation-layer missing"
+    assert "cursor: grab" in css, "cursor: grab must appear (interactive canvas)"
+    assert "cursor: grabbing" in css, "cursor: grabbing must appear (dragging state)"
     assert ".agent-card" in css, ".agent-card class missing from style.css"
     assert "#f8fafc" in css or "#f1f5f9" in css, "light background token missing (expected #f8fafc or #f1f5f9)"
 
@@ -244,7 +248,10 @@ def test_live_js_uses_control_plane():
     js = js_path.read_text(encoding="utf-8")
 
     assert "/api/control-plane" in js, "/api/control-plane not referenced in live.js"
-    assert "renderPnlEl" in js or "renderPortfolio" in js, "PnL render helper missing in live.js"
+    assert "setPnl" in js or "renderPortfolio" in js, "PnL render helper missing in live.js"
+    assert "pointerdown" in js or "mousedown" in js, "canvas drag handler missing"
+    assert "wheel" in js, "wheel zoom handler missing"
+    assert "openModal" in js, "modal open function missing"
     # Ensure old legacy endpoint is not the primary source
     legacy_count = js.count("/api/summary")
     assert legacy_count == 0, f"/api/summary should not appear in live.js (found {legacy_count} times)"

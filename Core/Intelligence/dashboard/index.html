@@ -4,37 +4,37 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>KiBot Delegation — Sovereign Control Room</title>
-  <meta name="description" content="KiBot Sovereign autonomous trading control plane. Paper soak mode active." />
+  <meta name="description" content="KiBot Sovereign autonomous trading control plane — paper soak mode active." />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="/static/style.css?v=4.0" />
+  <link rel="stylesheet" href="/static/style.css?v=5.0" />
 </head>
 <body>
 
 <div class="app-shell">
 
-  <!-- ─── TOP BAR ─────────────────────────────────────────────── -->
+  <!-- ─── TOP BAR ─────────────────────────────────────────── -->
   <header class="top-bar">
     <div class="top-bar__brand">
       <span class="brand-icon">⌘</span>
-      <span class="brand-name">KiBot Delegation</span>
-      <span class="brand-sub">Batam MasterNode</span>
+      <strong class="brand-name">KiBot Delegation</strong>
+      <span class="brand-pill">Batam MasterNode</span>
     </div>
-    <div class="top-bar__status">
+    <div class="top-bar__center">
       <span id="mode-badge" class="badge badge--paper">PAPER</span>
       <span id="global-status" class="badge badge--green">GREEN</span>
       <span class="badge badge--ghost">🛡 VIEW-ONLY</span>
     </div>
-    <div class="top-bar__meta">
-      <span id="server-clock" class="mono">--:--:-- WIB</span>
+    <div class="top-bar__right">
+      <span id="server-clock" class="mono text-muted">--:--:-- WIB</span>
       <span id="freshness-dot" class="freshness-dot" title="Data freshness"></span>
     </div>
   </header>
 
-  <!-- ─── WORKSPACE ───────────────────────────────────────────── -->
+  <!-- ─── WORKSPACE ───────────────────────────────────────── -->
   <div class="workspace">
 
-    <!-- LEFT PANEL: Logs -->
+    <!-- LEFT PANEL -->
     <aside class="left-panel panel-scroll">
       <div class="panel-header">
         <span>Operative Verdicts</span>
@@ -44,132 +44,182 @@
         <button class="log-tab active" data-tab="activity">Activity</button>
         <button class="log-tab" data-tab="technical">Technical</button>
       </div>
-      <div id="activity-log" class="log-feed activity-log"></div>
-      <div id="technical-log" class="log-feed technical-log hidden"></div>
+      <div id="activity-log" class="log-feed"></div>
+      <div id="technical-log" class="log-feed hidden"></div>
     </aside>
 
-    <!-- CENTER: Canvas + Queue -->
-    <main class="center-col">
+    <!-- CENTER PANEL -->
+    <main class="center-panel" id="center-panel">
 
-      <!-- Agent Delegation Canvas -->
-      <section class="delegation-canvas" id="delegation-canvas">
-        <div class="canvas-header">
-          <span class="canvas-title">Agent Delegation Graph</span>
-          <span id="canvas-subtitle" class="canvas-subtitle">Autonomous Orchestration · Paper Mode</span>
+      <!-- Canvas toolbar -->
+      <div class="canvas-toolbar">
+        <span class="canvas-title">Agent Delegation Graph</span>
+        <span id="canvas-subtitle" class="text-muted" style="font-size:11px">Autonomous Orchestration · Paper Mode</span>
+        <div class="canvas-controls">
+          <button class="ctrl-btn" id="btn-zoom-in" title="Zoom in">+</button>
+          <button class="ctrl-btn" id="btn-zoom-out" title="Zoom out">−</button>
+          <button class="ctrl-btn ctrl-btn--fit" id="btn-fit" title="Fit view">Fit</button>
         </div>
+      </div>
 
-        <!-- SVG connector lines -->
-        <svg class="connectors" id="connectors" aria-hidden="true"></svg>
+      <!-- Drag canvas -->
+      <div class="delegation-canvas" id="delegation-canvas">
+        <!-- Inner transform layer -->
+        <div class="delegation-layer" id="delegation-layer">
 
-        <!-- Agent cards — positioned via CSS grid areas -->
-        <div class="agent-grid">
+          <!-- SVG connectors sit behind the cards -->
+          <svg class="connectors" id="connectors" aria-hidden="true"></svg>
 
-          <div class="agent-card agent-card--blue" id="card-operator" data-agent="operator">
-            <div class="agent-avatar" style="background:#3b82f6">K</div>
-            <div class="agent-body">
-              <div class="agent-name">Kiki / Operator</div>
-              <div class="agent-role">Human In The Loop</div>
-              <div class="agent-status"><span class="dot dot--blue"></span>VIEW-ONLY</div>
+          <!-- Row 1: Operator -->
+          <div class="agent-row agent-row--1">
+            <div class="agent-card agent-card--blue" id="card-operator" data-agent-id="operator">
+              <div class="agent-avatar av--blue">K</div>
+              <div class="agent-body">
+                <div class="agent-name">Kiki / Operator</div>
+                <div class="agent-role">Human In The Loop</div>
+                <div class="agent-status"><span class="dot dot--blue"></span>VIEW-ONLY</div>
+              </div>
             </div>
           </div>
 
-          <div class="agent-card agent-card--blue" id="card-director" data-agent="director">
-            <div class="agent-avatar" style="background:#2563eb">D</div>
-            <div class="agent-body">
-              <div class="agent-name">Autonomous Director</div>
-              <div class="agent-role">Lead Agent</div>
-              <div class="agent-status" id="director-status"><span class="dot dot--blue"></span>WAIT</div>
-              <div class="agent-metric mono" id="director-metric">deterministic</div>
+          <!-- Row 2: Director -->
+          <div class="agent-row agent-row--2">
+            <div class="agent-card agent-card--blue" id="card-director" data-agent-id="director">
+              <div class="agent-avatar av--blue">D</div>
+              <div class="agent-body">
+                <div class="agent-name">Autonomous Director</div>
+                <div class="agent-role">Lead Agent</div>
+                <div class="agent-status" id="director-status"><span class="dot dot--blue"></span>WAIT</div>
+                <div class="agent-metric mono" id="director-metric">–</div>
+              </div>
             </div>
           </div>
 
-          <div class="agent-card agent-card--green" id="card-scanner" data-agent="scanner">
-            <div class="agent-avatar" style="background:#16a34a">S</div>
-            <div class="agent-body">
-              <div class="agent-name">Scanner</div>
-              <div class="agent-role">Subagent</div>
-              <div class="agent-status" id="scanner-status"><span class="dot dot--green"></span>ACTIVE</div>
-              <div class="agent-metric mono" id="scanner-metric">0 candidates</div>
+          <!-- Row 3: Scanner | RiskGate | Executor -->
+          <div class="agent-row agent-row--3">
+            <div class="agent-card agent-card--green" id="card-scanner" data-agent-id="scanner">
+              <div class="agent-avatar av--green">S</div>
+              <div class="agent-body">
+                <div class="agent-name">Scanner</div>
+                <div class="agent-role">Subagent</div>
+                <div class="agent-status" id="scanner-status"><span class="dot dot--green"></span>ACTIVE</div>
+                <div class="agent-metric mono" id="scanner-metric">0 candidates</div>
+              </div>
+            </div>
+            <div class="agent-card agent-card--yellow" id="card-risk" data-agent-id="risk">
+              <div class="agent-avatar av--yellow">R</div>
+              <div class="agent-body">
+                <div class="agent-name">RiskGate</div>
+                <div class="agent-role">Subagent</div>
+                <div class="agent-status" id="risk-status"><span class="dot dot--yellow"></span>SHIELDED</div>
+                <div class="agent-metric mono" id="risk-metric">1.5% cap</div>
+              </div>
+            </div>
+            <div class="agent-card agent-card--red" id="card-executor" data-agent-id="executor">
+              <div class="agent-avatar av--red">E</div>
+              <div class="agent-body">
+                <div class="agent-name">Executor</div>
+                <div class="agent-role">Subagent</div>
+                <div class="agent-status" id="executor-status"><span class="dot dot--red"></span>PAPER</div>
+                <div class="agent-metric mono" id="executor-metric">live off</div>
+              </div>
             </div>
           </div>
 
-          <div class="agent-card agent-card--yellow" id="card-risk" data-agent="risk">
-            <div class="agent-avatar" style="background:#ca8a04">R</div>
-            <div class="agent-body">
-              <div class="agent-name">RiskGate</div>
-              <div class="agent-role">Subagent</div>
-              <div class="agent-status" id="risk-status"><span class="dot dot--yellow"></span>SHIELDED</div>
-              <div class="agent-metric mono" id="risk-metric">1.5% cap</div>
+          <!-- Row 4: LeadLag | EV Gate | Paper PnL -->
+          <div class="agent-row agent-row--4">
+            <div class="agent-card agent-card--green agent-card--sm" id="card-leadlag" data-agent-id="leadlag">
+              <div class="agent-avatar av--green" style="width:26px;height:26px;font-size:10px">L</div>
+              <div class="agent-body">
+                <div class="agent-name">LeadLag Alpha</div>
+                <div class="agent-role">Signal Engine</div>
+                <div class="agent-status" id="leadlag-status"><span class="dot dot--green"></span>ACTIVE</div>
+              </div>
+            </div>
+            <div class="agent-card agent-card--yellow agent-card--sm" id="card-ev" data-agent-id="ev">
+              <div class="agent-avatar av--yellow" style="width:26px;height:26px;font-size:10px">V</div>
+              <div class="agent-body">
+                <div class="agent-name">Expected Value</div>
+                <div class="agent-role">Gate</div>
+                <div class="agent-status" id="ev-status"><span class="dot dot--yellow"></span>WAIT</div>
+              </div>
+            </div>
+            <div class="agent-card agent-card--red agent-card--sm" id="card-paperpnl" data-agent-id="paperpnl">
+              <div class="agent-avatar av--red" style="width:26px;height:26px;font-size:10px">P</div>
+              <div class="agent-body">
+                <div class="agent-name">Paper PnL</div>
+                <div class="agent-role">Tracking</div>
+                <div class="agent-status" id="paperpnl-status"><span class="dot dot--red"></span>PAPER</div>
+              </div>
             </div>
           </div>
 
-          <div class="agent-card agent-card--red" id="card-executor" data-agent="executor">
-            <div class="agent-avatar" style="background:#dc2626">E</div>
-            <div class="agent-body">
-              <div class="agent-name">Executor</div>
-              <div class="agent-role">Subagent</div>
-              <div class="agent-status" id="executor-status"><span class="dot dot--red"></span>PAPER</div>
-              <div class="agent-metric mono" id="executor-metric">live off</div>
+          <!-- Row 5: Phantom | Polymarket | Cash Wait -->
+          <div class="agent-row agent-row--5">
+            <div class="agent-card agent-card--purple agent-card--sm" id="card-phantom" data-agent-id="phantom">
+              <div class="agent-avatar av--purple" style="width:26px;height:26px;font-size:10px">Φ</div>
+              <div class="agent-body">
+                <div class="agent-name">Phantom Scout</div>
+                <div class="agent-role">Subagent</div>
+                <div class="agent-status"><span class="dot dot--purple"></span>SCOUTING</div>
+                <div class="agent-metric mono" id="phantom-metric">sim only</div>
+              </div>
+            </div>
+            <div class="agent-card agent-card--orange agent-card--sm" id="card-polymarket" data-agent-id="polymarket">
+              <div class="agent-avatar av--orange" style="width:26px;height:26px;font-size:10px">M</div>
+              <div class="agent-body">
+                <div class="agent-name">Polymarket</div>
+                <div class="agent-role">Subagent</div>
+                <div class="agent-status"><span class="dot dot--orange"></span>PAPER</div>
+                <div class="agent-metric mono" id="poly-metric">sim</div>
+              </div>
+            </div>
+            <div class="agent-card agent-card--gray agent-card--sm" id="card-cashwait" data-agent-id="cashwait">
+              <div class="agent-avatar av--gray" style="width:26px;height:26px;font-size:10px">C</div>
+              <div class="agent-body">
+                <div class="agent-name">Cash Wait</div>
+                <div class="agent-role">Reserve</div>
+                <div class="agent-status"><span class="dot dot--gray"></span>ACTIVE</div>
+                <div class="agent-metric mono" id="cash-metric">—</div>
+              </div>
             </div>
           </div>
 
-          <div class="agent-card agent-card--purple" id="card-phantom" data-agent="phantom">
-            <div class="agent-avatar" style="background:#9333ea">P</div>
-            <div class="agent-body">
-              <div class="agent-name">Phantom Scout</div>
-              <div class="agent-role">Subagent</div>
-              <div class="agent-status"><span class="dot dot--purple"></span>SCOUTING</div>
-              <div class="agent-metric mono" id="phantom-metric">sim only</div>
-            </div>
-          </div>
-
-          <div class="agent-card agent-card--orange" id="card-polymarket" data-agent="polymarket">
-            <div class="agent-avatar" style="background:#ea580c">M</div>
-            <div class="agent-body">
-              <div class="agent-name">Polymarket</div>
-              <div class="agent-role">Subagent</div>
-              <div class="agent-status"><span class="dot dot--orange"></span>PAPER</div>
-              <div class="agent-metric mono" id="poly-metric">sim</div>
-            </div>
-          </div>
-
-        </div><!-- /agent-grid -->
-      </section>
+        </div><!-- /delegation-layer -->
+      </div><!-- /delegation-canvas -->
 
       <!-- Queue Board -->
-      <section class="queue-board" id="queue-board">
-        <div class="queue-lane" id="lane-scheduled">
-          <div class="lane-header"><span class="lane-dot" style="background:#64748b"></span>SCHEDULED <span class="lane-count" id="cnt-scheduled">0</span></div>
+      <div class="queue-board" id="queue-board">
+        <div class="queue-lane">
+          <div class="lane-header"><span class="lane-dot" style="background:#94a3b8"></span>SCHEDULED<span class="lane-count" id="cnt-scheduled">0</span></div>
           <div class="lane-cards" id="cards-scheduled"></div>
         </div>
-        <div class="queue-lane" id="lane-hold">
-          <div class="lane-header"><span class="lane-dot" style="background:#eab308"></span>ON HOLD <span class="lane-count" id="cnt-hold">0</span></div>
+        <div class="queue-lane">
+          <div class="lane-header"><span class="lane-dot" style="background:#f59e0b"></span>ON HOLD<span class="lane-count" id="cnt-hold">0</span></div>
           <div class="lane-cards" id="cards-hold"></div>
         </div>
-        <div class="queue-lane" id="lane-progress">
-          <div class="lane-header"><span class="lane-dot" style="background:#3b82f6"></span>IN PROGRESS <span class="lane-count" id="cnt-progress">0</span></div>
+        <div class="queue-lane">
+          <div class="lane-header"><span class="lane-dot" style="background:#3b82f6"></span>IN PROGRESS<span class="lane-count" id="cnt-progress">0</span></div>
           <div class="lane-cards" id="cards-progress"></div>
         </div>
-        <div class="queue-lane" id="lane-done">
-          <div class="lane-header"><span class="lane-dot" style="background:#22c55e"></span>DONE <span class="lane-count" id="cnt-done">0</span></div>
+        <div class="queue-lane">
+          <div class="lane-header"><span class="lane-dot" style="background:#22c55e"></span>DONE<span class="lane-count" id="cnt-done">0</span></div>
           <div class="lane-cards" id="cards-done"></div>
         </div>
-      </section>
+      </div>
 
     </main>
 
-    <!-- RIGHT PANEL: Project Info -->
+    <!-- RIGHT PANEL -->
     <aside class="right-panel panel-scroll project-info">
-
       <div class="panel-header">
         <span>Project Info</span>
         <span id="last-updated" class="mono text-muted" style="font-size:0.65rem">--</span>
       </div>
 
-      <!-- Portfolio -->
       <div class="info-section">
         <div class="info-section__title">💰 Portfolio</div>
-        <div class="kv"><span>Combined Equity</span><strong id="pi-equity">—</strong></div>
+        <div class="kv kv--big"><span>Combined Equity</span><strong id="pi-equity">—</strong></div>
         <div class="kv kv--sub"><span>Cash</span><span id="pi-cash">—</span></div>
         <div class="kv kv--sub"><span>Coin Value</span><span id="pi-coin">—</span></div>
         <div class="divider"></div>
@@ -178,7 +228,6 @@
         <div class="kv"><span>Sim PnL <span class="badge badge--xs badge--purple">SIM</span></span><strong id="pi-sim-pnl" class="pnl">—</strong></div>
       </div>
 
-      <!-- Safety -->
       <div class="info-section">
         <div class="info-section__title">🛡 Safety Gates</div>
         <div class="kv"><span>Live Trading</span><span class="badge badge--red">OFF</span></div>
@@ -188,75 +237,92 @@
         <div class="kv"><span>Max Daily Loss</span><strong>1.5%</strong></div>
       </div>
 
-      <!-- Venues -->
       <div class="info-section">
         <div class="info-section__title">🏦 Venues</div>
-        <div class="venue-row" id="venue-indodax-real">
-          <div class="venue-name">Indodax Real</div>
-          <span class="badge badge--ghost" id="venue-indodax-real-badge">VIEW ONLY</span>
-          <div class="venue-equity" id="venue-indodax-real-equity">—</div>
-        </div>
-        <div class="venue-row" id="venue-indodax-paper">
-          <div class="venue-name">Indodax Paper</div>
-          <span class="badge badge--blue" id="venue-indodax-paper-badge">PAPER</span>
-          <div class="venue-equity" id="venue-indodax-paper-equity">—</div>
-        </div>
-        <div class="venue-row">
-          <div class="venue-name">Phantom Scout</div>
-          <span class="badge badge--purple">SIM</span>
-          <div class="venue-equity" id="venue-phantom-equity">sim only</div>
-        </div>
-        <div class="venue-row">
-          <div class="venue-name">Polymarket</div>
-          <span class="badge badge--orange">PAPER</span>
-          <div class="venue-equity" id="venue-poly-equity">—</div>
-        </div>
+        <details class="venue-detail">
+          <summary class="venue-row">
+            <span class="venue-name">Indodax Real</span>
+            <span class="badge badge--ghost" id="badge-indodax-real">VIEW ONLY</span>
+            <span class="mono" id="eq-indodax-real" style="font-size:10px">—</span>
+          </summary>
+          <div class="venue-sub">Real balance tracking only. Live trading OFF.</div>
+        </details>
+        <details class="venue-detail">
+          <summary class="venue-row">
+            <span class="venue-name">Indodax Paper</span>
+            <span class="badge badge--blue">PAPER</span>
+            <span class="mono" id="eq-indodax-paper" style="font-size:10px">—</span>
+          </summary>
+          <div class="venue-sub">Paper soak test. Orders simulated only.</div>
+        </details>
+        <details class="venue-detail">
+          <summary class="venue-row">
+            <span class="venue-name">Phantom Scout</span>
+            <span class="badge badge--purple">SIM</span>
+            <span class="mono" id="eq-phantom" style="font-size:10px">sim only</span>
+          </summary>
+          <div class="venue-sub">Solana microstructure scouting. No real funds.</div>
+        </details>
+        <details class="venue-detail">
+          <summary class="venue-row">
+            <span class="venue-name">Polymarket</span>
+            <span class="badge badge--orange">PAPER</span>
+            <span class="mono" id="eq-polymarket" style="font-size:10px">—</span>
+          </summary>
+          <div class="venue-sub">Paper prediction market. Wallet not connected.</div>
+        </details>
       </div>
 
-      <!-- Intelligence Gates -->
       <div class="info-section">
         <div class="info-section__title">⚡ Gate Stack</div>
-        <div class="gate-row" id="gate-signal-quality">
+        <div class="gate-row">
           <span>Signal Quality</span>
           <span class="gate-badge" id="gbadge-signal-quality">WAIT</span>
-          <span class="gate-score" id="gscore-signal-quality">—</span>
+          <span class="gate-score mono" id="gscore-signal-quality">—</span>
         </div>
-        <div class="gate-row" id="gate-expected-value">
+        <div class="gate-row">
           <span>Expected Value</span>
           <span class="gate-badge" id="gbadge-expected-value">WAIT</span>
-          <span class="gate-score" id="gscore-expected-value">—</span>
+          <span class="gate-score mono" id="gscore-expected-value">—</span>
         </div>
-        <div class="gate-row" id="gate-scorecard">
+        <div class="gate-row">
           <span>Scorecard</span>
           <span class="gate-badge" id="gbadge-scorecard">WAIT</span>
-          <span class="gate-score" id="gscore-scorecard">—</span>
+          <span class="gate-score mono" id="gscore-scorecard">—</span>
         </div>
-        <div class="gate-row" id="gate-punishment">
+        <div class="gate-row">
           <span>Punishment</span>
           <span class="gate-badge" id="gbadge-punishment">IDLE</span>
-          <span class="gate-score" id="gscore-punishment">0 strikes</span>
+          <span class="gate-score mono" id="gscore-punishment">0 strikes</span>
         </div>
         <div class="gate-row">
           <span>RiskGate</span>
           <span class="gate-badge gate-badge--pass">SHIELDED</span>
-          <span class="gate-score">1.5% cap</span>
+          <span class="gate-score mono">1.5% cap</span>
         </div>
       </div>
 
-      <!-- System Resources -->
       <div class="info-section">
         <div class="info-section__title">🖥 Runtime</div>
         <div class="kv"><span>CPU</span><span id="sys-cpu" class="mono">—</span></div>
         <div class="kv"><span>RAM</span><span id="sys-ram" class="mono">—</span></div>
-        <div class="kv"><span>Disk</span><span id="sys-disk" class="mono">—</span></div>
         <div class="kv"><span>Ollama</span><span id="sys-ollama" class="mono">—</span></div>
-        <div class="kv"><span>Telemetry Age</span><span id="sys-telemetry-age" class="mono">—</span></div>
+        <div class="kv"><span>Telemetry Age</span><span id="sys-tel-age" class="mono">—</span></div>
       </div>
-
     </aside>
+
   </div><!-- /workspace -->
 </div><!-- /app-shell -->
 
-<script src="/static/live.js?v=4.0"></script>
+<!-- ─── AGENT MODAL ──────────────────────────────────────── -->
+<div id="agent-modal" class="agent-modal hidden" role="dialog" aria-modal="true">
+  <div class="modal-backdrop" id="modal-backdrop"></div>
+  <div class="modal-card">
+    <button class="modal-close" id="modal-close" aria-label="Close">×</button>
+    <div id="modal-content"></div>
+  </div>
+</div>
+
+<script src="/static/live.js?v=5.0"></script>
 </body>
 </html>
