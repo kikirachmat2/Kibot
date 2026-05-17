@@ -107,6 +107,7 @@ def test_healthcheck_cpu_guardrails(tmp_path, monkeypatch):
         "consecutive_high_cpu": 2
     }))
     
+    monkeypatch.delenv("KIBOT_DISABLE_CPU_HEALTHCHECK", raising=False)
     monkeypatch.setenv("KIBOT_HEALTHCHECK_ALLOW_BOOTSTRAP", "false")
     monkeypatch.setenv("KIBOT_ENV", "prod")
     monkeypatch.setenv("KIBOT_HEALTHCHECK_HISTORY_PATH", str(history_file))
