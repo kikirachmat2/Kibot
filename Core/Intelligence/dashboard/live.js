@@ -643,9 +643,9 @@ function renderIntelligenceGates(snapshot) {
 }
 
 async function poll() {
-  const response = await fetch("/api/summary", { cache: "no-store" });
+  const response = await fetch("/api/control-plane", { cache: "no-store" });
   if (!response.ok) {
-    throw new Error(`summary request failed with ${response.status}`);
+    throw new Error(`control-plane request failed with ${response.status}`);
   }
   renderSummary(await response.json());
 }

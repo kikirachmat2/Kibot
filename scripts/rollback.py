@@ -51,7 +51,7 @@ def trigger_rollback(reason: str = "Manual Trigger"):
     # We add sys.path so we can import Core modules if run from other dirs
     sys.path.insert(0, str(project_root))
     try:
-        from Core.Support.sovereign_notifier import telegram_send
+        from Core.Support.telegram_throttle import telegram_send
         telegram_send(f"🚨 *EMERGENCY ROLLBACK TRIGGERED* 🚨\nReason: `{reason}`\nLive trading has been completely disabled and state/KILL_SWITCH has been activated.")
     except Exception as e:
         print(f"Could not send Telegram notification: {e}")

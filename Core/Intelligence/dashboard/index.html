@@ -3,26 +3,34 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>The KiBot Delegation — Sovereign Trading Dashboard</title>
-  <meta name="description" content="KiBot Sovereign Agency — real-time trading intelligence dashboard for Indodax & Polymarket autonomous agents." />
+  <title>The KiBot Delegation — Sovereign visual Control Plane</title>
+  <meta name="description" content="KiBot Sovereign Agency — deep dark cinematic trading dashboard for Indodax & Polymarket autonomous agents." />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="/static/style.css?v=3.1" />
-  <script defer src="/static/canvas.js?v=3.1"></script>
-  <script defer src="/static/live.js?v=3.1"></script>
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/static/style.css?v=3.0" />
+  <script defer src="/static/canvas.js?v=3.0"></script>
+  <script defer src="/static/live.js?v=3.0"></script>
 </head>
-<body>
+<body class="sovereign-theme">
 
   <!-- ═══════════════════════════════════════════════
-       COMMAND BAR
+       SUPER COMMAND BAR (CI / ACTION PORT)
   ══════════════════════════════════════════════════ -->
   <header class="command-bar">
     <div class="brand-lockup">
       <div class="terminal-mark">⌘</div>
       <div>
         <div class="product-name">The KiBot Delegation</div>
-        <div class="product-meta">v3.0.0 · Batam sovereign agency</div>
+        <div class="product-meta">v3.4.0 · Batam MasterNode</div>
+      </div>
+    </div>
+
+    <!-- Active State Pill -->
+    <div class="state-indicator-badge">
+      <div class="state-pill FLAT" id="state-badge">
+        <span class="live-dot" id="state-dot"></span>
+        <span id="state-text">FLAT</span>
       </div>
     </div>
 
@@ -30,7 +38,7 @@
       <span class="team-count" id="agency-count">7</span>
       <div>
         <strong>kibot.sovereign</strong>
-        <small>INDODAX + POLYMARKET CONTROL PLANE</small>
+        <small>ACTIVE ORCHESTRATION</small>
       </div>
     </div>
 
@@ -38,210 +46,243 @@
       <span class="live-dot-green"></span>
       <div>
         <small>PRIMARY BRAIN</small>
-        <strong id="primary-brain">ollama / qwen council</strong>
+        <strong id="primary-brain">ollama / qwen2.5:7b</strong>
       </div>
     </div>
 
-    <button class="ghost-button" id="focus-stage" type="button">FOCUS FLOOR</button>
-    <button class="primary-button" id="open-director" type="button">MANAGE AGENTS</button>
+    <div class="view-only-shield">
+      <span class="shield-icon">🛡️</span>
+      <div class="shield-meta">
+        <strong class="shield-title">VIEW-ONLY MODE</strong>
+        <small class="shield-desc">Live changes require CLI approval</small>
+      </div>
+    </div>
+
+    <div class="control-actions">
+      <button class="ghost-button" id="focus-stage" type="button">FOCUS STAGE</button>
+      <button class="primary-button lock-protected" id="open-director" type="button">
+        MANAGE AGENTS
+        <span class="btn-lock-indicator">🔒</span>
+      </button>
+    </div>
   </header>
 
   <!-- ═══════════════════════════════════════════════
-       WORKSPACE
+       Sovereign Command Workspace
   ══════════════════════════════════════════════════ -->
   <div class="workspace">
 
-    <!-- ── LEFT: LOGS PANEL ── -->
+    <!-- ── LEFT: RETRO EVENT LOGS & CYBERPUNK TERMINAL ── -->
     <aside class="logs-panel">
       <div class="panel-head">
-        <span>LOGS</span>
-        <button class="icon-button" id="clear-local-feed" title="Clear feed">⌫</button>
+        <span>SOVEREIGN OPERATIVE VERDICTS</span>
+        <button class="icon-button" id="clear-local-feed" title="Clear terminal logs">⌫</button>
       </div>
       <div class="log-tabs" role="tablist">
-        <button class="active" type="button" data-log-tab="activity" role="tab" aria-selected="true">ACTIVITY</button>
-        <button type="button" data-log-tab="technical" role="tab" aria-selected="false">TECHNICAL</button>
+        <button class="active" type="button" data-log-tab="activity" role="tab" aria-selected="true">COUNCIL DECISIONS</button>
+        <button type="button" data-log-tab="technical" role="tab" aria-selected="false">SYSTEM TELEMETRY</button>
       </div>
       <div class="log-scroll active" id="activity-log" role="log" aria-live="polite"></div>
       <div class="log-scroll" id="technical-log" role="log" aria-live="polite"></div>
     </aside>
 
-    <!-- ── CENTER: MISSION CENTER ── -->
+    <!-- ── CENTER: PRIMARY COGNITIVE SURFACE ── -->
     <main class="mission-center">
 
-      <!-- Row 1: Topline Metrics -->
-      <section class="mission-topline">
-        <div class="state-pill FLAT" id="state-badge">
-          <span class="live-dot" id="state-dot"></span>
-          <span id="state-text">FLAT</span>
+      <!-- Sovereign Hero Header Section -->
+      <section class="sovereign-hero-header">
+        <div class="hero-brand">
+          <h1>Sovereign Visual Control Plane</h1>
+          <p>Autonomous Trading Regime soak-testing paper models under zero-trust safety gates</p>
+        </div>
+        <div class="hero-diagnostics">
+          <div class="headline-metric clock">
+            <small>SERVER CLOCK</small>
+            <strong id="clock">--:--:-- WIB</strong>
+            <span id="deadline">deadline --</span>
+          </div>
+        </div>
+      </section>
+
+      <!-- Portfolio Command Bento Grid -->
+      <section class="portfolio-bento-grid">
+        
+        <!-- Bento Card 1: Combined Equity -->
+        <div class="bento-card equity-card">
+          <div class="bento-card-bg-pulse"></div>
+          <div class="bento-badge">LIQUIDITY LAYER</div>
+          <small class="bento-label">COMBINED EQUITY</small>
+          <strong id="combined-equity" class="bento-value">Rp --</strong>
+          <span id="equity-breakdown" class="bento-sub">cash -- · koin --</span>
         </div>
 
-        <div class="headline-metric">
-          <small>COMBINED EQUITY</small>
-          <strong id="combined-equity">Rp --</strong>
-          <span id="equity-breakdown">cash -- · koin --</span>
-        </div>
-
-        <div class="headline-metric compact split-pnl">
-          <small>DAILY PNL</small>
+        <!-- Bento Card 2: Daily PnL Breakdown -->
+        <div class="bento-card pnl-card">
+          <div class="bento-badge">YIELD ATTRIBUTION</div>
+          <small class="bento-label">DAILY PNL REAL VS MOCK</small>
           <div class="pnl-rows">
             <div class="pnl-row real">
               <span class="pnl-lbl">REAL:</span>
               <strong id="daily-pnl-real" class="neutral">Rp 0</strong>
             </div>
             <div class="pnl-row sim">
-              <span class="pnl-lbl">SIM:</span>
+              <span class="pnl-lbl">MOCK/SIM:</span>
               <strong id="daily-pnl-sim" class="neutral">Rp 0</strong>
             </div>
           </div>
-          <span id="portfolio-source">live portfolio</span>
+          <span id="portfolio-source" class="bento-sub">live portfolio</span>
         </div>
 
-        <div class="headline-metric clock">
-          <small>SERVER CLOCK</small>
-          <strong id="clock">--:--:-- WIB</strong>
-          <span id="deadline">deadline --</span>
-        </div>
-      </section>
-      
-      <!-- [G-007] Row 1.5: System Brain & Inventory Banner -->
-      <section class="system-brain-banner" id="system-brain-panel">
-        <div class="brain-stat">
-          <small>INVENTORY UTILIZATION</small>
-          <div class="progress-wrap">
-            <div class="progress-bar" id="inventory-bar" style="width: 0%"></div>
+        <!-- Bento Card 3: Locked Drawdown & Cap Dial -->
+        <div class="bento-card drawdown-card">
+          <div class="drawdown-dial-wrapper">
+            <svg class="drawdown-dial" viewBox="0 0 100 100">
+              <circle class="dial-bg" cx="50" cy="50" r="40" />
+              <circle class="dial-fill" cx="50" cy="50" r="40" style="stroke-dasharray: 251.2; stroke-dashoffset: 251.2;" />
+            </svg>
+            <div class="dial-content">
+              <strong>1.5%</strong>
+              <small>CAP</small>
+            </div>
           </div>
-          <strong id="inventory-score">--%</strong>
+          <div class="drawdown-meta">
+            <small class="bento-label">RISKGATE LIMIT</small>
+            <strong class="drawdown-status-txt">LOCKED & SHIELDED</strong>
+            <span class="bento-sub">Hard capped daily loss threshold</span>
+          </div>
+          <span class="lock-icon-overlay">🛡️</span>
         </div>
-        <div class="brain-divider"></div>
-        <div class="brain-stat">
-          <small>SOURCE HEALTH</small>
-          <div class="source-list" id="source-health-list">
-            <span>waiting for telemetry...</span>
+
+        <!-- Bento Card 4: Drift & Brain Stats -->
+        <div class="bento-card drift-card" id="system-brain-panel">
+          <div class="bento-badge">BRAIN DRIFT</div>
+          <div class="drift-top">
+            <small class="bento-label">CONFIG DRIFT</small>
+            <strong id="drift-status" class="neutral">UNKNOWN</strong>
+          </div>
+          <div class="drift-progress">
+            <small class="bento-label">INVENTORY UTILIZATION</small>
+            <div class="progress-wrap">
+              <div class="progress-bar" id="inventory-bar" style="width: 0%"></div>
+            </div>
+            <strong id="inventory-score" class="progress-val">--%</strong>
           </div>
         </div>
-        <div class="brain-divider"></div>
-        <div class="brain-stat">
-          <small>DRIFT STATUS</small>
-          <strong id="drift-status" class="neutral">UNKNOWN</strong>
-        </div>
+
       </section>
 
-      <!-- Row 2: Agent Stage -->
+      <!-- Autonomous SVG Flow Map -->
       <section class="stage-shell" id="stage-shell">
         <div class="stage-toolbar">
           <button class="icon-button" id="stage-zoom-out" title="Zoom out">−</button>
-          <button class="icon-button" id="stage-reset" title="Fit">FIT</button>
+          <button class="icon-button" id="stage-reset" title="Fit stage">FIT</button>
           <button class="icon-button" id="stage-zoom-in" title="Zoom in">+</button>
         </div>
 
         <div class="office-stage flow-stage" id="office-stage">
+          <!-- Stylized Flow Routing Decision Trails -->
           <svg class="flow-lines" viewBox="0 0 980 500" aria-hidden="true">
-            <path class="flow-path primary" d="M490 96 V172" />
-            <path class="flow-path primary" d="M490 236 V308" />
-            <path class="flow-path scanner-line" d="M490 236 V294 H202 V332" />
-            <path class="flow-path brain-line" d="M490 236 V294 H490 V332" />
-            <path class="flow-path indo-line" d="M490 236 V294 H778 V332" />
-            <path class="flow-path poly-line" d="M490 236 V292 H928 V332" />
-            <circle class="junction" cx="490" cy="96" r="5" />
-            <circle class="junction" cx="490" cy="172" r="5" />
-            <circle class="junction" cx="490" cy="236" r="5" />
-            <circle class="junction" cx="202" cy="332" r="5" />
-            <circle class="junction" cx="490" cy="332" r="5" />
-            <circle class="junction" cx="778" cy="332" r="5" />
-            <circle class="junction" cx="928" cy="332" r="5" />
+            <!-- Path definitions with glowing markers -->
+            <defs>
+              <linearGradient id="cyan-glow" x1="0%" y1="0%" x2="100%" y2="100%">
+                <stop offset="0%" stop-color="#00f0ff" stop-opacity="0.8" />
+                <stop offset="100%" stop-color="#0066ff" stop-opacity="0.2" />
+              </linearGradient>
+            </defs>
+            <path class="flow-path primary animated-dash" d="M490 96 V172" />
+            <path class="flow-path primary animated-dash" d="M490 236 V308" />
+            <path class="flow-path scanner-line animated-dash" d="M490 236 V294 H202 V332" />
+            <path class="flow-path brain-line animated-dash" d="M490 236 V294 H490 V332" />
+            <path class="flow-path indo-line animated-dash" d="M490 236 V294 H778 V332" />
+            <path class="flow-path poly-line animated-dash" d="M490 236 V292 H928 V332" />
+            
+            <circle class="junction pulse-ring" cx="490" cy="96" r="6" />
+            <circle class="junction pulse-ring" cx="490" cy="172" r="6" />
+            <circle class="junction pulse-ring" cx="490" cy="236" r="6" />
+            <circle class="junction pulse-ring" cx="202" cy="332" r="6" />
+            <circle class="junction pulse-ring" cx="490" cy="332" r="6" />
+            <circle class="junction pulse-ring" cx="778" cy="332" r="6" />
+            <circle class="junction pulse-ring" cx="928" cy="332" r="6" />
           </svg>
 
-          <button class="flow-node user-node" type="button" data-agent="council" aria-label="Operator">
+          <!-- SVG Flow Nodes mapping live agent classes -->
+          <button class="flow-node user-node" type="button" data-agent="council" aria-label="Operator Override Panel">
             <span class="node-avatar operator"><span></span></span>
             <span class="node-content">
-              <strong>Operator (You)</strong>
-              <em>monitoring + override</em>
+              <strong>OPERATOR (YOU)</strong>
+              <em>View-only monitoring mode</em>
             </span>
           </button>
 
-          <button class="flow-node council thinking"
-                  type="button" data-agent="council" id="char-council"
-                  aria-label="Council agent">
+          <button class="flow-node council thinking" type="button" data-agent="council" id="char-council" aria-label="Council Lead Agent">
             <span class="node-avatar council"><span></span></span>
             <span class="node-content">
-              <strong>Council Director</strong>
+              <strong>COUNCIL DIRECTOR</strong>
               <span class="node-tags">
-                <b>LEAD AGENT</b>
-                <b>HUMAN-IN-THE-LOOP</b>
+                <b class="tag-lead">LEAD AGENT</b>
+                <b class="tag-human">HITL</b>
               </span>
               <em id="metric-council">conf 0.00</em>
             </span>
           </button>
 
-          <button class="flow-node scanner active"
-                  type="button" data-agent="scanner" id="char-scanner"
-                  aria-label="Scanner agent">
+          <button class="flow-node scanner active" type="button" data-agent="scanner" id="char-scanner" aria-label="Scanner Agent">
             <span class="node-avatar scanner"><span></span></span>
             <span class="node-content">
-              <strong>Scanner</strong>
-              <span class="node-tags"><b>SUBAGENT</b></span>
+              <strong>SCANNER</strong>
+              <span class="node-tags"><b class="tag-sub">SUBAGENT</b></span>
               <em id="metric-scanner">scan live</em>
             </span>
           </button>
 
-          <button class="flow-node brain"
-                  type="button" data-agent="brain" id="char-brain"
-                  aria-label="AI Brain agent">
+          <button class="flow-node brain" type="button" data-agent="brain" id="char-brain" aria-label="AI Brain Local Model">
             <span class="node-avatar brain"><span></span></span>
             <span class="node-content">
-              <strong>AI Brain</strong>
-              <span class="node-tags"><b>LOCAL LLM</b></span>
+              <strong>AI BRAIN</strong>
+              <span class="node-tags"><b class="tag-llm">LOCAL LLM</b></span>
               <em id="metric-brain">MIXED</em>
             </span>
           </button>
 
-          <button class="flow-node indo"
-                  type="button" data-agent="indodax" id="char-indo"
-                  aria-label="Indodax Executor agent">
+          <button class="flow-node indo" type="button" data-agent="indodax" id="char-indo" aria-label="Indodax Executor">
             <span class="node-avatar indo"><span></span></span>
             <span class="node-content">
-              <strong>Indodax Executor</strong>
-              <span class="node-tags"><b>REAL MONEY</b></span>
+              <strong>INDODAX EXECUTOR</strong>
+              <span class="node-tags"><b class="tag-paper">PAPER SOAK</b></span>
               <em id="metric-indo">Rp --</em>
             </span>
           </button>
 
-          <button class="flow-node poly"
-                  type="button" data-agent="polymarket" id="char-poly"
-                  aria-label="Polymarket Executor agent">
+          <button class="flow-node poly" type="button" data-agent="polymarket" id="char-poly" aria-label="Polymarket Executor">
             <span class="node-avatar poly"><span></span></span>
             <span class="node-content">
-              <strong>Polymarket</strong>
-              <span class="node-tags"><b>PHANTOM</b></span>
+              <strong>POLYMARKET</strong>
+              <span class="node-tags"><b class="tag-sim">SIMULATION</b></span>
               <em id="metric-poly">$0.00</em>
             </span>
           </button>
 
-          <button class="flow-node verifier"
-                  type="button" data-agent="verifier" id="char-verifier"
-                  aria-label="Verifier agent">
+          <button class="flow-node verifier" type="button" data-agent="verifier" id="char-verifier" aria-label="Verifier Agent">
             <span class="node-avatar verifier"><span></span></span>
             <span class="node-content">
-              <strong>Verifier</strong>
-              <span class="node-tags"><b>STATE CHECK</b></span>
+              <strong>VERIFIER</strong>
+              <span class="node-tags"><b class="tag-check">STATE CHECK</b></span>
               <em id="metric-verifier">verify</em>
             </span>
           </button>
 
-          <button class="flow-node janitor"
-                  type="button" data-agent="janitor" id="char-janitor"
-                  aria-label="Janitor agent">
+          <button class="flow-node janitor" type="button" data-agent="janitor" id="char-janitor" aria-label="Janitor Agent">
             <span class="node-avatar janitor"><span></span></span>
             <span class="node-content">
-              <strong>Janitor</strong>
-              <span class="node-tags"><b>SELF HEALING</b></span>
+              <strong>JANITOR</strong>
+              <span class="node-tags"><b class="tag-heal">SELF HEALING</b></span>
               <em id="metric-janitor">disk --</em>
             </span>
           </button>
-        </div><!-- /office-stage -->
+        </div>
       </section>
 
-      <!-- Row 3: Workflow Board -->
+      <!-- Workflow Board (Bottom Lane Tasks) -->
       <section class="workflow-board">
         <article>
           <header>SCHEDULED <span id="scheduled-count">0</span></header>
@@ -261,116 +302,109 @@
         </article>
       </section>
 
-    </main><!-- /mission-center -->
+    </main>
 
-    <!-- ── RIGHT: DIRECTOR PANEL ── -->
+    <!-- ── RIGHT: VENUES & INTELLIGENCE STACK ── -->
     <aside class="director-panel">
 
-      <!-- Project Info -->
+      <!-- View Agent Brief -->
       <section class="project-card">
         <div class="project-head">
-          <h2>Project Info</h2>
+          <h2>Active Agent Details</h2>
           <span class="ready-pill" id="readiness-pill">READY</span>
         </div>
         <div class="brief-block">
-          <h3>SELECTED AGENT</h3>
-          <strong id="selected-agent-title">Scanner</strong>
+          <small class="block-sub">SELECTED COGNITIVE COMPONENT</small>
+          <strong id="selected-agent-title" class="selected-agent-highlight">Scanner</strong>
           <p id="selected-agent-copy">Membaca pergerakan market, volume, pump candidate, dan mengirim sinyal mentah ke Council.</p>
           <div class="agent-detail-grid">
-            <span>Status</span>  <b id="selected-agent-status">ACTIVE</b>
+            <span>Status</span>  <b id="selected-agent-status" class="val-active">ACTIVE</b>
             <span>Metric</span>  <b id="selected-agent-metric">scan live</b>
             <span>Runtime</span> <b id="selected-agent-runtime">systemd</b>
           </div>
         </div>
       </section>
 
-      <!-- Indodax Account -->
-      <section class="account-card indodax-card">
-        <div class="account-head">
-          <small>INDONESIA</small>
-          <strong>Indodax</strong>
-          <em>LIVE</em>
-        </div>
-        <div class="account-total" id="indo-total">Rp --</div>
-        <div class="account-subline">
-          <span id="indo-cash">cash --</span>
-          <span id="indo-holdings">koin --</span>
-        </div>
-        <div class="position-list" id="indo-positions"></div>
+      <!-- Venue Performance Cards Stack -->
+      <section class="venues-section">
+        <h2>Sovereign Trading Venues</h2>
+
+        <!-- Venue 1: Indodax Real (Shielded/Locked) -->
+        <article class="account-card indodax-card shielded-venue">
+          <div class="venue-shield-lock">🔒 SHIELDED</div>
+          <div class="account-head">
+            <small>INDONESIAN FIAT EXCHANGE</small>
+            <strong>Indodax Real</strong>
+            <em class="mode-tag-real">REAL</em>
+          </div>
+          <div class="account-total" id="indo-total">Rp 0</div>
+          <div class="account-subline">
+            <span id="indo-cash">cash Rp 0</span>
+            <span id="indo-holdings">koin Rp 0</span>
+          </div>
+          <div class="position-list" id="indo-positions"></div>
+        </article>
+
+        <!-- Venue 2: Indodax Paper (Active Soak Test) -->
+        <article class="account-card indodax-mock-card active-venue">
+          <div class="account-head">
+            <small>SOAK REGIME EXCHANGE</small>
+            <strong>Indodax Paper</strong>
+            <em class="mode-tag-paper">PAPER</em>
+          </div>
+          <div class="account-total" id="indo-mock-total">Rp --</div>
+          <div class="account-subline">
+            <span id="indo-mock-cash">cash --</span>
+            <span id="indo-mock-holdings">koin --</span>
+          </div>
+          <div class="position-list" id="indo-mock-positions"></div>
+          <div class="no-bets-label" id="no-mock-label">No active paper trades</div>
+        </article>
+
+        <!-- Venue 3: Polymarket Simulated -->
+        <article class="account-card poly-card active-venue">
+          <div class="account-head">
+            <small>POLYGON PREDICTION</small>
+            <strong>Polymarket</strong>
+            <em class="mode-tag-sim">SIM</em>
+          </div>
+          <div class="account-total" id="poly-total">$-- USDC</div>
+          <div class="account-subline" id="poly-idr">~ Rp --</div>
+          <div class="position-list" id="poly-positions"></div>
+          <div class="no-bets-label" id="no-bets-label">No active bets</div>
+        </article>
+
+        <!-- Venue 4: Phantom Solana Scouting -->
+        <article class="account-card phantom-card active-venue">
+          <div class="account-head">
+            <small>SOLANA MICROSTRUCTURE</small>
+            <strong>Solana Scouting</strong>
+            <em class="mode-tag-scout">SCOUT</em>
+          </div>
+          <div class="account-total" id="phantom-total">Sim: -- opps</div>
+          <div class="account-subline" id="phantom-subline">RPC: --</div>
+          <div class="position-list" id="phantom-positions"></div>
+          <div class="no-bets-label" id="no-phantom-label">No active opportunities</div>
+        </article>
+
+        <!-- Venue 5: Cash Wait Reserves -->
+        <article class="account-card cash-wait-card">
+          <div class="account-head">
+            <small>RESERVE FIAT LIQUIDITY</small>
+            <strong>Cash Reserves</strong>
+            <em class="mode-tag-reserve">RESERVE</em>
+          </div>
+          <div class="account-total">Rp 25.000.000</div>
+          <div class="account-subline">
+            <span>Sovereign reserve liquidity pool</span>
+          </div>
+        </article>
       </section>
 
-      <!-- Indodax Mock Account -->
-      <section class="account-card indodax-mock-card">
-        <div class="account-head">
-          <small>SIMULATED</small>
-          <strong>Indodax Mock</strong>
-          <em>PAPER</em>
-        </div>
-        <div class="account-total" id="indo-mock-total">Rp --</div>
-        <div class="account-subline">
-          <span id="indo-mock-cash">cash --</span>
-          <span id="indo-mock-holdings">koin --</span>
-        </div>
-        <div class="position-list" id="indo-mock-positions"></div>
-        <div class="no-bets-label" id="no-mock-label">No active paper trades</div>
-      </section>
-
-
-      <!-- Polymarket Account -->
-      <section class="account-card poly-card">
-        <div class="account-head">
-          <small>POLYGON</small>
-          <strong>Polymarket</strong>
-          <em>LIVE</em>
-        </div>
-        <div class="account-total" id="poly-total">$-- USDC</div>
-        <div class="account-subline" id="poly-idr">~ Rp --</div>
-        <div class="position-list" id="poly-positions"></div>
-        <div class="no-bets-label" id="no-bets-label">No active bets</div>
-      </section>
-
-      <!-- Phantom Opportunity Account -->
-      <section class="account-card phantom-card">
-        <div class="account-head">
-          <small>SOLANA</small>
-          <strong>Phantom</strong>
-          <em>SCOUTING</em>
-        </div>
-        <div class="account-total" id="phantom-total">Sim: -- opps</div>
-        <div class="account-subline" id="phantom-subline">RPC: --</div>
-        <div class="position-list" id="phantom-positions"></div>
-        <div class="no-bets-label" id="no-phantom-label">No active opportunities</div>
-      </section>
-
-
-      <!-- Strategy Inspector -->
-      <section class="strategy-inspector">
-        <h2>Strategy</h2>
-        <div class="strategy-mode" id="strategy-mode">UNKNOWN</div>
-        <div class="strategy-grid">
-          <span>Confidence</span>  <b id="s-conf">--</b>
-          <span>Take Profit</span> <b id="s-tp">--</b>
-          <span>Slots</span>       <b id="s-slots">--</b>
-          <span>Hard Stop</span>   <b id="s-stop">--</b>
-          <span>Deadline</span>    <b id="s-deadline">--</b>
-          <span>Risk Mode</span>    <b id="s-risk-mode">--</b>
-          <span>Quality Gate</span> <b id="s-quality">--</b>
-          <span>Green Prob.</span>  <b id="s-green-prob">--</b>
-        </div>
-      </section>
-
-      <!-- Council Lens -->
-      <section class="council-lens WAIT" id="council-lens">
-        <h2>Council Lens</h2>
-        <strong id="cl-state">WAIT</strong>
-        <span id="cl-detail">waiting signal</span>
-      </section>
-
-      <!-- ── Intelligence Gates ── -->
+      <!-- Intelligence Gates Stack -->
       <section class="intelligence-gates-card" id="intel-gates-card">
-        <h2>Intelligence Gates</h2>
+        <h2>Sovereign Intelligence Gates</h2>
         
-        <!-- Top Status Row with Regime and Dynamic Badges -->
         <div class="gates-header">
           <div class="regime-badge" id="ig-regime">REGIME: --</div>
           <div class="gates-badges">
@@ -379,7 +413,6 @@
           </div>
         </div>
 
-        <!-- Deliberation Stats -->
         <div class="gates-stats-grid">
           <div class="stat-box">
             <small>APPROVED</small>
@@ -395,7 +428,7 @@
           </div>
         </div>
 
-        <!-- 4 Serialized Gate Layers -->
+        <!-- Serial stack of logic gates -->
         <div class="gates-layers">
           
           <!-- Gate 1: Expected Value -->
@@ -405,9 +438,9 @@
               <span class="layer-status-pill neutral" id="ev-status">WAIT</span>
             </div>
             <div class="layer-body">
-              <div class="stat-row"><span>Proj. Profit</span> <strong id="ev-projected-profit">--</strong></div>
-              <div class="stat-row"><span>Kelly Rec</span> <strong id="ev-kelly-rec">--</strong></div>
-              <div class="stat-row"><span>Decision</span> <strong id="ev-decision">--</strong></div>
+              <div class="stat-row"><span>Proj. EV</span> <strong id="ev-projected-profit">--</strong></div>
+              <div class="stat-row"><span>Kelly Scale</span> <strong id="ev-kelly-rec">--</strong></div>
+              <div class="stat-row"><span>Verdict</span> <strong id="ev-decision">--</strong></div>
             </div>
           </div>
 
@@ -418,9 +451,9 @@
               <span class="layer-status-pill neutral" id="sq-status">WAIT</span>
             </div>
             <div class="layer-body">
-              <div class="stat-row"><span>Spread Margin</span> <strong id="sq-spread">--</strong></div>
+              <div class="stat-row"><span>Spread Check</span> <strong id="sq-spread">--</strong></div>
               <div class="stat-row"><span>Min Volume</span> <strong id="sq-volume">--</strong></div>
-              <div class="stat-row"><span>Alignment</span> <strong id="sq-alignment">--</strong></div>
+              <div class="stat-row"><span>Alpha Align</span> <strong id="sq-alignment">--</strong></div>
             </div>
           </div>
 
@@ -431,8 +464,8 @@
               <span class="layer-status-pill neutral" id="ss-status">WAIT</span>
             </div>
             <div class="layer-body">
-              <div class="stat-row"><span>Composite Grade</span> <strong id="ss-grade">--</strong></div>
-              <div class="stat-row"><span>Score Weight</span> <strong id="ss-weight">--</strong></div>
+              <div class="stat-row"><span>Composite Score</span> <strong id="ss-grade">--</strong></div>
+              <div class="stat-row"><span>Regime Weight</span> <strong id="ss-weight">--</strong></div>
               <div class="stat-row"><span>Verdict</span> <strong id="ss-verdict">--</strong></div>
             </div>
           </div>
@@ -444,17 +477,34 @@
               <span class="layer-status-pill neutral" id="pe-status">PASS</span>
             </div>
             <div class="layer-body">
-              <div class="stat-row"><span>Strikes Active</span> <strong id="pe-strikes">0 / 3</strong></div>
-              <div class="stat-row"><span>Cool-off Time</span> <strong id="pe-cooloff">None</strong></div>
+              <div class="stat-row"><span>Active Strikes</span> <strong id="pe-strikes">0 / 3</strong></div>
+              <div class="stat-row"><span>Cool-off State</span> <strong id="pe-cooloff">None</strong></div>
             </div>
           </div>
 
         </div>
       </section>
 
-      <!-- ── Signal Intelligence (§17.2) ── -->
+      <!-- Council Lens -->
+      <section class="council-lens WAIT" id="council-lens">
+        <h2>Council Lens & Sentiment</h2>
+        <div class="lens-state-header">
+          <strong id="cl-state">WAIT</strong>
+          <span id="cl-detail">waiting signal</span>
+        </div>
+      </section>
+
+      <!-- Source Health Monitoring -->
+      <section class="source-health-monitoring">
+        <h2>Feed Sources Latency</h2>
+        <div class="source-list" id="source-health-list">
+          <span>Waiting for feed updates...</span>
+        </div>
+      </section>
+
+      <!-- Signal Intel -->
       <section class="signal-intel-card">
-        <h2>Signal Intel</h2>
+        <h2>Signal Intelligence</h2>
         <div class="signal-intel-top">
           <span class="lifecycle-badge" id="si-lifecycle">--</span>
           <span class="grade-badge" id="si-grade">?</span>
@@ -470,19 +520,9 @@
         </div>
       </section>
 
-      <!-- System Stats -->
-      <section class="system-card">
-        <h2>System</h2>
-        <div class="snap-row"><span>CPU</span>    <strong id="sys-cpu">--</strong></div>
-        <div class="snap-row"><span>RAM</span>    <strong id="sys-ram">--</strong></div>
-        <div class="snap-row"><span>Disk</span>   <strong id="sys-disk">--</strong></div>
-        <div class="snap-row"><span>Ollama</span> <strong id="sys-ollama">--</strong></div>
-        <div class="snap-row"><span>Redis</span>  <strong id="sys-redis">--</strong></div>
-      </section>
-
-      <!-- ── Order Tracker Summary (§16.2) ── -->
+      <!-- Order Tracker -->
       <section class="order-tracker-card">
-        <h2>Order Tracker</h2>
+        <h2>Daily Order Tracker</h2>
         <div class="ot-grid">
           <span>Today</span>      <b id="ot-total">0</b>
           <span>Filled</span>     <b id="ot-filled">0</b>
@@ -493,26 +533,52 @@
         <div class="open-orders-list" id="ot-open-orders"></div>
       </section>
 
-      <!-- What-If Top -->
+      <!-- System Diagnostic Panel -->
+      <section class="system-card">
+        <h2>System Resource Telemetry</h2>
+        <div class="snap-row"><span>CPU Usage</span>    <strong id="sys-cpu">--</strong></div>
+        <div class="snap-row"><span>RAM Usage</span>    <strong id="sys-ram">--</strong></div>
+        <div class="snap-row"><span>Disk Space</span>   <strong id="sys-disk">--</strong></div>
+        <div class="snap-row"><span>Ollama LLM</span> <strong id="sys-ollama">--</strong></div>
+        <div class="snap-row"><span>Redis Server</span>  <strong id="sys-redis">--</strong></div>
+      </section>
+
+      <!-- Active Strategy Settings -->
+      <section class="strategy-inspector">
+        <h2>Strategy Config Metrics</h2>
+        <div class="strategy-mode" id="strategy-mode">UNKNOWN</div>
+        <div class="strategy-grid">
+          <span>Confidence</span>  <b id="s-conf">--</b>
+          <span>Take Profit</span> <b id="s-tp">--</b>
+          <span>Slots</span>       <b id="s-slots">--</b>
+          <span>Hard Stop</span>   <b id="s-stop">--</b>
+          <span>Deadline</span>    <b id="s-deadline">--</b>
+          <span>Risk Mode</span>    <b id="s-risk-mode">--</b>
+          <span>Quality Gate</span> <b id="s-quality">--</b>
+          <span>Green Prob.</span>  <b id="s-green-prob">--</b>
+        </div>
+      </section>
+
+      <!-- What-If top simulations -->
       <section class="whatif-card">
-        <h2>What-If Top</h2>
+        <h2>What-If Top Simulations</h2>
         <div class="whatif-list" id="whatif-list">No data yet</div>
       </section>
 
-    </aside><!-- /director-panel -->
+    </aside>
 
-  </div><!-- /workspace -->
+  </div>
 
-  <!-- ═══════════════════════════════════════════════
-       DIRECTOR DRAWER (modal)
-  ══════════════════════════════════════════════════ -->
+  <!-- Agent Runtime Map Modal Drawer -->
   <div class="director-drawer" id="director-drawer" aria-hidden="true" role="dialog" aria-modal="true" aria-label="Agent Runtime Map">
     <div class="drawer-card">
       <button class="drawer-close" id="drawer-close" type="button" aria-label="Close drawer">×</button>
-      <h2>Agent Runtime Map</h2>
+      <h2>Agent Runtime Map (VIEW ONLY)</h2>
       <p>Semua karakter di floor ini membaca state asli dari systemd, telemetry, executor, dan portfolio snapshot.</p>
       <div class="agent-pill-grid" id="agent-pills"></div>
+      <div class="drawer-lock-notice">🔒 Actions are strictly view-only. Modifications require manual server-side terminal activation.</div>
     </div>
   </div>
+
 </body>
 </html>

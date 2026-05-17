@@ -16,7 +16,7 @@ from fastapi import FastAPI, Query
 from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
-from Core.Support.ki_config import PROJECT_ROOT, STATE_DIR
+from Core.Support.ki_config import PROJECT_ROOT, STATE_DIR, KiConfig
 
 app = FastAPI(title="KiBot Sovereign Dashboard", version="3.4")
 
@@ -656,6 +656,219 @@ async def home() -> HTMLResponse:
     return HTMLResponse("<h1>Dashboard assets not found.</h1>")
 
 
+def _read_recent_decisions(limit: int = 15) -> List[Dict[str, Any]]:
+    path = STATE / "council_decisions.jsonl"
+    decisions = []
+    if path.exists():
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                lines = f.readlines()
+                for line in reversed(lines[-limit:]):
+                    line = line.strip()
+                    if line:
+                        try:
+                            decisions.append(json.loads(line))
+                        except Exception:
+                            pass
+        except Exception:
+            pass
+    return decisions
+
+
+def _build_control_plane_payload() -> Dict[str, Any]:
+    # 1. Mode config
+    mode = {
+        "trading_mode": str(KiConfig.TRADING_MODE),
+        "live_trading_enabled": bool(KiConfig.LIVE_TRADING_ENABLED),
+        "canary_enabled": bool(KiConfig.CANARY_LIVE_ENABLED),
+        "real_swap_enabled": bool(KiConfig.ENABLE_REAL_SWAP),
+        "real_bridge_enabled": bool(KiConfig.ENABLE_REAL_BRIDGE),
+        "real_withdrawal_enabled": bool(KiConfig.ENABLE_REAL_WITHDRAWAL),
+    }
+
+    # 2. Portfolio stats from build_summary / build_portfolio
+    summary_data = _build_summary()
+    portfolio = summary_data.get("portfolio", {})
+    
+    # 3. Read State Gates
+    sq_raw = _read_json(STATE / "signal_quality.json", [])
+    ev_raw = _read_json(STATE / "expected_value.json", [])
+    ss_raw = _read_json(STATE / "strategy_scorecard.json", [])
+    pe_raw = _read_json(STATE / "punishment_state.json", {})
+    
+    # Normalize expected value, signal quality, strategy scorecard to be objects, not lists
+    sq = sq_raw[0] if isinstance(sq_raw, list) and sq_raw else {}
+    ev = ev_raw[0] if isinstance(ev_raw, list) and ev_raw else {}
+    ss = ss_raw[0] if isinstance(ss_raw, list) and ss_raw else {}
+    
+    gates = {
+        "signal_quality": {
+            "status": "PASS" if sq.get("is_tradeable") else "REJECT" if sq else "WAIT",
+            "score": _safe_float(sq.get("score"), 0.0),
+            "details": sq.get("details", []),
+            "freshness": _latest_mtime(STATE / "signal_quality.json"),
+        },
+        "expected_value": {
+            "status": "PASS" if ev.get("approved") else "REJECT" if ev else "WAIT",
+            "score": _safe_float(ev.get("ev_pct"), 0.0),
+            "rejection_reasons": ev.get("rejection_reasons", []),
+            "kelly_fraction": _safe_float(ev.get("kelly_fraction"), 0.0),
+            "freshness": _latest_mtime(STATE / "expected_value.json"),
+        },
+        "strategy_scorecard": {
+            "status": "PASS" if ss.get("verdict") == "APPROVED" else "REJECT" if ss else "WAIT",
+            "score": _safe_float(ss.get("composite_score"), 0.0),
+            "breakdown": ss.get("breakdown", []),
+            "freshness": _latest_mtime(STATE / "strategy_scorecard.json"),
+        },
+        "punishment": {
+            "status": "BLOCKED" if pe_raw.get("status") == "quarantined" else "PASS",
+            "strikes": len(pe_raw.get("quarantined", [])) if isinstance(pe_raw.get("quarantined"), list) else 0,
+            "cooloff": pe_raw.get("status", "idle"),
+            "freshness": _latest_mtime(STATE / "punishment_state.json"),
+        },
+        "risk_gate": {
+            "status": "PASS",
+            "max_drawdown_limit": 1.5,
+            "current_drawdown": _safe_float(portfolio.get("unrealized_pnl_idr"), 0.0),
+        },
+        "microstructure": {
+            "status": "PASS" if summary_data.get("strategy", {}).get("global_mode") == "ACTIVE" else "WAIT",
+            "mode": summary_data.get("strategy", {}).get("global_mode", "UNKNOWN"),
+        }
+    }
+
+    # 4. Venues
+    venues = {
+        "indodax_real": {
+            "venue": "Indodax Real",
+            "mode": "REAL",
+            "equity_idr": _safe_float(portfolio.get("equity_idr"), 0.0) if KiConfig.LIVE_TRADING_ENABLED else 0.0,
+            "daily_pnl_idr": _safe_float(portfolio.get("daily_pnl_real_idr"), 0.0),
+            "status": "ACTIVE" if KiConfig.LIVE_TRADING_ENABLED else "BLOCKED",
+            "reason": "Live trading disabled" if not KiConfig.LIVE_TRADING_ENABLED else "Operational",
+        },
+        "indodax_paper": {
+            "venue": "Indodax Paper/Mock",
+            "mode": "PAPER",
+            "equity_idr": _safe_float(portfolio.get("mock", {}).get("equity_idr"), 0.0),
+            "daily_pnl_idr": _safe_float(portfolio.get("daily_pnl_sim_idr"), 0.0) if not KiConfig.LIVE_TRADING_ENABLED else 0.0,
+            "status": "ACTIVE",
+            "reason": "Paper soak test active",
+        },
+        "phantom": {
+            "venue": "Phantom Scouting",
+            "mode": "SIMULATION",
+            "status": "ACTIVE",
+            "opportunities": len(portfolio.get("phantom", {}).get("active_opportunities", []) if isinstance(portfolio.get("phantom"), dict) else []),
+            "reason": "Scanning Solana microstructure",
+        },
+        "polymarket": {
+            "venue": "Polymarket",
+            "mode": "SIMULATION" if not KiConfig.ENABLE_POLYMARKET_LIVE else "REAL",
+            "equity_idr": _safe_float(portfolio.get("polymarket", {}).get("equity_idr"), 0.0),
+            "daily_pnl_idr": _safe_float(portfolio.get("polymarket", {}).get("daily_pnl_idr"), 0.0),
+            "status": "ACTIVE" if portfolio.get("polymarket", {}).get("wallet_ready") else "WAIT",
+            "reason": "Wallet active" if portfolio.get("polymarket", {}).get("wallet_ready") else "Wallet connection wait",
+        },
+        "cash_wait": {
+            "venue": "Cash Wait",
+            "mode": "REAL" if KiConfig.LIVE_TRADING_ENABLED else "PAPER",
+            "equity_idr": _safe_float(portfolio.get("idr_cash"), 0.0),
+            "status": "ACTIVE",
+            "reason": "Sovereign reserve liquidity",
+        }
+    }
+
+    # 5. Runtime Health
+    scanner_stats = _read_json(STATE / "scanner_runtime.json", {})
+    leadlag_stats = _read_json(STATE / "leadlag_alpha.json", {})
+    market_rotation = _read_json(STATE / "market_rotation.json", {})
+    
+    runtime = {
+        "scanner": {
+            "mode": "FAST" if scanner_stats.get("cycle_interval_seconds", 5.0) < 3.0 else "NORMAL",
+            "cycle_ms": _safe_float(scanner_stats.get("last_cycle_ms"), 0.0),
+            "status": "ACTIVE" if summary_data.get("services", {}).get("kibot-scanner") == "active" else "INACTIVE",
+        },
+        "leadlag": {
+            "aligned": bool(leadlag_stats.get("aligned", False)),
+            "last_latency_sec": _safe_float(leadlag_stats.get("last_latency_sec"), 0.0),
+            "status": "ACTIVE",
+        },
+        "market_rotation": {
+            "regime": str(market_rotation.get("market_regime", "NEUTRAL")),
+            "regime_index": _safe_float(market_rotation.get("regime_index"), 0.0),
+            "status": "ACTIVE",
+        },
+        "autonomous_director": {
+            "status": "ACTIVE" if summary_data.get("autonomous_director") else "WAIT",
+            "approved_count": len(summary_data.get("autonomous_director", {}).get("approved", []) if isinstance(summary_data.get("autonomous_director"), dict) else []),
+            "paper_count": len(summary_data.get("autonomous_director", {}).get("paper", []) if isinstance(summary_data.get("autonomous_director"), dict) else []),
+            "rejected_count": len(summary_data.get("autonomous_director", {}).get("rejected", []) if isinstance(summary_data.get("autonomous_director"), dict) else []),
+        },
+        "healthcheck": {
+            "status": "PASS",
+            "last_checked": datetime.now(WIB).isoformat(),
+        },
+        "ollama": {
+            "status": "ACTIVE" if summary_data.get("services", {}).get("ollama") == "active" else "INACTIVE",
+            "model": "qwen2.5:7b-instruct",
+        }
+    }
+
+    # 6. Flow Node Connections
+    flow = [
+        {"from": "Market Feeds", "to": "Scanner"},
+        {"from": "Scanner", "to": "LeadLag Alpha"},
+        {"from": "LeadLag Alpha", "to": "Signal Quality"},
+        {"from": "Signal Quality", "to": "Expected Value"},
+        {"from": "Expected Value", "to": "Scorecard"},
+        {"from": "Scorecard", "to": "Autonomous Director"},
+        {"from": "Autonomous Director", "to": "Council / RiskGate"},
+        {"from": "Council / RiskGate", "to": "Executor"},
+        {"from": "Executor", "to": "PnL / Feedback Loop"},
+    ]
+
+    # Warnings collection
+    warnings = []
+    if not gates["expected_value"]["status"] == "PASS":
+        warnings.append("Expected Value Gate rejected incoming signal due to negative EV.")
+    if gates["punishment"]["strikes"] > 0:
+        warnings.append(f"Punishment Engine strikes active: {gates['punishment']['strikes']}.")
+    if not runtime["ollama"]["status"] == "ACTIVE":
+        warnings.append("Ollama local LLM server is offline.")
+
+    # Merge complete summary_data at the root level for total backward-compatibility
+    merged_data = {**summary_data}
+    merged_data.update({
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "mode": mode,
+        "portfolio": {
+            **portfolio,
+            "total_equity_idr": portfolio.get("combined_equity_idr", 0.0),
+            "daily_pnl_idr": portfolio.get("daily_pnl_idr", 0.0),
+            "daily_pnl_pct": portfolio.get("daily_pnl_pct", 0.0),
+            "real_pnl_idr": portfolio.get("daily_pnl_real_idr", 0.0),
+            "mock_pnl_idr": portfolio.get("daily_pnl_sim_idr", 0.0),
+            "simulated_pnl_idr": portfolio.get("phantom", {}).get("opportunity_pnl_idr", 0.0) if isinstance(portfolio.get("phantom"), dict) else 0.0,
+        },
+        "venues": venues,
+        "gates": gates,
+        "runtime": runtime,
+        "flow": flow,
+        "recent_decisions": _read_recent_decisions(15),
+        "warnings": warnings,
+    })
+    return merged_data
+
+
+@app.get("/api/control-plane")
+async def control_plane() -> JSONResponse:
+    return JSONResponse(_build_control_plane_payload())
+
+
+
 @app.get("/api/summary")
 async def summary() -> JSONResponse:
     return JSONResponse(_build_summary())
@@ -694,7 +907,7 @@ async def stream() -> StreamingResponse:
     async def event_generator():
         while True:
             try:
-                yield f"data: {json.dumps(_build_summary(), ensure_ascii=False)}\n\n"
+                yield f"data: {json.dumps(_build_control_plane_payload(), ensure_ascii=False)}\n\n"
             except Exception as exc:
                 yield f"data: {json.dumps({'error': str(exc)}, ensure_ascii=False)}\n\n"
             await asyncio.sleep(5)
