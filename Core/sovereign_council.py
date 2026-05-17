@@ -932,6 +932,53 @@ class SovereignCouncil:
         Analyzes incoming signals and returns a formal mandate for execution.
         """
         logger.info(f"🏛️ Council Deliberating Trading Signals...")
+
+        # Phase 3 & 4: Autonomous Director Intelligence Gate Integration
+        try:
+            from Core.Intelligence.autonomous_director import AutonomousDirector
+            import json
+            
+            regime = (signals_context.get("market_context") or {}).get("regime") if isinstance(signals_context.get("market_context"), dict) else "UNKNOWN"
+            director = AutonomousDirector(market_regime=regime or "UNKNOWN")
+            
+            raw_candidates = list(signals_context.get("signals") or [])
+            evaluation = director.evaluate_cycle(raw_candidates)
+            
+            # Persist separate state output JSON files as mandated in Phase 4
+            self.state_dir.mkdir(parents=True, exist_ok=True)
+            
+            # 1. autonomous_director.json
+            (self.state_dir / "autonomous_director.json").write_text(
+                json.dumps(evaluation, indent=2, default=str),
+                encoding="utf-8"
+            )
+            
+            # 2. signal_quality.json
+            sq_list = [c.get("signal_quality") for c in raw_candidates if c.get("signal_quality")]
+            (self.state_dir / "signal_quality.json").write_text(
+                json.dumps(sq_list, indent=2, default=str),
+                encoding="utf-8"
+            )
+            
+            # 3. expected_value.json
+            ev_list = [c.get("ev_analysis") for c in raw_candidates if c.get("ev_analysis")]
+            (self.state_dir / "expected_value.json").write_text(
+                json.dumps(ev_list, indent=2, default=str),
+                encoding="utf-8"
+            )
+            
+            # 4. strategy_scorecard.json
+            scorecard_list = [c.get("scorecard") for c in raw_candidates if c.get("scorecard")]
+            (self.state_dir / "strategy_scorecard.json").write_text(
+                json.dumps(scorecard_list, indent=2, default=str),
+                encoding="utf-8"
+            )
+            
+            logger.info("✅ Autonomous Intelligence Gates executed & persisted successfully.")
+        except Exception as _director_err:
+            logger.error(f"❌ Autonomous Intelligence integration failed: {_director_err}")
+            evaluation = {}
+
         whatif_snapshot = self._load_whatif_snapshot()
         evidence_bundle = await self._build_trade_evidence(signals_context)
         today_trade_activity = self._get_today_trade_activity()
@@ -1343,6 +1390,9 @@ class SovereignCouncil:
             log_council_decision(decision)
         except Exception as journal_err:
             logger.debug(f"Council structured journal skipped: {journal_err}")
+        if "evaluation" in locals() and isinstance(evaluation, dict):
+            decision["autonomous_director_stats"] = evaluation.get("cycle_stats")
+
         self._log_decision(decision)
         return decision
 
