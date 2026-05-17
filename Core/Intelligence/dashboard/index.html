@@ -81,9 +81,18 @@
           <span id="equity-breakdown">cash -- · koin --</span>
         </div>
 
-        <div class="headline-metric compact">
+        <div class="headline-metric compact split-pnl">
           <small>DAILY PNL</small>
-          <strong id="daily-pnl" class="neutral">Rp 0</strong>
+          <div class="pnl-rows">
+            <div class="pnl-row real">
+              <span class="pnl-lbl">REAL:</span>
+              <strong id="daily-pnl-real" class="neutral">Rp 0</strong>
+            </div>
+            <div class="pnl-row sim">
+              <span class="pnl-lbl">SIM:</span>
+              <strong id="daily-pnl-sim" class="neutral">Rp 0</strong>
+            </div>
+          </div>
           <span id="portfolio-source">live portfolio</span>
         </div>
 
@@ -355,6 +364,92 @@
         <h2>Council Lens</h2>
         <strong id="cl-state">WAIT</strong>
         <span id="cl-detail">waiting signal</span>
+      </section>
+
+      <!-- ── Intelligence Gates ── -->
+      <section class="intelligence-gates-card" id="intel-gates-card">
+        <h2>Intelligence Gates</h2>
+        
+        <!-- Top Status Row with Regime and Dynamic Badges -->
+        <div class="gates-header">
+          <div class="regime-badge" id="ig-regime">REGIME: --</div>
+          <div class="gates-badges">
+            <span class="gate-status-badge badge-live" id="ig-live-badge">LIVE GATE</span>
+            <span class="gate-status-badge badge-canary" id="ig-canary-badge">CANARY</span>
+          </div>
+        </div>
+
+        <!-- Deliberation Stats -->
+        <div class="gates-stats-grid">
+          <div class="stat-box">
+            <small>APPROVED</small>
+            <span id="ig-stat-approved">0</span>
+          </div>
+          <div class="stat-box">
+            <small>PAPER</small>
+            <span id="ig-stat-paper">0</span>
+          </div>
+          <div class="stat-box">
+            <small>REJECTED</small>
+            <span id="ig-stat-rejected">0</span>
+          </div>
+        </div>
+
+        <!-- 4 Serialized Gate Layers -->
+        <div class="gates-layers">
+          
+          <!-- Gate 1: Expected Value -->
+          <div class="gate-layer-item" id="gate-layer-ev">
+            <div class="layer-header">
+              <span class="layer-title">1. Expected Value Gate</span>
+              <span class="layer-status-pill neutral" id="ev-status">WAIT</span>
+            </div>
+            <div class="layer-body">
+              <div class="stat-row"><span>Proj. Profit</span> <strong id="ev-projected-profit">--</strong></div>
+              <div class="stat-row"><span>Kelly Rec</span> <strong id="ev-kelly-rec">--</strong></div>
+              <div class="stat-row"><span>Decision</span> <strong id="ev-decision">--</strong></div>
+            </div>
+          </div>
+
+          <!-- Gate 2: Signal Quality -->
+          <div class="gate-layer-item" id="gate-layer-sq">
+            <div class="layer-header">
+              <span class="layer-title">2. Signal Quality Gate</span>
+              <span class="layer-status-pill neutral" id="sq-status">WAIT</span>
+            </div>
+            <div class="layer-body">
+              <div class="stat-row"><span>Spread Margin</span> <strong id="sq-spread">--</strong></div>
+              <div class="stat-row"><span>Min Volume</span> <strong id="sq-volume">--</strong></div>
+              <div class="stat-row"><span>Alignment</span> <strong id="sq-alignment">--</strong></div>
+            </div>
+          </div>
+
+          <!-- Gate 3: Strategy Scorecard -->
+          <div class="gate-layer-item" id="gate-layer-ss">
+            <div class="layer-header">
+              <span class="layer-title">3. Strategy Scorecard</span>
+              <span class="layer-status-pill neutral" id="ss-status">WAIT</span>
+            </div>
+            <div class="layer-body">
+              <div class="stat-row"><span>Composite Grade</span> <strong id="ss-grade">--</strong></div>
+              <div class="stat-row"><span>Score Weight</span> <strong id="ss-weight">--</strong></div>
+              <div class="stat-row"><span>Verdict</span> <strong id="ss-verdict">--</strong></div>
+            </div>
+          </div>
+
+          <!-- Gate 4: Punishment Engine -->
+          <div class="gate-layer-item" id="gate-layer-pe">
+            <div class="layer-header">
+              <span class="layer-title">4. Punishment Engine</span>
+              <span class="layer-status-pill neutral" id="pe-status">PASS</span>
+            </div>
+            <div class="layer-body">
+              <div class="stat-row"><span>Strikes Active</span> <strong id="pe-strikes">0 / 3</strong></div>
+              <div class="stat-row"><span>Cool-off Time</span> <strong id="pe-cooloff">None</strong></div>
+            </div>
+          </div>
+
+        </div>
       </section>
 
       <!-- ── Signal Intelligence (§17.2) ── -->

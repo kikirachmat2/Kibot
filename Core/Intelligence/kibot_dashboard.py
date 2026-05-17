@@ -332,12 +332,21 @@ def _build_portfolio(telemetry: Dict[str, Any]) -> Dict[str, Any]:
         "reason": "open_trade_mark_to_market" if open_pnl.get("positions") else "realized_daily_pnl",
     }
 
+    # Split Real vs Simulated PnL based on live trading activation state
+    from Core.Support.ki_config import KiConfig
+    live_trading_enabled = KiConfig.LIVE_TRADING_ENABLED
+    daily_pnl_real_idr = daily_pnl if live_trading_enabled else 0.0
+    daily_pnl_sim_idr = daily_pnl if not live_trading_enabled else 0.0
+
     return {
         "equity_idr": indodax_equity,
         "idr_cash": idr_cash,
         "coin_holdings_idr": coin_holdings,
         "combined_equity_idr": combined_equity,
         "daily_pnl_idr": daily_pnl,
+        "daily_pnl_real_idr": daily_pnl_real_idr,
+        "daily_pnl_sim_idr": daily_pnl_sim_idr,
+        "live_trading_enabled": live_trading_enabled,
         "daily_pnl_pct": daily_pnl_pct,
         "daily_color": daily_color,
         "daily_state": daily_state,
@@ -431,6 +440,12 @@ def _build_summary() -> Dict[str, Any]:
     brain_state = _read_json(STATE / "brain_status.json", {})
     services = _service_statuses(telemetry if isinstance(telemetry, dict) else {})
     portfolio = _build_portfolio(telemetry if isinstance(telemetry, dict) else {})
+
+    # Load Autonomous Intelligence Gates serialized states
+    autonomous_director = _read_json(STATE / "autonomous_director.json", {})
+    signal_quality = _read_json(STATE / "signal_quality.json", [])
+    expected_value = _read_json(STATE / "expected_value.json", [])
+    strategy_scorecard = _read_json(STATE / "strategy_scorecard.json", [])
     
     # [G-007] System Brain metrics
     inventory = _read_json(STATE / "inventory_matrix.json", {})
@@ -519,6 +534,10 @@ def _build_summary() -> Dict[str, Any]:
             "source_health": source_health_map or commander_state.get("source_health", {}),
             "config_drift": config_drift,
         },
+        "autonomous_director": autonomous_director,
+        "signal_quality": signal_quality,
+        "expected_value": expected_value,
+        "strategy_scorecard": strategy_scorecard,
     }
     # ── §16.2 Order Tracker ──────────────────────────
     try:

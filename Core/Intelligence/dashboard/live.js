@@ -434,13 +434,20 @@ function renderSummary(data) {
   updateText("state-text", dailyColor);
   updateText("combined-equity", fmtRp(portfolio.combined_equity_idr || 0));
   updateText("equity-breakdown", `cash ${fmtRp(portfolio.idr_cash || 0)} · koin ${fmtRp(portfolio.coin_holdings_idr || 0)}`);
-  updateText("daily-pnl", fmtRp(portfolio.daily_pnl_idr || 0));
+  const pnlRealVal = Number(portfolio.daily_pnl_real_idr || 0);
+  const pnlSimVal = Number(portfolio.daily_pnl_sim_idr || 0);
+
+  updateText("daily-pnl-real", fmtRp(pnlRealVal));
+  updateText("daily-pnl-sim", fmtRp(pnlSimVal));
   updateText("portfolio-source", portfolio.daily_state?.reason || "live portfolio", false);
 
-  const pnlEl = byId("daily-pnl");
-  if (pnlEl) {
-    const pnl = Number(portfolio.daily_pnl_idr || 0);
-    pnlEl.className = pnl > 0 ? "positive" : pnl < 0 ? "negative" : "neutral";
+  const realEl = byId("daily-pnl-real");
+  if (realEl) {
+    realEl.className = pnlRealVal > 0 ? "positive" : pnlRealVal < 0 ? "negative" : "neutral";
+  }
+  const simEl = byId("daily-pnl-sim");
+  if (simEl) {
+    simEl.className = pnlSimVal > 0 ? "positive" : pnlSimVal < 0 ? "negative" : "neutral";
   }
 
   updateText("indo-total", fmtRp(portfolio.equity_idr || 0));
@@ -505,6 +512,7 @@ function renderSummary(data) {
   renderLogs(snapshot);
   renderSignalIntel(snapshot);
   renderOrderTracker(snapshot);
+  renderIntelligenceGates(snapshot);
 
   const brain = snapshot.system_brain || {};
   renderInventory(brain.inventory_matrix);
@@ -512,6 +520,119 @@ function renderSummary(data) {
   renderDrift(brain.config_drift);
 
   window.KiBotCanvas?.render(snapshot);
+}
+
+function renderIntelligenceGates(snapshot) {
+  const director = snapshot.autonomous_director || {};
+  const cycleStats = director.cycle_stats || {};
+  
+  // Update regime and badges
+  updateText("ig-regime", `REGIME: ${director.regime || "UNKNOWN"}`);
+  
+  const liveBadge = byId("ig-live-badge");
+  if (liveBadge) {
+    if (director.live_gate) {
+      liveBadge.classList.add("active");
+    } else {
+      liveBadge.classList.remove("active");
+    }
+  }
+
+  const canaryBadge = byId("ig-canary-badge");
+  if (canaryBadge) {
+    if (director.canary_gate) {
+      canaryBadge.classList.add("active");
+    } else {
+      canaryBadge.classList.remove("active");
+    }
+  }
+
+  // Deliberation stats
+  updateText("ig-stat-approved", cycleStats.approved || 0);
+  updateText("ig-stat-paper", cycleStats.paper || 0);
+  updateText("ig-stat-rejected", cycleStats.rejected || 0);
+
+  // Parse candidate list or focus on the latest/active signal candidates
+  const evList = snapshot.expected_value || [];
+  const sqList = snapshot.signal_quality || [];
+  const ssList = snapshot.strategy_scorecard || [];
+
+  // Expected Value Gate
+  const evStatus = byId("ev-status");
+  if (evStatus) {
+    if (evList.length > 0) {
+      const latestEv = evList[evList.length - 1];
+      updateText("ev-projected-profit", `${(latestEv.profit_pct || 0).toFixed(2)}%`);
+      updateText("ev-kelly-rec", `${((latestEv.kelly_recommendation || 0) * 100).toFixed(1)}%`);
+      updateText("ev-decision", latestEv.decision || "WAIT");
+      evStatus.innerText = latestEv.decision || "WAIT";
+      evStatus.className = `layer-status-pill ${(latestEv.decision || "WAIT") === "APPROVED" || (latestEv.decision || "WAIT") === "PASS" ? "pass" : "fail"}`;
+      byId("gate-layer-ev")?.classList.add("active-signal");
+    } else {
+      updateText("ev-projected-profit", "--");
+      updateText("ev-kelly-rec", "--");
+      updateText("ev-decision", "--");
+      evStatus.innerText = "WAIT";
+      evStatus.className = "layer-status-pill neutral";
+      byId("gate-layer-ev")?.classList.remove("active-signal");
+    }
+  }
+
+  // Signal Quality Gate
+  const sqStatus = byId("sq-status");
+  if (sqStatus) {
+    if (sqList.length > 0) {
+      const latestSq = sqList[sqList.length - 1];
+      updateText("sq-spread", `${(latestSq.spread_pct || 0).toFixed(3)}%`);
+      updateText("sq-volume", latestSq.volume_24h_idr ? fmtRp(latestSq.volume_24h_idr) : "--");
+      updateText("sq-alignment", latestSq.alignment || "WAIT");
+      sqStatus.innerText = latestSq.decision || latestSq.alignment || "WAIT";
+      sqStatus.className = `layer-status-pill ${(latestSq.decision || latestSq.alignment || "WAIT") === "PASS" ? "pass" : "fail"}`;
+      byId("gate-layer-sq")?.classList.add("active-signal");
+    } else {
+      updateText("sq-spread", "--");
+      updateText("sq-volume", "--");
+      updateText("sq-alignment", "--");
+      sqStatus.innerText = "WAIT";
+      sqStatus.className = "layer-status-pill neutral";
+      byId("gate-layer-sq")?.classList.remove("active-signal");
+    }
+  }
+
+  // Strategy Scorecard Gate
+  const ssStatus = byId("ss-status");
+  if (ssStatus) {
+    if (ssList.length > 0) {
+      const latestSs = ssList[ssList.length - 1];
+      updateText("ss-grade", latestSs.composite_grade || "F");
+      updateText("ss-weight", `${((latestSs.score_weight || 0) * 100).toFixed(0)}%`);
+      updateText("ss-verdict", latestSs.verdict || "WAIT");
+      ssStatus.innerText = latestSs.verdict || "WAIT";
+      ssStatus.className = `layer-status-pill ${(latestSs.verdict || "WAIT") === "PASS" ? "pass" : "fail"}`;
+      byId("gate-layer-ss")?.classList.add("active-signal");
+    } else {
+      updateText("ss-grade", "--");
+      updateText("ss-weight", "--");
+      updateText("ss-verdict", "--");
+      ssStatus.innerText = "WAIT";
+      ssStatus.className = "layer-status-pill neutral";
+      byId("gate-layer-ss")?.classList.remove("active-signal");
+    }
+  }
+
+  // Punishment Engine Gate
+  const peStatus = byId("pe-status");
+  if (peStatus) {
+    const punishment = director.punishment_engine || {};
+    const strikes = punishment.strikes || 0;
+    const isCooling = punishment.is_cooling_off || false;
+    
+    updateText("pe-strikes", `${strikes} / 3`);
+    updateText("pe-cooloff", isCooling ? "ACTIVE" : "None");
+    
+    peStatus.innerText = isCooling ? "BLOCKED" : strikes > 0 ? "WARNING" : "PASS";
+    peStatus.className = `layer-status-pill ${isCooling ? "fail" : strikes > 0 ? "neutral" : "pass"}`;
+  }
 }
 
 async function poll() {
