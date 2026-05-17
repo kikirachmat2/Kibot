@@ -942,7 +942,7 @@ def _candidate_providers(prompt_type: str) -> List[str]:
     prompt_order = list(PROMPT_PROVIDER_ORDER.get(prompt_type, []))
     default_order = [name for name, _ in sorted(PROVIDERS.items(), key=lambda item: item[1]["priority"])]
     ordered: List[str] = []
-    for name in prompt_order + configured_order + default_order:
+    for name in configured_order + prompt_order + default_order:
         if name not in PROVIDERS or name in ordered:
             continue
         config = PROVIDERS[name]

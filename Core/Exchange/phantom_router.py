@@ -67,6 +67,20 @@ class PhantomRouter:
             except Exception as e:
                 logger.error(f"Error fetching SOL balance: {e}")
 
+            try:
+                from solders.pubkey import Pubkey
+                from solana.rpc.types import TokenAccountOpts
+                usdc_mint = Pubkey.from_string("EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v")
+                opts = TokenAccountOpts(mint=usdc_mint)
+                usdc_resp = await self.client.get_token_accounts_by_owner(self.keypair.pubkey(), opts)
+                if usdc_resp.value:
+                    for acc in usdc_resp.value:
+                        bal_resp = await self.client.get_token_account_balance(acc.pubkey)
+                        if bal_resp.value and bal_resp.value.ui_amount is not None:
+                            usdc_balance += bal_resp.value.ui_amount
+            except Exception as e:
+                logger.error(f"Error fetching USDC balance: {e}")
+
         return {
             "usdc_balance": usdc_balance,
             "sol_balance": sol_balance,
@@ -93,7 +107,7 @@ class PhantomRouter:
         try:
             logger.info(f"🔄 Executing swap: {amount_in} of {token_in} -> {token_out} on {chain}")
             # 1. Get Quote
-            quote_url = f"https://quote-api.jup.ag/v6/quote?inputMint={token_in}&outputMint={token_out}&amount={int(amount_in)}&slippageBps=50"
+            quote_url = f"https://api.jup.ag/swap/v1/quote?inputMint={token_in}&outputMint={token_out}&amount={int(amount_in)}&slippageBps=50"
             
             async with aiohttp.ClientSession() as session:
                 async with session.get(quote_url) as resp:
@@ -111,7 +125,7 @@ class PhantomRouter:
             }
             
             async with aiohttp.ClientSession() as session:
-                async with session.post("https://quote-api.jup.ag/v6/swap", json=swap_payload) as resp:
+                async with session.post("https://api.jup.ag/swap/v1/swap", json=swap_payload) as resp:
                     if resp.status != 200:
                         logger.error(f"❌ Jupiter Swap endpoint failed: {await resp.text()}")
                         return False

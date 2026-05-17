@@ -155,7 +155,11 @@ cmd_tools() {
 cmd_doctor() {
   cmd_status
   section "Python Runtime"
-  python3 - <<'PY'
+  local py_bin="python3"
+  if [[ -n "${SUDO_USER:-}" ]]; then
+    py_bin="sudo -u $SUDO_USER python3"
+  fi
+  $py_bin - <<'PY'
 checks = [
     ("talib", "import talib"),
     ("ddgs", "from ddgs import DDGS"),

@@ -48,7 +48,7 @@ class BridgeRouter:
                 price_idr = 16000 # Approximation, can be dynamic
             else:
                 ticker = await self.indodax.get_ticker(f"{coin}_idr")
-                price_idr = float(ticker.get("ticker", {}).get("last", 16000)) if ticker else 16000
+                price_idr = float(ticker.get("last", 16000)) if ticker else 16000
                 
             fee_idr = token_amount * price_idr
             

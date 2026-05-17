@@ -2,6 +2,7 @@
 import os
 import sys
 import time
+import asyncio
 import hashlib
 import hmac
 import json
@@ -117,7 +118,7 @@ class IndodaxGateway:
                 os.fsync(fp.fileno())
                 fcntl.flock(fp, fcntl.LOCK_UN)
 
-    async def _post_private(self, method, params=None, *, _nonce_retry: bool = False):
+    async def _post_private(self, method, params=None, *, _nonce_retry_count: int = 0):
         if not self.api_key:
             return {"success": 0, "error": "Missing API Key"}
 
@@ -150,12 +151,16 @@ class IndodaxGateway:
                     if nonce_match:
                         required_nonce = int(nonce_match.group(1))
                         provided_nonce = int(nonce_match.group(2))
-                        self._bump_nonce_floor(max(required_nonce + 1, provided_nonce + 1, int(time.time_ns() // 1000)))
-                        if not _nonce_retry:
+                        self._bump_nonce_floor(max(required_nonce + 100000, provided_nonce + 100000, int(time.time_ns() // 1000)))
+                        if _nonce_retry_count < 3:
+                            retry_cnt = _nonce_retry_count + 1
+                            backoff = 0.05 * retry_cnt
                             logger.info(
-                                f"🔁 Indodax {method} nonce bumped after exchange hint; retrying once."
+                                f"🔁 Indodax {method} nonce error. Floor bumped to {required_nonce + 100000}. "
+                                f"Retrying in {backoff:.2f}s (attempt {retry_cnt}/3)..."
                             )
-                            return await self._post_private(method, params=params, _nonce_retry=True)
+                            await asyncio.sleep(backoff)
+                            return await self._post_private(method, params=params, _nonce_retry_count=retry_cnt)
                     logger.warning(f"⚠️ Indodax {method} Error: {error_text}")
                 return data
             except Exception as e:
