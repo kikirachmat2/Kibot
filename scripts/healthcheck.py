@@ -28,7 +28,7 @@ logging.basicConfig(
 logger = logging.getLogger("Healthcheck")
 
 def check_imports():
-    logger.info("Step 1/5: Checking core system imports...")
+    logger.info("Step 1/6: Checking core system imports...")
     try:
         from Core.Support.ki_config import KiConfig, PROJECT_ROOT, STATE_DIR
         from Core.circuit_breaker import CircuitBreaker
@@ -40,7 +40,7 @@ def check_imports():
         sys.exit(1)
 
 def check_drawdown_bounds(KiConfig):
-    logger.info("Step 2/5: Verifying daily drawdown bounds...")
+    logger.info("Step 2/6: Verifying daily drawdown bounds...")
     try:
         # Check hardcoded parity limit
         logger.info(f"KiConfig.MAX_DAILY_LOSS_PERCENT resolves to: {KiConfig.MAX_DAILY_LOSS_PERCENT}%")
@@ -62,7 +62,7 @@ def check_drawdown_bounds(KiConfig):
         sys.exit(4)
 
 def check_directory_permissions(state_dir):
-    logger.info("Step 3/5: Verifying persistent directory write permissions...")
+    logger.info("Step 3/6: Verifying persistent directory write permissions...")
     test_dirs = {
         "State Directory": Path(state_dir),
         "Logs Directory": PROJECT_ROOT / "Logs"
@@ -91,7 +91,7 @@ def check_directory_permissions(state_dir):
             sys.exit(5)
 
 def audit_log_redaction():
-    logger.info("Step 4/5: Auditing log redaction and secret privacy...")
+    logger.info("Step 4/6: Auditing log redaction and secret privacy...")
     # Setup dummy log capturing
     import io
     log_capture = io.StringIO()
@@ -127,7 +127,7 @@ def audit_log_redaction():
         test_logger.removeHandler(capture_handler)
 
 def check_live_trading_gates(KiConfig):
-    logger.info("Step 5/5: Verifying runtime safety gates...")
+    logger.info("Step 5/6: Verifying runtime safety gates...")
     # Ensure live trading defaults to False if testing or not explicitly enabled
     live_trading_env = os.getenv("KIBOT_LIVE_TRADING_ENABLED", "false").lower() == "true"
     logger.info(f"KIBOT_LIVE_TRADING_ENABLED in env: {live_trading_env}")
@@ -139,6 +139,43 @@ def check_live_trading_gates(KiConfig):
         
     logger.info("✅ Live trading gates are fully aligned.")
 
+def check_network_bindings():
+    logger.info("Step 6/6: Auditing zero-trust port bindings...")
+    try:
+        import psutil
+    except ImportError:
+        logger.warning("⚠️ psutil not installed, skipping advanced network bind audits.")
+        return
+
+    forbidden_wildcards = {"0.0.0.0", "::", "", "*"}
+    target_ports = {
+        9998: "Indodax UDP Listener",
+        9999: "Batam UDP Listener/Janitor",
+        9990: "Polymarket UDP Listener",
+        9991: "Council Signal Listener",
+        8787: "Dashboard TCP Service",
+        11600: "Polymarket State API"
+    }
+
+    try:
+        connections = psutil.net_connections(kind='all')
+        exposed_services = []
+        for conn in connections:
+            laddr = conn.laddr
+            if laddr and laddr.port in target_ports:
+                ip = laddr.ip
+                if ip in forbidden_wildcards:
+                    exposed_services.append(f"{target_ports[laddr.port]} (port {laddr.port}) is bound to public wildcard address '{ip}'!")
+        
+        if exposed_services:
+            for exp in exposed_services:
+                logger.error(f"❌ SECURITY EXPOSURE: {exp}")
+            sys.exit(8)
+
+        logger.info("✅ All core services are securely bound (zero-trust verified).")
+    except Exception as exc:
+        logger.warning(f"⚠️ Could not audit network bindings: {exc}")
+
 def main():
     logger.info("==================================================")
     logger.info("RUNNING KIBOT PRODUCTION HEALTHCHECK")
@@ -149,6 +186,7 @@ def main():
     check_directory_permissions(state_dir)
     audit_log_redaction()
     check_live_trading_gates(KiConfig)
+    check_network_bindings()
     
     logger.info("==================================================")
     logger.info("🎉 HEALTHCHECK PASSED SUCCESSFULLY! ALL SYSTEMS GREEN.")

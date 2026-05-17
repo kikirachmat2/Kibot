@@ -103,7 +103,8 @@ class IndodaxExecutor:
         loop = asyncio.get_event_loop()
         sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        sock.bind(('0.0.0.0', LISTEN_PORT))
+        bind_host = os.getenv("KIBOT_EXECUTOR_BIND_HOST", "127.0.0.1")
+        sock.bind((bind_host, LISTEN_PORT))
         
         transport, protocol = await loop.create_datagram_endpoint(
             lambda: SignalProtocol(self),
