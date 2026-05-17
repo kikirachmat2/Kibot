@@ -210,7 +210,10 @@ class IndodaxGateway:
         
         if amount_coin is not None and amount_coin > 0:
             coin_symbol = pair.split('_')[0]
-            params[coin_symbol] = self.round_step(amount_coin, "0.00000001")
+            if coin_symbol.lower() in {"pepe", "shib", "floki"}:
+                params[coin_symbol] = int(amount_coin)
+            else:
+                params[coin_symbol] = self.round_step(amount_coin, "0.00000001")
         elif amount_idr and type.lower() == 'buy':
             params['idr'] = int(amount_idr)
         
@@ -222,10 +225,16 @@ class IndodaxGateway:
         Request a crypto withdrawal to an external wallet.
         IMPORTANT: This usually triggers an email confirmation unless Callback URL is active!
         """
+        norm_currency = currency.lower()
+        formatted_amount = (
+            int(withdraw_amount)
+            if norm_currency in {"pepe", "shib", "floki"}
+            else self.round_step(withdraw_amount, "0.00000001")
+        )
         params = {
-            "currency": currency.lower(),
+            "currency": norm_currency,
             "withdraw_address": withdraw_address,
-            "withdraw_amount": self.round_step(withdraw_amount, "0.00000001"),
+            "withdraw_amount": formatted_amount,
             "request_id": f"kibot_wd_{int(time.time())}"
         }
         if withdraw_memo:
