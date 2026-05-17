@@ -407,7 +407,7 @@ def _translate_to_human(agent: str, message: str, tag: str) -> str:
             conf_val = float(conf)
             if decision == "WAIT":
                 if ticker:
-                    return f"Sistem mengamati {ticker}, tetapi menolak masuk posisi karena Expected Value masih negatif dan risiko pasar tinggi (Keyakinan: {conf_val:.1f}%)."
+                    return f"Sistem melihat {ticker}, tapi tidak masuk posisi karena Expected Value masih negatif dan market risk sedang tinggi."
                 else:
                     return f"Sovereign Council berada dalam mode siaga aktif, terus menganalisis anomali likuiditas pasar."
             elif decision == "APPROVE":
@@ -611,6 +611,16 @@ def _build_summary() -> Dict[str, Any]:
     strategy_indodax = strategy.get("indodax") if isinstance(strategy, dict) and isinstance(strategy.get("indodax"), dict) else {}
     strategy_daily_state = strategy.get("daily_state") if isinstance(strategy, dict) and isinstance(strategy.get("daily_state"), dict) else {}
 
+    _council_dict: Dict[str, Any] = {
+        "action": str(council.get("action") or council.get("decision") or "NONE"),
+        "confidence": _safe_float(council.get("confidence") or council.get("decision_score"), 0.0),
+        "decision_state": str(council.get("decision_state") or council.get("state") or "WAIT").upper(),
+        "ticker": str(council.get("ticker") or council.get("pair") or ""),
+        "enter_score": _safe_float(council.get("enter_score"), 0.0),
+        "wait_score": _safe_float(council.get("wait_score"), 0.0),
+        "exit_score": _safe_float(council.get("exit_score"), 0.0),
+    }
+
     summary = {
         "generated_at": datetime.now(timezone.utc).isoformat(),
         "generated_at_wib": datetime.now(WIB).isoformat(),
@@ -620,15 +630,7 @@ def _build_summary() -> Dict[str, Any]:
             "indodax": strategy_indodax,
             "daily_state": strategy_daily_state,
         },
-        "council": {
-            "action": str(council.get("action") or council.get("decision") or "NONE"),
-            "confidence": _safe_float(council.get("confidence") or council.get("decision_score"), 0.0),
-            "decision_state": str(council.get("decision_state") or council.get("state") or "WAIT").upper(),
-            "ticker": str(council.get("ticker") or council.get("pair") or ""),
-            "enter_score": _safe_float(council.get("enter_score"), 0.0),
-            "wait_score": _safe_float(council.get("wait_score"), 0.0),
-            "exit_score": _safe_float(council.get("exit_score"), 0.0),
-        },
+        "council": _council_dict,
         "services": services,
         "active_trades": active_trades,
         "world_model": {
@@ -729,21 +731,46 @@ def _build_summary() -> Dict[str, Any]:
     summary["market_heatmap"] = _read_json(STATE / "market_heatmap.json", {})
     summary["green_probability"] = _read_json(STATE / "green_probability.json", {})
     summary["scanner_candidates"] = _read_json(STATE / "scanner_candidates.json", {})
+
+    _daily_context = summary.get("daily_context")
+    _daily_context_dict = _daily_context if isinstance(_daily_context, dict) else {}
+
+    _heatmap = summary.get("market_heatmap")
+    _heatmap_dict = _heatmap if isinstance(_heatmap, dict) else {}
+
+    _scanner_candidates = summary.get("scanner_candidates")
+    _scanner_candidates_dict = _scanner_candidates if isinstance(_scanner_candidates, dict) else {}
+    _candidates_list = _scanner_candidates_dict.get("top", [])
+    if not isinstance(_candidates_list, list):
+        _candidates_list = []
+
+    _order_tracker = summary.get("order_tracker")
+    _order_tracker_dict = _order_tracker if isinstance(_order_tracker, dict) else {}
+    _order_summary = _order_tracker_dict.get("today_summary", {})
+    _order_summary_dict = _order_summary if isinstance(_order_summary, dict) else {}
+
+    _system_health = summary.get("system")
+    _system_health_dict = _system_health if isinstance(_system_health, dict) else {}
+
+    _services_map = summary.get("services")
+    _services_map_dict = _services_map if isinstance(_services_map, dict) else {}
+    _source_health = {
+        name: status
+        for name, status in _services_map_dict.items()
+        if name in {"kibot-master", "kibot-scanner", "kibot-executor", "ollama", "redis-server"}
+    }
+
     if not summary["green_probability"]:
         try:
             from Core.Intelligence.probability_engine import estimate_green_probability
 
             summary["green_probability"] = estimate_green_probability(
-                daily_context=summary.get("daily_context", {}),
-                heatmap=summary.get("market_heatmap", {}),
-                candidates=(summary.get("scanner_candidates", {}) or {}).get("top", []),
-                order_summary=(summary.get("order_tracker", {}) or {}).get("today_summary", {}),
-                system_health=summary.get("system", {}),
-                source_health={
-                    name: status
-                    for name, status in summary.get("services", {}).items()
-                    if name in {"kibot-master", "kibot-scanner", "kibot-executor", "ollama", "redis-server"}
-                },
+                daily_context=_daily_context_dict,
+                heatmap=_heatmap_dict,
+                candidates=_candidates_list,
+                order_summary=_order_summary_dict,
+                system_health=_system_health_dict,
+                source_health=_source_health,
             )
         except Exception:
             summary["green_probability"] = {}
@@ -754,12 +781,15 @@ def _build_summary() -> Dict[str, Any]:
     except Exception:
         summary["decision_journal"] = {}
 
+    _green_prob = summary.get("green_probability")
+    _green_prob_dict = _green_prob if isinstance(_green_prob, dict) else {}
+
     summary["strategy_intelligence"] = {
-        "deadline_mode": summary.get("daily_context", {}).get("deadline_mode"),
-        "allowed_risk_mode": summary.get("daily_context", {}).get("allowed_risk_mode"),
-        "required_trade_quality": summary.get("daily_context", {}).get("required_trade_quality"),
-        "market_breadth": summary.get("market_heatmap", {}).get("market_breadth"),
-        "green_probability_pct": summary.get("green_probability", {}).get("estimated_green_probability_pct"),
+        "deadline_mode": _daily_context_dict.get("deadline_mode"),
+        "allowed_risk_mode": _daily_context_dict.get("allowed_risk_mode"),
+        "required_trade_quality": _daily_context_dict.get("required_trade_quality"),
+        "market_breadth": _heatmap_dict.get("market_breadth"),
+        "green_probability_pct": _green_prob_dict.get("estimated_green_probability_pct"),
     }
 
     summary["events"] = _build_events(summary)
@@ -771,17 +801,17 @@ async def home() -> HTMLResponse:
     html_path = DASHBOARD_DIR / "index.html"
     if html_path.exists():
         html = html_path.read_text(encoding="utf-8")
-        if "/static/style.css?v=3.0" not in html:
+        if "style.css" not in html:
             html = html.replace(
                 "</head>",
-                '  <link rel="stylesheet" href="/static/style.css?v=3.0" />\n</head>',
+                '  <link rel="stylesheet" href="/static/style.css?v=5.0" />\n</head>',
                 1,
             )
-        if "/static/canvas.js?v=3.0" not in html or "/static/live.js?v=3.0" not in html:
+        if "canvas.js" not in html or "live.js" not in html:
             html = html.replace(
                 "</body>",
-                '  <script src="/static/canvas.js?v=3.0"></script>\n'
-                '  <script src="/static/live.js?v=3.0"></script>\n</body>',
+                '  <script src="/static/canvas.js?v=5.0"></script>\n'
+                '  <script src="/static/live.js?v=5.0"></script>\n</body>',
                 1,
             )
         return HTMLResponse(html)
@@ -805,6 +835,26 @@ def _read_recent_decisions(limit: int = 15) -> List[Dict[str, Any]]:
         except Exception:
             pass
     return decisions
+
+
+def _check_file_quality(filename: str) -> Dict[str, Any]:
+    path = STATE / filename
+    exists = path.exists()
+    if not exists:
+        return {
+            "exists": False,
+            "fresh": False,
+            "age_s": -1.0,
+            "status": "OFFLINE"
+        }
+    age = _file_age_s(path)
+    fresh = age < 3600.0 if ("daily" in filename or "rotation" in filename) else age < 300.0
+    return {
+        "exists": True,
+        "fresh": fresh,
+        "age_s": round(age, 1),
+        "status": "ONLINE" if fresh else "STALE"
+    }
 
 
 def _build_control_plane_payload() -> Dict[str, Any]:
@@ -971,6 +1021,20 @@ def _build_control_plane_payload() -> Dict[str, Any]:
     if not runtime["ollama"]["status"] == "ACTIVE":
         warnings.append("Ollama local LLM server is offline.")
 
+    # Data Quality calculation
+    files_to_check = [
+        "scanner_runtime.json",
+        "leadlag_alpha.json",
+        "market_rotation.json",
+        "signal_quality.json",
+        "expected_value.json",
+        "strategy_scorecard.json",
+        "punishment_state.json",
+        "autonomous_director.json",
+        "canary_daily_stats.json",
+    ]
+    data_quality = {f.replace(".json", ""): _check_file_quality(f) for f in files_to_check}
+
     # Merge complete summary_data at the root level for total backward-compatibility
     merged_data = {**summary_data}
     merged_data.update({
@@ -999,6 +1063,7 @@ def _build_control_plane_payload() -> Dict[str, Any]:
         "flow": flow,
         "recent_decisions": _read_recent_decisions(15),
         "warnings": warnings,
+        "data_quality": data_quality,
     })
     return merged_data
 

@@ -11,6 +11,7 @@ const pct = v => `${v>=0?'+':''}${(+v||0).toFixed(2)}%`;
 const esc = s => String(s ?? '').replace(/[<>&"]/g, c => ({'<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;'}[c]));
 const el  = id => document.getElementById(id);
 const setT = (id, v) => { const e = el(id); if (e) e.textContent = v; };
+const getCount = (val) => Array.isArray(val) ? val.length : (typeof val === 'object' && val !== null ? Object.keys(val).length : (val ?? 0));
 
 /* ─── Clock ──────────────────────────────────────────────── */
 function tickClock() {
@@ -22,6 +23,11 @@ setInterval(tickClock, 1000); tickClock();
 
 /* ─── Canvas pan / zoom ──────────────────────────────────── */
 const cs = { scale:1, x:0, y:0, dragging:false, lx:0, ly:0 };
+window.KiBotLive = {
+  cs,
+  fmtRp: idr,
+  isDragging() { return cs.dragging; }
+};
 const SCALE_MIN=0.4, SCALE_MAX=2.5, SCALE_STEP=0.12;
 
 function applyTransform(smooth=false) {
@@ -83,49 +89,90 @@ function drawConnectors() {
   svg.innerHTML = '';
 
   const EDGES = [
-    {from:'card-operator',  to:'card-director',  style:'solid',  color:'#3b82f6'},
-    {from:'card-director',  to:'card-scanner',   style:'solid',  color:'#3b82f6'},
-    {from:'card-director',  to:'card-risk',      style:'solid',  color:'#3b82f6'},
     {from:'card-scanner',   to:'card-leadlag',   style:'dotted', color:'#22c55e'},
     {from:'card-leadlag',   to:'card-ev',        style:'dotted', color:'#22c55e'},
-    {from:'card-leadlag',   to:'card-phantom',   style:'dashed', color:'#a855f7'},
-    {from:'card-ev',        to:'card-indodax',   style:'dotted', color:'#f59e0b'},
-    {from:'card-ev',        to:'card-polymarket',style:'dashed', color:'#f97316'},
-    {from:'card-risk',      to:'card-indodax',   style:'dotted', color:'#ef4444'},
-    {from:'card-indodax',   to:'card-paperpnl',  style:'dotted', color:'#ef4444'},
-    {from:'card-indodax',   to:'card-cashwait',  style:'dashed', color:'#64748b'},
+    {from:'card-ev',        to:'card-scorecard', style:'dotted', color:'#eab308'},
+    {from:'card-scorecard', to:'card-council',   style:'dashed', color:'#a855f7', dir:'upstream-right'},
+    {from:'card-operator',  to:'card-director',  style:'solid',  color:'#3b82f6'},
+    {from:'card-council',   to:'card-director',  style:'solid',  color:'#a855f7'},
+    {from:'card-director',  to:'card-risk',      style:'solid',  color:'#3b82f6'},
+    {from:'card-director',  to:'card-indodax-real',  style:'solid',  color:'#ef4444'},
+    {from:'card-director',  to:'card-indodax-paper', style:'solid',  color:'#64748b'},
+    {from:'card-risk',      to:'card-phantom',   style:'dashed', color:'#a855f7'},
+    {from:'card-risk',      to:'card-polymarket',style:'dashed', color:'#f97316'},
+    {from:'card-indodax-real', to:'card-pnl-feedback', style:'dotted', color:'#ef4444'},
+    {from:'card-indodax-paper',to:'card-pnl-feedback', style:'dotted', color:'#64748b'},
+    {from:'card-phantom',    to:'card-cashwait',  style:'dashed', color:'#a855f7'},
+    {from:'card-polymarket', to:'card-cashwait',  style:'dashed', color:'#f97316'},
+    {from:'card-pnl-feedback', to:'card-punishment', style:'dotted', color:'#22c55e'},
+    {from:'card-punishment', to:'card-risk',      style:'dashed', color:'#ef4444', dir:'upstream-right'},
   ];
 
   const layer = el('delegation-layer');
   const layerRect = layer.getBoundingClientRect();
 
-  function midBottom(cardEl) {
+  function getPorts(cardEl) {
     const r = cardEl.getBoundingClientRect();
+    const x = (r.left - layerRect.left) / cs.scale;
+    const y = (r.top - layerRect.top) / cs.scale;
+    const w = r.width / cs.scale;
+    const h = r.height / cs.scale;
     return {
-      x: r.left + r.width/2  - layerRect.left,
-      y: r.bottom            - layerRect.top
-    };
-  }
-  function midTop(cardEl) {
-    const r = cardEl.getBoundingClientRect();
-    return {
-      x: r.left + r.width/2  - layerRect.left,
-      y: r.top               - layerRect.top
+      midLeft:   { x: x,         y: y + h/2 },
+      midRight:  { x: x + w,     y: y + h/2 },
+      midTop:    { x: x + w/2,   y: y },
+      midBottom: { x: x + w/2,   y: y + h }
     };
   }
 
-  EDGES.forEach(({from, to, style, color}) => {
+  EDGES.forEach(({from, to, style, color, dir}) => {
     const a = el(from), b = el(to);
     if (!a || !b) return;
-    const p1 = midBottom(a), p2 = midTop(b);
-    const my = (p1.y + p2.y) / 2;
-    const d  = `M${p1.x},${p1.y} C${p1.x},${my} ${p2.x},${my} ${p2.x},${p2.y}`;
+
+    const portsA = getPorts(a);
+    const portsB = getPorts(b);
+
+    const rA = a.getBoundingClientRect();
+    const rB = b.getBoundingClientRect();
+
+    let p1, p2, d;
+
+    const yDiff = rB.top - rA.top;
+    const isSameRow = Math.abs(yDiff) < 50;
+
+    if (dir === 'upstream-right') {
+      p1 = portsA.midRight;
+      p2 = portsB.midRight;
+      const offset = (from === 'card-punishment') ? 140 : 80;
+      d = `M${p1.x},${p1.y} C${p1.x + offset},${p1.y - offset/2} ${p2.x + offset},${p2.y + offset/2} ${p2.x},${p2.y}`;
+    } else if (isSameRow) {
+      if (rA.left < rB.left) {
+        p1 = portsA.midRight;
+        p2 = portsB.midLeft;
+      } else {
+        p1 = portsA.midLeft;
+        p2 = portsB.midRight;
+      }
+      const mx = (p1.x + p2.x) / 2;
+      d = `M${p1.x},${p1.y} C${mx},${p1.y} ${mx},${p2.y} ${p2.x},${p2.y}`;
+    } else {
+      if (rA.top < rB.top) {
+        p1 = portsA.midBottom;
+        p2 = portsB.midTop;
+      } else {
+        p1 = portsA.midTop;
+        p2 = portsB.midBottom;
+      }
+      const my = (p1.y + p2.y) / 2;
+      d = `M${p1.x},${p1.y} C${p1.x},${my} ${p2.x},${my} ${p2.x},${p2.y}`;
+    }
+
     const path = document.createElementNS('http://www.w3.org/2000/svg','path');
     path.setAttribute('d', d);
     path.setAttribute('stroke', color);
-    path.setAttribute('stroke-width', '1.5');
+    path.setAttribute('stroke-width', '2');
     path.setAttribute('fill', 'none');
-    path.setAttribute('opacity', '0.55');
+    path.setAttribute('opacity', '0.75');
     if (style === 'dotted') path.setAttribute('stroke-dasharray','3 4');
     if (style === 'dashed') path.setAttribute('stroke-dasharray','6 5');
     svg.appendChild(path);
@@ -134,17 +181,21 @@ function drawConnectors() {
 
 /* ─── Agent Modal ────────────────────────────────────────── */
 const AGENT_META = {
-  operator:   { letter:'K', color:'blue',   name:'Kiki / Operator',       role:'Human In The Loop',     desc:'The sovereign operator. Sets policy, approves live gate, monitors all agents. Cannot trade directly.',    inputs:[], outputs:[], stateFile:null },
-  director:   { letter:'D', color:'blue',   name:'Autonomous Director',   role:'Lead Agent',            desc:'Orchestrates all subagents. Reads all gate outputs. Issues WAIT, APPROVE, or REJECT decisions. Cannot place orders directly.',  inputs:['signal_quality.json','expected_value.json','strategy_scorecard.json','punishment.json'], outputs:['autonomous_director.json'], stateFile:'autonomous_director.json' },
-  scanner:    { letter:'S', color:'green',  name:'Scanner',               role:'Signal Discovery',      desc:'Scans Indodax tickers for momentum, volume anomalies, and cross-asset lead-lag signals. Feeds signal candidates to Director.', inputs:['market_cache.json'], outputs:['scanner_runtime.json'], stateFile:'scanner_runtime.json' },
-  leadlag:    { letter:'L', color:'green',  name:'LeadLag Alpha',         role:'Signal Engine',         desc:'Computes lead-lag correlations between BTC/ETH and altcoin pairs to detect early momentum shifts.', inputs:['scanner_runtime.json'], outputs:['signal_quality.json'], stateFile:'signal_quality.json' },
-  risk:       { letter:'R', color:'yellow', name:'RiskGate',              role:'Risk Shield',           desc:'Hard enforces 1.5% max daily drawdown. Blocks any order that would breach the daily loss limit.', inputs:['portfolio_summary.json'], outputs:[], stateFile:null },
-  ev:         { letter:'V', color:'yellow', name:'Expected Value Gate',   role:'EV Filter',             desc:'Evaluates expected value of each signal. Rejects trades with negative or near-zero EV after fees.', inputs:['signal_quality.json'], outputs:['expected_value.json'], stateFile:'expected_value.json' },
-  executor:   { letter:'I', color:'red',    name:'Indodax Executor',      role:'Order Placement',       desc:'Places orders on Indodax. Currently PAPER mode — all orders are simulated. Real orders only when live_trading_enabled=true AND canary gate is open.', inputs:['autonomous_director.json','risk_gate.json'], outputs:['paper_trades.json'], stateFile:null },
-  paperpnl:   { letter:'P', color:'red',    name:'Paper PnL Tracker',     role:'PnL Accounting',        desc:'Tracks all paper/simulated orders and computes unrealized + realized PnL. Separated from real PnL.', inputs:['paper_trades.json'], outputs:['portfolio_summary.json'], stateFile:'portfolio_summary.json' },
-  phantom:    { letter:'Φ', color:'purple', name:'Phantom Scout',         role:'Solana Scout',          desc:'Scouts Solana microstructure opportunities. Simulation only — no real SOL funds connected.', inputs:[], outputs:['phantom_scout.json'], stateFile:'phantom_scout.json' },
-  polymarket: { letter:'M', color:'orange', name:'Polymarket Agent',      role:'Prediction Markets',    desc:'Monitors Polymarket prediction markets for arbitrage. Paper mode — no real USDC wallet connected.', inputs:[], outputs:[], stateFile:null },
-  cashwait:   { letter:'C', color:'gray',   name:'Cash Wait Reserve',     role:'Idle Capital',          desc:'Tracks cash held idle. Acts as the fallback when all gates reject. Prevents forced trades.', inputs:[], outputs:[], stateFile:null },
+  operator:   { letter:'K', color:'blue',   name:'Kiki / Operator',       role:'Human In The Loop',     row: 1, isSm: false, desc:'The sovereign operator. Sets policy, approves live gate, monitors all agents. View-only mode active on Batam node.', inputs:[], outputs:[], stateFile:null },
+  council:    { letter:'Ω', color:'purple', name:'Sovereign Council',     role:'Governance Gate',       row: 1, isSm: false, desc:'High-level deliberation chamber. Aggregates and debates predictions, scanner data, and sentiment before approving order execution.', inputs:['strategy_scorecard.json', 'expected_value.json'], outputs:['council_decisions.jsonl'], stateFile:'council_decisions.jsonl' },
+  director:   { letter:'D', color:'blue',   name:'Autonomous Director',   role:'Lead Coordinator',      row: 2, isSm: false, desc:'Core state orchestrator. Reads signal qualities and EV gates. Issues WAIT, APPROVE, or REJECT decisions based on rules.',  inputs:['signal_quality.json','expected_value.json','strategy_scorecard.json','punishment_state.json'], outputs:['autonomous_director.json'], stateFile:'autonomous_director.json' },
+  risk:       { letter:'R', color:'red',    name:'RiskGate Shield',       role:'Drawdown Shield',       row: 2, isSm: false, desc:'Safety gate enforcing 1.5% maximum daily drawdown. Blocks all downstream order execution if drawdown is breached.', inputs:['portfolio_summary.json'], outputs:[], stateFile:'portfolio_summary.json' },
+  scanner:    { letter:'S', color:'green',  name:'Scanner',               role:'Signal Discovery',      row: 3, isSm: true,  desc:'Scans Indodax orderbooks and tickers for momentum and cross-asset lead-lag anomalies. Sends candidates to LeadLag engine.', inputs:['market_cache.json'], outputs:['scanner_runtime.json'], stateFile:'scanner_runtime.json' },
+  leadlag:    { letter:'L', color:'green',  name:'LeadLag Alpha',         role:'Correlation Engine',    row: 3, isSm: true,  desc:'Computes high-speed lead-lag correlations between major assets (BTC/ETH) and altcoins to detect leading momentum.', inputs:['scanner_runtime.json'], outputs:['leadlag_alpha.json', 'signal_quality.json'], stateFile:'signal_quality.json' },
+  ev:         { letter:'V', color:'yellow', name:'Expected Value Gate',   role:'EV Threshold Gate',     row: 3, isSm: true,  desc:'Evaluates candidate trades based on expected value (EV) after fees. Blocks execution if EV is negative or below threshold.', inputs:['signal_quality.json'], outputs:['expected_value.json'], stateFile:'expected_value.json' },
+  scorecard:  { letter:'C', color:'purple', name:'Strategy Scorecard',     role:'Deliberation Score',    row: 3, isSm: true,  desc:'Grades strategies against current market regimes and recent trade outcomes. Submits composite scorecard to Council.', inputs:['signal_quality.json', 'expected_value.json'], outputs:['strategy_scorecard.json'], stateFile:'strategy_scorecard.json' },
+  indodax_real: { letter:'IR', color:'red',  name:'Indodax Real Spot',     role:'Live Spot Venue',       row: 4, isSm: true,  desc:'Real exchange order placement. Locked in view-only paper soak mode on Batam server. Real orders disabled.', inputs:['autonomous_director.json'], outputs:['live_trades.json'], stateFile:null },
+  indodax_paper: { letter:'IP', color:'gray', name:'Indodax Paper Spot',    role:'Sandbox Spot Venue',    row: 4, isSm: true,  desc:'Simulates spot order matching and balance accounting using real-time price feeds for safe telemetry tracking.', inputs:['autonomous_director.json'], outputs:['paper_trades.json'], stateFile:'portfolio_summary.json' },
+  phantom:    { letter:'Φ', color:'purple', name:'Phantom Scout',         role:'Solana Scouting',       row: 4, isSm: true,  desc:'Simulation channel scouting Solana microstructure and DEX pricing anomalies. No real SOL/USDC assets used.', inputs:[], outputs:['phantom_scout.json'], stateFile:'phantom_scout.json' },
+  polymarket: { letter:'M', color:'orange', name:'Polymarket Agent',      role:'Arbitrage Scout',       row: 4, isSm: true,  desc:'Prediction market arbitrage scout. Tracks odds and executes paper trades. Real wallet connection disabled.', inputs:[], outputs:['polymarket_state.json'], stateFile:'polymarket_state.json' },
+  pnl_feedback: { letter:'F', color:'green', name:'PnL Feedback Loop',     role:'Adaptive Learning',     row: 5, isSm: true,  desc:'Post-trade feedback analyzer. Reviews real/simulated trade execution quality and adjusts expected value coefficients.', inputs:['paper_trades.json', 'live_trades.json'], outputs:['pnl_feedback.json'], stateFile:null },
+  cashwait:   { letter:'W', color:'gray',   name:'Cash Wait Reserve',     role:'Idle Capital',          row: 5, isSm: true,  desc:'Liquidity reservoir tracking idle assets waiting for high-conviction opportunities. Prevents over-trading.', inputs:[], outputs:[], stateFile:'market_rotation.json' },
+  punishment: { letter:'P', color:'red',    name:'Punishment Gate',       role:'Strike Guard',          row: 5, isSm: true,  desc:'Monitors execution failures and consecutive losses. Imposes cooling-off periods and quarantines underperforming pathways.', inputs:['pnl_feedback.json'], outputs:['punishment_state.json'], stateFile:'punishment_state.json' },
 };
 
 let _lastData = null;
@@ -161,24 +212,49 @@ function openModal(agentId) {
   // Resolve live status
   let status = '—', metric = '', decision = meta.desc, stale = false;
 
-  if (agentId === 'director') {
+  if (agentId === 'operator') {
+    status = 'VIEW-ONLY';
+    metric = data.mode?.live_trading_enabled ? 'live active' : 'view active';
+  } else if (agentId === 'council') {
+    const c = data.council || {};
+    status = c.decision_state || 'IDLE';
+    metric = c.confidence != null ? `conf ${c.confidence}` : 'conf 0.00';
+    if (c.last_decision) decision = `Last Governance Proposal: ${c.last_decision}`;
+  } else if (agentId === 'director') {
     const d = data.autonomous_director || runtime.autonomous_director || {};
     status = d.status || 'WAIT';
-    metric = `${d.approved||0} approved · ${d.rejected||0} rejected`;
+    const rtD = data.runtime?.autonomous_director || {};
+    const dApproved = rtD.approved_count ?? getCount(d.approved);
+    const dRejected = rtD.rejected_count ?? getCount(d.rejected);
+    metric = `${dApproved} approved · ${dRejected} rejected`;
     const age = fresh.autonomous_director_age_s;
     if (age > STALE_SECS) stale = true;
     if (d.last_reason) decision = d.last_reason;
   } else if (agentId === 'scanner') {
     const d = runtime.scanner || {};
-    status = d.status || '—';
+    status = d.status || 'ACTIVE';
+    metric = `${d.candidates || 0} candidates`;
     const age = fresh.scanner_runtime_age_s;
     if (age > STALE_SECS) stale = true;
-  } else if (agentId === 'leadlag' || agentId === 'ev') {
-    const key = agentId === 'ev' ? 'expected_value' : 'signal_quality';
-    const g = gates[key] || {};
-    status = g.status || 'WAIT';
+  } else if (agentId === 'leadlag') {
+    const g = gates.signal_quality || {};
+    status = g.status || 'ACTIVE';
     metric = g.score != null ? `score: ${g.score}` : '';
-    const age = agentId === 'ev' ? fresh.expected_value_age_s : fresh.signal_quality_age_s;
+    const age = fresh.signal_quality_age_s;
+    if (age > STALE_SECS) stale = true;
+    if (g.reason) decision = g.reason;
+  } else if (agentId === 'ev') {
+    const g = gates.expected_value || {};
+    status = g.status || 'WAIT';
+    metric = g.score != null ? `${g.score} EV` : '';
+    const age = fresh.expected_value_age_s;
+    if (age > STALE_SECS) stale = true;
+    if (g.reason) decision = g.reason;
+  } else if (agentId === 'scorecard') {
+    const g = gates.strategy_scorecard || {};
+    status = g.status || 'IDLE';
+    metric = g.score != null ? `score: ${g.score}` : '';
+    const age = fresh.strategy_scorecard_age_s;
     if (age > STALE_SECS) stale = true;
     if (g.reason) decision = g.reason;
   } else if (agentId === 'risk') {
@@ -186,12 +262,39 @@ function openModal(agentId) {
     status = g.status || 'SHIELDED';
     metric = '1.5% daily cap';
     if (g.reason) decision = g.reason;
-  } else if (agentId === 'executor') {
-    const m = data.mode || {};
-    status = m.live_trading_enabled ? 'LIVE' : 'PAPER';
-    decision = m.live_trading_enabled
+  } else if (agentId === 'indodax_real') {
+    status = data.mode?.live_trading_enabled ? 'LIVE' : 'MUTED';
+    metric = data.mode?.live_trading_enabled ? 'live active' : 'live off';
+    decision = data.mode?.live_trading_enabled
       ? '⚠ Live trading ACTIVE — real orders enabled.'
-      : 'Paper mode. All orders simulated. live_trading_enabled=false.';
+      : 'Real exchange orders muted. live_trading_enabled=false.';
+  } else if (agentId === 'indodax_paper') {
+    status = 'PAPER';
+    metric = 'active';
+    decision = 'Indodax Spot Sandbox. Executing virtual matching using live websockets orderbook ticker data.';
+  } else if (agentId === 'phantom') {
+    const d = runtime.phantom_scout || {};
+    status = d.status || 'SCOUTING';
+    metric = 'sim only';
+    const age = fresh.phantom_scout_age_s;
+    if (age > STALE_SECS) stale = true;
+  } else if (agentId === 'polymarket') {
+    const d = runtime.polymarket_state || {};
+    status = d.status || 'PAPER';
+    metric = 'sim';
+    const age = fresh.polymarket_state_age_s;
+    if (age > STALE_SECS) stale = true;
+  } else if (agentId === 'pnl_feedback') {
+    status = 'TRACKING';
+    metric = 'active';
+  } else if (agentId === 'cashwait') {
+    status = 'ACTIVE';
+    metric = 'Rp ' + ((data.portfolio?.cash_wait?.equity_idr || 0) / 1e6).toFixed(1) + 'M';
+  } else if (agentId === 'punishment') {
+    const g = gates.punishment || {};
+    status = `${g.strikes || 0} STRIKES`;
+    metric = g.cooloff || 'active';
+    if (g.reason) decision = g.reason;
   }
 
   const staleHtml = stale
@@ -247,13 +350,17 @@ function initModal() {
   el('modal-close').onclick    = closeModal;
   el('modal-backdrop').onclick = closeModal;
   document.addEventListener('keydown', e => { if (e.key==='Escape') closeModal(); });
-  document.querySelectorAll('.agent-card').forEach(card => {
-    card.addEventListener('click', e => {
+
+  const layer = el('delegation-layer');
+  if (layer) {
+    layer.addEventListener('click', e => {
       if (cs.dragging) return;
+      const card = e.target.closest('.agent-card');
+      if (!card) return;
       const id = card.dataset.agentId;
       if (id) openModal(id);
     });
-  });
+  }
 }
 
 /* ─── Log feeds ──────────────────────────────────────────── */
@@ -370,7 +477,8 @@ function render(data) {
   // Director card
   const dStatus = dir.status || rt.autonomous_director?.status || 'WAIT';
   setT('director-status', dStatus);
-  const dApproved = dir.approved ?? 0, dRejected = dir.rejected ?? 1;
+  const dApproved = getCount(dir.approved);
+  const dRejected = getCount(dir.rejected);
   setT('director-metric', `${dApproved} approved · ${dRejected} rejected`);
 
   // Scanner card
@@ -472,8 +580,75 @@ function render(data) {
   // Queue
   renderQueue(data);
 
+  // Connect both engines by rendering visual status and selected agent boxes in canvas.js
+  if (window.KiBotCanvas && typeof window.KiBotCanvas.render === 'function') {
+    window.KiBotCanvas.render(data);
+  }
+
   // Redraw connectors after render
   requestAnimationFrame(drawConnectors);
+}
+
+/* ─── Dynamic Card Engine ───────────────────────────────── */
+function ensureAgentCardsCreated() {
+  const layer = el('delegation-layer');
+  if (!layer) return;
+
+  // Prevent duplicate card injection
+  if (document.querySelector('.agent-card')) return;
+
+  Object.entries(AGENT_META).forEach(([agentId, meta]) => {
+    const rowEl = el(`row-${meta.row}`);
+    if (!rowEl) return;
+
+    const mappedId = agentId.replace(/_/g, '-');
+    const card = document.createElement('div');
+    card.className = `agent-card agent-card--${meta.color} ${meta.isSm ? 'agent-card--sm' : ''}`;
+    card.id = `card-${mappedId}`;
+    card.dataset.agentId = agentId;
+
+    let statusHtml = `<span id="${mappedId}-status">WAIT</span>`;
+    let metricHtml = `<span id="${mappedId}-metric">—</span>`;
+
+    // Special dual-support mappings to prevent any script breakage
+    if (agentId === 'indodax_real') {
+      statusHtml = `
+        <span id="indodax-real-status">WAIT</span>
+        <span id="indodax-status" style="display:none"></span>
+      `;
+      metricHtml = `
+        <span id="indodax-real-metric">—</span>
+        <span id="indodax-metric" style="display:none"></span>
+      `;
+    } else if (agentId === 'indodax_paper') {
+      statusHtml = `
+        <span id="indodax-paper-status">WAIT</span>
+        <span id="paperpnl-status" style="display:none"></span>
+      `;
+    } else if (agentId === 'polymarket') {
+      metricHtml = `
+        <span id="polymarket-metric">—</span>
+        <span id="poly-metric" style="display:none"></span>
+      `;
+    }
+
+    card.innerHTML = `
+      <div class="agent-avatar av--${meta.color}">${meta.letter}</div>
+      <div class="agent-body">
+        <div class="agent-name">${meta.name}</div>
+        <div class="agent-role">${meta.role}</div>
+        <div class="agent-status">
+          <span class="dot dot--${meta.color}" id="${mappedId}-dot"></span>
+          ${statusHtml}
+        </div>
+        <div class="agent-metric">
+          ${metricHtml}
+        </div>
+      </div>
+    `;
+
+    rowEl.appendChild(card);
+  });
 }
 
 /* ─── Poll loop ──────────────────────────────────────────── */
@@ -489,6 +664,7 @@ async function poll() {
 
 /* ─── Init ───────────────────────────────────────────────── */
 document.addEventListener('DOMContentLoaded', () => {
+  ensureAgentCardsCreated();
   initCanvas();
   initModal();
   initTabs();

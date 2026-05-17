@@ -1,86 +1,172 @@
+const escapeHtml = (str) => {
+  if (typeof str !== "string") return str;
+  return str
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
+};
+
 const AGENTS = {
+  operator: {
+    label: "Kiki / Operator",
+    service: "kibot-master",
+    runtime: "systemd: kibot-master",
+    copy: "The sovereign operator. Sets policy, approves live gate, monitors all agents. View-only mode active on Batam node.",
+    metric(summary) {
+      return summary?.mode?.live_trading_enabled ? "live active" : "view active";
+    }
+  },
+  council: {
+    label: "Sovereign Council",
+    service: "kibot-master",
+    runtime: "systemd: kibot-master",
+    copy: "High-level deliberation chamber. Aggregates and debates predictions, scanner data, and sentiment before approving order execution.",
+    metric(summary) {
+      const c = summary?.council || {};
+      return `conf ${Number(c.confidence || 0).toFixed(2)}`;
+    }
+  },
+  director: {
+    label: "Autonomous Director",
+    service: "kibot-master",
+    runtime: "systemd: kibot-master",
+    copy: "Core state orchestrator. Reads signal qualities and EV gates. Issues WAIT, APPROVE, or REJECT decisions based on rules.",
+    metric(summary) {
+      const d = summary?.autonomous_director || {};
+      return d.status || "WAIT";
+    }
+  },
+  risk: {
+    label: "RiskGate Shield",
+    service: "kibot-master",
+    runtime: "systemd: kibot-master",
+    copy: "Safety gate enforcing 1.5% maximum daily drawdown. Blocks all downstream order execution if drawdown is breached.",
+    metric(summary) {
+      const rg = summary?.gates?.risk_gate || {};
+      return `${rg.max_drawdown_limit || 1.5}% cap`;
+    }
+  },
   scanner: {
     label: "Scanner",
     service: "kibot-scanner",
     runtime: "systemd: kibot-scanner",
-    copy: "Membaca pergerakan market, volume, pump candidate, dan mengirim sinyal mentah ke Council.",
+    copy: "Scans Indodax orderbooks and tickers for momentum and cross-asset lead-lag anomalies. Sends candidates to LeadLag engine.",
     metric(summary) {
       const candidates = Number(summary?.scanner_candidates?.total || 0);
       if (candidates > 0) return `${candidates} candidates`;
       const count = Number(summary?.whatif?.count || 0);
       return count > 0 ? `${count} sims` : "scan live";
-    },
+    }
   },
-  brain: {
-    label: "AI Brain",
-    service: "ollama",
-    runtime: "ollama local inference",
-    copy: "Otak lokal untuk deliberation, critic, what-if, dan reasoning saat sinyal perlu validasi lebih dalam.",
+  leadlag: {
+    label: "LeadLag Alpha",
+    service: "kibot-scanner",
+    runtime: "systemd: kibot-scanner",
+    copy: "Computes high-speed lead-lag correlations between major assets (BTC/ETH) and altcoins to detect leading momentum.",
     metric(summary) {
-      return summary?.brain?.risk || "MIXED";
-    },
+      const sq = summary?.gates?.signal_quality || {};
+      return sq.score != null ? `score: ${Number(sq.score).toFixed(2)}` : "active";
+    }
   },
-  council: {
-    label: "Council",
+  ev: {
+    label: "Expected Value Gate",
     service: "kibot-master",
     runtime: "systemd: kibot-master",
-    copy: "Tempat sinyal diperdebatkan. Council menggabungkan scanner, world model, risk gate, dan what-if sebelum mandate.",
+    copy: "Evaluates candidate trades based on expected value (EV) after fees. Blocks execution if EV is negative or below threshold.",
     metric(summary) {
-      const mode = summary?.daily_context?.deadline_mode || "";
-      return `conf ${Number(summary?.council?.confidence || 0).toFixed(2)}${mode ? ` · ${mode}` : ""}`;
-    },
+      const ev = summary?.gates?.expected_value || {};
+      return ev.score != null ? `${Number(ev.score).toFixed(2)} EV` : "wait";
+    }
   },
-  indodax: {
-    label: "Indodax Executor",
+  scorecard: {
+    label: "Strategy Scorecard",
+    service: "kibot-master",
+    runtime: "systemd: kibot-master",
+    copy: "Grades strategies against current market regimes and recent trade outcomes. Submits composite scorecard to Council.",
+    metric(summary) {
+      const g = summary?.gates?.strategy_scorecard || {};
+      return g.score != null ? `score: ${Number(g.score).toFixed(2)}` : "idle";
+    }
+  },
+  indodax_real: {
+    label: "Indodax Real Spot",
     service: "kibot-executor",
     runtime: "systemd: kibot-executor",
-    copy: "Eksekutor order IDR. Memegang saldo, posisi koin, sizing, entry, exit, dan hard stop Indodax.",
+    copy: "Real exchange order placement. Locked in view-only paper soak mode on Batam server. Real orders disabled.",
     metric(summary) {
-      return window.KiBotLive?.fmtRp?.(summary?.portfolio?.equity_idr || 0) || "Rp --";
-    },
+      return summary?.mode?.live_trading_enabled ? "live active" : "live off";
+    }
+  },
+  indodax_paper: {
+    label: "Indodax Paper Spot",
+    service: "kibot-executor",
+    runtime: "systemd: kibot-executor",
+    copy: "Simulates spot order matching and balance accounting using real-time price feeds for safe telemetry tracking.",
+    metric(summary) {
+      return "active";
+    }
+  },
+  phantom: {
+    label: "Phantom Scout",
+    service: "kibot-scanner",
+    runtime: "systemd: kibot-scanner",
+    copy: "Simulation channel scouting Solana microstructure and DEX pricing anomalies. No real SOL/USDC assets used.",
+    metric(summary) {
+      return "sim only";
+    }
   },
   polymarket: {
-    label: "Polymarket Executor",
+    label: "Polymarket Agent",
     service: "kibot-executor-polymarket",
     runtime: "systemd: kibot-executor-polymarket",
-    copy: "Eksekutor market prediction via wallet Polygon/Phantom. Membaca saldo USDC dan state posisi Polymarket.",
+    copy: "Prediction market arbitrage scout. Tracks odds and executes paper trades. Real wallet connection disabled.",
     metric(summary) {
-      return `$${Number(summary?.portfolio?.polymarket?.usdc_balance || 0).toFixed(2)}`;
-    },
+      const poly = summary?.venues?.polymarket || {};
+      return poly.usdc_balance != null ? `$${Number(poly.usdc_balance).toFixed(2)}` : "sim";
+    }
   },
-  verifier: {
-    label: "Verifier",
-    service: "redis-server",
-    runtime: "redis + state files",
-    copy: "Mengecek hasil eksekusi, active trades, state Redis, dan bukti sistem benar-benar bergerak.",
-    metric(summary) {
-      return `${Object.keys(summary?.active_trades || {}).length} trades`;
-    },
-  },
-  janitor: {
-    label: "Janitor",
+  pnl_feedback: {
+    label: "PnL Feedback Loop",
     service: "kibot-janitor",
     runtime: "systemd: kibot-janitor",
-    copy: "Penjaga server: disk, log, proses, dan recovery supaya sistem tidak mati karena resource.",
+    copy: "Post-trade feedback analyzer. Reviews real/simulated trade execution quality and adjusts expected value coefficients.",
     metric(summary) {
-      return `disk ${Number(summary?.system?.disk || 0).toFixed(0)}%`;
-    },
+      return "tracking";
+    }
   },
+  cashwait: {
+    label: "Cash Wait Reserve",
+    service: "kibot-janitor",
+    runtime: "systemd: kibot-janitor",
+    copy: "Liquidity reservoir tracking idle assets waiting for high-conviction opportunities. Prevents over-trading.",
+    metric(summary) {
+      const cw = summary?.portfolio?.cash_wait || {};
+      return cw.equity_idr ? `Rp ${(cw.equity_idr / 1e6).toFixed(1)}M` : "Rp 0.0M";
+    }
+  },
+  punishment: {
+    label: "Punishment Gate",
+    service: "kibot-janitor",
+    runtime: "systemd: kibot-janitor",
+    copy: "Monitors execution failures and consecutive losses. Imposes cooling-off periods and quarantines underperforming pathways.",
+    metric(summary) {
+      const p = summary?.gates?.punishment || {};
+      return `${p.strikes || 0} STRIKES`;
+    }
+  }
 };
 
 let selectedAgent = "council";
-let stageScale = 1;
 let latestSummary = null;
 
-const AGENT_ID_MAP = {
-  indodax: "indo",
-  polymarket: "poly",
-};
+const mapId = (id) => id.replace(/_/g, "-");
 
 function normalizedStatus(status) {
   const value = String(status || "unknown").toLowerCase();
-  if (value === "active" || value === "running") return "active";
-  if (value === "failed" || value === "inactive" || value === "error") return "error";
+  if (value === "active" || value === "running" || value === "pass") return "active";
+  if (value === "failed" || value === "inactive" || value === "error" || value === "reject") return "error";
   return "idle";
 }
 
@@ -92,30 +178,43 @@ function statusLabel(status) {
 }
 
 function setAgentClass(id, status, summary) {
-  const el = document.getElementById(`char-${AGENT_ID_MAP[id] || id}`);
+  const cardId = `card-${mapId(id)}`;
+  const el = document.getElementById(cardId);
   if (!el) return;
 
   const normalized = normalizedStatus(status);
-  const visualClass = AGENT_ID_MAP[id] || id;
-  const classes = ["flow-node", visualClass];
-  if (id === selectedAgent) classes.push("selected");
+  
+  // Safely toggle selected class
+  el.classList.toggle("selected", id === selectedAgent);
+
+  let active = false;
+  let error = false;
+  let thinking = false;
 
   if (id === "council") {
     const decision = String(summary?.council?.decision_state || "WAIT").toUpperCase();
-    if (decision === "ENTER" || decision === "BUY" || decision === "APPROVE") classes.push("active");
-    else if (decision === "EXIT" || decision === "REJECTED") classes.push("error");
-    else classes.push("thinking");
+    if (decision === "ENTER" || decision === "BUY" || decision === "APPROVE") active = true;
+    else if (decision === "EXIT" || decision === "REJECTED") error = true;
+    else thinking = true;
   } else if (normalized === "active") {
-    classes.push("active");
+    active = true;
   } else if (normalized === "error") {
-    classes.push("error");
+    error = true;
   }
 
-  el.className = classes.join(" ");
+  el.classList.toggle("active", active);
+  el.classList.toggle("error", error);
+  el.classList.toggle("thinking", thinking);
+
+  // Update card status element if present
+  const statusEl = document.getElementById(`${mapId(id)}-status`);
+  if (statusEl) {
+    statusEl.textContent = statusLabel(status);
+  }
 }
 
 function updateMetric(id, summary) {
-  const metricId = `metric-${AGENT_ID_MAP[id] || id}`;
+  const metricId = `${mapId(id)}-metric`;
   const el = document.getElementById(metricId);
   if (!el) return;
   el.textContent = AGENTS[id].metric(summary);
@@ -126,11 +225,15 @@ function renderSelectedAgent(summary) {
   const serviceStatus = summary?.services?.[agent.service] || "unknown";
   const metric = agent.metric(summary);
 
-  window.KiBotLive?.updateText?.("selected-agent-title", agent.label, false);
-  window.KiBotLive?.updateText?.("selected-agent-copy", agent.copy, false);
-  window.KiBotLive?.updateText?.("selected-agent-status", statusLabel(serviceStatus), false);
-  window.KiBotLive?.updateText?.("selected-agent-metric", metric, false);
-  window.KiBotLive?.updateText?.("selected-agent-runtime", agent.runtime, false);
+  const setElText = (id, val) => {
+    const el = document.getElementById(id);
+    if (el) el.textContent = val;
+  };
+  setElText("selected-agent-title", agent.label);
+  setElText("selected-agent-copy", agent.copy);
+  setElText("selected-agent-status", statusLabel(serviceStatus));
+  setElText("selected-agent-metric", metric);
+  setElText("selected-agent-runtime", agent.runtime);
 }
 
 function renderAgentPills(services) {
@@ -210,10 +313,10 @@ function renderWorkflow(summary) {
       )
     );
   }
-  renderLane("lane-scheduled", "scheduled-count", scheduledCards);
+  renderLane("cards-scheduled", "cnt-scheduled", scheduledCards);
 
   // ── ON HOLD: council waiting ──
-  renderLane("lane-hold", "hold-count", decision === "WAIT"
+  renderLane("cards-hold", "cnt-hold", decision === "WAIT"
     ? [
         taskCard("Council Holding", `conf ${Number(council.confidence || 0).toFixed(2)} below gate`),
         taskCard("Green Probability", `${Number(probability.estimated_green_probability_pct || 0).toFixed(0)}% · ${probability.confidence_quality || "WEAK"}`),
@@ -239,7 +342,7 @@ function renderWorkflow(summary) {
       )
     );
   });
-  renderLane("lane-progress", "progress-count", progressCards);
+  renderLane("cards-progress", "cnt-progress", progressCards);
 
   // ── DONE: ledger + reconciled trades ──
   const doneCards = [
@@ -258,49 +361,26 @@ function renderWorkflow(summary) {
       )
     );
   }
-  renderLane("lane-done", "done-count", doneCards);
+  renderLane("cards-done", "cnt-done", doneCards);
 }
 
 function bindCanvasInteractions() {
-  document.querySelectorAll("[data-agent]").forEach((el) => {
-    el.addEventListener("click", () => {
-      selectedAgent = el.dataset.agent;
+  const layer = document.getElementById("delegation-layer");
+  if (layer) {
+    layer.addEventListener("click", (event) => {
+      const card = event.target.closest("[data-agent-id]");
+      if (!card) return;
+      if (window.KiBotLive && typeof window.KiBotLive.isDragging === "function" && window.KiBotLive.isDragging()) return;
+      selectedAgent = card.dataset.agentId;
       window.KiBotCanvas.render(latestSummary || {});
     });
-  });
+  }
 
   document.addEventListener("click", (event) => {
     const button = event.target.closest("[data-agent-select]");
     if (!button) return;
     selectedAgent = button.dataset.agentSelect;
     window.KiBotCanvas.render(latestSummary || {});
-  });
-
-  const drawer = document.getElementById("director-drawer");
-  document.getElementById("open-director")?.addEventListener("click", () => drawer?.classList.add("open"));
-  document.getElementById("drawer-close")?.addEventListener("click", () => drawer?.classList.remove("open"));
-  drawer?.addEventListener("click", (event) => {
-    if (event.target === drawer) drawer.classList.remove("open");
-  });
-
-  const stage = document.getElementById("office-stage");
-  const applyScale = () => {
-    if (stage) stage.style.transform = `scale(${stageScale})`;
-  };
-  document.getElementById("stage-zoom-in")?.addEventListener("click", () => {
-    stageScale = Math.min(1.28, stageScale + 0.08);
-    applyScale();
-  });
-  document.getElementById("stage-zoom-out")?.addEventListener("click", () => {
-    stageScale = Math.max(0.76, stageScale - 0.08);
-    applyScale();
-  });
-  document.getElementById("stage-reset")?.addEventListener("click", () => {
-    stageScale = 1;
-    applyScale();
-  });
-  document.getElementById("focus-stage")?.addEventListener("click", () => {
-    document.getElementById("stage-shell")?.classList.toggle("focused");
   });
 }
 
