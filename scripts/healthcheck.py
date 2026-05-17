@@ -28,7 +28,7 @@ logging.basicConfig(
 logger = logging.getLogger("Healthcheck")
 
 def check_imports():
-    logger.info("Step 1/6: Checking core system imports...")
+    logger.info("Step 1/8: Checking core system imports...")
     try:
         from Core.Support.ki_config import KiConfig, PROJECT_ROOT, STATE_DIR
         from Core.circuit_breaker import CircuitBreaker
@@ -40,7 +40,7 @@ def check_imports():
         sys.exit(1)
 
 def check_drawdown_bounds(KiConfig):
-    logger.info("Step 2/6: Verifying daily drawdown bounds...")
+    logger.info("Step 2/8: Verifying daily drawdown bounds...")
     try:
         # Check hardcoded parity limit
         logger.info(f"KiConfig.MAX_DAILY_LOSS_PERCENT resolves to: {KiConfig.MAX_DAILY_LOSS_PERCENT}%")
@@ -62,7 +62,7 @@ def check_drawdown_bounds(KiConfig):
         sys.exit(4)
 
 def check_directory_permissions(state_dir):
-    logger.info("Step 3/6: Verifying persistent directory write permissions...")
+    logger.info("Step 3/8: Verifying persistent directory write permissions...")
     test_dirs = {
         "State Directory": Path(state_dir),
         "Logs Directory": PROJECT_ROOT / "Logs"
@@ -91,7 +91,7 @@ def check_directory_permissions(state_dir):
             sys.exit(5)
 
 def audit_log_redaction():
-    logger.info("Step 4/6: Auditing log redaction and secret privacy...")
+    logger.info("Step 4/8: Auditing log redaction and secret privacy...")
     # Setup dummy log capturing
     import io
     log_capture = io.StringIO()
@@ -127,7 +127,7 @@ def audit_log_redaction():
         test_logger.removeHandler(capture_handler)
 
 def check_live_trading_gates(KiConfig):
-    logger.info("Step 5/6: Verifying runtime safety gates...")
+    logger.info("Step 5/8: Verifying runtime safety gates...")
     # Ensure live trading defaults to False if testing or not explicitly enabled
     live_trading_env = os.getenv("KIBOT_LIVE_TRADING_ENABLED", "false").lower() == "true"
     logger.info(f"KIBOT_LIVE_TRADING_ENABLED in env: {live_trading_env}")
@@ -140,7 +140,7 @@ def check_live_trading_gates(KiConfig):
     logger.info("✅ Live trading gates are fully aligned.")
 
 def check_network_bindings():
-    logger.info("Step 6/7: Auditing zero-trust port bindings...")
+    logger.info("Step 6/8: Auditing zero-trust port bindings...")
     try:
         import psutil
     except ImportError:
@@ -201,7 +201,7 @@ def check_network_bindings():
         sys.exit(8)
 
 def check_json_states(state_dir):
-    logger.info("Step 7/7: Auditing state JSON freshness and validity...")
+    logger.info("Step 7/8: Auditing state JSON freshness and validity...")
     import time
     import json
     
@@ -212,29 +212,53 @@ def check_json_states(state_dir):
         "market_rotation.json"
     ]
     
+    is_bootstrap_allowed = (
+        os.getenv("KIBOT_HEALTHCHECK_ALLOW_BOOTSTRAP", "false").lower() == "true" or
+        os.getenv("KIBOT_ENV", "prod").lower() in ("local", "dev", "test") or
+        sys.platform == "darwin"
+    )
+    
+    max_ages = {
+        "scanner_runtime.json": 90.0,
+        "leadlag_alpha.json": 180.0,
+        "phantom_scout.json": 300.0,
+        "market_rotation.json": 300.0
+    }
+    
     for state_file in required_states:
+        # Check if phantom_scout.json is required
+        if state_file == "phantom_scout.json":
+            phantom_enabled = os.getenv("KIBOT_PHANTOM_SCOUT_ENABLED", "false").lower() == "true"
+            if not phantom_enabled:
+                logger.info("Skipping phantom_scout.json check because KIBOT_PHANTOM_SCOUT_ENABLED is false.")
+                continue
+
         file_path = Path(state_dir) / state_file
         logger.info(f"Auditing state file: {file_path}")
         
         # Self-healing / bootstrapping capability
         if not file_path.exists():
-            logger.info(f"State file {state_file} missing. Bootstrapping with default secure config...")
-            try:
-                default_data = {}
-                if state_file == "leadlag_alpha.json":
-                    default_data = {"qualified_signals": [], "last_run_timestamp": time.time()}
-                elif state_file == "scanner_runtime.json":
-                    default_data = {"current_interval": 2.0, "telemetry": {"cpu_percent": 0.0}}
-                elif state_file == "phantom_scout.json":
-                    default_data = {"active_rpc": "https://api.mainnet-beta.solana.com", "failed_rpcs": []}
-                elif state_file == "market_rotation.json":
-                    default_data = {"allocations_pct": {"Indodax": 25.0, "Polymarket": 25.0, "Phantom": 25.0, "CASH_WAIT": 25.0}}
-                
-                with open(file_path, "w") as f:
-                    json.dump(default_data, f, indent=4)
-                logger.info(f"✅ Bootstrapped default secure state for {state_file}")
-            except Exception as e:
-                logger.error(f"❌ Failed to bootstrap state file {state_file}: {e}")
+            if is_bootstrap_allowed:
+                logger.info(f"State file {state_file} missing. Bootstrapping with default secure config...")
+                try:
+                    default_data = {}
+                    if state_file == "leadlag_alpha.json":
+                        default_data = {"qualified_signals": [], "opportunities": [], "last_run_timestamp": time.time()}
+                    elif state_file == "scanner_runtime.json":
+                        default_data = {"current_interval": 2.0, "mode": "NORMAL", "telemetry": {"cpu_percent": 0.0}}
+                    elif state_file == "phantom_scout.json":
+                        default_data = {"active_rpc": "https://api.mainnet-beta.solana.com", "failed_rpcs": []}
+                    elif state_file == "market_rotation.json":
+                        default_data = {"allocations_pct": {"Indodax": 25.0, "Polymarket": 25.0, "Phantom": 25.0, "CASH_WAIT": 25.0}}
+                    
+                    with open(file_path, "w") as f:
+                        json.dump(default_data, f, indent=4)
+                    logger.info(f"✅ Bootstrapped default secure state for {state_file}")
+                except Exception as e:
+                    logger.error(f"❌ Failed to bootstrap state file {state_file}: {e}")
+                    sys.exit(10)
+            else:
+                logger.error(f"❌ CRITICAL STATE ERROR: Required state file {state_file} is missing, and bootstrapping is disabled!")
                 sys.exit(10)
 
         try:
@@ -246,18 +270,112 @@ def check_json_states(state_dir):
             age_s = time.time() - mtime
             logger.info(f"Parsed {state_file} successfully. Age: {age_s:.1f}s")
             
-            # If the file is older than 1 hour (3600 seconds), fail as stale in production
-            if age_s > 3600.0:
-                logger.error(f"❌ CRITICAL STATE ERROR: {state_file} is stale! Last modified {age_s:.1f}s ago.")
+            limit = max_ages.get(state_file, 3600.0)
+            if age_s > limit:
+                logger.error(f"❌ CRITICAL STATE ERROR: {state_file} is stale! Last modified {age_s:.1f}s ago (limit: {limit}s).")
                 sys.exit(11)
+                
+            # Extra semantic validations
+            if state_file == "scanner_runtime.json":
+                mode = data.get("mode")
+                if mode not in {"FAST", "NORMAL", "SLOW"}:
+                    logger.error(f"❌ CRITICAL STATE ERROR: Invalid mode in scanner_runtime.json: '{mode}' (must be FAST, NORMAL, or SLOW).")
+                    sys.exit(15)
+                
+                # Check CPU Throttling > 95% consecutively
+                cpu_pct = None
+                if "cpu_percent" in data:
+                    cpu_pct = data["cpu_percent"]
+                elif "telemetry" in data and isinstance(data["telemetry"], dict) and "cpu_percent" in data["telemetry"]:
+                    cpu_pct = data["telemetry"]["cpu_percent"]
+                
+                if cpu_pct is not None:
+                    cpu_pct = float(cpu_pct)
+                    logger.info(f"Current CPU Percent from scanner runtime: {cpu_pct}%")
+                    history_path = Path(state_dir) / ".healthcheck_history.json"
+                    history = {}
+                    if history_path.exists():
+                        try:
+                            with open(history_path, "r") as hf:
+                                history = json.load(hf)
+                        except Exception:
+                            pass
+                    
+                    consecutive_high_cpu = history.get("consecutive_high_cpu", 0)
+                    if cpu_pct > 95.0:
+                        consecutive_high_cpu += 1
+                        logger.warning(f"⚠️ CPU threshold exceeded: {cpu_pct}% (Consecutive count: {consecutive_high_cpu}/3)")
+                    else:
+                        consecutive_high_cpu = 0
+                    
+                    history["consecutive_high_cpu"] = consecutive_high_cpu
+                    try:
+                        with open(history_path, "w") as hf:
+                            json.dump(history, hf, indent=4)
+                    except Exception:
+                        pass
+                        
+                    if consecutive_high_cpu >= 3:
+                        logger.error(f"❌ CRITICAL STATE ERROR: CPU percent is > 95% for 3 consecutive samples/checks ({cpu_pct}%)!")
+                        sys.exit(16)
+            
+            if state_file == "leadlag_alpha.json":
+                leadlag_enabled = os.getenv("KIBOT_LEADLAG_ENABLED", "true").lower() == "true"
+                if leadlag_enabled:
+                    opportunities = data.get("opportunities", data.get("qualified_signals", []))
+                    history_path = Path(state_dir) / ".healthcheck_history.json"
+                    history = {}
+                    if history_path.exists():
+                        try:
+                            with open(history_path, "r") as hf:
+                                history = json.load(hf)
+                        except Exception:
+                            pass
+                    
+                    consecutive_empty_leadlag = history.get("consecutive_empty_leadlag", 0)
+                    if len(opportunities) == 0:
+                        consecutive_empty_leadlag += 1
+                        logger.warning(f"⚠️ LeadLag opportunities are empty (Consecutive count: {consecutive_empty_leadlag}/3)")
+                    else:
+                        consecutive_empty_leadlag = 0
+                        
+                    history["consecutive_empty_leadlag"] = consecutive_empty_leadlag
+                    try:
+                        with open(history_path, "w") as hf:
+                            json.dump(history, hf, indent=4)
+                    except Exception:
+                        pass
+                        
+                    if consecutive_empty_leadlag >= 3:
+                        logger.error("❌ CRITICAL STATE ERROR: Lead-Lag alpha engine is enabled, but opportunities array is consecutively empty for 3 checks!")
+                        sys.exit(17)
+
         except json.JSONDecodeError as jde:
             logger.error(f"❌ CRITICAL STATE ERROR: {state_file} has invalid JSON syntax: {jde}")
             sys.exit(12)
+        except SystemExit:
+            raise
         except Exception as exc:
             logger.error(f"❌ CRITICAL STATE ERROR: Failed during audit of {state_file}: {exc}")
             sys.exit(13)
             
     logger.info("✅ All state files are present, valid JSON, and fresh.")
+
+def check_scanner_service():
+    logger.info("Step 8/8: Verifying systemd kibot-scanner service active status...")
+    if sys.platform.startswith("linux"):
+        import subprocess
+        try:
+            res = subprocess.run(["systemctl", "is-active", "kibot-scanner"], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+            status = res.stdout.strip()
+            if status != "active":
+                logger.error(f"❌ CRITICAL: systemd service kibot-scanner is inactive (status: {status})")
+                sys.exit(14)
+            logger.info("✅ systemd service kibot-scanner is active.")
+        except Exception as e:
+            logger.warning(f"⚠️ Could not check systemd service kibot-scanner via systemctl: {e}")
+    else:
+        logger.warning("⚠️ Non-Linux platform detected, skipping systemd kibot-scanner active check.")
 
 def main():
     logger.info("==================================================")
@@ -271,6 +389,7 @@ def main():
     check_live_trading_gates(KiConfig)
     check_network_bindings()
     check_json_states(state_dir)
+    check_scanner_service()
     
     logger.info("==================================================")
     logger.info("🎉 HEALTHCHECK PASSED SUCCESSFULLY! ALL SYSTEMS GREEN.")

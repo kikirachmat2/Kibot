@@ -200,7 +200,11 @@ async def test_healthcheck_audits(tmp_path):
     state_dir.mkdir()
     
     # Run audit on empty temp directory (should auto-bootstrap files)
-    check_json_states(state_dir)
+    with patch.dict(os.environ, {
+        "KIBOT_PHANTOM_SCOUT_ENABLED": "true",
+        "KIBOT_HEALTHCHECK_ALLOW_BOOTSTRAP": "true"
+    }):
+        check_json_states(state_dir)
     
     # Verify files were bootstrapped correctly
     required_states = [
