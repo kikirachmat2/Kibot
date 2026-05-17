@@ -7,3 +7,5 @@ aiohttp
 cryptography
 requests
 ddgs>=9.14.0
+fastapi
+uvicorn
