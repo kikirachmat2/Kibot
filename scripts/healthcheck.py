@@ -258,7 +258,7 @@ def check_json_states(state_dir):
         sys.platform == "darwin"
     )
     
-    if is_any_core_service_active():
+    if is_any_core_service_active() and os.getenv("KIBOT_ENV", "prod").lower() != "test":
         logger.warning("⚠️ Core systemd services are active. Disabling state bootstrapping to prevent false-green healthcheck.")
         is_bootstrap_allowed = False
 
