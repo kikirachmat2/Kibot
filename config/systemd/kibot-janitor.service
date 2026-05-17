@@ -8,8 +8,11 @@ User=ubuntu
 WorkingDirectory=/home/ubuntu/KiBot
 EnvironmentFile=-/home/ubuntu/KiBot/.env
 EnvironmentFile=-/home/ubuntu/KiBot/.env.kiv
-ExecStart=/usr/bin/python3 -m Core.Support.sovereign_janitor
+ExecStart=/home/ubuntu/KiBot/.venv/bin/python3 -m Core.Support.sovereign_janitor
 Environment=PYTHONUNBUFFERED=1
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
 Restart=always
 RestartSec=60
 

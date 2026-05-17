@@ -20,6 +20,19 @@ from Core.Support.ki_config import PROJECT_ROOT, STATE_DIR
 
 app = FastAPI(title="KiBot Sovereign Dashboard", version="3.4")
 
+@app.middleware("http")
+async def add_security_headers(request, call_next):
+    response = await call_next(request)
+    response.headers["X-Frame-Options"] = "DENY"
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["Referrer-Policy"] = "no-referrer"
+    response.headers["Content-Security-Policy"] = (
+        "default-src 'self' 'unsafe-inline' 'unsafe-eval' data:; "
+        "connect-src 'self' ws: wss:; "
+        "img-src 'self' data:;"
+    )
+    return response
+
 ROOT = Path(PROJECT_ROOT)
 STATE = Path(STATE_DIR)
 DASHBOARD_DIR = ROOT / "Core" / "Intelligence" / "dashboard"

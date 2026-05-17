@@ -11,7 +11,10 @@ EnvironmentFile=-/home/ubuntu/KiBot/.env
 EnvironmentFile=-/home/ubuntu/KiBot/.env.kiv
 Environment=PYTHONUNBUFFERED=1
 Environment=PYTHONPATH=.
-ExecStart=/usr/bin/python3 -u Core/Executors/Indodax/indodax_executor.py
+ExecStart=/home/ubuntu/KiBot/.venv/bin/python3 -u Core/Executors/Indodax/indodax_executor.py
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
 Restart=always
 RestartSec=10
 StandardOutput=journal

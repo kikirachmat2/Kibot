@@ -11,7 +11,10 @@ EnvironmentFile=-/home/ubuntu/KiBot/.env
 EnvironmentFile=-/home/ubuntu/KiBot/.env.kiv
 Environment=PYTHONUNBUFFERED=1
 Environment=PYTHONPATH=.
-ExecStart=/usr/bin/python3 -u Core/Intelligence/kibot_ai_scout.py
+ExecStart=/home/ubuntu/KiBot/.venv/bin/python3 -u Core/Intelligence/kibot_ai_scout.py
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
 Restart=always
 RestartSec=30
 StandardOutput=journal
