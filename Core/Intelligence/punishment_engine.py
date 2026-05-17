@@ -52,6 +52,7 @@ class PunishmentEngine:
     def __init__(self, state_file: Path = _STATE_FILE) -> None:
         self._state_file = state_file
         self._records: Dict[str, StrategyRecord] = {}
+        self.corrupted_state_active = False
         self._load()
 
     # ------------------------------------------------------------------
@@ -118,9 +119,13 @@ class PunishmentEngine:
             self._save()
 
     def is_quarantined(self, strategy_id: str) -> bool:
+        if getattr(self, "corrupted_state_active", False):
+            return True
         return self._get_or_create(strategy_id).is_quarantined
 
     def get_severity(self, strategy_id: str) -> float:
+        if getattr(self, "corrupted_state_active", False):
+            return 1.0
         return self._get_or_create(strategy_id).severity
 
     # ------------------------------------------------------------------
@@ -141,19 +146,73 @@ class PunishmentEngine:
             rec.strategy_id, QUARANTINE_SECONDS, reason,
         )
 
+    def _write_baseline(self) -> None:
+        self._state_file.parent.mkdir(parents=True, exist_ok=True)
+        baseline = {
+            "status": "idle",
+            "records": {},
+            "quarantined": [],
+            "updated_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+            "schema_version": 1
+        }
+        self._state_file.write_text(json.dumps(baseline, indent=2))
+        self._records = {}
+
     def _load(self) -> None:
         if not self._state_file.exists():
+            self._write_baseline()
             return
         try:
-            data = json.loads(self._state_file.read_text())
-            for sid, rec_data in data.items():
-                self._records[sid] = StrategyRecord(**rec_data)
-        except Exception:
-            pass
+            raw_text = self._state_file.read_text().strip()
+            if not raw_text:
+                raise ValueError("Empty state file")
+            data = json.loads(raw_text)
+            if not isinstance(data, dict):
+                raise ValueError("State data must be a JSON dictionary")
+            
+            # Check schema version
+            if "records" in data and "schema_version" in data:
+                records_dict = data.get("records", {})
+            else:
+                # Old schema: dict mapping strategy ID to record fields directly
+                records_dict = data
+            
+            for sid, rec_data in records_dict.items():
+                valid_fields = {k: v for k, v in rec_data.items() if k in StrategyRecord.__dataclass_fields__}
+                self._records[sid] = StrategyRecord(**valid_fields)
+                
+        except Exception as e:
+            self.corrupted_state_active = True
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.warning(f"Corrupted state file detected: {self._state_file} ({e}). Entering fail-safe quarantine.")
+            
+            # Backup corrupt file to state/punishment_state.corrupt.<timestamp>.json
+            try:
+                if self._state_file.exists():
+                    timestamp = int(time.time())
+                    backup_path = self._state_file.with_name(f"punishment_state.corrupt.{timestamp}.json")
+                    backup_path.write_text(self._state_file.read_text())
+                    logger.warning(f"Backed up corrupted state to {backup_path}")
+            except Exception as backup_err:
+                logger.error(f"Failed to backup corrupted state file: {backup_err}")
+            
+            # Re-write clean baseline
+            try:
+                self._write_baseline()
+            except Exception as write_err:
+                logger.error(f"Failed to write baseline after corruption: {write_err}")
 
     def _save(self) -> None:
         self._state_file.parent.mkdir(parents=True, exist_ok=True)
-        payload = {sid: asdict(rec) for sid, rec in self._records.items()}
+        quarantined_list = [sid for sid, rec in self._records.items() if rec.is_quarantined]
+        payload = {
+            "status": "active" if quarantined_list else "idle",
+            "records": {sid: asdict(rec) for sid, rec in self._records.items()},
+            "quarantined": quarantined_list,
+            "updated_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+            "schema_version": 1
+        }
         self._state_file.write_text(json.dumps(payload, indent=2))
 
 

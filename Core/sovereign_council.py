@@ -33,6 +33,22 @@ class SovereignCouncil:
         self.whatif_file = self.state_dir / "whatif_results.json"
         self.state_dir.mkdir(parents=True, exist_ok=True)
         
+        # Ensure vital autonomy state files exist with default secure skeletons (Phase 6)
+        autonomy_defaults = {
+            "expected_value.json": {"schema_version": 1, "status": "idle", "strategies": {}},
+            "signal_quality.json": [],
+            "strategy_scorecard.json": [],
+            "autonomous_director.json": {}
+        }
+        for filename, default_val in autonomy_defaults.items():
+            file_path = self.state_dir / filename
+            if not file_path.exists():
+                try:
+                    file_path.write_text(json.dumps(default_val, indent=2), encoding="utf-8")
+                except Exception as e:
+                    pass
+
+        
         # Thresholds
         self.CONFIDENCE_AUTO_THRESHOLD = 0.85
         self.RISK_LEVELS = ["LOW", "MEDIUM", "HIGH", "CRITICAL"]

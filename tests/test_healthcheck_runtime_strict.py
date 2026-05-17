@@ -32,10 +32,14 @@ def test_healthcheck_stale_state(tmp_path):
     scanner_file = tmp_path / "scanner_runtime.json"
     leadlag_file = tmp_path / "leadlag_alpha.json"
     market_file = tmp_path / "market_rotation.json"
+    punishment_file = tmp_path / "punishment_state.json"
+    ev_file = tmp_path / "expected_value.json"
     
-    # Write fresh leadlag and market rotation files
+    # Write fresh files
     leadlag_file.write_text(json.dumps({"mode": "NORMAL", "opportunities": [{"pair": "BTC/USDT"}]}))
     market_file.write_text(json.dumps({"allocations_pct": {}}))
+    punishment_file.write_text(json.dumps({"schema_version": 1, "status": "idle", "records": {}, "quarantined": []}))
+    ev_file.write_text(json.dumps({"schema_version": 1, "status": "idle", "strategies": {}}))
     
     # Write stale scanner file
     scanner_file.write_text(json.dumps({"mode": "NORMAL", "qualified_signals": [], "allocations_pct": {}}))
@@ -55,10 +59,14 @@ def test_healthcheck_invalid_json(tmp_path):
     scanner_file = tmp_path / "scanner_runtime.json"
     leadlag_file = tmp_path / "leadlag_alpha.json"
     market_file = tmp_path / "market_rotation.json"
+    punishment_file = tmp_path / "punishment_state.json"
+    ev_file = tmp_path / "expected_value.json"
     
     scanner_file.write_text("NOT_JSON")
     leadlag_file.write_text("{}")
     market_file.write_text("{}")
+    punishment_file.write_text(json.dumps({"schema_version": 1, "status": "idle", "records": {}, "quarantined": []}))
+    ev_file.write_text(json.dumps({"schema_version": 1, "status": "idle", "strategies": {}}))
     
     with patch("scripts.healthcheck.safe_exit") as mock_exit, \
          patch.dict(os.environ, {

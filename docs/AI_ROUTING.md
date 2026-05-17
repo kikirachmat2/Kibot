@@ -74,3 +74,14 @@ Every input vector and payload sent to local LLMs passes through the following s
 To verify compliance with this AI routing document:
 * **Systemd Isolation**: The `kibot-scanner` service runs under systemd with restricted capability sets, preventing it from calling non-loopback network connections (except the Whitelisted Exchange endpoints).
 * **Audit Command**: Run `bin/kibotctl doctor` to verify that Ollama is bound exclusively to `127.0.0.1` and that no secret keys are stored in any environment variables exposed to the Ollama process.
+
+---
+
+## 5. Pre-Entry Risk Gate & Zero-Block Execution Path
+
+To prevent hot-path trading locks from localized LLM inference (e.g., Qwen2.5 running on Ollama) or latency spikes, KiBot implements a strict **Zero-Block / Fail-Open** execution path:
+
+1. **Advisory-Only Isolation**: The advisory layer is fully decoupled from the core execution layer. It cannot directly initiate trades or block deterministic signals (`KIBOT_LLM_BLOCK_EXECUTOR=false`, `KIBOT_LLM_ALLOWED_TO_PLACE_ORDER=false`).
+2. **Deterministic Fail-Open**: If the advisory LLM is disabled via `KIBOT_LLM_ENABLED=false` or if it exceeds timeout limits (`KIBOT_LLM_TIMEOUT_S=4` for standard models, `KIBOT_LLM_HEAVY_MODEL_TIMEOUT_S=8` for heavy models), the system fails open to the deterministic core using the neutral `AI_SAFE_FALLBACK` schema.
+3. **Hot-Path Throughput Preservation**: High-frequency scanning loops and pre-trade validators ignore stuck Ollama states, ensuring trading decisions remain continuously fast, safe, and deterministic.
+

@@ -894,6 +894,22 @@ class KiBotMaster:
         sys.exit(0)
 
     def start(self):
+        # Ensure vital autonomy state files exist (Phase 6)
+        autonomy_defaults = {
+            "expected_value.json": {"schema_version": 1, "status": "idle", "strategies": {}},
+            "signal_quality.json": [],
+            "strategy_scorecard.json": [],
+            "autonomous_director.json": {}
+        }
+        for filename, default_val in autonomy_defaults.items():
+            file_path = STATE_DIR / filename
+            if not file_path.exists():
+                try:
+                    file_path.write_text(json.dumps(default_val, indent=2), encoding="utf-8")
+                    logger.info(f"✅ Auto-initialized missing state file: {filename}")
+                except Exception as e:
+                    logger.error(f"❌ Failed to auto-initialize {filename}: {e}")
+
         # Start core loops
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)

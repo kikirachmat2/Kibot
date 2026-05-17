@@ -2,6 +2,10 @@
 
 This report details the exhaustive, end-to-end production verification of the **KiBot Sovereign Autonomous Trading Infrastructure** running on the remote Batam node (`168.110.201.228`). Every subsystem has been interrogated, verified with raw command executions, and confirmed to meet the rigorous zero-trust safety standards of the Trinity Mesh.
 
+> [!NOTE]
+> **Errata / Operator Clarification**:
+> In some earlier architecture documentation, the systemd service managing the Council, Director, and Arbitrator was referred to conceptually as `kibot-council.service`. At the physical runtime layer on the Batam server, this logic is run as part of the core master node service: **`kibot-master.service`** (running `MasterNode.py`). There is no active standalone `kibot-council.service` on the remote host; references to `kibot-council.service` in historical logs or legacy systemd logs represent a conceptual designation.
+
 ---
 
 ## 📋 1. Executive Summary

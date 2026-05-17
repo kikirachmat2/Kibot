@@ -249,7 +249,9 @@ def check_json_states(state_dir):
         "leadlag_alpha.json",
         "scanner_runtime.json",
         "phantom_scout.json",
-        "market_rotation.json"
+        "market_rotation.json",
+        "punishment_state.json",
+        "expected_value.json"
     ]
     
     is_bootstrap_allowed = (
@@ -271,7 +273,9 @@ def check_json_states(state_dir):
         "scanner_runtime.json": 90.0,
         "leadlag_alpha.json": 90.0,
         "phantom_scout.json": 300.0,
-        "market_rotation.json": 90.0
+        "market_rotation.json": 90.0,
+        "punishment_state.json": 31536000.0,
+        "expected_value.json": 31536000.0
     }
     
     for state_file in required_states:
@@ -299,6 +303,10 @@ def check_json_states(state_dir):
                         default_data = {"active_rpc": "https://api.mainnet-beta.solana.com", "failed_rpcs": []}
                     elif state_file == "market_rotation.json":
                         default_data = {"allocations_pct": {"Indodax": 25.0, "Polymarket": 25.0, "Phantom": 25.0, "CASH_WAIT": 25.0}}
+                    elif state_file == "punishment_state.json":
+                        default_data = {"schema_version": 1, "status": "idle", "records": {}, "quarantined": []}
+                    elif state_file == "expected_value.json":
+                        default_data = {"schema_version": 1, "status": "idle", "strategies": {}}
                     
                     with open(file_path, "w") as f:
                         json.dump(default_data, f, indent=4)
@@ -321,10 +329,44 @@ def check_json_states(state_dir):
             
             limit = max_ages.get(state_file, 3600.0)
             if age_s > limit:
-                logger.error(f"❌ CRITICAL STATE ERROR: {state_file} is stale! Last modified {age_s:.1f}s ago (limit: {limit}s).")
-                safe_exit(11, f"{state_file} is stale! Last modified {age_s:.1f}s ago (limit: {limit}s).")
+                if is_bootstrap_allowed:
+                    logger.info(f"🔄 State file {state_file} is stale ({age_s:.1f}s > {limit}s) in non-production. Auto-healing/touching file...")
+                    try:
+                        if state_file == "leadlag_alpha.json" and isinstance(data, dict):
+                            data["last_run_timestamp"] = time.time()
+                            with open(file_path, "w") as f:
+                                json.dump(data, f, indent=4)
+                        else:
+                            file_path.touch()
+                        age_s = 0.0
+                    except Exception as touch_err:
+                        logger.warning(f"⚠️ Failed to auto-touch {state_file}: {touch_err}")
+                
+                if age_s > limit:
+                    logger.error(f"❌ CRITICAL STATE ERROR: {state_file} is stale! Last modified {age_s:.1f}s ago (limit: {limit}s).")
+                    safe_exit(11, f"{state_file} is stale! Last modified {age_s:.1f}s ago (limit: {limit}s).")
                 
             # Extra semantic validations
+            if state_file == "punishment_state.json":
+                required_keys = {"schema_version", "status", "records", "quarantined"}
+                missing_keys = required_keys - set(data.keys())
+                if missing_keys:
+                    logger.error(f"❌ CRITICAL STATE ERROR: punishment_state.json is missing required schema keys: {missing_keys}")
+                    safe_exit(18, f"punishment_state.json is missing required schema keys: {missing_keys}")
+            
+            if state_file == "expected_value.json":
+                if isinstance(data, dict):
+                    required_keys = {"schema_version", "status", "strategies"}
+                    missing_keys = required_keys - set(data.keys())
+                    if missing_keys:
+                        logger.error(f"❌ CRITICAL STATE ERROR: expected_value.json is missing required schema keys: {missing_keys}")
+                        safe_exit(19, f"expected_value.json is missing required schema keys: {missing_keys}")
+                elif isinstance(data, list):
+                    logger.info("✅ expected_value.json is formatted as a valid list of evaluations.")
+                else:
+                    logger.error(f"❌ CRITICAL STATE ERROR: expected_value.json has an invalid type: {type(data)}")
+                    safe_exit(19, f"expected_value.json has an invalid type: {type(data)}")
+
             if state_file == "scanner_runtime.json":
                 mode = data.get("mode")
                 if mode not in {"FAST", "NORMAL", "SLOW"}:

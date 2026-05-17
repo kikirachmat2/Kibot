@@ -14,7 +14,12 @@ Logs/
 logs/
 state/
 backups/
+data/
 *.log
+*.parquet
+*.duckdb
+*.sqlite
+*.db
 
 # Python Metadata & Cache
 __pycache__/

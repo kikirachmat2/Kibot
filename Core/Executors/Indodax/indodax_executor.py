@@ -705,6 +705,15 @@ class IndodaxExecutor:
 
     async def process_signal(self, signal):
         """Script-based signal processing using Council-defined parameters."""
+        # 0. Check LLM Guards / Blocks
+        if KiConfig.LLM_BLOCK_EXECUTOR:
+            logger.error("🛑 LLM_BLOCK_EXECUTOR is True! All order placement and execution is strictly blocked.")
+            return
+
+        if not KiConfig.LLM_ALLOWED_TO_PLACE_ORDER and (signal.get("origin") == "LLM" or signal.get("type") == "LLM_DIRECT"):
+            logger.error("🛑 LLM direct order placement is disabled (KiConfig.LLM_ALLOWED_TO_PLACE_ORDER is False). Bypassing signal.")
+            return
+
         urgency = check_urgency()
         if urgency.get("flag") == "EMERGENCY_PAUSE": return
 

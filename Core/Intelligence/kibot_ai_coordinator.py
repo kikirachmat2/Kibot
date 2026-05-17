@@ -1066,7 +1066,16 @@ def _provider_model(provider: str, prompt_type: str) -> str:
 def _provider_timeout(provider: str, prompt_type: str) -> float:
     if provider != "ollama":
         return REQUEST_TIMEOUT_SEC
-    return float(PROMPT_OLLAMA_TIMEOUT.get(prompt_type, OLLAMA_DEFAULT_TIMEOUT_SEC))
+    
+    # Dynamically determine if the prompt uses a heavy model
+    model = PROMPT_OLLAMA_MODEL.get(prompt_type, OLLAMA_DEFAULT_MODEL)
+    is_heavy = "7b" in model or "deep" in model.lower()
+    
+    from Core.Support.ki_config import KiConfig
+    if is_heavy:
+        return float(KiConfig.LLM_HEAVY_MODEL_TIMEOUT_S)
+    return float(KiConfig.LLM_TIMEOUT_S)
+
 
 
 def _ollama_keep_alive(prompt_type: str) -> Any:
@@ -1309,6 +1318,11 @@ _OLLAMA_LOCK = asyncio.Lock()
 
 async def query_ai(prompt_type: str, context: Dict[str, Any], cache_ttl_minutes: int = 60, force_refresh: bool = False) -> Optional[Dict[str, Any]]:
     """Main entry point with CPU Protection for Batam."""
+    from Core.Support.ki_config import KiConfig
+    if not KiConfig.LLM_ENABLED:
+        logger.warning("AI coordination bypassed: KiConfig.LLM_ENABLED is False. Returning AI_SAFE_FALLBACK.")
+        return AI_SAFE_FALLBACK
+
     model = PROMPT_OLLAMA_MODEL.get(prompt_type, OLLAMA_DEFAULT_MODEL)
     is_heavy = "7b" in model or "deep" in model.lower()
 
@@ -1317,6 +1331,7 @@ async def query_ai(prompt_type: str, context: Dict[str, Any], cache_ttl_minutes:
             return await _execute_query_logic(prompt_type, context, cache_ttl_minutes, force_refresh)
     else:
         return await _execute_query_logic(prompt_type, context, cache_ttl_minutes, force_refresh)
+
 
 async def _execute_query_logic(prompt_type: str, context: Dict[str, Any], cache_ttl_minutes: int = 60, force_refresh: bool = False) -> Optional[Dict[str, Any]]:
     template = PROMPT_TEMPLATES.get(prompt_type, "Analyze this context:\n{context}")
