@@ -22,6 +22,12 @@ try:
 except ImportError:
     LeadLagAlphaEngine = None
 
+try:
+    from Core.Intelligence.market_rotation import MarketRotationEngine
+except ImportError:
+    MarketRotationEngine = None
+
+
 class ScannerEngine:
     def __init__(self, scanners: Sequence[Any] | None = None, interval_s: int | None = None):
         self.interval_s = int(interval_s or os.getenv("SCAN_INTERVAL_S", "2"))
@@ -49,6 +55,13 @@ class ScannerEngine:
             logger.info("✅ Lead-Lag Alpha Engine initialized in HFT Scanner.")
         else:
             self.leadlag_engine = None
+
+        # Market Rotation Engine setup
+        if MarketRotationEngine is not None:
+            self.rotation_engine = MarketRotationEngine()
+            logger.info("✅ Market Rotation Engine initialized in HFT Scanner.")
+        else:
+            self.rotation_engine = None
 
         # Turbo Adaptive Mode setup
         self.scanner_turbo = os.getenv("KIBOT_SCANNER_TURBO", "true").strip().lower() in {"1", "true", "yes", "on", "auto"}
@@ -263,6 +276,13 @@ class ScannerEngine:
             Path(tmp.name).replace(runtime_path)
         except Exception as e:
             logger.debug(f"[Scanner] scanner_runtime.json write failed: {e}")
+
+        # Compute and persist optimal market rotation allocation
+        if getattr(self, "rotation_engine", None):
+            try:
+                await self.rotation_engine.compute_optimal_allocation()
+            except Exception as e:
+                logger.debug(f"[Scanner] Market rotation allocation computation failed: {e}")
 
         selected_scanners = []
         for scanner in self.scanners:
