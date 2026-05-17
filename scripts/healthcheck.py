@@ -162,7 +162,7 @@ def check_network_bindings():
         exposed_services = []
         for conn in connections:
             laddr = conn.laddr
-            if laddr and laddr.port in target_ports:
+            if laddr and hasattr(laddr, 'port') and laddr.port in target_ports:
                 ip = laddr.ip
                 if ip in forbidden_wildcards:
                     exposed_services.append(f"{target_ports[laddr.port]} (port {laddr.port}) is bound to public wildcard address '{ip}'!")
