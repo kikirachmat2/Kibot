@@ -84,6 +84,10 @@ class KiBotMaster:
         self.council.brain = self.brain # Inject brain
         self.aggregator = CouncilDataAggregator(self)
         self.system_commander = SystemCommander(str(ROOT_DIR))
+        from Core.Treasury.capital_commander import CapitalCommander
+        from Core.Exchange.phantom_router import PhantomRouter
+        self.phantom_router = PhantomRouter()
+        self.capital_commander = None # Will be initialized after IndodaxGateway
         self.is_running = True
         self.last_state = {"portfolio": {"equity_idr": 0, "daily_pnl": "0.0%", "active_positions": []}}
         self.market_mood = "NEUTRAL"
@@ -103,6 +107,7 @@ class KiBotMaster:
         # [OPTIMIZATION] Reuse Gateway instances
         from Core.Exchange.indodax import IndodaxGateway
         self.indodax = IndodaxGateway()
+        self.capital_commander = CapitalCommander(self.indodax, self.phantom_router)
         
         # Self-Healing: Keep AI provider cooldowns persistent by default.
         # Reset only when explicitly requested so 401/429 providers stay muted
@@ -244,6 +249,51 @@ class KiBotMaster:
                 logger.debug(f"[MasterNode] OrderTracker scan skipped: {_ot_err}")
 
             await asyncio.sleep(300)
+
+    async def capital_rotation_watchdog_loop(self):
+        """
+        Autonomous Capital Rotation Engine.
+        Evaluates DeFi APYs vs Indodax market mood, and automatically bridges funds to/from Phantom.
+        """
+        interval_sec = int(os.getenv("KIBOT_CAPITAL_ROTATION_SEC", "600"))
+        # Leave a safety buffer of 500,000 IDR
+        MIN_IDR_IDLE = float(os.getenv("KIBOT_MIN_IDR_IDLE", "500000"))
+        logger.info(f"🔄 Autonomous Capital Rotation Engine active ({interval_sec}s). Min Idle: Rp {MIN_IDR_IDLE:,.0f}")
+        
+        while self.is_running:
+            try:
+                # 1. Fetch World Model and Possibility Matrix
+                world_model = self.brain._load_external_world_model() if hasattr(self.brain, "_load_external_world_model") else {}
+                possibility_matrix = world_model.get("possibility_matrix", [])
+                
+                # 2. Get current equity and balances
+                portfolio_snapshot = await self.aggregator._get_portfolio_snapshot()
+                idle_idr = float(portfolio_snapshot.get("idr_cash", 0.0) or 0.0)
+                
+                # 3. Check if PHANTOM_DEFI is the top recommended regime
+                if possibility_matrix:
+                    top_possibility = possibility_matrix[0]
+                    platforms = top_possibility.get("platforms", [])
+                    probability = top_possibility.get("probability", 0)
+                    
+                    if "PHANTOM_DEFI" in platforms and probability > 0.75:
+                        logger.info(f"🚀 AI Recommends PHANTOM_DEFI with {probability*100:.1f}% confidence.")
+                        
+                        amount_to_bridge = idle_idr - MIN_IDR_IDLE
+                        if amount_to_bridge > 100000: # Min 100k IDR to bridge
+                            logger.info(f"🌉 Preparing to bridge Rp {amount_to_bridge:,.0f} to Phantom...")
+                            if self.capital_commander:
+                                await self.capital_commander.bridge_indodax_to_phantom(
+                                    amount_idr_equiv=amount_to_bridge,
+                                    target_network="all",
+                                    target_apy=20.0 # Assumed target APY for profitability check
+                                )
+                        else:
+                            logger.debug(f"💤 Idle IDR (Rp {idle_idr:,.0f}) is below bridging threshold.")
+            except Exception as e:
+                logger.error(f"Capital Rotation Engine error: {e}")
+                
+            await asyncio.sleep(interval_sec)
 
     async def whatif_refresh_loop(self):
         """Refresh what-if simulation so council always has a live scenario view."""
@@ -859,6 +909,10 @@ class KiBotMaster:
         loop.create_task(self.mesh_monitor_loop())
         loop.create_task(self.process_manager_loop())
         loop.create_task(self.ensure_ollama_models())
+        loop.create_task(self.pnl_watchdog_loop())
+        loop.create_task(self.capital_rotation_watchdog_loop())
+        loop.create_task(self.whatif_refresh_loop())
+
         
         logger.info("🎖️ KiBot Sovereign Master is fully OPERATIONAL.")
         try:

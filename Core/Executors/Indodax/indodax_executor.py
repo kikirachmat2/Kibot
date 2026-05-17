@@ -735,15 +735,15 @@ class IndodaxExecutor:
             
             # 2. Risk Validation
             # 2. Dynamic Budget Allocation (V3.1 Sovereign Balance Awareness)
+            # --> [CAPITAL COMMANDER HOOK]
+            # In a full deployment, this will query CapitalCommander via MasterNode RPC.
             remaining_slots = max(1, max_slots - len(self.active_trades))
             
             if max_exposure == 0:
-                # [SOVEREIGN GREED] Use all available balance divided by remaining slots
                 budget = max(10_000.0, (current_balance / remaining_slots) * 0.98)
             else:
                 budget = max_exposure / max(1, max_slots)
 
-            # Ensure it doesn't exceed current balance and meets minimums
             budget = min(budget, current_balance * 0.99)
 
             if learning_probe:
@@ -753,6 +753,11 @@ class IndodaxExecutor:
                     f"🧪 LEARNING PROBE: budget capped to Rp{budget:,.0f} "
                     f"(cap Rp{probe_cap:,.0f}) for {symbol}"
                 )
+
+            # --> [CAPITAL COMMANDER ENFORCEMENT]
+            # if not request_capital_commander_allocation("INDODAX_SPOT", budget, current_regime):
+            #     logger.warning(f"🛡️ REJECTED (Capital Commander): Treasury limit reached for INDODAX_SPOT")
+            #     return
 
             signal["budget_idr"] = budget
 

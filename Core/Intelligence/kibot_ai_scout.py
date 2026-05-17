@@ -21,6 +21,8 @@ import asyncio
 from Core.circuit_breaker import CircuitBreaker
 
 from Core.Support.ki_config import STATE_DIR
+from Core.Intelligence.defi_metrics_fetcher import DeFiMetricsFetcher
+
 WORLD_MODEL_FILE = STATE_DIR / "world_model.json"
 
 # Lazy imports to avoid circular dependency
@@ -46,6 +48,7 @@ class WorldScout:
         STATE_DIR.mkdir(parents=True, exist_ok=True)
         self.search_service = get_ai_search()
         self.coordinator = get_ai_coordinator()
+        self.defi_fetcher = DeFiMetricsFetcher()
         self.breaker = CircuitBreaker("WORLD_SCOUT", max_failures=3, reset_after_sec=600)
 
     def _log(self, msg: str):
@@ -56,6 +59,7 @@ class WorldScout:
         
         # 1. Gather Raw Data from multiple sources
         scouting_data = {
+            "defi_intelligence": await self.defi_fetcher.get_aggregated_defi_intelligence(),
             "security_threats": await self.search_service.ddg_search_async("crypto protocol exploit hack vulnerability latest", max_results=3),
             "market_catalysts": await self.search_service.tavily_search_async("top crypto market catalysts today bitcoin eth regulation", search_depth="advanced") or await self.search_service.jina_search_async("top crypto market catalysts today"),
             "trending_narratives": await self.search_service.gdelt_news_async("crypto trending AI meme RWA layer2"),

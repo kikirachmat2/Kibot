@@ -217,6 +217,24 @@ class IndodaxGateway:
         IndodaxGateway._info_cache = None
         return await self._post_private("trade", params)
 
+    async def withdraw_coin(self, currency: str, withdraw_address: str, withdraw_amount: float, withdraw_memo: str = "") -> Dict[str, Any]:
+        """
+        Request a crypto withdrawal to an external wallet.
+        IMPORTANT: This usually triggers an email confirmation unless Callback URL is active!
+        """
+        params = {
+            "currency": currency.lower(),
+            "withdraw_address": withdraw_address,
+            "withdraw_amount": self.round_step(withdraw_amount, "0.00000001"),
+            "request_id": f"kibot_wd_{int(time.time())}"
+        }
+        if withdraw_memo:
+            params["withdraw_memo"] = withdraw_memo
+            
+        logger.warning(f"💸 Initiating Withdrawal: {withdraw_amount} {currency} to {withdraw_address}")
+        IndodaxGateway._info_cache = None
+        return await self._post_private("withdrawCoin", params)
+
     async def get_ticker(self, pair):
         pair = self._normalize_pair(pair)
         async with httpx.AsyncClient() as client:

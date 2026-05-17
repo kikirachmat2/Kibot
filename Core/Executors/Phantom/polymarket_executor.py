@@ -27,7 +27,7 @@ logging.basicConfig(level=logging.INFO, format='[%(asctime)s] 🔮 POLY-EXEC - %
 logger = logging.getLogger("PolymarketExecutor")
 
 class PolymarketExecutor:
-    def __init__(self):
+    def __init__(self, router=None):
         self.wallet_address = os.environ.get("POLYMARKET_WALLET_ADDRESS")
         self.private_key = os.environ.get("POLYMARKET_PRIVATE_KEY")
         self.batam_ip = os.environ.get("KIBOT_MASTER_IP", "127.0.0.1")
@@ -236,6 +236,54 @@ class PolymarketExecutor:
         except Exception as e:
             logger.error(f"Polymarket execution error: {e}")
             self.report_to_batam(signal.get("symbol"), "FAILED", str(e))
+
+    async def execute_trade(self, market_id: str, outcome_index: int, price: float, amount_usdc: float, symbol: str = "POLY") -> bool:
+        """
+        Standardized direct execution method for CapitalCommander.
+        Allows direct programmatic trading without needing a full raw UDP signal envelope.
+        """
+        if not self.live_trading_enabled:
+            logger.warning(f"🧪 PAPER MODE: live trading disabled; skipping Polymarket entry for {symbol}.")
+            return True
+
+        client = self._build_clob_client()
+        if client is None:
+            logger.error("❌ Polymarket client unavailable.")
+            return False
+
+        try:
+            from py_clob_client.clob_types import OrderArgs, OrderType
+            from py_clob_client.order_builder.constants import BUY
+
+            order_args = OrderArgs(
+                token_id=market_id,
+                price=price,
+                size=amount_usdc,
+                side=BUY,
+            )
+
+            signed = client.create_order(order_args)
+            resp = client.post_order(signed, OrderType.GTC)
+            
+            active_bet = {
+                "market_id": market_id,
+                "symbol": symbol,
+                "price": price,
+                "size_usdc": round(amount_usdc, 2),
+                "learning_probe": False,
+                "timestamp": datetime.now().isoformat(),
+            }
+            active_positions = list(self.state.get("active_positions", []))
+            active_positions.append(active_bet)
+            self.state["active_positions"] = active_positions[-10:]
+            self.state["top_opportunities"] = active_positions[-5:]
+            logger.info(f"✅ Polymarket trade successfully executed: {resp}")
+            self.report_to_batam(symbol, "SUCCESS", str(resp))
+            return True
+        except Exception as e:
+            logger.error(f"❌ Polymarket direct trade failed: {e}")
+            self.report_to_batam(symbol, "FAILED", str(e))
+            return False
 
     def report_to_batam(self, symbol, status, msg):
         """Sends an execution report back to Batam."""

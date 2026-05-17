@@ -1,26 +1,32 @@
 # ⚙️ KiBot Executors
 
-Executor layer menerima sinyal yang sudah divalidasi lalu mengeksekusi order secara balance-aware.
+Executor layer menerima sinyal yang sudah divalidasi lalu mengeksekusi order secara balance-aware dan risk-adjusted melalui Capital Commander.
 
-## Alur
+## Multi-Sector Sovereign Hedge Fund
+KiBot tidak lagi hanya trading spot di Indodax. KiBot sekarang mengeksekusi 10 Strategi Web3 Mandiri menggunakan infrastruktur **Phantom Router (EVM & SPL)** yang sudah di-harden dengan error-handling dan circuit breakers:
+
+1. **Prediction Markets** (`polymarket_executor.py`): Eksekusi Polymarket (Polygon).
+2. **Yield Farming** (`defi_yield_executor.py`): Pasok aset ke Kamino Finance (Solana) saat modal sedang *idle*.
+3. **Perpetual DEX** (`defi_perp_executor.py`): Buka posisi Long/Short di Drift Protocol (Solana) sebagai *hedging*.
+4. **Meme Sniping** (`solana_executor.py`): Beli aset spekulatif via Jupiter dengan high-slippage (Solana).
+5. **Liquid Staking** (`defi_yield_executor.py`): Konversi SOL ke JitoSOL untuk *passive income*.
+6. **Airdrop Farming**: Interaksi volume rendah secara berkala pada protokol baru.
+7. **Liquidity Provision (LP)**: Pemasokan likuiditas terpusat di Orca/Meteora.
+8. **Cross-Chain Bridging** (`bridge_router.py`): Pemindahan dana antar-chain via DeBridge/Wormhole.
+9. **NFT Lending** (`defi_nft_executor.py`): Pinjaman (Lending) aset digital di SharkyFi untuk *high yield*.
+10. **MEV Arbitrage** (`solana_executor.py`): Arbitrase kilat lintas-DEX di ekosistem Solana.
+
+## Alur Eksekusi
 - `indodax_executor.py`: eksekusi spot Indodax, budget allocation, fee-aware checks.
-- `polymarket_executor.py`: eksekusi Polymarket, balance-aware USDC sizing.
-- Executor menerima mandat yang sudah lolos evidence bundle council, jadi keputusan bukan cuma dari satu sinyal mentah.
-- Jika council menandai `learning_probe`, executor akan mengecilkan size entry tetapi tetap menghormati hard risk gate.
-- Polymarket executor memakai private key Phantom EVM yang diekspor sebagai EOA dan bootstrap API creds ke CLOB client sebelum order dikirim.
+- Executor menerima mandat yang sudah lolos evidence bundle council (BULL/CRAB/BEAR regime), jadi keputusan bukan cuma dari satu sinyal mentah.
+- Semua eksekusi Web3 dilalui via `PhantomRouter` yang mengabstraksi Private Key dan validasi saldo (`balance-aware`).
+- Jika saldo CEX stagnan, Capital Commander memutar uang ke DeFi (Yield/NFT Lending) agar tidak ada modal *idle*.
 
 ## Catatan Operasional
-- Budget dihitung dari saldo aktif dan slot yang tersedia.
+- Budget dihitung dari saldo aktif dan slot yang diizinkan oleh `CapitalCommander`.
+- Jika `PhantomRouter` mendeteksi error pada RPC, RPC failover circuit breaker aktif dan Executor mengembalikan status ke `WAIT`.
 - Trade ditolak jika harga 1 koin terlalu besar terhadap budget efektif setelah fee.
-- Untuk Indodax pump continuation, executor sekarang bisa melonggarkan momentum/confidence floor secara terkontrol jika scanner menandai `trend_continuation` atau `mature_pump`.
-- Untuk wave yang sudah retrace lalu reclaim lagi, executor juga mengenali `pullback_reclaim` dan melonggarkan floor sedikit, tetapi hanya setelah fee, spread, dan balance checks tetap lolos.
-- Untuk wave yang lebih jauh dari high, executor dapat mengenali `late_reclaim`, tetapi hanya bila recovery score dan volume persistence masih cukup kuat.
-- Untuk setup intraday range break yang reclaim lagi, executor dapat mengenali `range_break_reclaim`, tetapi tetap menolak kalau struktur, fee, atau spread tidak masuk.
-- Untuk bounce dari intraday support yang reclaim lagi, executor juga mengenali `support_bounce_reclaim`, tetapi tetap menolak kalau edge sudah terlalu stretched, fee tidak masuk, atau spread melebar.
-- Untuk pivot reclaim yang masih sangat awal, executor juga mengenali `pivot_reclaim`, tetapi tetap menolak kalau confirmation lemah, fee tidak masuk, atau momentum terlalu tipis.
 - Order real-money hanya dibuka jika `KIBOT_LIVE_TRADING_ENABLED=true` atau `KIBOT_TRADING_MODE=live`.
-- Council sekarang punya confidence floor adaptif, jadi entry yang terlalu lemah akan masuk `WAIT` bukan dipaksa eksekusi.
-- Hindari double-start service jika node dijalankan via `systemd`.
 - Canonical systemd unit untuk executor Indodax adalah `kibot-executor.service`.
 - Runtime trade state ditulis ke `state/active_trades.json` di root repo.
-- Executable env untuk systemd di-load dari `/home/ubuntu/KiBot/.env` dan `/home/ubuntu/KiBot/.env.kiv` kalau tersedia.
+- Executable env untuk systemd di-load dari `/home/ubuntu/KiBot/.env` dan `/home/ubuntu/KiBot/.env.kiv`. Khusus untuk Web3, `PHANTOM_PRIVATE_KEY` dan `SOLANA_RPC_URL` wajib terisi.

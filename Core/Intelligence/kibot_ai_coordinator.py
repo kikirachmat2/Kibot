@@ -489,8 +489,8 @@ PROMPT_TEMPLATES = {
         "{\"critique\":\"...\",\"hallucination_detected\":true|false,\"hallucination_explanation\":\"...\",\"additional_risks\":[...]}"
     ),
     "POSSIBILITY_MINING": (
-        "You are KiBot's Opportunity Scout (Specialized in Indodax & Polymarket).\n"
-        "Analyze the raw market data to find cross-market arbitrage or event-driven trade possibilities.\n"
+        "You are KiBot's Opportunity Scout (Specialized in Indodax, Polymarket, & DeFi Web3).\n"
+        "Analyze the raw market data to find cross-market arbitrage, event-driven trades, or Web3 DeFi possibilities.\n"
         "Context: {raw_data}\n"
         "Daily state: {daily_state}\n"
         "Indodax context: Focus on IDR premiums and local Indonesian listing rumors.\n"
@@ -501,8 +501,9 @@ PROMPT_TEMPLATES = {
         "If a coin bounces from intraday support with meaningful run-up and strong reclaim behavior, treat it as a support-bounce candidate, but only if the move still has room and the edge is not stretched.\n"
         "If a coin is early in a rebound and shows a fresh pivot reclaim with modest run-up, healthy persistence, and enough room to run, treat it as a pivot-reclaim candidate, but only when the structure is not broken.\n"
         "Polymarket context: Focus on high-volume prediction shifts that correlate with tokens.\n"
+        "DeFi Web3 context: Compare idle capital vs Kamino yields, Drift funding rates, and trending meme coins. If APY > 15%, suggest routing capital to DeFi.\n"
         "Return strict compact JSON only with keys "
-        "{\"possibilities\":[{\"title\":\"...\",\"description\":\"...\",\"probability\":0.0,\"assets\":[...],\"platforms\":[\"INDODAX\",\"POLYMARKET\",\"BINANCE\"],\"urgency\":\"LOW|MED|HIGH\"}]}"
+        "{\"possibilities\":[{\"title\":\"...\",\"description\":\"...\",\"probability\":0.0,\"assets\":[...],\"platforms\":[\"INDODAX\",\"POLYMARKET\",\"BINANCE\",\"PHANTOM_DEFI\"],\"urgency\":\"LOW|MED|HIGH\"}]}"
     ),
     "COUNCIL_SPEAKER": (
         "You are the Speaker of the Sovereign Council.\n"
