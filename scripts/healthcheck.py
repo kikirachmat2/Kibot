@@ -393,9 +393,15 @@ def check_json_states(state_dir):
                             pass
                     
                     consecutive_high_cpu = history.get("consecutive_high_cpu", 0)
-                    if cpu_pct > 95.0:
+                    disable_cpu_hc = os.getenv("KIBOT_DISABLE_CPU_HEALTHCHECK", "false").lower() == "true"
+                    cpu_threshold = float(os.getenv("KIBOT_CPU_HEALTHCHECK_THRESHOLD", "95.0"))
+                    
+                    if disable_cpu_hc:
+                        logger.info("ℹ️ CPU healthcheck is disabled via KIBOT_DISABLE_CPU_HEALTHCHECK env.")
+                        consecutive_high_cpu = 0
+                    elif cpu_pct > cpu_threshold:
                         consecutive_high_cpu += 1
-                        logger.warning(f"⚠️ CPU threshold exceeded: {cpu_pct}% (Consecutive count: {consecutive_high_cpu}/3)")
+                        logger.warning(f"⚠️ CPU threshold exceeded: {cpu_pct}% (Consecutive count: {consecutive_high_cpu}/3, limit: {cpu_threshold}%)")
                     else:
                         consecutive_high_cpu = 0
                     
@@ -407,8 +413,8 @@ def check_json_states(state_dir):
                         pass
                         
                     if consecutive_high_cpu >= 3:
-                        logger.error(f"❌ CRITICAL STATE ERROR: CPU percent is > 95% for 3 consecutive samples/checks ({cpu_pct}%)!")
-                        safe_exit(16, f"CPU percent is > 95% for 3 consecutive samples/checks ({cpu_pct}%)!")
+                        logger.error(f"❌ CRITICAL STATE ERROR: CPU percent is > {cpu_threshold}% for 3 consecutive samples/checks ({cpu_pct}%)!")
+                        safe_exit(16, f"CPU percent is > {cpu_threshold}% for 3 consecutive samples/checks ({cpu_pct}%)!")
             
             if state_file == "leadlag_alpha.json":
                 leadlag_enabled = os.getenv("KIBOT_LEADLAG_ENABLED", "true").lower() == "true"
