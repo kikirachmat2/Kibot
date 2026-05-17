@@ -96,8 +96,12 @@ class PhantomRouter:
         """
         Initiate a cross-chain bridge transaction.
         """
+        if not KiConfig.LIVE_TRADING_ENABLED or not KiConfig.ENABLE_REAL_BRIDGE or not KiConfig.ENABLE_REAL_WITHDRAWAL:
+            logger.warning(f"⚠️ [SIMULATION] Cross-chain bridge simulated (Paper Mode / Real Bridge/Withdrawal OFF): {amount} {token} from {from_chain} to {to_chain}")
+            return True
         logger.info(f"Mock Bridge: {amount} {token} from {from_chain} to {to_chain}")
         return True
+
 
     async def swap_assets(self, token_in: str, token_out: str, amount_in: float, chain: str) -> bool:
         """
@@ -117,9 +121,10 @@ class PhantomRouter:
         except Exception as e:
             logger.warning(f"⚠️ Pre-trade Web3 scouting failed/bypassed: {e}")
 
-        if not KiConfig.LIVE_TRADING_ENABLED:
-            logger.warning(f"⚠️ [SIMULATION] Swap simulated successfully (Paper Mode): {amount_in} of {token_in} -> {token_out} on {chain}")
+        if not KiConfig.LIVE_TRADING_ENABLED or not KiConfig.ENABLE_REAL_SWAP:
+            logger.warning(f"⚠️ [SIMULATION] Swap simulated successfully (Paper Mode / Real Swap OFF): {amount_in} of {token_in} -> {token_out} on {chain}")
             return True
+
 
         if not self.keypair:
             logger.error("❌ Cannot swap: No keypair loaded.")
@@ -182,9 +187,10 @@ class PhantomRouter:
 
     async def execute_polymarket_trade(self, market_id: str, outcome: str, amount_usdc: float) -> bool:
         """ 1. Prediction Markets: Execute trade on Polymarket (Polygon). """
-        if not KiConfig.LIVE_TRADING_ENABLED:
-            logger.warning(f"⚠️ [SIMULATION] Polymarket trade simulated (Paper Mode): {amount_usdc} USDC on {outcome} in {market_id}")
+        if not KiConfig.LIVE_TRADING_ENABLED or not KiConfig.ENABLE_POLYMARKET_LIVE:
+            logger.warning(f"⚠️ [SIMULATION] Polymarket trade simulated (Paper Mode / Polymarket Live OFF): {amount_usdc} USDC on {outcome} in {market_id}")
             return True
+
         try:
             logger.info(f"🔮 Polymarket: Betting {amount_usdc} USDC on {outcome} in {market_id}")
             return True
@@ -218,9 +224,10 @@ class PhantomRouter:
 
     async def snipe_meme_coin(self, token_address: str, amount_sol: float, slippage_bps: int = 1000) -> bool:
         """ 4. Meme Sniping: Fast swap via Jupiter with high slippage (Solana). """
-        if not KiConfig.LIVE_TRADING_ENABLED:
-            logger.warning(f"⚠️ [SIMULATION] Meme snipe simulated successfully (Paper Mode): {token_address} with {amount_sol} SOL")
+        if not KiConfig.LIVE_TRADING_ENABLED or not KiConfig.ENABLE_REAL_SWAP:
+            logger.warning(f"⚠️ [SIMULATION] Meme snipe simulated successfully (Paper Mode / Real Swap OFF): {token_address} with {amount_sol} SOL")
             return True
+
         try:
             logger.info(f"🔫 Sniping: Buying {token_address} with {amount_sol} SOL (Slippage: {slippage_bps} bps).")
             # SOL Mint: So11111111111111111111111111111111111111112
@@ -308,9 +315,10 @@ class PhantomRouter:
 
     async def bridge_debridge(self, amount: float, token: str, from_chain: str, to_chain: str) -> bool:
         """ 8. Cross-Chain Bridging: Move funds via DeBridge/Wormhole. """
-        if not KiConfig.LIVE_TRADING_ENABLED:
-            logger.warning(f"⚠️ [SIMULATION] Bridge simulated (Paper Mode): {amount} {token} from {from_chain} to {to_chain}")
+        if not KiConfig.LIVE_TRADING_ENABLED or not KiConfig.ENABLE_REAL_BRIDGE or not KiConfig.ENABLE_REAL_WITHDRAWAL:
+            logger.warning(f"⚠️ [SIMULATION] Bridge simulated (Paper Mode / Real Bridge/Withdrawal OFF): {amount} {token} from {from_chain} to {to_chain}")
             return True
+
         try:
             logger.info(f"🌉 Bridge: Moving {amount} {token} from {from_chain} to {to_chain}.")
             return True

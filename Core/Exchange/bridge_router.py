@@ -125,10 +125,9 @@ class BridgeRouter:
         logger.info(f"🌉 FEE GUARD PASSED: Proceeding to bridge via {coin.upper()}.")
         
         # 2. Determine if real live trading is allowed
-        # Enforce simulation mode unless KIBOT_ENABLE_REAL_BRIDGE and KIBOT_ENABLE_REAL_WITHDRAWAL are true.
-        enable_real_bridge = os.getenv("KIBOT_ENABLE_REAL_BRIDGE", "false").strip().lower() == "true"
-        enable_real_withdrawal = os.getenv("KIBOT_ENABLE_REAL_WITHDRAWAL", "false").strip().lower() == "true"
-        is_live = KiConfig.LIVE_TRADING_ENABLED and enable_real_bridge and enable_real_withdrawal
+        # Enforce simulation mode unless KiConfig.ENABLE_REAL_BRIDGE and KiConfig.ENABLE_REAL_WITHDRAWAL are true.
+        is_live = KiConfig.LIVE_TRADING_ENABLED and KiConfig.ENABLE_REAL_BRIDGE and KiConfig.ENABLE_REAL_WITHDRAWAL
+
 
         amount_coin = (amount_idr / price_idr) * 0.998 # Approximate amount after 0.2% trading fee
         

@@ -14,6 +14,7 @@ import os
 import sys
 import logging
 from pathlib import Path
+import tempfile
 
 # Ensure project root is in the path
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
@@ -27,6 +28,26 @@ logging.basicConfig(
 )
 logger = logging.getLogger("Healthcheck")
 
+def trigger_rollback(reason: str):
+    logger.warning(f"🚨 HEALTHCHECK FAILED: {reason}. Triggering automated rollback...")
+    import subprocess
+    rollback_script = PROJECT_ROOT / "scripts" / "rollback.py"
+    if rollback_script.exists():
+        try:
+            res = subprocess.run([sys.executable, str(rollback_script), reason], capture_output=True, text=True)
+            logger.info(f"🔄 Rollback execution output:\n{res.stdout}")
+            if res.stderr:
+                logger.error(f"⚠️ Rollback stderr:\n{res.stderr}")
+        except Exception as e:
+            logger.error(f"❌ Failed to run rollback script: {e}")
+    else:
+        logger.error(f"❌ Rollback script not found at {rollback_script}")
+
+def safe_exit(code: int, reason: str = ""):
+    if code != 0:
+        trigger_rollback(reason or "Unknown Healthcheck Failure")
+    sys.exit(code)
+
 def check_imports():
     logger.info("Step 1/8: Checking core system imports...")
     try:
@@ -37,7 +58,7 @@ def check_imports():
         return KiConfig, STATE_DIR
     except Exception as exc:
         logger.error(f"❌ Core imports failed: {exc}")
-        sys.exit(1)
+        safe_exit(1, f"Core imports failed: {exc}")
 
 def check_drawdown_bounds(KiConfig):
     logger.info("Step 2/8: Verifying daily drawdown bounds...")
@@ -46,7 +67,7 @@ def check_drawdown_bounds(KiConfig):
         logger.info(f"KiConfig.MAX_DAILY_LOSS_PERCENT resolves to: {KiConfig.MAX_DAILY_LOSS_PERCENT}%")
         if KiConfig.MAX_DAILY_LOSS_PERCENT != 1.5:
             logger.error("❌ CRITICAL: KiConfig.MAX_DAILY_LOSS_PERCENT must be exactly 1.5%!")
-            sys.exit(2)
+            safe_exit(2, "KiConfig.MAX_DAILY_LOSS_PERCENT must be exactly 1.5%!")
             
         from Core.risk_gate import RiskGate
         gate = RiskGate({"max_daily_loss_pct": 5.0})
@@ -54,12 +75,12 @@ def check_drawdown_bounds(KiConfig):
         logger.info(f"Dynamic override test: Asked for 5.0%, RiskGate capped at: {actual_cap}%")
         if actual_cap != 1.5:
             logger.error("❌ CRITICAL: RiskGate cap override bypass detected!")
-            sys.exit(3)
+            safe_exit(3, "RiskGate cap override bypass detected!")
             
         logger.info("✅ Drawdown bounds are secure and verified.")
     except Exception as exc:
         logger.error(f"❌ Drawdown checks failed: {exc}")
-        sys.exit(4)
+        safe_exit(4, f"Drawdown checks failed: {exc}")
 
 def check_directory_permissions(state_dir):
     logger.info("Step 3/8: Verifying persistent directory write permissions...")
@@ -88,7 +109,7 @@ def check_directory_permissions(state_dir):
             logger.info(f"✅ {name} ({path}) has healthy read/write/delete permissions.")
         except Exception as exc:
             logger.error(f"❌ Permission check failed on {name} ({path}): {exc}")
-            sys.exit(5)
+            safe_exit(5, f"Permission check failed on {name} ({path}): {exc}")
 
 def audit_log_redaction():
     logger.info("Step 4/8: Auditing log redaction and secret privacy...")
@@ -120,7 +141,7 @@ def audit_log_redaction():
         for sec in secrets_to_check:
             if sec and len(sec) > 6 and sec in log_output:
                 logger.error("❌ CRITICAL: Raw credentials leaked in logs!")
-                sys.exit(6)
+                safe_exit(6, "Raw credentials leaked in logs!")
                 
         logger.info("✅ Log redaction/leak checks passed.")
     finally:
@@ -135,7 +156,7 @@ def check_live_trading_gates(KiConfig):
     
     if not live_trading_env and KiConfig.LIVE_TRADING_ENABLED:
         logger.error("❌ CRITICAL: Live trading enabled in code but disabled in environment!")
-        sys.exit(7)
+        safe_exit(7, "Live trading enabled in code but disabled in environment!")
         
     logger.info("✅ Live trading gates are fully aligned.")
 
@@ -145,7 +166,7 @@ def check_network_bindings():
         import psutil
     except ImportError:
         logger.error("❌ CRITICAL: psutil dependency is missing! This is required for HFT execution and network checks.")
-        sys.exit(9)
+        safe_exit(9, "psutil dependency is missing!")
 
     forbidden_wildcards = {"0.0.0.0", "::", "", "*"}
     target_ports = {
@@ -193,12 +214,31 @@ def check_network_bindings():
         if exposed_services:
             for exp in exposed_services:
                 logger.error(f"❌ SECURITY EXPOSURE: {exp}")
-            sys.exit(8)
+            safe_exit(8, f"Exposed services: {exposed_services}")
 
         logger.info("✅ All core services are securely bound (zero-trust verified).")
     except Exception as exc:
         logger.error(f"❌ CRITICAL: Could not audit network bindings: {exc}")
-        sys.exit(8)
+        safe_exit(8, f"Could not audit network bindings: {exc}")
+
+def is_any_core_service_active():
+    if sys.platform.startswith("linux"):
+        import subprocess
+        core_services = ["kibot-scanner", "kibot-master", "kibot-executor", "kibot-dashboard"]
+        for svc in core_services:
+            try:
+                res = subprocess.run(["systemctl", "is-active", svc], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+                if res.stdout.strip() == "active":
+                    return True
+            except Exception:
+                pass
+    return False
+
+def get_history_path():
+    env_path = os.getenv("KIBOT_HEALTHCHECK_HISTORY_PATH")
+    if env_path:
+        return Path(env_path)
+    return Path(tempfile.gettempdir()) / ".kibot_healthcheck_history.json"
 
 def check_json_states(state_dir):
     logger.info("Step 7/8: Auditing state JSON freshness and validity...")
@@ -218,11 +258,20 @@ def check_json_states(state_dir):
         sys.platform == "darwin"
     )
     
+    if is_any_core_service_active():
+        logger.warning("⚠️ Core systemd services are active. Disabling state bootstrapping to prevent false-green healthcheck.")
+        is_bootstrap_allowed = False
+
+    # Strictly block state bootstrapping in production environment
+    if os.getenv("KIBOT_ENV", "prod").lower() in ("prod", "production"):
+        logger.warning("⚠️ Running in production environment. Strictly disabling state bootstrapping!")
+        is_bootstrap_allowed = False
+    
     max_ages = {
         "scanner_runtime.json": 90.0,
-        "leadlag_alpha.json": 180.0,
+        "leadlag_alpha.json": 90.0,
         "phantom_scout.json": 300.0,
-        "market_rotation.json": 300.0
+        "market_rotation.json": 90.0
     }
     
     for state_file in required_states:
@@ -232,7 +281,7 @@ def check_json_states(state_dir):
             if not phantom_enabled:
                 logger.info("Skipping phantom_scout.json check because KIBOT_PHANTOM_SCOUT_ENABLED is false.")
                 continue
-
+ 
         file_path = Path(state_dir) / state_file
         logger.info(f"Auditing state file: {file_path}")
         
@@ -256,11 +305,11 @@ def check_json_states(state_dir):
                     logger.info(f"✅ Bootstrapped default secure state for {state_file}")
                 except Exception as e:
                     logger.error(f"❌ Failed to bootstrap state file {state_file}: {e}")
-                    sys.exit(10)
+                    safe_exit(10, f"Failed to bootstrap state file {state_file}: {e}")
             else:
                 logger.error(f"❌ CRITICAL STATE ERROR: Required state file {state_file} is missing, and bootstrapping is disabled!")
-                sys.exit(10)
-
+                safe_exit(10, f"Required state file {state_file} is missing, and bootstrapping is disabled!")
+ 
         try:
             with open(file_path, "r") as f:
                 data = json.load(f)
@@ -273,14 +322,14 @@ def check_json_states(state_dir):
             limit = max_ages.get(state_file, 3600.0)
             if age_s > limit:
                 logger.error(f"❌ CRITICAL STATE ERROR: {state_file} is stale! Last modified {age_s:.1f}s ago (limit: {limit}s).")
-                sys.exit(11)
+                safe_exit(11, f"{state_file} is stale! Last modified {age_s:.1f}s ago (limit: {limit}s).")
                 
             # Extra semantic validations
             if state_file == "scanner_runtime.json":
                 mode = data.get("mode")
                 if mode not in {"FAST", "NORMAL", "SLOW"}:
                     logger.error(f"❌ CRITICAL STATE ERROR: Invalid mode in scanner_runtime.json: '{mode}' (must be FAST, NORMAL, or SLOW).")
-                    sys.exit(15)
+                    safe_exit(15, f"Invalid mode in scanner_runtime.json: '{mode}' (must be FAST, NORMAL, or SLOW).")
                 
                 # Check CPU Throttling > 95% consecutively
                 cpu_pct = None
@@ -292,7 +341,7 @@ def check_json_states(state_dir):
                 if cpu_pct is not None:
                     cpu_pct = float(cpu_pct)
                     logger.info(f"Current CPU Percent from scanner runtime: {cpu_pct}%")
-                    history_path = Path(state_dir) / ".healthcheck_history.json"
+                    history_path = get_history_path()
                     history = {}
                     if history_path.exists():
                         try:
@@ -317,13 +366,13 @@ def check_json_states(state_dir):
                         
                     if consecutive_high_cpu >= 3:
                         logger.error(f"❌ CRITICAL STATE ERROR: CPU percent is > 95% for 3 consecutive samples/checks ({cpu_pct}%)!")
-                        sys.exit(16)
+                        safe_exit(16, f"CPU percent is > 95% for 3 consecutive samples/checks ({cpu_pct}%)!")
             
             if state_file == "leadlag_alpha.json":
                 leadlag_enabled = os.getenv("KIBOT_LEADLAG_ENABLED", "true").lower() == "true"
                 if leadlag_enabled:
                     opportunities = data.get("opportunities", data.get("qualified_signals", []))
-                    history_path = Path(state_dir) / ".healthcheck_history.json"
+                    history_path = get_history_path()
                     history = {}
                     if history_path.exists():
                         try:
@@ -348,18 +397,19 @@ def check_json_states(state_dir):
                         
                     if consecutive_empty_leadlag >= 3:
                         logger.error("❌ CRITICAL STATE ERROR: Lead-Lag alpha engine is enabled, but opportunities array is consecutively empty for 3 checks!")
-                        sys.exit(17)
-
+                        safe_exit(17, "Lead-Lag alpha engine is enabled, but opportunities array is consecutively empty for 3 checks!")
+ 
         except json.JSONDecodeError as jde:
             logger.error(f"❌ CRITICAL STATE ERROR: {state_file} has invalid JSON syntax: {jde}")
-            sys.exit(12)
+            safe_exit(12, f"{state_file} has invalid JSON syntax: {jde}")
         except SystemExit:
             raise
         except Exception as exc:
             logger.error(f"❌ CRITICAL STATE ERROR: Failed during audit of {state_file}: {exc}")
-            sys.exit(13)
+            safe_exit(13, f"Failed during audit of {state_file}: {exc}")
             
     logger.info("✅ All state files are present, valid JSON, and fresh.")
+
 
 def check_scanner_service():
     logger.info("Step 8/8: Verifying systemd kibot-scanner service active status...")
@@ -370,7 +420,7 @@ def check_scanner_service():
             status = res.stdout.strip()
             if status != "active":
                 logger.error(f"❌ CRITICAL: systemd service kibot-scanner is inactive (status: {status})")
-                sys.exit(14)
+                safe_exit(14, f"systemd service kibot-scanner is inactive (status: {status})")
             logger.info("✅ systemd service kibot-scanner is active.")
         except Exception as e:
             logger.warning(f"⚠️ Could not check systemd service kibot-scanner via systemctl: {e}")
@@ -394,7 +444,7 @@ def main():
     logger.info("==================================================")
     logger.info("🎉 HEALTHCHECK PASSED SUCCESSFULLY! ALL SYSTEMS GREEN.")
     logger.info("==================================================")
-    sys.exit(0)
+    safe_exit(0)
 
 if __name__ == "__main__":
     main()

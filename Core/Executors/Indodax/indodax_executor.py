@@ -92,6 +92,29 @@ class IndodaxExecutor:
         except Exception as e:
             logger.error(f"Failed to save active trades: {e}")
 
+    def _load_canary_stats(self) -> dict:
+        stats_file = Path(ROOT_DIR) / "state" / "canary_daily_stats.json"
+        today = datetime.now().strftime("%Y-%m-%d")
+        if stats_file.exists():
+            try:
+                with open(stats_file, "r") as f:
+                    data = json.load(f)
+                    if data.get("date") == today:
+                        return data
+            except Exception as e:
+                logger.error(f"Failed to load canary stats: {e}")
+        return {"date": today, "trade_count": 0, "daily_loss_idr": 0.0}
+
+    def _save_canary_stats(self, stats: dict):
+        stats_file = Path(ROOT_DIR) / "state" / "canary_daily_stats.json"
+        stats_file.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            with open(stats_file, "w") as f:
+                json.dump(stats, f, indent=4)
+        except Exception as e:
+            logger.error(f"Failed to save canary stats: {e}")
+
+
     async def start(self):
         print(f"🚀 {self.__class__.__name__} Starting...")
         logger.info(f"🚦 Live trading enabled: {KiConfig.LIVE_TRADING_ENABLED}")
@@ -369,8 +392,15 @@ class IndodaxExecutor:
 
         if live_amount <= 1e-8:
             if pending_amount > 0 and exit_price > 0 and entry_price > 0:
-                self.risk.update_pnl((exit_price - entry_price) * pending_amount)
+                pnl_val = (exit_price - entry_price) * pending_amount
+                self.risk.update_pnl(pnl_val)
+                if KiConfig.CANARY_LIVE_ENABLED and pnl_val < 0:
+                    stats = self._load_canary_stats()
+                    stats["daily_loss_idr"] += abs(pnl_val)
+                    self._save_canary_stats(stats)
+                    logger.info(f"📉 CANARY STATS: Daily loss updated to Rp{stats['daily_loss_idr']:,.0f}")
             logger.info(f"✅ EXIT FILLED: {symbol} pending order {order_id} settled; state cleared.")
+
             self.active_trades.pop(symbol, None)
             self._save_active_trades()
             self.report_to_batam(symbol, "EXIT_FILLED", f"Pending exit filled @ {exit_price}")
@@ -379,11 +409,18 @@ class IndodaxExecutor:
         state_amount = float(data.get("amount") or live_amount)
         if pending_amount > 0 and live_amount < state_amount and exit_price > 0 and entry_price > 0:
             filled_amount = max(0.0, state_amount - live_amount)
-            self.risk.update_pnl((exit_price - entry_price) * filled_amount)
+            pnl_val = (exit_price - entry_price) * filled_amount
+            self.risk.update_pnl(pnl_val)
+            if KiConfig.CANARY_LIVE_ENABLED and pnl_val < 0:
+                stats = self._load_canary_stats()
+                stats["daily_loss_idr"] += abs(pnl_val)
+                self._save_canary_stats(stats)
+                logger.info(f"📉 CANARY STATS: Daily loss updated to Rp{stats['daily_loss_idr']:,.0f}")
             logger.info(
                 f"✅ PARTIAL EXIT FILLED: {symbol} pending order {order_id} settled; "
                 f"remaining={live_amount:.8f}"
             )
+
             remaining_cost = max(
                 0.0,
                 float(data.get("cost", 0.0) or 0.0) * (live_amount / max(state_amount, 1e-9)),
@@ -620,6 +657,12 @@ class IndodaxExecutor:
             exit_amount = filled_amount if filled_amount > 0 else amount
             pnl_amount = (price - float(trade.get("price", 0) or 0)) * exit_amount
             self.risk.update_pnl(pnl_amount)
+            if KiConfig.CANARY_LIVE_ENABLED and pnl_amount < 0:
+                stats = self._load_canary_stats()
+                stats["daily_loss_idr"] += abs(pnl_amount)
+                self._save_canary_stats(stats)
+                logger.info(f"📉 CANARY STATS: Daily loss updated to Rp{stats['daily_loss_idr']:,.0f}")
+
 
             # ── §16.2 Order lifecycle reconcile ──
             if _ORDER_TRACKER_AVAILABLE:
@@ -665,14 +708,68 @@ class IndodaxExecutor:
         urgency = check_urgency()
         if urgency.get("flag") == "EMERGENCY_PAUSE": return
 
-        if signal.get("type") != "COUNCIL_MANDATE" and os.getenv("KIBOT_EXECUTOR_ACCEPT_RAW_SIGNALS", "0").strip().lower() not in {"1", "true", "yes", "on"}:
-            logger.debug(f"🛡️ Raw scanner signal ignored; waiting for Council mandate: {signal.get('symbol', 'UNKNOWN')}")
-            return
+        # Check KILL SWITCH
+        kill_switch_path = Path(ROOT_DIR) / "state" / "KILL_SWITCH"
+        if kill_switch_path.exists():
+            if signal.get("side", "BUY").upper() == "BUY":
+                logger.error("🛑 KILL SWITCH ENGAGED! Blocking all new live buy entries.")
+                return
 
-        if not KiConfig.LIVE_TRADING_ENABLED:
+        # Check Canary Mode constraints
+        is_live = KiConfig.LIVE_TRADING_ENABLED or KiConfig.CANARY_LIVE_ENABLED
+        if not is_live:
             symbol = signal.get("symbol", "UNKNOWN")
             logger.warning(f"🧪 PAPER MODE: live trading disabled; skipping live entry for {symbol}.")
             return
+
+        symbol = signal.get("symbol", "UNKNOWN")
+        side = signal.get("side", "BUY").upper()
+
+        if KiConfig.CANARY_LIVE_ENABLED and side == "BUY":
+            # 1. Exchange check
+            if KiConfig.CANARY_EXCHANGE != "INDODAX":
+                logger.warning(f"🛡️ CANARY CONSTRAINT: Exchange {KiConfig.CANARY_EXCHANGE} is not INDODAX. Blocking live entry.")
+                return
+
+            # 2. Council mandate verification
+            if KiConfig.CANARY_REQUIRE_COUNCIL_APPROVAL and signal.get("type") != "COUNCIL_MANDATE":
+                logger.warning(f"🛡️ CANARY CONSTRAINT REJECTED: Signal type '{signal.get('type')}' is not COUNCIL_MANDATE for {symbol}")
+                return
+
+            # 3. EV check (expected_net_pct > 0)
+            strategy = load_strategy()
+            indo_strat = strategy.get("indodax", {})
+            fee_roundtrip_pct = float(indo_strat.get("fee_roundtrip_pct", 1.02))
+            tp_pct = float(indo_strat.get("take_profit_pct", 1.5))
+            expected_net_pct = tp_pct - fee_roundtrip_pct
+            if KiConfig.CANARY_REQUIRE_POSITIVE_EV and expected_net_pct <= 0:
+                logger.warning(f"🛡️ CANARY CONSTRAINT REJECTED: Expected net percent {expected_net_pct}% is not positive for {symbol}")
+                return
+
+            # 4. Single position limit check (active + reservations)
+            max_open = KiConfig.CANARY_MAX_OPEN_POSITIONS
+            current_active = len(self.active_trades) + len(self.reservations)
+            if current_active >= max_open:
+                logger.warning(f"🛡️ CANARY CONSTRAINT REJECTED: Single position limit reached ({current_active} active/reserved, max {max_open}).")
+                return
+
+            # 5. Daily trade limits and daily loss limits
+            stats = self._load_canary_stats()
+            max_daily_trades = KiConfig.CANARY_MAX_DAILY_TRADES
+            if stats["trade_count"] >= max_daily_trades:
+                logger.warning(f"🛡️ CANARY CONSTRAINT REJECTED: Daily trade limit reached ({stats['trade_count']}/{max_daily_trades}).")
+                return
+
+            max_daily_loss = KiConfig.CANARY_MAX_DAILY_LOSS_IDR
+            if stats["daily_loss_idr"] >= max_daily_loss:
+                logger.warning(f"🛡️ CANARY CONSTRAINT REJECTED: Daily loss limit exceeded (Rp{stats['daily_loss_idr']:,.0f} >= Rp{max_daily_loss:,.0f}).")
+                return
+
+        # Regular raw signal check when not under strict canary override or if RAW signals are allowed
+        if not KiConfig.CANARY_LIVE_ENABLED and signal.get("type") != "COUNCIL_MANDATE" and os.getenv("KIBOT_EXECUTOR_ACCEPT_RAW_SIGNALS", "0").strip().lower() not in {"1", "true", "yes", "on"}:
+            logger.debug(f"🛡️ Raw scanner signal ignored; waiting for Council mandate: {symbol}")
+            return
+
 
         strategy = load_strategy()
         indo_strat = strategy.get("indodax", {})
@@ -727,10 +824,7 @@ class IndodaxExecutor:
             signal["total_equity_idr"] = total_equity_idr
             if side.lower() == "buy" and price >= total_equity_idr:
                 logger.warning(
-                    "🛡️ REJECTED (Unit Price Rule): %s 1 coin Rp%,.0f >= total balance/equity Rp%,.0f",
-                    symbol,
-                    price,
-                    total_equity_idr,
+                    f"🛡️ REJECTED (Unit Price Rule): {symbol} 1 coin Rp{price:,.0f} >= total balance/equity Rp{total_equity_idr:,.0f}"
                 )
                 return
             
@@ -755,12 +849,14 @@ class IndodaxExecutor:
                     f"(cap Rp{probe_cap:,.0f}) for {symbol}"
                 )
 
-            # --> [CAPITAL COMMANDER ENFORCEMENT]
-            # if not request_capital_commander_allocation("INDODAX_SPOT", budget, current_regime):
-            #     logger.warning(f"🛡️ REJECTED (Capital Commander): Treasury limit reached for INDODAX_SPOT")
-            #     return
+            if KiConfig.CANARY_LIVE_ENABLED and side.upper() == "BUY":
+                max_budget = KiConfig.CANARY_MAX_TRADE_IDR
+                if budget > max_budget:
+                    logger.info(f"🛡️ CANARY CONSTRAINT: Clamping budget from Rp{budget:,.0f} to Rp{max_budget:,.0f}")
+                    budget = max_budget
 
             signal["budget_idr"] = budget
+
 
             fee_roundtrip_pct = float(indo_strat.get("fee_roundtrip_pct", 1.02))
             tp_pct = float(indo_strat.get("take_profit_pct", 1.5))
@@ -860,7 +956,8 @@ class IndodaxExecutor:
                     logger.warning(f"🛡️ REJECTED (Microstructure Yield): Net expected yield {net_yield:.3f}% is negative.")
                     return
             except Exception as micro_err:
-                logger.warning(f"⚠️ Microstructure verification bypassed/failed: {micro_err}")
+                logger.error(f"🛡️ REJECTED (Microstructure Exception): Fail-Closed triggered. Error: {micro_err}")
+                return
 
             # 3. Minimum Spread Check (V3.2 Slippage Protection)
             try:
@@ -980,6 +1077,13 @@ class IndodaxExecutor:
                     filled_rp = filled_coin * actual_price
                 
                 logger.info(f"✅ SUCCESS: {symbol} (Filled: Rp{filled_rp}, Coin: {filled_coin})")
+
+                if KiConfig.CANARY_LIVE_ENABLED:
+                    stats = self._load_canary_stats()
+                    stats["trade_count"] += 1
+                    self._save_canary_stats(stats)
+                    logger.info(f"📈 CANARY STATS: Incrementing daily trade count to {stats['trade_count']}")
+
 
                 # ── §16.2 Register with OrderTracker ──
                 sovereign_order_id = None
