@@ -11,33 +11,33 @@
 | Metric Parameter | Value | Operational Status |
 | :--- | :--- | :--- |
 | **Current Engine Mode** | `PAPER_AUTONOMY_VERIFIED` | 🟢 HEALTHY |
-| **Total Signals Processed** | `43` opportunity candidates | 🟢 ACTIVE |
+| **Total Signals Processed** | `54` opportunity candidates | 🟢 ACTIVE |
 | **Approved Paper Orders** | `0` simulation orders | 🟢 EXECUTED |
-| **Rejected Signals (Wait)** | `43` vetoed / blocked | 🟢 SAFE |
+| **Rejected Signals (Wait)** | `54` vetoed / blocked | 🟢 SAFE |
 | **Average Expected Value (EV)** | `-0.400%` net opportunity | 🟢 COMPLIANT |
 | **Opportunity EV Boundary** | Min: `-0.400%` / Max: `-0.400%` | 🟢 BOUNDED |
 | **Avg Strategy Scorecard Score**| `0.271` (Scale: 0.0 - 1.0) | 🟢 HIGH-QUALITY |
 | **Mock/Simulated Daily PnL** | `Rp 0` | 🟢 FLAT/PROFITABLE |
 | **Real-Money PnL** | `Rp 0` (No live money deployed) | 🟢 LOCKED |
-| **Sovereign Mesh Connectivity** | **MasterNode**: `ONLINE` \| **Redis Cache**: `ONLINE` | 🟢 VERIFIED |
+| **Sovereign Mesh Connectivity** | **MasterNode**: `ONLINE` / **Redis Cache**: `ONLINE` | 🟢 VERIFIED |
 
 ---
 
 ## 🧠 Intelligence Gate Analysis
 
 ### 1. Signal Quality Grade Distribution
-*   **Active Grades:** **REJECT**: 13
+*   **Active Grades:** **REJECT**: 24
 *   *Interpretation:* Sovereign Council filters out raw signal noise via microstructure and leadlag checks. Grade `REJECT` signals were immediately blocked before getting to decision phase.
 
 ### 2. Strategy Scorecard Metrics
 *   **Average Scorecard Composite:** `0.2710`
 *   **Average Raw Signal Score:** `0.0000`
-*   **Deciding AI LLM Models:** *mistral-large-latest*: 5, *unknown*: 38
+*   **Deciding AI LLM Models:** *mistral-large-latest*: 5, *unknown*: 49
 
 ### 3. Primary Signal Rejection Reasons (Top 3)
-- **13x**: `EV -0.400% below threshold 0.300%`
-- **13x**: `R:R 0.43 below minimum 1.50`
-- **13x**: `Kelly 0.0000 below floor 0.0100 — not worth entering`
+- **24x**: `EV -0.400% below threshold 0.300%`
+- **24x**: `R:R 0.43 below minimum 1.50`
+- **24x**: `Kelly 0.0000 below floor 0.0100 — not worth entering`
 
 
 ---
@@ -47,7 +47,7 @@
 *   **Batam MasterNode Host CPU Usage:** `69.2%` (Locked via `CPUQuota=60%` sandbox)
 *   **Batam MasterNode Memory Usage:** `65.6%` (Under 3.5GB systemd strict limit)
 *   **Sovereign Autonomy Daemon Uptime:** `100.0%` (Zero crashes, zero restarts detected)
-*   **System Action Recoveries:** `43` anomalies handled autonomously by system supervisor.
+*   **System Action Recoveries:** `54` anomalies handled autonomously by system supervisor.
 
 ---
 

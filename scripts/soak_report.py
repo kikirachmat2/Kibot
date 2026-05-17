@@ -280,7 +280,7 @@ def write_markdown_report(report: Dict[str, Any]):
 | **Avg Strategy Scorecard Score**| `{report["avg_composite"]:.3f}` (Scale: 0.0 - 1.0) | 🟢 HIGH-QUALITY |
 | **Mock/Simulated Daily PnL** | `{format_idr(report["daily_pnl_mock"])}` | 🟢 FLAT/PROFITABLE |
 | **Real-Money PnL** | `Rp 0` (No live money deployed) | 🟢 LOCKED |
-| **Sovereign Mesh Connectivity** | **MasterNode**: `ONLINE` \| **Redis Cache**: `ONLINE` | 🟢 VERIFIED |
+| **Sovereign Mesh Connectivity** | **MasterNode**: `ONLINE` / **Redis Cache**: `ONLINE` | 🟢 VERIFIED |
 
 ---
 
@@ -374,6 +374,13 @@ KIBOT_CANARY_AUTO_ROLLBACK=true
     
     report_file.write_text(content, encoding="utf-8")
     print(f"{C_GREEN}✅ Soak report successfully compiled and written to: {C_BOLD}{report_file}{C_RESET}")
+    
+    soak_json = STATE_DIR / "soak_report.json"
+    try:
+        soak_json.write_text(json.dumps(report, indent=2), encoding="utf-8")
+        print(f"{C_GREEN}✅ Soak report JSON successfully written to: {C_BOLD}{soak_json}{C_RESET}")
+    except Exception as e:
+        print(f"{C_RED}⚠️ Error writing soak_report.json: {e}{C_RESET}")
 
 def print_rich_terminal_dashboard(report: Dict[str, Any]):
     # Rich Terminal Output

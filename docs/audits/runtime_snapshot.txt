@@ -1,0 +1,87 @@
+==============================================================================
+         KIBOT SOVEREIGN RUNTIME TELEMETRY DIAGNOSTIC SNAPSHOT
+==============================================================================
+Timestamp: 2026-05-17T21:42:05Z (UTC)
+Host: Fikris-MacBook-Pro.local
+Platform: Darwin 24.6.0 x86_64
+Workspace: /Users/kiki/Documents/Web Develop/KiBot
+==============================================================================
+
+------------------------------------------------------------------------------
+1. SYSTEM RESOURCE METRICS
+------------------------------------------------------------------------------
+Uptime & Load Average:
+ 4:42  up 14:07, 1 user, load averages: 5.03 5.83 6.37
+
+Memory Page Allocation (macOS):
+Mach Virtual Memory Statistics: (page size of 4096 bytes)
+Pages free:                               22546.
+Pages active:                           1422552.
+Pages inactive:                         1410217.
+Pages speculative:                        11687.
+Pages throttled:                              0.
+Pages wired down:                        784025.
+Pages purgeable:                          61105.
+"Translation faults":                1982189055.
+Pages copy-on-write:                   42621277.
+
+Disk Partition Health (/):
+Filesystem        Size    Used   Avail Capacity iused ifree %iused  Mounted on
+/dev/disk1s4s1   466Gi    17Gi   323Gi     5%    427k  3.4G    0%   /
+
+------------------------------------------------------------------------------
+2. STATE FILES INTEGRITY CHECK
+------------------------------------------------------------------------------
+State File Name                  | Status     | Size (Bytes) | Last Modified (UTC)
+-------------------------------- | ---------- | ------------ | -------------------
+scanner_runtime.json             | PRESENT    | 202          | 2026-05-18 01:52:42
+leadlag_alpha.json               | PRESENT    | 2647         | 2026-05-18 01:52:42
+market_rotation.json             | PRESENT    | 2044         | 2026-05-18 01:52:42
+signal_quality.json              | PRESENT    | 484          | 2026-05-18 04:40:53
+expected_value.json              | PRESENT    | 428          | 2026-05-18 04:40:53
+strategy_scorecard.json          | PRESENT    | 419          | 2026-05-18 04:40:53
+punishment_state.json            | PRESENT    | 123          | 2026-05-18 01:48:04
+autonomous_director.json         | PRESENT    | 2492         | 2026-05-18 04:40:53
+canary_daily_stats.json          | PRESENT    | 77           | 2026-05-18 04:41:06
+telemetry_snapshot.json          | PRESENT    | 1568         | 2026-05-12 15:21:01
+active_trades.json               | PRESENT    | 589          | 2026-05-17 23:42:56
+
+------------------------------------------------------------------------------
+3. RUNTIME ACTIVE SERVICES STATE
+------------------------------------------------------------------------------
+No systemd detected. Local Process Analysis:
+  Process Match             | PID      | Command Snippet
+  ------------------------- | -------- | ---------------
+  kibot_dashboard           | 53727    | /usr/local/Cellar/python@3.14/3.14.4/Frameworks/Py...
+  kibot_master              | INACTIVE | None
+  redis-server              | INACTIVE | None
+  ollama                    | INACTIVE | None
+
+------------------------------------------------------------------------------
+4. RECENT TELEHEALTH LOG ERROR DIGEST (Last 25 lines)
+------------------------------------------------------------------------------
+2026-05-12 15:21:11,985 [INFO] KiBotMaster: [LEARNING] [LEARNING] Patrol completed at 2026-05-12 13:40:30.719145
+2026-05-12 15:21:11,985 [INFO] KiBotMaster: [LEARNING] [LEARNING] Patrol completed at 2026-05-12 13:45:30.775583
+2026-05-12 15:21:11,985 [INFO] KiBotMaster: [LEARNING] [LEARNING] Patrol completed at 2026-05-12 13:50:30.760004
+2026-05-12 15:21:11,985 [INFO] KiBotMaster: [LEARNING] [LEARNING] Patrol completed at 2026-05-12 13:55:30.808406
+2026-05-12 15:21:11,985 [INFO] KiBotMaster: [LEARNING] [LEARNING] Patrol completed at 2026-05-12 14:00:30.847983
+2026-05-12 15:21:11,985 [INFO] KiBotMaster: [LEARNING] [LEARNING] Patrol completed at 2026-05-12 14:05:30.837769
+2026-05-12 15:21:11,985 [INFO] KiBotMaster: [LEARNING] [LEARNING] Patrol completed at 2026-05-12 14:10:30.891036
+2026-05-12 15:21:11,986 [INFO] KiBotMaster: [LEARNING] [LEARNING] Patrol completed at 2026-05-12 14:15:30.940875
+2026-05-12 15:21:11,986 [INFO] KiBotMaster: [LEARNING] [LEARNING] Patrol completed at 2026-05-12 14:20:31.003899
+2026-05-12 15:21:11,986 [INFO] KiBotMaster: [LEARNING] [LEARNING] Patrol completed at 2026-05-12 14:25:31.065962
+2026-05-12 15:21:11,986 [INFO] KiBotMaster: [LEARNING] [LEARNING] Patrol completed at 2026-05-12 14:30:31.027386
+2026-05-12 15:21:11,986 [INFO] KiBotMaster: [LEARNING] [LEARNING] Patrol completed at 2026-05-12 14:35:31.099072
+2026-05-12 15:21:11,987 [INFO] KiBotMaster: [LEARNING] [LEARNING] Patrol completed at 2026-05-12 14:40:31.140601
+2026-05-12 15:21:11,987 [INFO] KiBotMaster: [LEARNING] [LEARNING] Patrol completed at 2026-05-12 14:45:31.173638
+2026-05-12 15:21:11,987 [INFO] KiBotMaster: [LEARNING] [LEARNING] Patrol completed at 2026-05-12 14:50:31.230240
+2026-05-12 15:21:11,987 [INFO] KiBotMaster: [LEARNING] [LEARNING] Patrol completed at 2026-05-12 14:55:31.280577
+2026-05-12 15:21:11,987 [INFO] KiBotMaster: [LEARNING] [LEARNING] Patrol completed at 2026-05-12 15:00:31.325524
+2026-05-12 15:21:11,988 [INFO] KiBotMaster: [LEARNING] [LEARNING] Patrol completed at 2026-05-12 15:05:31.238704
+2026-05-12 15:21:11,988 [INFO] KiBotMaster: [LEARNING] [LEARNING] Patrol completed at 2026-05-12 15:10:31.279842
+2026-05-12 15:21:11,988 [INFO] KiBotMaster: [LEARNING] [LEARNING] Patrol completed at 2026-05-12 15:15:31.317299
+2026-05-12 15:21:11,988 [INFO] KiBotMaster: [LEARNING] [LEARNING] Patrol completed at 2026-05-12 15:20:31.370983
+2026-05-12 15:21:11,989 [INFO] KiBotMaster: [LEARNING] 👋 Learning Engine shutting down gracefully...
+2026-05-12 15:21:11,990 [INFO] KiBotMaster: [LEARNING] 👋 Learning Engine shutting down gracefully...
+2026-05-12 15:21:12,512 [INFO] KiBotMaster: Sovereign Node offline.
+2026-05-17 19:22:28,729 [INFO] KiBrain: [KiBrain] AI Search Service initialized successfully.

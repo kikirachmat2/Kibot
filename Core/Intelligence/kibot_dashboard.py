@@ -866,6 +866,7 @@ def _build_control_plane_payload() -> Dict[str, Any]:
         "real_swap_enabled": bool(KiConfig.ENABLE_REAL_SWAP),
         "real_bridge_enabled": bool(KiConfig.ENABLE_REAL_BRIDGE),
         "real_withdrawal_enabled": bool(KiConfig.ENABLE_REAL_WITHDRAWAL),
+        "polymarket_live_enabled": bool(KiConfig.ENABLE_POLYMARKET_LIVE),
     }
 
     # 2. Portfolio stats from build_summary / build_portfolio
@@ -878,7 +879,6 @@ def _build_control_plane_payload() -> Dict[str, Any]:
     ss_raw = _read_json(STATE / "strategy_scorecard.json", [])
     pe_raw = _read_json(STATE / "punishment_state.json", {})
     
-    # Normalize expected value, signal quality, strategy scorecard to be objects, not lists
     sq = sq_raw[0] if isinstance(sq_raw, list) and sq_raw else {}
     ev = ev_raw[0] if isinstance(ev_raw, list) and ev_raw else {}
     ss = ss_raw[0] if isinstance(ss_raw, list) and ss_raw else {}
@@ -973,6 +973,7 @@ def _build_control_plane_payload() -> Dict[str, Any]:
             "cycle_ms": _safe_float(scanner_stats.get("last_cycle_ms"), 0.0),
             "status": "ACTIVE" if summary_data.get("services", {}).get("kibot-scanner") == "active" else "INACTIVE",
         },
+        "services": summary_data.get("services", {}),
         "leadlag": {
             "aligned": bool(leadlag_stats.get("aligned", False)),
             "last_latency_sec": _safe_float(leadlag_stats.get("last_latency_sec"), 0.0),
@@ -999,7 +1000,7 @@ def _build_control_plane_payload() -> Dict[str, Any]:
         }
     }
 
-    # 6. Flow Node Connections
+    # 6. Flow Node Connections & Workflow nodes/edges
     flow = [
         {"from": "Market Feeds", "to": "Scanner"},
         {"from": "Scanner", "to": "LeadLag Alpha"},
@@ -1012,14 +1013,49 @@ def _build_control_plane_payload() -> Dict[str, Any]:
         {"from": "Executor", "to": "PnL / Feedback Loop"},
     ]
 
-    # Warnings collection
-    warnings = []
-    if not gates["expected_value"]["status"] == "PASS":
-        warnings.append("Expected Value Gate rejected incoming signal due to negative EV.")
-    if gates["punishment"]["strikes"] > 0:
-        warnings.append(f"Punishment Engine strikes active: {gates['punishment']['strikes']}.")
-    if not runtime["ollama"]["status"] == "ACTIVE":
-        warnings.append("Ollama local LLM server is offline.")
+    workflow = {
+        "nodes": [
+            {"id": "Operator", "label": "Kiki / Operator", "role": "operator"},
+            {"id": "Autonomous Director", "label": "Autonomous Director", "role": "coordinator"},
+            {"id": "Sovereign Council", "label": "Sovereign Council", "role": "council"},
+            {"id": "Scanner", "label": "Scanner Engine", "role": "scanner"},
+            {"id": "LeadLag Alpha", "label": "LeadLag Alpha", "role": "alpha"},
+            {"id": "Signal Quality", "label": "Signal Quality", "role": "gate"},
+            {"id": "Expected Value", "label": "Expected Value", "role": "gate"},
+            {"id": "Strategy Scorecard", "label": "Strategy Scorecard", "role": "gate"},
+            {"id": "Punishment Gate", "label": "Punishment Gate", "role": "gate"},
+            {"id": "RiskGate Shield", "label": "RiskGate Shield", "role": "risk_gate"},
+            {"id": "Executor", "label": "Executor Block", "role": "executor"},
+            {"id": "Indodax Spot", "label": "Indodax Spot Venue", "role": "venue"},
+            {"id": "Indodax Real Balance", "label": "Indodax Real Balance", "role": "wallet"},
+            {"id": "Indodax Paper", "label": "Indodax Paper", "role": "wallet"},
+            {"id": "Paper PnL", "label": "Paper PnL Tracker", "role": "metric"},
+            {"id": "Phantom Scout", "label": "Phantom Scout", "role": "scout"},
+            {"id": "Polymarket", "label": "Polymarket Venue", "role": "venue"},
+            {"id": "Cash Wait", "label": "Cash Wait Reserves", "role": "reserve"},
+            {"id": "Ollama / AI Scout", "label": "Ollama / AI Scout", "role": "advisory"}
+        ],
+        "edges": [
+            {"from": "Operator", "to": "Autonomous Director"},
+            {"from": "Autonomous Director", "to": "Scanner"},
+            {"from": "Scanner", "to": "LeadLag Alpha"},
+            {"from": "LeadLag Alpha", "to": "Signal Quality"},
+            {"from": "Signal Quality", "to": "Expected Value"},
+            {"from": "Expected Value", "to": "Strategy Scorecard"},
+            {"from": "Strategy Scorecard", "to": "Punishment Gate"},
+            {"from": "Punishment Gate", "to": "Sovereign Council"},
+            {"from": "Sovereign Council", "to": "RiskGate Shield"},
+            {"from": "RiskGate Shield", "to": "Executor"},
+            {"from": "Executor", "to": "Indodax Spot"},
+            {"from": "Indodax Spot", "to": "Indodax Real Balance"},
+            {"from": "Indodax Spot", "to": "Indodax Paper"},
+            {"from": "Indodax Paper", "to": "Paper PnL"},
+            {"from": "Scanner", "to": "Phantom Scout", "type": "dotted"},
+            {"from": "Scanner", "to": "Polymarket", "type": "dotted"},
+            {"from": "Expected Value", "to": "Cash Wait", "type": "dotted"},
+            {"from": "Autonomous Director", "to": "Ollama / AI Scout", "type": "dotted"}
+        ]
+    }
 
     # Data Quality calculation
     files_to_check = [
@@ -1033,7 +1069,49 @@ def _build_control_plane_payload() -> Dict[str, Any]:
         "autonomous_director.json",
         "canary_daily_stats.json",
     ]
-    data_quality = {f.replace(".json", ""): _check_file_quality(f) for f in files_to_check}
+    
+    missing_states = []
+    stale_states = []
+    last_update_ts = datetime.now(timezone.utc).isoformat()
+    latest_mtime = 0.0
+
+    for f in files_to_check:
+        path = STATE / f
+        if not path.exists():
+            missing_states.append(f.replace(".json", ""))
+        else:
+            mtime = path.stat().st_mtime
+            if mtime > latest_mtime:
+                latest_mtime = mtime
+                last_update_ts = datetime.fromtimestamp(mtime, timezone.utc).isoformat()
+            age = _file_age_s(path)
+            fresh = age < 3600.0 if ("daily" in f or "rotation" in f) else age < 300.0
+            if not fresh:
+                stale_states.append(f.replace(".json", ""))
+
+    data_quality_dict = {f.replace(".json", ""): _check_file_quality(f) for f in files_to_check}
+    data_quality_dict.update({
+        "complete": len(missing_states) == 0,
+        "missing_states": missing_states,
+        "stale_states": stale_states,
+        "unknown_fields": [],
+        "last_update": last_update_ts
+    })
+
+    # Warnings collection
+    warnings = []
+    if not gates["expected_value"]["status"] == "PASS":
+        warnings.append("Expected Value Gate rejected incoming signal due to negative EV.")
+    if gates["punishment"]["strikes"] > 0:
+        warnings.append(f"Punishment Engine strikes active: {gates['punishment']['strikes']}.")
+    if not runtime["ollama"]["status"] == "ACTIVE":
+        warnings.append("Ollama local LLM server is offline.")
+    for ms in missing_states:
+        warnings.append(f"State file missing: state/{ms}.json")
+    for ss_name in stale_states:
+        warnings.append(f"State file is stale: state/{ss_name}.json")
+
+    decisions = _read_recent_decisions(15)
 
     # Merge complete summary_data at the root level for total backward-compatibility
     merged_data = {**summary_data}
@@ -1049,21 +1127,29 @@ def _build_control_plane_payload() -> Dict[str, Any]:
         },
         "mode": mode,
         "portfolio": {
-            **portfolio,
-            "total_equity_idr": portfolio.get("combined_equity_idr", 0.0),
-            "daily_pnl_idr": portfolio.get("daily_pnl_idr", 0.0),
-            "daily_pnl_pct": portfolio.get("daily_pnl_pct", 0.0),
-            "real_pnl_idr": portfolio.get("daily_pnl_real_idr", 0.0),
-            "mock_pnl_idr": portfolio.get("daily_pnl_sim_idr", 0.0),
-            "simulated_pnl_idr": portfolio.get("phantom", {}).get("opportunity_pnl_idr", 0.0) if isinstance(portfolio.get("phantom"), dict) else 0.0,
+            "combined_equity_idr": _safe_float(portfolio.get("combined_equity_idr"), 0.0),
+            "total_equity_idr": _safe_float(portfolio.get("combined_equity_idr"), 0.0),
+            "daily_pnl_idr": _safe_float(portfolio.get("daily_pnl_idr"), 0.0),
+            "daily_pnl_pct": _safe_float(portfolio.get("daily_pnl_pct"), 0.0),
+            "daily_pnl_real_idr": _safe_float(portfolio.get("daily_pnl_real_idr"), 0.0),
+            "daily_pnl_sim_idr": _safe_float(portfolio.get("daily_pnl_sim_idr"), 0.0),
+            "real_pnl_idr": _safe_float(portfolio.get("daily_pnl_real_idr"), 0.0),
+            "mock_pnl_idr": _safe_float(portfolio.get("daily_pnl_sim_idr"), 0.0),
+            "paper_pnl_idr": _safe_float(portfolio.get("daily_pnl_sim_idr"), 0.0) if not KiConfig.LIVE_TRADING_ENABLED else 0.0,
+            "simulated_pnl_idr": _safe_float(portfolio.get("phantom", {}).get("opportunity_pnl_idr"), 0.0) if isinstance(portfolio.get("phantom"), dict) else (
+                _safe_float(portfolio.get("simulated_pnl_idr"), 0.0)
+            ),
+            "max_daily_loss_pct": 1.5
         },
         "venues": venues,
         "gates": gates,
         "runtime": runtime,
         "flow": flow,
-        "recent_decisions": _read_recent_decisions(15),
+        "workflow": workflow,
+        "recent_decisions": decisions,
+        "decisions": decisions,
         "warnings": warnings,
-        "data_quality": data_quality,
+        "data_quality": data_quality_dict,
     })
     return merged_data
 
