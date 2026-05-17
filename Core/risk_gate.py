@@ -5,7 +5,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Dict, Optional, Tuple
 
-from Core.Support.ki_config import WIB
+from Core.Support.ki_config import WIB, KiConfig
 
 logger = logging.getLogger("RiskGate")
 
@@ -39,9 +39,11 @@ class RiskGate:
             "min_order_notional_idr": 10000, 
             "max_order_notional_idr": 100000000000, # 100 Billion IDR (Sovereign Cap)
             "max_active_positions": 100,        # High-frequency capacity
-            "max_daily_loss_pct": 1.5,          # Manifesto mandated
+            "max_daily_loss_pct": KiConfig.MAX_DAILY_LOSS_PERCENT,          # Manifesto mandated
             "blacklist": ["USDT_IDR"] 
         }
+        # Hard lock: Enforce the 1.5% maximum daily loss limit under all conditions to prevent overrides
+        self.config["max_daily_loss_pct"] = KiConfig.MAX_DAILY_LOSS_PERCENT
         self.daily_pnl = 0.0
         self.last_reset_date = _today_wib()
         self._load_state()

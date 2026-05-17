@@ -6,6 +6,7 @@ import base64
 import json
 
 import aiohttp
+from Core.Support.ki_config import KiConfig
 from solana.rpc.async_api import AsyncClient
 from solana.rpc.commitment import Confirmed
 from solders.keypair import Keypair
@@ -100,6 +101,10 @@ class PhantomRouter:
         token_in and token_out should be mint addresses.
         amount_in is in raw smallest units (e.g., lamports).
         """
+        if not KiConfig.LIVE_TRADING_ENABLED:
+            logger.warning(f"⚠️ [SIMULATION] Swap simulated successfully (Paper Mode): {amount_in} of {token_in} -> {token_out} on {chain}")
+            return True
+
         if not self.keypair:
             logger.error("❌ Cannot swap: No keypair loaded.")
             return False
@@ -161,6 +166,9 @@ class PhantomRouter:
 
     async def execute_polymarket_trade(self, market_id: str, outcome: str, amount_usdc: float) -> bool:
         """ 1. Prediction Markets: Execute trade on Polymarket (Polygon). """
+        if not KiConfig.LIVE_TRADING_ENABLED:
+            logger.warning(f"⚠️ [SIMULATION] Polymarket trade simulated (Paper Mode): {amount_usdc} USDC on {outcome} in {market_id}")
+            return True
         try:
             logger.info(f"🔮 Polymarket: Betting {amount_usdc} USDC on {outcome} in {market_id}")
             return True
@@ -170,6 +178,9 @@ class PhantomRouter:
 
     async def deposit_kamino_yield(self, token: str, amount: float) -> bool:
         """ 2. Yield Farming: Supply asset to Kamino Finance (Solana). """
+        if not KiConfig.LIVE_TRADING_ENABLED:
+            logger.warning(f"⚠️ [SIMULATION] Kamino deposit simulated (Paper Mode): {amount} {token}")
+            return True
         try:
             logger.info(f"🚜 Yield: Depositing {amount} {token} into Kamino.")
             return True
@@ -179,6 +190,9 @@ class PhantomRouter:
 
     async def execute_drift_perp(self, symbol: str, side: str, leverage: float, amount: float) -> bool:
         """ 3. Perpetual DEX: Open Long/Short on Drift Protocol (Solana). """
+        if not KiConfig.LIVE_TRADING_ENABLED:
+            logger.warning(f"⚠️ [SIMULATION] Drift perp simulated (Paper Mode): {side} {symbol} with {leverage}x leverage")
+            return True
         try:
             logger.info(f"📉 Perp: Opening {side} on {symbol} with {leverage}x leverage on Drift.")
             return True
@@ -188,6 +202,9 @@ class PhantomRouter:
 
     async def snipe_meme_coin(self, token_address: str, amount_sol: float, slippage_bps: int = 1000) -> bool:
         """ 4. Meme Sniping: Fast swap via Jupiter with high slippage (Solana). """
+        if not KiConfig.LIVE_TRADING_ENABLED:
+            logger.warning(f"⚠️ [SIMULATION] Meme snipe simulated successfully (Paper Mode): {token_address} with {amount_sol} SOL")
+            return True
         try:
             logger.info(f"🔫 Sniping: Buying {token_address} with {amount_sol} SOL (Slippage: {slippage_bps} bps).")
             # SOL Mint: So11111111111111111111111111111111111111112
@@ -239,6 +256,9 @@ class PhantomRouter:
 
     async def stake_jito_sol(self, amount_sol: float) -> bool:
         """ 5. Liquid Staking: Stake SOL for JitoSOL (Solana). """
+        if not KiConfig.LIVE_TRADING_ENABLED:
+            logger.warning(f"⚠️ [SIMULATION] Jito staking simulated (Paper Mode): {amount_sol} SOL")
+            return True
         try:
             logger.info(f"💧 Staking: Converting {amount_sol} SOL to JitoSOL.")
             return True
@@ -248,6 +268,9 @@ class PhantomRouter:
 
     async def farm_airdrop(self, target_protocol: str, action: str) -> bool:
         """ 6. Airdrop Farming: Execute low-value interactions to build volume. """
+        if not KiConfig.LIVE_TRADING_ENABLED:
+            logger.warning(f"⚠️ [SIMULATION] Airdrop farm simulated (Paper Mode): {action} on {target_protocol}")
+            return True
         try:
             logger.info(f"🪂 Airdrop Farm: Executing {action} on {target_protocol}.")
             return True
@@ -257,6 +280,9 @@ class PhantomRouter:
 
     async def provide_orca_liquidity(self, pool_id: str, amount_a: float, amount_b: float) -> bool:
         """ 7. Liquidity Provision: Supply concentrated LP on Orca/Meteora. """
+        if not KiConfig.LIVE_TRADING_ENABLED:
+            logger.warning(f"⚠️ [SIMULATION] Orca LP provision simulated (Paper Mode): pool {pool_id}")
+            return True
         try:
             logger.info(f"🌊 LP: Supplying {amount_a} and {amount_b} to Orca pool {pool_id}.")
             return True
@@ -266,6 +292,9 @@ class PhantomRouter:
 
     async def bridge_debridge(self, amount: float, token: str, from_chain: str, to_chain: str) -> bool:
         """ 8. Cross-Chain Bridging: Move funds via DeBridge/Wormhole. """
+        if not KiConfig.LIVE_TRADING_ENABLED:
+            logger.warning(f"⚠️ [SIMULATION] Bridge simulated (Paper Mode): {amount} {token} from {from_chain} to {to_chain}")
+            return True
         try:
             logger.info(f"🌉 Bridge: Moving {amount} {token} from {from_chain} to {to_chain}.")
             return True
@@ -275,6 +304,9 @@ class PhantomRouter:
 
     async def offer_nft_loan(self, collection_slug: str, offer_usdc: float) -> bool:
         """ 9. NFT Lending: Offer a loan on SharkyFi (Solana). """
+        if not KiConfig.LIVE_TRADING_ENABLED:
+            logger.warning(f"⚠️ [SIMULATION] NFT loan simulated (Paper Mode): {offer_usdc} USDC for {collection_slug}")
+            return True
         try:
             logger.info(f"🖼️ NFT Loan: Offering {offer_usdc} USDC for {collection_slug} on SharkyFi.")
             return True
@@ -284,6 +316,9 @@ class PhantomRouter:
 
     async def execute_mev_arbitrage(self, token: str, buy_dex: str, sell_dex: str) -> bool:
         """ 10. MEV Arbitrage: Flash loan or instant arb across DEXs. """
+        if not KiConfig.LIVE_TRADING_ENABLED:
+            logger.warning(f"⚠️ [SIMULATION] MEV Arbitrage simulated (Paper Mode): Buy {token} on {buy_dex}, Sell on {sell_dex}")
+            return True
         try:
             logger.info(f"⚡ MEV Arb: Buying {token} on {buy_dex} and selling on {sell_dex}.")
             return True

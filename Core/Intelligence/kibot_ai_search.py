@@ -135,10 +135,14 @@ class AISearchService:
             except: pass
             return {}
             
-        return await self._cached_async(f"tavily:{hashlib.md5(query.encode()).hexdigest()}", 3600, loader, "tavily")
+        res = await self._cached_async(f"tavily:{hashlib.md5(query.encode()).hexdigest()}", 3600, loader, "tavily")
+        return res if isinstance(res, dict) else {}
 
     def tavily_search(self, query: str, search_depth: str = "basic") -> Dict:
-        return asyncio.run(self.tavily_search_async(query, search_depth))
+        try:
+            return asyncio.run(self.tavily_search_async(query, search_depth))
+        except Exception:
+            return {}
 
     async def serper_search_async(self, query: str) -> Dict:
         api_key = os.getenv("SERPER_API_KEY")
@@ -155,10 +159,14 @@ class AISearchService:
             except: pass
             return {}
             
-        return await self._cached_async(f"serper:{hashlib.md5(query.encode()).hexdigest()}", 3600, loader, "serper")
+        res = await self._cached_async(f"serper:{hashlib.md5(query.encode()).hexdigest()}", 3600, loader, "serper")
+        return res if isinstance(res, dict) else {}
 
     def serper_search(self, query: str) -> Dict:
-        return asyncio.run(self.serper_search_async(query))
+        try:
+            return asyncio.run(self.serper_search_async(query))
+        except Exception:
+            return {}
 
     async def ddg_search_async(self, query: str, max_results: int = 5) -> List[Dict]:
         try:
@@ -166,15 +174,27 @@ class AISearchService:
                 from ddgs import DDGS
             except ImportError:
                 from duckduckgo_search import DDGS  # backward-compatible fallback
+            
+            def blocking_ddg():
+                try:
+                    with DDGS() as ddgs:
+                        return list(ddgs.text(query, max_results=max_results))
+                except Exception:
+                    return []
+                    
             async def loader():
-                with DDGS() as ddgs:
-                    return list(ddgs.text(query, max_results=max_results))
-            return await self._cached_async(f"ddg:{hashlib.md5(query.encode()).hexdigest()}", 1800, loader, "duckduckgo")
-        except ImportError:
+                return await asyncio.to_thread(blocking_ddg)
+                
+            res = await self._cached_async(f"ddg:{hashlib.md5(query.encode()).hexdigest()}", 1800, loader, "duckduckgo")
+            return res if isinstance(res, list) else []
+        except Exception:
             return []
 
     def ddg_search(self, query: str, max_results: int = 5) -> List[Dict]:
-        return asyncio.run(self.ddg_search_async(query, max_results))
+        try:
+            return asyncio.run(self.ddg_search_async(query, max_results))
+        except Exception:
+            return []
 
     async def jina_search_async(self, query: str) -> str:
         api_key = os.getenv("JINA_API_KEY")
@@ -205,10 +225,14 @@ class AISearchService:
                     return content
             except: return ""
             
-        return await self._cached_async(f"jina:{hashlib.md5(query.encode()).hexdigest()}", 3600, loader, "jina")
+        res = await self._cached_async(f"jina:{hashlib.md5(query.encode()).hexdigest()}", 3600, loader, "jina")
+        return res if isinstance(res, str) else ""
 
     def jina_search(self, query: str) -> str:
-        return asyncio.run(self.jina_search_async(query))
+        try:
+            return asyncio.run(self.jina_search_async(query))
+        except Exception:
+            return ""
 
     async def brave_search_async(self, query: str) -> Dict:
         """Async version of Brave search."""
@@ -226,10 +250,14 @@ class AISearchService:
                 return await self._get_json_async(url, params=params, headers=headers)
             except: return {}
             
-        return await self._cached_async(f"brave:{hashlib.md5(query.encode()).hexdigest()}", 3600, loader, "brave")
+        res = await self._cached_async(f"brave:{hashlib.md5(query.encode()).hexdigest()}", 3600, loader, "brave")
+        return res if isinstance(res, dict) else {}
 
     def brave_search(self, query: str) -> Dict:
-        return asyncio.run(self.brave_search_async(query))
+        try:
+            return asyncio.run(self.brave_search_async(query))
+        except Exception:
+            return {}
 
     async def cryptopanic_news_async(self, filter: str = "hot") -> List[Dict]:
         """Async version of CryptoPanic news."""
@@ -249,10 +277,14 @@ class AISearchService:
                 return res.get("results", [])
             except: return []
             
-        return await self._cached_async(f"cryptopanic:{filter}", 600, loader, "cryptopanic")
+        res = await self._cached_async(f"cryptopanic:{filter}", 600, loader, "cryptopanic")
+        return res if isinstance(res, list) else []
 
     def cryptopanic_news(self, filter: str = "hot") -> List[Dict]:
-        return asyncio.run(self.cryptopanic_news_async(filter))
+        try:
+            return asyncio.run(self.cryptopanic_news_async(filter))
+        except Exception:
+            return []
 
     def get_market_consensus(self, topic: str) -> str:
         """Combines multiple search signals into a single consensus string."""
@@ -263,7 +295,7 @@ class AISearchService:
         
         # Format Brave results
         brave_snippet = ""
-        if brave.get("web", {}).get("results"):
+        if isinstance(brave, dict) and brave.get("web", {}).get("results"):
             for res in brave["web"]["results"][:3]:
                 brave_snippet += f"- {res.get('title')}: {res.get('description')}\n"
         
@@ -347,10 +379,14 @@ class AISearchService:
                 "https://finnhub.io/api/v1/news",
                 params={"category": category, "token": api_key}
             )
-        return await self._cached_async(f"finnhub:{category}", 900, loader, "finnhub")
+        res = await self._cached_async(f"finnhub:{category}", 900, loader, "finnhub")
+        return res if isinstance(res, list) else []
 
     def finnhub_news(self, category: str = "crypto") -> List[Dict]:
-        return asyncio.run(self.finnhub_news_async(category))
+        try:
+            return asyncio.run(self.finnhub_news_async(category))
+        except Exception:
+            return []
 
     async def gdelt_news_async(self, query: str = "crypto") -> List[Dict]:
         async def loader():
@@ -364,20 +400,31 @@ class AISearchService:
                 }
             )
             return payload.get("articles", []) if isinstance(payload, dict) else []
-        return await self._cached_async(f"gdelt:{hashlib.md5(query.encode()).hexdigest()}", 1800, loader, "gdelt")
+        res = await self._cached_async(f"gdelt:{hashlib.md5(query.encode()).hexdigest()}", 1800, loader, "gdelt")
+        return res if isinstance(res, list) else []
 
     def gdelt_news(self, query: str = "crypto") -> List[Dict]:
-        return asyncio.run(self.gdelt_news_async(query))
+        try:
+            return asyncio.run(self.gdelt_news_async(query))
+        except Exception:
+            return []
 
 def search_web(query: str, max_results: int = 5) -> List[Dict]:
     """Helper function for quick web search using DDG/Tavily."""
     service = AISearchService()
     # Try Tavily first if key exists, otherwise DDG
     if os.getenv("TAVILY_API_KEY"):
-        results = service.tavily_search(query)
-        if results.get("results"):
-            return results["results"][:max_results]
-    return service.ddg_search(query, max_results=max_results)
+        try:
+            results = service.tavily_search(query)
+            if isinstance(results, dict) and results.get("results"):
+                return results["results"][:max_results]
+        except Exception:
+            pass
+    try:
+        res = service.ddg_search(query, max_results=max_results)
+        return res if isinstance(res, list) else []
+    except Exception:
+        return []
 
 if __name__ == "__main__":
     print("--- AI Search Service Test ---")

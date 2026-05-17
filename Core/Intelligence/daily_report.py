@@ -62,6 +62,18 @@ def build_daily_report(telemetry: Dict[str, Any] | None = None) -> str:
     realized = portfolio.get("realized_pnl_idr", portfolio.get("pnl_idr", 0))
     unrealized = portfolio.get("unrealized_pnl_idr", 0)
     daily_pnl = portfolio.get("daily_pnl_idr", 0)
+
+    daily_pnl_pct = portfolio.get("daily_pnl_pct")
+    if daily_pnl_pct is None:
+        try:
+            previous_equity = float(combined) - float(daily_pnl)
+            if previous_equity > 0:
+                daily_pnl_pct = (float(daily_pnl) / previous_equity) * 100.0
+            else:
+                daily_pnl_pct = 0.0
+        except Exception:
+            daily_pnl_pct = 0.0
+
     cash = portfolio.get("idr_cash", 0)
     holdings = portfolio.get("coin_holdings_idr", 0)
     poly = portfolio.get("polymarket", {}) if isinstance(portfolio.get("polymarket"), dict) else {}
@@ -98,7 +110,8 @@ def build_daily_report(telemetry: Dict[str, Any] | None = None) -> str:
 STATE
 Daily Color: {daily_color}
 Combined Equity: {_rp(combined)}
-Daily PnL: {_rp(daily_pnl)}
+Daily PnL: {_rp(daily_pnl)} ({_pct(daily_pnl_pct)})
+Daily Yield: {_pct(daily_pnl_pct)}
 Realized: {_rp(realized)}
 Unrealized: {_rp(unrealized)}
 Green Probability: {prob_pct}% ({prob_quality})

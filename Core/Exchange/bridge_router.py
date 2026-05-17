@@ -25,6 +25,11 @@ class BridgeRouter:
         self.phantom = phantom_router
         self.indodax = indodax_gateway
         self.defi_fetcher = DeFiMetricsFetcher()
+        self.state = None
+
+    def transition_to(self, new_state: str, details: str = ""):
+        self.state = new_state
+        logger.info(f"🔄 [BridgeRouter State] -> {new_state.upper()}: {details}")
 
     async def find_cheapest_transport_coin(self, target_network: str = "all") -> Dict[str, Any]:
         """
@@ -69,14 +74,19 @@ class BridgeRouter:
         Fully Automatic Bridge from Indodax -> Phantom with Fee Guard and Dynamic Routing.
         Buys the cheapest transport coin and sends it.
         """
+        import os
+        self.transition_to("planned", f"Bridging Rp {amount_idr:,.0f} to {destination_address} on {target_network}")
+
         if not self.indodax:
             logger.error("❌ IndodaxGateway not provided to BridgeRouter.")
+            self.transition_to("failed", "IndodaxGateway not provided")
             return False
 
         # 1. Determine the cheapest transport coin
         best_route = await self.find_cheapest_transport_coin(target_network)
         if not best_route:
             logger.error("❌ Could not determine a valid transport route.")
+            self.transition_to("failed", "Could not determine a valid transport route")
             return False
             
         coin = best_route["coin"]
@@ -90,26 +100,38 @@ class BridgeRouter:
         # Yield generated in 1 month = amount_idr * (target_apy / 100) / 12
         expected_monthly_yield_idr = amount_idr * (target_apy / 100) / 12
         
-        if expected_monthly_yield_idr < fee_idr:
+        self.transition_to("fee_checked", f"Fee: Rp {fee_idr:,.0f}, Expected Yield: Rp {expected_monthly_yield_idr:,.0f}")
+
+        # Block if fee > expected profit
+        if fee_idr > expected_monthly_yield_idr:
             logger.warning(
                 f"🛡️ FEE GUARD BLOCKED TRANSFER: Bridging Rp {amount_idr:,.0f} is unprofitable. "
                 f"Fee: Rp {fee_idr:,.0f}. Expected Monthly Yield: Rp {expected_monthly_yield_idr:,.0f} (at {target_apy}% APY)."
             )
+            self.transition_to("blocked", f"Fee Rp {fee_idr:,.0f} exceeds expected profit Rp {expected_monthly_yield_idr:,.0f}")
             return False
 
         logger.info(f"🌉 FEE GUARD PASSED: Proceeding to bridge via {coin.upper()}.")
         
-        # 2. Simulate or execute Market Buy for the coin on Indodax
+        # 2. Determine if real live trading is allowed
+        # Enforce simulation mode unless KIBOT_ENABLE_REAL_BRIDGE and KIBOT_ENABLE_REAL_WITHDRAWAL are true.
+        enable_real_bridge = os.getenv("KIBOT_ENABLE_REAL_BRIDGE", "false").strip().lower() == "true"
+        enable_real_withdrawal = os.getenv("KIBOT_ENABLE_REAL_WITHDRAWAL", "false").strip().lower() == "true"
+        is_live = KiConfig.LIVE_TRADING_ENABLED and enable_real_bridge and enable_real_withdrawal
+
         amount_coin = (amount_idr / price_idr) * 0.998 # Approximate amount after 0.2% trading fee
-        logger.info(f"🛒 Executing Market Buy: {amount_coin:.4f} {coin.upper()} using Rp {amount_idr:,.0f}")
         
-        if not KiConfig.LIVE_TRADING_ENABLED:
+        if not is_live:
+            self.transition_to("simulation_approved", "Running in simulation mode (real bridge or withdrawal is disabled)")
             logger.warning(f"🧪 PAPER MODE: Skipping actual market buy and withdrawal for {coin.upper()}. Mocking successful transaction.")
             telegram_send(f"🧪 *PAPER BRIDGE INITIATED*\nBot simulated buy and withdrawal of `{amount_coin:.4f} {coin.upper()}` to `{destination_address}` on {network}.\nFee Paid: ~Rp {fee_idr:,.0f}")
+            self.transition_to("executed", f"Mocked bridge of {amount_coin:.4f} {coin.upper()}")
             return True
 
+        # Real Live Mode execution
         try:
             # Place buy order
+            logger.info(f"🛒 [LIVE] Executing Market Buy: {amount_coin:.4f} {coin.upper()} using Rp {amount_idr:,.0f}")
             trade_res = await self.indodax.trade(
                 pair=f"{coin}_idr",
                 type="buy",
@@ -120,6 +142,7 @@ class BridgeRouter:
                 err = trade_res.get("error", "Unknown error") if trade_res else "No response"
                 logger.error(f"❌ Indodax Buy Order Failed: {err}")
                 telegram_send(f"❌ *BRIDGE FAILURE*: Indodax Market Buy order for {coin.upper()} failed: `{err}`")
+                self.transition_to("failed", f"Indodax Buy Order Failed: {err}")
                 return False
 
             logger.info(f"✅ Indodax Buy Order placed successfully: {trade_res}")
@@ -134,13 +157,16 @@ class BridgeRouter:
             if res.get("success") == 1:
                 logger.info("✅ Indodax API accepted withdrawal request.")
                 telegram_send(f"🚨 *DYNAMIC BRIDGE INITIATED*\nBot bought and withdrew `{amount_coin:.4f} {coin.upper()}` to `{destination_address}` on {network}.\nFee Paid: ~Rp {fee_idr:,.0f}\n\n⚠️ *ACTION REQUIRED*: Check your email to confirm the withdrawal link!")
+                self.transition_to("executed", f"Successfully withdrew {amount_coin:.4f} {coin.upper()}")
                 return True
             else:
                 err_msg = res.get("error", "Unknown withdrawal error")
                 logger.error(f"❌ Indodax Withdrawal Failed: {err_msg}")
                 telegram_send(f"❌ *BRIDGE FAILURE*: Indodax withdrawal of {coin.upper()} failed: `{err_msg}`")
+                self.transition_to("failed", f"Indodax Withdrawal Failed: {err_msg}")
                 return False
         except Exception as e:
             logger.error(f"❌ Indodax bridge operations encountered an exception: {e}")
             telegram_send(f"❌ *BRIDGE EXCEPTION*: Bridge error: `{e}`")
+            self.transition_to("failed", f"Exception: {e}")
             return False
