@@ -836,6 +836,32 @@ class IndodaxExecutor:
                 logger.warning(f"🛡️ REJECTED: {reason} for {symbol}.")
                 return
 
+            # --- Indodax Microstructure Analyzer Hook ---
+            try:
+                from Core.Intelligence.indodax_microstructure import IndodaxMicrostructureAnalyzer
+                analyzer = IndodaxMicrostructureAnalyzer()
+                ob_data = await self.indodax.get_orderbook(symbol)
+                analysis = analyzer.analyze_liquidity(ob_data, target_size_idr=budget)
+                
+                # Check net expected yield after fee and slippage adjustment
+                gross_yield_pct = signal.get("expected_net_pct", signal.get("price", expected_net_pct))
+                net_yield = analyzer.calculate_net_yield(gross_yield_pct, analysis.get("slippage_pct", 0.0))
+                
+                logger.info(
+                    f"🔬 MICROSTRUCTURE [ {symbol} ]: Spread={analysis['spread_pct']:.3f}%, "
+                    f"Slippage={analysis['slippage_pct']:.3f}%, NetYield={net_yield:.3f}%, "
+                    f"Pass={analysis['pass_liquidity']}"
+                )
+                
+                if not analysis["pass_liquidity"]:
+                    logger.warning(f"🛡️ REJECTED (Microstructure): {analysis['reason']} for {symbol}")
+                    return
+                if net_yield <= 0.0:
+                    logger.warning(f"🛡️ REJECTED (Microstructure Yield): Net expected yield {net_yield:.3f}% is negative.")
+                    return
+            except Exception as micro_err:
+                logger.warning(f"⚠️ Microstructure verification bypassed/failed: {micro_err}")
+
             # 3. Minimum Spread Check (V3.2 Slippage Protection)
             try:
                 spread_res = await self.indodax.get_orderbook(symbol)

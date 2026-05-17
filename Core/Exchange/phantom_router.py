@@ -27,6 +27,10 @@ class PhantomRouter:
         self.keypair = None
         self.client = AsyncClient(self.rpc_url, commitment=Confirmed)
         
+        # Initialize the PhantomOpportunityScout
+        from Core.Intelligence.phantom_opportunity_scout import PhantomOpportunityScout
+        self.scout = PhantomOpportunityScout()
+        
         if not self.private_key_str:
             logger.error("🚨 CRITICAL: PhantomRouter initialized without a Private Key. All Web3 txs will fail.")
         else:
@@ -101,6 +105,18 @@ class PhantomRouter:
         token_in and token_out should be mint addresses.
         amount_in is in raw smallest units (e.g., lamports).
         """
+        # Pre-verify with the Scout
+        try:
+            scout_res = await self.scout.scout_jupiter_swap(token_in, token_out, amount_in)
+            if not scout_res["pass_slippage_guard"]:
+                logger.warning(f"🛡️ Swap blocked by Slippage Guard: {scout_res['reason']}")
+                return False
+            # Verify and fail over RPC dynamically
+            self.rpc_url = await self.scout.verify_and_failover_rpc()
+            self.client = AsyncClient(self.rpc_url, commitment=Confirmed)
+        except Exception as e:
+            logger.warning(f"⚠️ Pre-trade Web3 scouting failed/bypassed: {e}")
+
         if not KiConfig.LIVE_TRADING_ENABLED:
             logger.warning(f"⚠️ [SIMULATION] Swap simulated successfully (Paper Mode): {amount_in} of {token_in} -> {token_out} on {chain}")
             return True

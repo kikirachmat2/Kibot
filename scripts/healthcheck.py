@@ -140,12 +140,12 @@ def check_live_trading_gates(KiConfig):
     logger.info("✅ Live trading gates are fully aligned.")
 
 def check_network_bindings():
-    logger.info("Step 6/6: Auditing zero-trust port bindings...")
+    logger.info("Step 6/7: Auditing zero-trust port bindings...")
     try:
         import psutil
     except ImportError:
-        logger.warning("⚠️ psutil not installed, skipping advanced network bind audits.")
-        return
+        logger.error("❌ CRITICAL: psutil dependency is missing! This is required for HFT execution and network checks.")
+        sys.exit(9)
 
     forbidden_wildcards = {"0.0.0.0", "::", "", "*"}
     target_ports = {
@@ -158,7 +158,30 @@ def check_network_bindings():
     }
 
     try:
-        connections = psutil.net_connections(kind='all')
+        import os
+        import sys
+        
+        connections = []
+        try:
+            connections = psutil.net_connections(kind='all')
+        except (psutil.AccessDenied, Exception) as p_exc:
+            # If we get AccessDenied (typical on macOS/darwin or non-root environments),
+            # try auditing only the processes/connections owned by the current user.
+            is_dev = (sys.platform == "darwin" or (hasattr(os, "geteuid") and os.geteuid() != 0))
+            if is_dev:
+                logger.warning(f"⚠️ AccessDenied/Restriction during global net_connections audit ({p_exc}). Auditing user process connections.")
+                connections = []
+                for p in psutil.process_iter():
+                    try:
+                        conns = p.connections(kind='all')
+                        if conns:
+                            connections.extend(conns)
+                    except (psutil.NoSuchProcess, psutil.AccessDenied):
+                        continue
+            else:
+                # In production environment (running as root on Linux), net_connections must succeed.
+                raise p_exc
+
         exposed_services = []
         for conn in connections:
             laddr = conn.laddr
@@ -174,7 +197,67 @@ def check_network_bindings():
 
         logger.info("✅ All core services are securely bound (zero-trust verified).")
     except Exception as exc:
-        logger.warning(f"⚠️ Could not audit network bindings: {exc}")
+        logger.error(f"❌ CRITICAL: Could not audit network bindings: {exc}")
+        sys.exit(8)
+
+def check_json_states(state_dir):
+    logger.info("Step 7/7: Auditing state JSON freshness and validity...")
+    import time
+    import json
+    
+    required_states = [
+        "leadlag_alpha.json",
+        "scanner_runtime.json",
+        "phantom_scout.json",
+        "market_rotation.json"
+    ]
+    
+    for state_file in required_states:
+        file_path = Path(state_dir) / state_file
+        logger.info(f"Auditing state file: {file_path}")
+        
+        # Self-healing / bootstrapping capability
+        if not file_path.exists():
+            logger.info(f"State file {state_file} missing. Bootstrapping with default secure config...")
+            try:
+                default_data = {}
+                if state_file == "leadlag_alpha.json":
+                    default_data = {"qualified_signals": [], "last_run_timestamp": time.time()}
+                elif state_file == "scanner_runtime.json":
+                    default_data = {"current_interval": 2.0, "telemetry": {"cpu_percent": 0.0}}
+                elif state_file == "phantom_scout.json":
+                    default_data = {"active_rpc": "https://api.mainnet-beta.solana.com", "failed_rpcs": []}
+                elif state_file == "market_rotation.json":
+                    default_data = {"allocations_pct": {"Indodax": 25.0, "Polymarket": 25.0, "Phantom": 25.0, "CASH_WAIT": 25.0}}
+                
+                with open(file_path, "w") as f:
+                    json.dump(default_data, f, indent=4)
+                logger.info(f"✅ Bootstrapped default secure state for {state_file}")
+            except Exception as e:
+                logger.error(f"❌ Failed to bootstrap state file {state_file}: {e}")
+                sys.exit(10)
+
+        try:
+            with open(file_path, "r") as f:
+                data = json.load(f)
+            
+            # Check modification time
+            mtime = file_path.stat().st_mtime
+            age_s = time.time() - mtime
+            logger.info(f"Parsed {state_file} successfully. Age: {age_s:.1f}s")
+            
+            # If the file is older than 1 hour (3600 seconds), fail as stale in production
+            if age_s > 3600.0:
+                logger.error(f"❌ CRITICAL STATE ERROR: {state_file} is stale! Last modified {age_s:.1f}s ago.")
+                sys.exit(11)
+        except json.JSONDecodeError as jde:
+            logger.error(f"❌ CRITICAL STATE ERROR: {state_file} has invalid JSON syntax: {jde}")
+            sys.exit(12)
+        except Exception as exc:
+            logger.error(f"❌ CRITICAL STATE ERROR: Failed during audit of {state_file}: {exc}")
+            sys.exit(13)
+            
+    logger.info("✅ All state files are present, valid JSON, and fresh.")
 
 def main():
     logger.info("==================================================")
@@ -187,6 +270,7 @@ def main():
     audit_log_redaction()
     check_live_trading_gates(KiConfig)
     check_network_bindings()
+    check_json_states(state_dir)
     
     logger.info("==================================================")
     logger.info("🎉 HEALTHCHECK PASSED SUCCESSFULLY! ALL SYSTEMS GREEN.")

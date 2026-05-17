@@ -182,11 +182,52 @@ async def test_bridge_router_hardening():
     print("SUCCESS: BridgeRouter correctly blocked unprofitable trades and enforced simulation mode.")
 
 
+@pytest.mark.anyio
+async def test_healthcheck_audits(tmp_path):
+    print("\n=========================================")
+    print("[TEST 5/5] Healthcheck Network & JSON State Audits")
+    print("=========================================")
+    
+    from scripts.healthcheck import check_network_bindings, check_json_states
+    
+    # 1. Test check_network_bindings (should execute successfully under test environment)
+    print("Testing check_network_bindings execution...")
+    check_network_bindings()
+    
+    # 2. Test check_json_states bootstrapping and verification
+    print("Testing check_json_states auditing and auto-bootstrapping...")
+    state_dir = tmp_path / "state"
+    state_dir.mkdir()
+    
+    # Run audit on empty temp directory (should auto-bootstrap files)
+    check_json_states(state_dir)
+    
+    # Verify files were bootstrapped correctly
+    required_states = [
+        "leadlag_alpha.json",
+        "scanner_runtime.json",
+        "phantom_scout.json",
+        "market_rotation.json"
+    ]
+    for state_file in required_states:
+        file_path = state_dir / state_file
+        assert file_path.exists(), f"Healthcheck failed to bootstrap {state_file}!"
+        
+    print("SUCCESS: Healthcheck properly audited network ports and bootstrapped JSON states.")
+
+
 async def run_all_tests():
     test_riskgate_drawdown_lock()
     await test_phantom_live_trading_gate()
     await test_search_service_resilience()
     await test_bridge_router_hardening()
+    
+    # Run dynamic tmp_path mock for run_all_tests manual run
+    from pathlib import Path
+    import tempfile
+    with tempfile.TemporaryDirectory() as tmpdir:
+        await test_healthcheck_audits(Path(tmpdir))
+        
     print("\n=========================================")
     print("ALL HARDENING VERIFICATION TESTS PASSED SUCCESSFULLY!")
     print("=========================================\n")

@@ -96,6 +96,17 @@ class BridgeRouter:
         
         logger.info(f"🔍 Dynamic Bridge Router selected: {coin.upper()} on {network}. Estimated Fee: Rp {fee_idr:,.0f}")
 
+        # Hook the PhantomOpportunityScout into BridgeRouter to fetch dynamic DeFi yields
+        if target_apy <= 0.0:
+            try:
+                if self.phantom and hasattr(self.phantom, "scout"):
+                    best_defi = await self.phantom.scout.get_best_defi_opportunities()
+                    target_apy = best_defi.get("highest_apy", 8.5)
+                    logger.info(f"📊 Dynamic APY selected from Scout: {target_apy}% ({best_defi.get('highest_apy_protocol')})")
+            except Exception as e:
+                logger.warning(f"⚠️ Could not resolve dynamic APY from Scout: {e}")
+                target_apy = 8.5
+
         # Fee Guard: Profitability check
         # Yield generated in 1 month = amount_idr * (target_apy / 100) / 12
         expected_monthly_yield_idr = amount_idr * (target_apy / 100) / 12

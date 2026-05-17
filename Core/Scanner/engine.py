@@ -17,6 +17,11 @@ from concurrent.futures import ThreadPoolExecutor
 
 logger = logging.getLogger("KiBotScanner")
 
+try:
+    from Core.Intelligence.leadlag_alpha import LeadLagAlphaEngine
+except ImportError:
+    LeadLagAlphaEngine = None
+
 class ScannerEngine:
     def __init__(self, scanners: Sequence[Any] | None = None, interval_s: int | None = None):
         self.interval_s = int(interval_s or os.getenv("SCAN_INTERVAL_S", "2"))
@@ -36,6 +41,26 @@ class ScannerEngine:
         self._last_poly_scan = 0.0
         self._last_heatmap_refresh = 0.0
         self._heatmap_interval_s = float(os.getenv("KIBOT_HEATMAP_REFRESH_SEC", "60") or 60)
+
+        # LeadLag alpha engine setup
+        self.leadlag_enabled = os.getenv("KIBOT_LEADLAG_ENABLED", "true").strip().lower() in {"1", "true", "yes", "on"}
+        if LeadLagAlphaEngine is not None and self.leadlag_enabled:
+            self.leadlag_engine = LeadLagAlphaEngine()
+            logger.info("✅ Lead-Lag Alpha Engine initialized in HFT Scanner.")
+        else:
+            self.leadlag_engine = None
+
+        # Turbo Adaptive Mode setup
+        self.scanner_turbo = os.getenv("KIBOT_SCANNER_TURBO", "true").strip().lower() in {"1", "true", "yes", "on", "auto"}
+        self.fast_interval = float(os.getenv("KIBOT_SCANNER_FAST_INTERVAL", "0.1"))
+        self.normal_interval = float(self.interval_s)
+        self.slow_interval = float(os.getenv("KIBOT_SCANNER_SLOW_INTERVAL", "3.0"))
+        self.cpu_soft_limit = float(os.getenv("KIBOT_CPU_SOFT_LIMIT", "70.0"))
+        self.cpu_hard_limit = float(os.getenv("KIBOT_CPU_HARD_LIMIT", "90.0"))
+        
+        self.current_interval = self.normal_interval
+        self.current_mode = "NORMAL"
+        self.fast_cycles_remaining = 0
 
     def _extract_signals(self, res: Any) -> List[Dict[str, Any]]:
         if isinstance(res, dict):
@@ -152,6 +177,93 @@ class ScannerEngine:
         started_at = time.time()
         from Core.Support.ki_config import KiConfig
 
+        # ── § Lead-Lag Arbitrage Opportunities Evaluation ──
+        leadlag_opportunities = []
+        if self.leadlag_engine:
+            try:
+                leadlag_opportunities = await self.leadlag_engine.calculate_opportunities()
+                # Persist leadlag_alpha.json in STATE_DIR
+                from Core.Support.ki_config import STATE_DIR
+                import tempfile
+                
+                state_path = Path(STATE_DIR) / "leadlag_alpha.json"
+                state_path.parent.mkdir(parents=True, exist_ok=True)
+                tmp = tempfile.NamedTemporaryFile(
+                    mode="w", encoding="utf-8",
+                    dir=str(state_path.parent), delete=False, suffix=".tmp"
+                )
+                json.dump({
+                    "seq_id": self.seq_id,
+                    "updated_at": datetime.now(timezone.utc).isoformat(),
+                    "opportunities": leadlag_opportunities
+                }, tmp, ensure_ascii=False, default=str)
+                tmp.flush()
+                tmp.close()
+                Path(tmp.name).replace(state_path)
+            except Exception as e:
+                logger.debug(f"[Scanner] LeadLag calculation/persist failed: {e}")
+
+        # Evaluate CPU & Memory Telemetry for Adaptive Mode
+        cpu_pct = 20.0
+        mem_pct = 20.0
+        try:
+            import psutil
+            cpu_pct = psutil.cpu_percent()
+            mem_pct = psutil.virtual_memory().percent
+        except Exception:
+            pass
+            
+        if self.scanner_turbo:
+            if cpu_pct >= self.cpu_hard_limit:
+                self.current_interval = self.slow_interval
+                self.current_mode = "SLOW"
+                self.fast_cycles_remaining = 0
+            elif cpu_pct >= self.cpu_soft_limit:
+                self.current_interval = self.normal_interval
+                self.current_mode = "NORMAL"
+                self.fast_cycles_remaining = 0
+            else:
+                has_active_alpha = any(opp.get("trade_grade") in {"A", "B"} for opp in leadlag_opportunities)
+                if has_active_alpha:
+                    self.fast_cycles_remaining = 10
+                    
+                if self.fast_cycles_remaining > 0:
+                    self.current_interval = self.fast_interval
+                    self.current_mode = "FAST"
+                    self.fast_cycles_remaining -= 1
+                else:
+                    self.current_interval = self.normal_interval
+                    self.current_mode = "NORMAL"
+        else:
+            self.current_interval = self.normal_interval
+            self.current_mode = "NORMAL"
+
+        # Persist scanner_runtime.json in STATE_DIR
+        try:
+            from Core.Support.ki_config import STATE_DIR
+            import tempfile
+            runtime_path = Path(STATE_DIR) / "scanner_runtime.json"
+            runtime_path.parent.mkdir(parents=True, exist_ok=True)
+            tmp = tempfile.NamedTemporaryFile(
+                mode="w", encoding="utf-8",
+                dir=str(runtime_path.parent), delete=False, suffix=".tmp"
+            )
+            json.dump({
+                "seq_id": self.seq_id,
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+                "mode": self.current_mode,
+                "current_interval_s": self.current_interval,
+                "cpu_percent": cpu_pct,
+                "memory_percent": mem_pct,
+                "fast_cycles_remaining": self.fast_cycles_remaining,
+                "elapsed_ms": round((time.time() - started_at) * 1000, 2)
+            }, tmp, ensure_ascii=False, default=str)
+            tmp.flush()
+            tmp.close()
+            Path(tmp.name).replace(runtime_path)
+        except Exception as e:
+            logger.debug(f"[Scanner] scanner_runtime.json write failed: {e}")
+
         selected_scanners = []
         for scanner in self.scanners:
             exchange = str(getattr(scanner, "exchange", "UNKNOWN")).upper()
@@ -178,6 +290,23 @@ class ScannerEngine:
                 elif ex == "UNIVERSAL_LEAD":
                     if not hasattr(self, 'universal_signals'): self.universal_signals = []
                     self.universal_signals.append(s)
+
+        # Append qualified lead-lag opportunities to indo_signals
+        for opp in leadlag_opportunities:
+            if opp.get("trade_grade") in {"A", "B"}:
+                sig = {
+                    "exchange": "INDODAX",
+                    "source": "LEADLAG_ALPHA",
+                    "symbol": opp["symbol"],
+                    "price": opp["expected_net_pct"], # expected net yield proxy
+                    "opportunity_score": opp["opportunity_score"],
+                    "confidence": opp["confidence"],
+                    "trade_grade": opp["trade_grade"],
+                    "expected_net_pct": opp["expected_net_pct"],
+                    "leadlag_pass": True,
+                    "ts": int(started_at * 1000)
+                }
+                indo_signals.append(sig)
 
         from Core.Support.ki_utils import sign_payload
         secret = os.environ.get("KIBOT_SECRET")
@@ -300,7 +429,7 @@ class ScannerEngine:
                 logger.debug(f"[Scanner] last_signal.json write failed: {_sig_err}")
 
     def run(self) -> None:
-        logger.info(f"🚀 KiBot HFT Scanner Engine Started ({self.interval_s}s interval).")
+        logger.info(f"🚀 KiBot HFT Scanner Engine Started (dynamic adaptive interval).")
         async def _run_async():
             while self.is_running:
                 t0 = time.time()
@@ -309,7 +438,7 @@ class ScannerEngine:
                 except Exception as e:
                     logger.error(f"Scanner Runtime Error: {e}")
                 elapsed = time.time() - t0
-                await asyncio.sleep(max(0.05, float(self.interval_s) - elapsed))
+                await asyncio.sleep(max(0.05, float(self.current_interval) - elapsed))
 
         asyncio.run(_run_async())
 
