@@ -26,20 +26,7 @@ def mock_state_dir(tmp_path):
     return state_dir
 
 def test_healthcheck_live_trading_enabled_error(mock_state_dir):
-    # KIBOT_LIVE_TRADING_ENABLED=true should fail with code 30
-    with patch("scripts.healthcheck.safe_exit") as mock_exit, \
-         patch("scripts.healthcheck.PROJECT_ROOT", mock_state_dir.parent), \
-         patch.dict(os.environ, {
-             "KIBOT_LIVE_TRADING_ENABLED": "true",
-             "KIBOT_CANARY_LIVE_ENABLED": "true"
-         }):
-        mock_exit.side_effect = SystemExit
-        with pytest.raises(SystemExit):
-            check_live_trading_gates(MagicMock())
-        mock_exit.assert_called_with(30, "KIBOT_LIVE_TRADING_ENABLED must be False in live-canary mode.")
-
-def test_healthcheck_canary_disabled_error(mock_state_dir):
-    # KIBOT_CANARY_LIVE_ENABLED=false should fail with code 31
+    # KIBOT_LIVE_TRADING_ENABLED=false should fail with code 30
     with patch("scripts.healthcheck.safe_exit") as mock_exit, \
          patch("scripts.healthcheck.PROJECT_ROOT", mock_state_dir.parent), \
          patch.dict(os.environ, {
@@ -49,15 +36,28 @@ def test_healthcheck_canary_disabled_error(mock_state_dir):
         mock_exit.side_effect = SystemExit
         with pytest.raises(SystemExit):
             check_live_trading_gates(MagicMock())
-        mock_exit.assert_called_with(31, "KIBOT_CANARY_LIVE_ENABLED must be True.")
+        mock_exit.assert_called_with(30, "KIBOT_LIVE_TRADING_ENABLED must be True in controlled-live mode.")
+
+def test_healthcheck_canary_disabled_error(mock_state_dir):
+    # KIBOT_CANARY_LIVE_ENABLED=true should fail with code 31
+    with patch("scripts.healthcheck.safe_exit") as mock_exit, \
+         patch("scripts.healthcheck.PROJECT_ROOT", mock_state_dir.parent), \
+         patch.dict(os.environ, {
+             "KIBOT_LIVE_TRADING_ENABLED": "true",
+             "KIBOT_CANARY_LIVE_ENABLED": "true"
+         }):
+        mock_exit.side_effect = SystemExit
+        with pytest.raises(SystemExit):
+            check_live_trading_gates(MagicMock())
+        mock_exit.assert_called_with(31, "KIBOT_CANARY_LIVE_ENABLED must be False in controlled-live mode.")
 
 def test_healthcheck_missing_safety_gates(mock_state_dir):
     # Missing any required safety gate (e.g. KIBOT_BLOCK_TRADE_IF_EV_NEGATIVE=false) should fail with code 32
     with patch("scripts.healthcheck.safe_exit") as mock_exit, \
          patch("scripts.healthcheck.PROJECT_ROOT", mock_state_dir.parent), \
          patch.dict(os.environ, {
-             "KIBOT_LIVE_TRADING_ENABLED": "false",
-             "KIBOT_CANARY_LIVE_ENABLED": "true",
+             "KIBOT_LIVE_TRADING_ENABLED": "true",
+             "KIBOT_CANARY_LIVE_ENABLED": "false",
              "KIBOT_BLOCK_TRADE_IF_EV_NEGATIVE": "false",
              "KIBOT_BLOCK_TRADE_IF_STATE_STALE": "true",
              "KIBOT_BLOCK_TRADE_IF_KILL_SWITCH": "true"
@@ -72,8 +72,8 @@ def test_healthcheck_missing_equity_anchor(mock_state_dir):
     with patch("scripts.healthcheck.safe_exit") as mock_exit, \
          patch("scripts.healthcheck.PROJECT_ROOT", mock_state_dir.parent), \
          patch.dict(os.environ, {
-             "KIBOT_LIVE_TRADING_ENABLED": "false",
-             "KIBOT_CANARY_LIVE_ENABLED": "true",
+             "KIBOT_LIVE_TRADING_ENABLED": "true",
+             "KIBOT_CANARY_LIVE_ENABLED": "false",
              "KIBOT_BLOCK_TRADE_IF_EV_NEGATIVE": "true",
              "KIBOT_BLOCK_TRADE_IF_STATE_STALE": "true",
              "KIBOT_BLOCK_TRADE_IF_KILL_SWITCH": "true"
@@ -92,8 +92,8 @@ def test_healthcheck_stale_equity_anchor(mock_state_dir):
     with patch("scripts.healthcheck.safe_exit") as mock_exit, \
          patch("scripts.healthcheck.PROJECT_ROOT", mock_state_dir.parent), \
          patch.dict(os.environ, {
-             "KIBOT_LIVE_TRADING_ENABLED": "false",
-             "KIBOT_CANARY_LIVE_ENABLED": "true",
+             "KIBOT_LIVE_TRADING_ENABLED": "true",
+             "KIBOT_CANARY_LIVE_ENABLED": "false",
              "KIBOT_BLOCK_TRADE_IF_EV_NEGATIVE": "true",
              "KIBOT_BLOCK_TRADE_IF_STATE_STALE": "true",
              "KIBOT_BLOCK_TRADE_IF_KILL_SWITCH": "true"
@@ -116,8 +116,8 @@ def test_healthcheck_invalid_loss_pct_anchor(mock_state_dir):
     with patch("scripts.healthcheck.safe_exit") as mock_exit, \
          patch("scripts.healthcheck.PROJECT_ROOT", mock_state_dir.parent), \
          patch.dict(os.environ, {
-             "KIBOT_LIVE_TRADING_ENABLED": "false",
-             "KIBOT_CANARY_LIVE_ENABLED": "true",
+             "KIBOT_LIVE_TRADING_ENABLED": "true",
+             "KIBOT_CANARY_LIVE_ENABLED": "false",
              "KIBOT_BLOCK_TRADE_IF_EV_NEGATIVE": "true",
              "KIBOT_BLOCK_TRADE_IF_STATE_STALE": "true",
              "KIBOT_BLOCK_TRADE_IF_KILL_SWITCH": "true"
@@ -137,8 +137,8 @@ def test_healthcheck_missing_active_strategy(mock_state_dir):
     with patch("scripts.healthcheck.safe_exit") as mock_exit, \
          patch("scripts.healthcheck.PROJECT_ROOT", mock_state_dir.parent), \
          patch.dict(os.environ, {
-             "KIBOT_LIVE_TRADING_ENABLED": "false",
-             "KIBOT_CANARY_LIVE_ENABLED": "true",
+             "KIBOT_LIVE_TRADING_ENABLED": "true",
+             "KIBOT_CANARY_LIVE_ENABLED": "false",
              "KIBOT_BLOCK_TRADE_IF_EV_NEGATIVE": "true",
              "KIBOT_BLOCK_TRADE_IF_STATE_STALE": "true",
              "KIBOT_BLOCK_TRADE_IF_KILL_SWITCH": "true"
@@ -162,8 +162,8 @@ def test_healthcheck_invalid_active_strategy(mock_state_dir):
     with patch("scripts.healthcheck.safe_exit") as mock_exit, \
          patch("scripts.healthcheck.PROJECT_ROOT", mock_state_dir.parent), \
          patch.dict(os.environ, {
-             "KIBOT_LIVE_TRADING_ENABLED": "false",
-             "KIBOT_CANARY_LIVE_ENABLED": "true",
+             "KIBOT_LIVE_TRADING_ENABLED": "true",
+             "KIBOT_CANARY_LIVE_ENABLED": "false",
              "KIBOT_BLOCK_TRADE_IF_EV_NEGATIVE": "true",
              "KIBOT_BLOCK_TRADE_IF_STATE_STALE": "true",
              "KIBOT_BLOCK_TRADE_IF_KILL_SWITCH": "true"
@@ -187,8 +187,8 @@ def test_healthcheck_all_gates_pass(mock_state_dir):
     with patch("scripts.healthcheck.safe_exit") as mock_exit, \
          patch("scripts.healthcheck.PROJECT_ROOT", mock_state_dir.parent), \
          patch.dict(os.environ, {
-             "KIBOT_LIVE_TRADING_ENABLED": "false",
-             "KIBOT_CANARY_LIVE_ENABLED": "true",
+             "KIBOT_LIVE_TRADING_ENABLED": "true",
+             "KIBOT_CANARY_LIVE_ENABLED": "false",
              "KIBOT_BLOCK_TRADE_IF_EV_NEGATIVE": "true",
              "KIBOT_BLOCK_TRADE_IF_STATE_STALE": "true",
              "KIBOT_BLOCK_TRADE_IF_KILL_SWITCH": "true"

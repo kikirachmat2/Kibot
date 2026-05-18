@@ -152,20 +152,20 @@ def check_live_trading_gates(KiConfig):
     import json
     from datetime import datetime
     
-    # 1. Enforce live-canary mode environment flags
+    # 1. Enforce controlled-live mode environment flags
     live_trading_env = os.getenv("KIBOT_LIVE_TRADING_ENABLED", "false").lower() == "true"
     canary_live_env = os.getenv("KIBOT_CANARY_LIVE_ENABLED", "false").lower() == "true"
     
     logger.info(f"KIBOT_LIVE_TRADING_ENABLED in env: {live_trading_env}")
     logger.info(f"KIBOT_CANARY_LIVE_ENABLED in env: {canary_live_env}")
     
-    if live_trading_env:
-        logger.error("❌ CRITICAL: KIBOT_LIVE_TRADING_ENABLED must be False in live-canary mode to force live-canary gates!")
-        safe_exit(30, "KIBOT_LIVE_TRADING_ENABLED must be False in live-canary mode.")
+    if not live_trading_env:
+        logger.error("❌ CRITICAL: KIBOT_LIVE_TRADING_ENABLED must be True in controlled-live mode!")
+        safe_exit(30, "KIBOT_LIVE_TRADING_ENABLED must be True in controlled-live mode.")
         
-    if not canary_live_env:
-        logger.error("❌ CRITICAL: KIBOT_CANARY_LIVE_ENABLED must be True!")
-        safe_exit(31, "KIBOT_CANARY_LIVE_ENABLED must be True.")
+    if canary_live_env:
+        logger.error("❌ CRITICAL: KIBOT_CANARY_LIVE_ENABLED must be False in controlled-live mode!")
+        safe_exit(31, "KIBOT_CANARY_LIVE_ENABLED must be False in controlled-live mode.")
         
     # 2. Assert environmental safety gates are True
     required_safety_gates = {
