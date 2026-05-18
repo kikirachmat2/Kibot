@@ -116,3 +116,90 @@ async def test_capital_governor_drawdown_enforcement():
         
         assert not is_valid
         assert "MANIFESTO CAP: Global daily loss cap reached" in reason
+
+@pytest.mark.anyio
+async def test_capital_governor_flows_and_hardenings(tmp_path):
+    # Setup mock Indodax and Phantom router
+    indodax = AsyncMock()
+    indodax.get_info = AsyncMock(return_value={
+        "success": 1,
+        "return": {
+            "balance": {
+                "idr": 200000.0
+            }
+        }
+    })
+    
+    router = MagicMock()
+    router.wallet_address = "0xPhantomWalletAddress"
+    router.get_balances = AsyncMock(return_value={
+        "usdc_balance": 5.0,
+        "sol_balance": 0.0,
+        "matic_balance": 0.0
+    })
+    
+    # 1. Test transfer parsing & PnL accounting
+    # Create a temporary treasury_transfers.jsonl
+    from Core.Treasury.capital_governor import STATE_DIR, GOVERNOR_FILE
+    STATE_DIR.mkdir(parents=True, exist_ok=True)
+    transfers_file = STATE_DIR / "treasury_transfers.jsonl"
+    
+    from datetime import datetime
+    import pytz
+    wib = pytz.timezone('Asia/Jakarta')
+    today_str = datetime.now(wib).strftime('%Y-%m-%d')
+    
+    # Write some transfers: one internal, one deposit (flow), one withdrawal (flow)
+    records = [
+        {"date": today_str, "timestamp": "", "type": "internal", "amount_idr": 30000.0, "description": "internal move"},
+        {"date": today_str, "timestamp": "", "type": "deposit", "amount_idr": 10000.0, "description": "external deposit"},
+        {"date": today_str, "timestamp": "", "type": "withdrawal", "amount_idr": 5000.0, "description": "external withdrawal"}
+    ]
+    with open(transfers_file, "w") as f:
+        for r in records:
+            f.write(json.dumps(r) + "\n")
+            
+    with patch.object(KiConfig, "LIVE_TRADING_ENABLED", True), \
+         patch.object(KiConfig, "ENABLE_POLYMARKET_LIVE", False):
+         
+        governor = CapitalGovernor(indodax, router)
+        governor.start_total_equity_idr = 0.0
+        
+        gov_data = await governor.reconcile_governor()
+        # total_equity = 200k + (5 * 16000) = 280,000 IDR
+        assert gov_data["current_total_equity_idr"] == 280000.0
+        # start_total_equity = 280,000 IDR
+        # external_deposits_today = 10,000 IDR
+        # external_withdrawals_today = 5,000 IDR
+        # PnL should be adjusted: current - start - deposits + withdrawals
+        # 280,000 - 280,000 - 10,000 + 5,000 = -5,000 IDR
+        assert gov_data["daily_pnl_idr"] == -5000.0
+        assert gov_data["daily_pnl_pct"] == (-5000.0 / 280000.0 * 100.0)
+        assert gov_data["status"] == "RECONCILED"
+        
+        # Clean up transfers file
+        if transfers_file.exists():
+            transfers_file.unlink()
+
+    # 2. Test RiskGate hardening for Unreconciled Status
+    governor.status = "UNRECONCILED"
+    governor.save()
+    
+    risk = RiskGate()
+    signal = {"symbol": "BTC_IDR", "expected_net_pct": 5.0}
+    is_valid, reason = risk.validate_signal(signal, balance_idr=280000.0, active_positions_count=0)
+    assert not is_valid
+    assert "expected 'RECONCILED'" in reason
+
+    # 3. Test RiskGate hardening for Staleness
+    governor.status = "RECONCILED"
+    governor.save()
+    
+    # Artificially set file mtime back by 100 seconds
+    import time
+    mtime = time.time() - 100
+    os.utime(GOVERNOR_FILE, (mtime, mtime))
+    
+    is_valid, reason = risk.validate_signal(signal, balance_idr=280000.0, active_positions_count=0)
+    assert not is_valid
+    assert "is stale" in reason

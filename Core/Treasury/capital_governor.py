@@ -40,11 +40,16 @@ class CapitalGovernor:
         self.max_daily_loss_idr = 0.0
         self.current_total_equity_idr = 0.0
         self.daily_pnl_idr = 0.0
+        self.daily_pnl_pct = 0.0
+        self.external_deposits_today = 0.0
+        self.external_withdrawals_today = 0.0
+        self.status = "UNRECONCILED"
         self.last_reset_date = _today_wib()
         
         self._load_governor_state()
 
     def _load_governor_state(self):
+        self.status = "UNRECONCILED"
         if GOVERNOR_FILE.exists():
             try:
                 with open(GOVERNOR_FILE, "r") as f:
@@ -54,10 +59,19 @@ class CapitalGovernor:
                         self.start_total_equity_idr = float(data.get("start_total_equity_idr", 0.0))
                         self.max_daily_loss_idr = float(data.get("max_daily_loss_idr", 0.0))
                         self.last_reset_date = today
+                        self.status = data.get("status", "UNRECONCILED")
+                        self.daily_pnl_idr = float(data.get("daily_pnl_idr", 0.0))
+                        self.daily_pnl_pct = float(data.get("daily_pnl_pct", 0.0))
+                        self.external_deposits_today = float(data.get("external_deposits_today", 0.0))
+                        self.external_withdrawals_today = float(data.get("external_withdrawals_today", 0.0))
                     else:
                         self.last_reset_date = today
                         self.start_total_equity_idr = 0.0
                         self.max_daily_loss_idr = 0.0
+                        self.daily_pnl_idr = 0.0
+                        self.daily_pnl_pct = 0.0
+                        self.external_deposits_today = 0.0
+                        self.external_withdrawals_today = 0.0
             except Exception as e:
                 logger.error(f"❌ Failed to load Capital Governor state: {e}")
         else:
@@ -73,10 +87,42 @@ class CapitalGovernor:
                     "max_daily_loss_pct": KiConfig.MAX_DAILY_LOSS_PERCENT,
                     "max_daily_loss_idr": self.max_daily_loss_idr,
                     "current_total_equity_idr": self.current_total_equity_idr,
-                    "daily_pnl_idr": self.daily_pnl_idr
+                    "daily_pnl_idr": self.daily_pnl_idr,
+                    "daily_pnl_pct": self.daily_pnl_pct,
+                    "external_deposits_today": self.external_deposits_today,
+                    "external_withdrawals_today": self.external_withdrawals_today,
+                    "status": self.status
                 }, f, indent=4)
         except Exception as e:
             logger.error(f"❌ Failed to save Capital Governor state: {e}")
+
+    def _read_daily_transfers(self, date_str: str) -> tuple[float, float]:
+        """Read state/treasury_transfers.jsonl and sum external deposits and withdrawals for the given date."""
+        transfers_file = STATE_DIR / "treasury_transfers.jsonl"
+        deposits = 0.0
+        withdrawals = 0.0
+        if not transfers_file.exists():
+            return 0.0, 0.0
+        try:
+            with open(transfers_file, "r") as f:
+                for line in f:
+                    line = line.strip()
+                    if not line:
+                        continue
+                    try:
+                        tx = json.loads(line)
+                        if tx.get("date") == date_str:
+                            txtype = tx.get("type", "").strip().lower()
+                            amount = float(tx.get("amount_idr", 0.0))
+                            if txtype == "deposit":
+                                deposits += amount
+                            elif txtype == "withdrawal":
+                                withdrawals += amount
+                    except Exception as e:
+                        logger.error(f"Error parsing transfer line: {e}")
+        except Exception as e:
+            logger.error(f"Error reading treasury_transfers.jsonl: {e}")
+        return deposits, withdrawals
 
     async def check_daily_reset(self, total_equity_idr: float):
         """Reset starting total equity anchor if a new WIB day has begun."""
@@ -93,62 +139,86 @@ class CapitalGovernor:
         Orchestrate wallet balances, update the Venue Ledger,
         apply target allocation policies, and enforce global risk parameters.
         """
-        # 1. Reconcile Phantom Web3 balances
-        await self.phantom_treasury.reconcile_balances()
-        phantom_summary = self.phantom_treasury.get_summary()
-        phantom_equity_idr = phantom_summary.get("total_value_idr", 0.0)
-        
-        # 2. Reconcile Indodax balance
-        indodax_real_balance = 0.0
-        if self.indodax:
-            try:
-                # Query real balance with 5 second timeout
-                indo_info = await asyncio.wait_for(self.indodax.get_info(), timeout=5)
-                if indo_info.get("success") == 1:
-                    balances = indo_info.get("return", {}).get("balance", {})
-                    indodax_real_balance = float(balances.get("idr", 0.0) or 0.0)
-            except Exception as e:
-                logger.error(f"❌ Failed to query Indodax balance: {e}")
-                
-        # If we are in paper mode, default or load paper balance
-        indodax_paper_balance = 1000000.0
-        paper_ledger = self.ledger.get_venue("indodax_paper")
-        if paper_ledger:
-            indodax_paper_balance = paper_ledger.get("equity_idr", 1000000.0)
+        self.status = "UNRECONCILED"
+        try:
+            # 1. Reconcile Phantom Web3 balances
+            await self.phantom_treasury.reconcile_balances()
+            phantom_summary = self.phantom_treasury.get_summary()
+            phantom_equity_idr = phantom_summary.get("total_value_idr", 0.0)
+            
+            # 2. Reconcile Indodax balance
+            indodax_real_balance = 0.0
+            if self.indodax:
+                try:
+                    # Query real balance with 5 second timeout
+                    indo_info = await asyncio.wait_for(self.indodax.get_info(), timeout=5)
+                    if indo_info.get("success") == 1:
+                        balances = indo_info.get("return", {}).get("balance", {})
+                        indodax_real_balance = float(balances.get("idr", 0.0) or 0.0)
+                except Exception as e:
+                    logger.error(f"❌ Failed to query Indodax balance: {e}")
+                    
+            # If we are in paper mode, default or load paper balance
+            indodax_paper_balance = 1000000.0
+            paper_ledger = self.ledger.get_venue("indodax_paper")
+            if paper_ledger:
+                indodax_paper_balance = paper_ledger.get("equity_idr", 1000000.0)
 
-        # 3. Calculate Total Consolidated Equity
-        # Real-canary / Real Mode takes actual Indodax, otherwise paper
-        primary_indodax_balance = indodax_real_balance if KiConfig.LIVE_TRADING_ENABLED else indodax_paper_balance
-        
-        # Total Consolidated Equity = Primary Indodax Balance + Phantom Balance
-        self.current_total_equity_idr = primary_indodax_balance + phantom_equity_idr
-        
-        # Check and initialize today's start anchor if needed
-        await self.check_daily_reset(self.current_total_equity_idr)
-        
-        # Compute daily consolidated PnL
-        self.daily_pnl_idr = self.current_total_equity_idr - self.start_total_equity_idr
-        self.save()
-        
-        # 4. Compute target allocation split
-        targets = self.policy.compute_targets(phantom_equity_idr)
-        
-        # 5. Sync to Venue Ledger
-        self.ledger.update_venue("indodax_real", equity_idr=indodax_real_balance)
-        self.ledger.update_venue("indodax_paper", equity_idr=indodax_paper_balance)
-        self.ledger.update_venue("phantom", equity_idr=phantom_equity_idr)
-        self.ledger.update_venue("cash_wait", equity_idr=self.current_total_equity_idr * targets.get("reserve", 0.20))
-        
-        payload = {
-            "date": self.last_reset_date,
-            "start_total_equity_idr": self.start_total_equity_idr,
-            "current_total_equity_idr": self.current_total_equity_idr,
-            "max_daily_loss_idr": self.max_daily_loss_idr,
-            "daily_pnl_idr": self.daily_pnl_idr,
-            "targets": targets,
-            "phantom_details": phantom_summary
-        }
-        return payload
+            # 3. Calculate Total Consolidated Equity
+            # Real-canary / Real Mode takes actual Indodax, otherwise paper
+            primary_indodax_balance = indodax_real_balance if KiConfig.LIVE_TRADING_ENABLED else indodax_paper_balance
+            
+            # Total Consolidated Equity = Primary Indodax Balance + Phantom Balance
+            self.current_total_equity_idr = primary_indodax_balance + phantom_equity_idr
+            
+            # Check and initialize today's start anchor if needed
+            await self.check_daily_reset(self.current_total_equity_idr)
+            
+            # Read daily transfers to adjust starting equity
+            deposits, withdrawals = self._read_daily_transfers(self.last_reset_date)
+            self.external_deposits_today = deposits
+            self.external_withdrawals_today = withdrawals
+            
+            # Compute daily consolidated PnL (adjusted for capital flows)
+            self.daily_pnl_idr = self.current_total_equity_idr - self.start_total_equity_idr - deposits + withdrawals
+            
+            # Compute PnL percentage
+            if self.start_total_equity_idr > 0.0:
+                self.daily_pnl_pct = (self.daily_pnl_idr / self.start_total_equity_idr) * 100.0
+            else:
+                self.daily_pnl_pct = 0.0
+                
+            self.status = "RECONCILED"
+            self.save()
+            
+            # 4. Compute target allocation split
+            targets = self.policy.compute_targets(phantom_equity_idr)
+            
+            # 5. Sync to Venue Ledger
+            self.ledger.update_venue("indodax_real", equity_idr=indodax_real_balance)
+            self.ledger.update_venue("indodax_paper", equity_idr=indodax_paper_balance)
+            self.ledger.update_venue("phantom", equity_idr=phantom_equity_idr)
+            self.ledger.update_venue("cash_wait", equity_idr=self.current_total_equity_idr * targets.get("reserve", 0.20))
+            
+            payload = {
+                "date": self.last_reset_date,
+                "start_total_equity_idr": self.start_total_equity_idr,
+                "current_total_equity_idr": self.current_total_equity_idr,
+                "max_daily_loss_idr": self.max_daily_loss_idr,
+                "daily_pnl_idr": self.daily_pnl_idr,
+                "daily_pnl_pct": self.daily_pnl_pct,
+                "external_deposits_today": self.external_deposits_today,
+                "external_withdrawals_today": self.external_withdrawals_today,
+                "status": self.status,
+                "targets": targets,
+                "phantom_details": phantom_summary
+            }
+            return payload
+        except Exception as e:
+            logger.error(f"❌ Error in reconcile_governor: {e}", exc_info=True)
+            self.status = "UNRECONCILED"
+            self.save()
+            raise e
 
 if __name__ == "__main__":
     import asyncio

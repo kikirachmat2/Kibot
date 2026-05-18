@@ -138,19 +138,36 @@ class RiskGate:
             starting_equity * (self.config["max_daily_loss_pct"] / 100.0)
         )
         
-        # 1. Global Treasury Governor Daily Drawdown Check
+        # 1. Global Treasury Governor Daily Drawdown, Staleness & Reconcile Check
+        from Core.Treasury.capital_governor import GOVERNOR_FILE
+        import time
+        
+        if not GOVERNOR_FILE.exists():
+            return False, "FAIL-CLOSED: Capital Governor state file does not exist"
+            
         try:
-            from Core.Treasury.capital_governor import GOVERNOR_FILE
-            if GOVERNOR_FILE.exists():
-                with open(GOVERNOR_FILE, "r") as f:
-                    gov_data = json.load(f)
-                    if gov_data.get("date") == today:
-                        gov_loss_cap = float(gov_data.get("max_daily_loss_idr", effective_daily_loss_cap_idr))
-                        gov_daily_pnl = float(gov_data.get("daily_pnl_idr", 0.0))
-                        if gov_daily_pnl < -gov_loss_cap:
-                            return False, f"MANIFESTO CAP: Global daily loss cap reached ({gov_daily_pnl:.2f} < -{gov_loss_cap:.2f})"
+            # Check staleness (> 90s)
+            mtime = GOVERNOR_FILE.stat().st_mtime
+            age = time.time() - mtime
+            if age > 90.0:
+                return False, f"FAIL-CLOSED: Capital Governor state file is stale ({age:.1f}s > 90s)"
+                
+            with open(GOVERNOR_FILE, "r") as f:
+                gov_data = json.load(f)
+                
+            if gov_data.get("status") != "RECONCILED":
+                return False, f"FAIL-CLOSED: Capital Governor status is '{gov_data.get('status')}' (expected 'RECONCILED')"
+                
+            if gov_data.get("date") == today:
+                gov_loss_cap = float(gov_data.get("max_daily_loss_idr", effective_daily_loss_cap_idr))
+                gov_daily_pnl = float(gov_data.get("daily_pnl_idr", 0.0))
+                if gov_daily_pnl < -gov_loss_cap:
+                    return False, f"MANIFESTO CAP: Global daily loss cap reached ({gov_daily_pnl:.2f} < -{gov_loss_cap:.2f})"
+            else:
+                return False, "FAIL-CLOSED: Capital Governor state date is from a different day"
         except Exception as e:
-            logger.error(f"❌ Failed to parse Capital Governor state inside RiskGate: {e}")
+            logger.error(f"❌ Failed to validate Capital Governor state inside RiskGate: {e}")
+            return False, f"FAIL-CLOSED: Error validating Capital Governor state: {e}"
         
         # 2. Hard Venue Manifesto Cap
         if self.daily_pnl < -effective_daily_loss_cap_idr:
