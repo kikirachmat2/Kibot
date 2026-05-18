@@ -109,6 +109,10 @@ class KiBotMaster:
         self.indodax = IndodaxGateway()
         self.capital_commander = CapitalCommander(self.indodax, self.phantom_router)
         
+        # Initialize Sovereign Capital Governor
+        from Core.Treasury.capital_governor import CapitalGovernor
+        self.governor = CapitalGovernor(self.indodax, self.phantom_router)
+        
         # Self-Healing: Keep AI provider cooldowns persistent by default.
         # Reset only when explicitly requested so 401/429 providers stay muted
         # across restarts instead of being hammered again on every boot.
@@ -148,6 +152,13 @@ class KiBotMaster:
         logger.info("💰 PnL Watchdog aktif - monitoring setiap 5 menit.")
         while self.is_running:
             try:
+                # Reconcile global capital and enforce drawdown limit
+                try:
+                    gov_data = await self.governor.reconcile_governor()
+                    logger.info(f"💰 [CapitalGovernor] Consolidated Reconciled: Equity Rp{gov_data['current_total_equity_idr']:,.2f} | PnL Rp{gov_data['daily_pnl_idr']:+,.2f}")
+                except Exception as gov_err:
+                    logger.error(f"❌ CapitalGovernor reconciliation failed: {gov_err}")
+                
                 portfolio_snapshot = await self.aggregator._get_portfolio_snapshot()
                 current_idr = float(portfolio_snapshot.get("idr_cash", 0.0) or 0.0)
                 poly_state = portfolio_snapshot.get("polymarket", {}) if isinstance(portfolio_snapshot.get("polymarket"), dict) else {}

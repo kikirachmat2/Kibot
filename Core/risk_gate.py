@@ -138,7 +138,21 @@ class RiskGate:
             starting_equity * (self.config["max_daily_loss_pct"] / 100.0)
         )
         
-        # Hard Manifesto Cap
+        # 1. Global Treasury Governor Daily Drawdown Check
+        try:
+            from Core.Treasury.capital_governor import GOVERNOR_FILE
+            if GOVERNOR_FILE.exists():
+                with open(GOVERNOR_FILE, "r") as f:
+                    gov_data = json.load(f)
+                    if gov_data.get("date") == today:
+                        gov_loss_cap = float(gov_data.get("max_daily_loss_idr", effective_daily_loss_cap_idr))
+                        gov_daily_pnl = float(gov_data.get("daily_pnl_idr", 0.0))
+                        if gov_daily_pnl < -gov_loss_cap:
+                            return False, f"MANIFESTO CAP: Global daily loss cap reached ({gov_daily_pnl:.2f} < -{gov_loss_cap:.2f})"
+        except Exception as e:
+            logger.error(f"❌ Failed to parse Capital Governor state inside RiskGate: {e}")
+        
+        # 2. Hard Venue Manifesto Cap
         if self.daily_pnl < -effective_daily_loss_cap_idr:
             return False, f"MANIFESTO CAP: Daily loss reached ({self.daily_pnl:.2f} < -{effective_daily_loss_cap_idr:.2f})"
 
