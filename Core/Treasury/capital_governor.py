@@ -124,6 +124,40 @@ class CapitalGovernor:
             logger.error(f"Error reading treasury_transfers.jsonl: {e}")
         return deposits, withdrawals
 
+    def _read_in_flight_transfers(self, date_str: str, phantom_equity_idr: float) -> float:
+        """
+        Read state/treasury_transfers.jsonl and calculate the total in-flight internal transfer amount
+        destined for Phantom that is not yet reflected in its balance.
+        """
+        transfers_file = STATE_DIR / "treasury_transfers.jsonl"
+        in_flight = 0.0
+        if not transfers_file.exists():
+            return 0.0
+        try:
+            with open(transfers_file, "r") as f:
+                for line in f:
+                    line = line.strip()
+                    if not line:
+                        continue
+                    try:
+                        tx = json.loads(line)
+                        if tx.get("date") == date_str:
+                            txtype = tx.get("type", "").strip().lower()
+                            if txtype == "internal":
+                                to_venue = tx.get("to_venue", "").strip().lower()
+                                amount = float(tx.get("amount_idr", 0.0))
+                                if to_venue == "phantom":
+                                    # If the on-chain phantom balance is less than this transfer amount,
+                                    # the difference is considered in-flight (in-transit).
+                                    if phantom_equity_idr < amount:
+                                        in_flight += (amount - phantom_equity_idr)
+                    except Exception as e:
+                        logger.error(f"Error parsing transfer line: {e}")
+        except Exception as e:
+            logger.error(f"Error reading treasury_transfers.jsonl: {e}")
+        return in_flight
+
+
     async def check_daily_reset(self, total_equity_idr: float):
         """Reset starting total equity anchor if a new WIB day has begun."""
         today = _today_wib()
@@ -168,8 +202,11 @@ class CapitalGovernor:
             # Real-canary / Real Mode takes actual Indodax, otherwise paper
             primary_indodax_balance = indodax_real_balance if KiConfig.LIVE_TRADING_ENABLED else indodax_paper_balance
             
-            # Total Consolidated Equity = Primary Indodax Balance + Phantom Balance
-            self.current_total_equity_idr = primary_indodax_balance + phantom_equity_idr
+            # Read in-flight internal transfers destined for Phantom
+            in_flight_idr = self._read_in_flight_transfers(self.last_reset_date, phantom_equity_idr)
+            
+            # Total Consolidated Equity = Primary Indodax Balance + Phantom Balance + In-flight internal transfers
+            self.current_total_equity_idr = primary_indodax_balance + phantom_equity_idr + in_flight_idr
             
             # Check and initialize today's start anchor if needed
             await self.check_daily_reset(self.current_total_equity_idr)
@@ -209,6 +246,7 @@ class CapitalGovernor:
                 "daily_pnl_pct": self.daily_pnl_pct,
                 "external_deposits_today": self.external_deposits_today,
                 "external_withdrawals_today": self.external_withdrawals_today,
+                "in_flight_idr": in_flight_idr,
                 "status": self.status,
                 "targets": targets,
                 "phantom_details": phantom_summary
