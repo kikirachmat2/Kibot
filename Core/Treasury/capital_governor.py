@@ -149,3 +149,50 @@ class CapitalGovernor:
             "phantom_details": phantom_summary
         }
         return payload
+
+if __name__ == "__main__":
+    import asyncio
+    
+    # Configure logging to stdout
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s [%(levelname)s] %(name)s - %(message)s"
+    )
+    
+    async def run_governor_service():
+        logger.info("Initializing Capital Governor standalone service loop...")
+        
+        # Instantiate gateways
+        try:
+            from Core.Exchange.indodax import IndodaxGateway
+            indodax = IndodaxGateway()
+        except Exception as e:
+            logger.error(f"Failed to import/instantiate IndodaxGateway: {e}")
+            indodax = None
+            
+        try:
+            from Core.Exchange.phantom_router import PhantomRouter
+            phantom_router = PhantomRouter()
+        except Exception as e:
+            logger.error(f"Failed to import/instantiate PhantomRouter: {e}")
+            phantom_router = None
+            
+        gov = CapitalGovernor(indodax, phantom_router)
+        
+        # Infinite reconciliation loop (every 10 seconds)
+        while True:
+            try:
+                logger.info("Executing capital reconciliation cycle...")
+                res = await gov.reconcile_governor()
+                logger.info(
+                    f"Consolidated Reconciled: Total Equity Rp{res['current_total_equity_idr']:,.2f} | "
+                    f"Daily PnL Rp{res['daily_pnl_idr']:+,.2f} | Date: {res['date']}"
+                )
+            except Exception as e:
+                logger.error(f"Error in reconciliation cycle: {e}", exc_info=True)
+            await asyncio.sleep(10)
+
+    try:
+        asyncio.run(run_governor_service())
+    except KeyboardInterrupt:
+        logger.info("Capital Governor Service stopped by user.")
