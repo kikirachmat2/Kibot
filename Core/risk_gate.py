@@ -87,17 +87,60 @@ class RiskGate:
             self.last_reset_date = today
             self._save_state()
 
+    def _load_equity_anchor(self) -> dict:
+        anchor_file = STATE_DIR / "daily_equity_anchor.json"
+        today = _today_wib()
+        if anchor_file.exists():
+            try:
+                with open(anchor_file, "r") as f:
+                    data = json.load(f)
+                    if data.get("date") == today:
+                        return data
+            except Exception as e:
+                logger.error(f"Failed to load daily equity anchor: {e}")
+        return {}
+
+    def _save_equity_anchor(self, balance_idr: float) -> dict:
+        anchor_file = STATE_DIR / "daily_equity_anchor.json"
+        today = _today_wib()
+        data = {
+            "date": today,
+            "start_equity_idr": balance_idr,
+            "max_daily_loss_pct": KiConfig.MAX_DAILY_LOSS_PERCENT,
+            "max_daily_loss_idr": balance_idr * (KiConfig.MAX_DAILY_LOSS_PERCENT / 100.0)
+        }
+        try:
+            STATE_DIR.mkdir(parents=True, exist_ok=True)
+            with open(anchor_file, "w") as f:
+                json.dump(data, f, indent=4)
+            logger.info(f"⚓ Daily equity anchor initialized: Rp{balance_idr:,.2f} on {today}")
+            return data
+        except Exception as e:
+            logger.error(f"Failed to save daily equity anchor: {e}")
+            return data
+
     def validate_signal(self, signal: Dict, balance_idr: float, active_positions_count: int) -> Tuple[bool, str]:
         """
         Validates a trade signal against sovereign risk parameters.
         V3.5: Strategy is to be situational. Limits are advisory, except for the 1.5% Hard Cap.
         """
         self._check_reset()
+        today = _today_wib()
+        
+        # Load or initialize daily equity anchor
+        anchor = self._load_equity_anchor()
+        if not anchor or anchor.get("date") != today:
+            anchor = self._save_equity_anchor(balance_idr)
+            
+        starting_equity = float(anchor.get("start_equity_idr", balance_idr or 0.0))
+        effective_daily_loss_cap_idr = min(
+            KiConfig.CANARY_MAX_DAILY_LOSS_IDR,
+            starting_equity * (self.config["max_daily_loss_pct"] / 100.0)
+        )
         
         # Hard Manifesto Cap
-        max_loss = balance_idr * (self.config["max_daily_loss_pct"] / 100)
-        if self.daily_pnl < -max_loss:
-            return False, f"MANIFESTO CAP: Daily loss reached ({self.daily_pnl:.2f} < -{max_loss:.2f})"
+        if self.daily_pnl < -effective_daily_loss_cap_idr:
+            return False, f"MANIFESTO CAP: Daily loss reached ({self.daily_pnl:.2f} < -{effective_daily_loss_cap_idr:.2f})"
 
         symbol = signal.get("symbol", "UNKNOWN").upper()
         price = float(signal.get("price", 0))

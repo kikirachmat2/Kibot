@@ -92,6 +92,21 @@ class IndodaxExecutor:
         except Exception as e:
             logger.error(f"Failed to save active trades: {e}")
 
+    async def _ensure_daily_equity_anchor(self) -> float:
+        """Ensure starting equity is anchored in daily_equity_anchor.json using live balance."""
+        from Core.risk_gate import _today_wib
+        today = _today_wib()
+        anchor = self.risk._load_equity_anchor()
+        if not anchor or anchor.get("date") != today:
+            try:
+                current_balance = await self.indodax.get_balance("idr")
+                if current_balance > 0:
+                    self.risk._save_equity_anchor(current_balance)
+                    return current_balance
+            except Exception as e:
+                logger.error(f"Failed to initialize daily equity anchor: {e}")
+        return float(anchor.get("start_equity_idr", 0.0))
+
     def _load_canary_stats(self) -> dict:
         stats_file = Path(ROOT_DIR) / "state" / "canary_daily_stats.json"
         today = datetime.now().strftime("%Y-%m-%d")
@@ -477,6 +492,18 @@ class IndodaxExecutor:
                 return
 
             balances = info.get("return", {}).get("balance", {}) or {}
+            
+            try:
+                live_idr = float(balances.get("idr", 0.0) or 0.0)
+                if live_idr > 0:
+                    from Core.risk_gate import _today_wib
+                    today = _today_wib()
+                    anchor = self.risk._load_equity_anchor()
+                    if not anchor or anchor.get("date") != today:
+                        self.risk._save_equity_anchor(live_idr)
+            except Exception as e:
+                logger.error(f"Failed to update daily equity anchor during reconcile: {e}")
+
             changed = False
 
             async with self.lock:
@@ -769,9 +796,30 @@ class IndodaxExecutor:
                 logger.warning(f"🛡️ CANARY CONSTRAINT REJECTED: Daily trade limit reached ({stats['trade_count']}/{max_daily_trades}).")
                 return
 
-            max_daily_loss = KiConfig.CANARY_MAX_DAILY_LOSS_IDR
-            if stats["daily_loss_idr"] >= max_daily_loss:
-                logger.warning(f"🛡️ CANARY CONSTRAINT REJECTED: Daily loss limit exceeded (Rp{stats['daily_loss_idr']:,.0f} >= Rp{max_daily_loss:,.0f}).")
+            from Core.risk_gate import _today_wib
+            today = _today_wib()
+            anchor = self.risk._load_equity_anchor()
+            starting_equity = float(anchor.get("start_equity_idr", 0.0))
+            if not anchor or anchor.get("date") != today:
+                try:
+                    starting_equity = await self.indodax.get_balance("idr")
+                    if starting_equity > 0:
+                        anchor = self.risk._save_equity_anchor(starting_equity)
+                except Exception as e:
+                    logger.error(f"Failed to fetch Indodax balance for canary check: {e}")
+                    starting_equity = starting_equity or 184000.0
+
+            effective_daily_loss_cap_idr = min(
+                KiConfig.CANARY_MAX_DAILY_LOSS_IDR,
+                starting_equity * (KiConfig.MAX_DAILY_LOSS_PERCENT / 100.0)
+            )
+
+            if stats["daily_loss_idr"] >= effective_daily_loss_cap_idr:
+                logger.warning(
+                    f"🛡️ CANARY CONSTRAINT REJECTED: Daily loss limit exceeded "
+                    f"(Rp{stats['daily_loss_idr']:,.0f} >= Rp{effective_daily_loss_cap_idr:,.0f}). "
+                    f"starting_equity: Rp{starting_equity:,.0f}"
+                )
                 return
 
         # Regular raw signal check when not under strict canary override or if RAW signals are allowed
