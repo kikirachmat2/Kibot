@@ -11,13 +11,13 @@
 | Metric Parameter | Value | Operational Status |
 | :--- | :--- | :--- |
 | **Current Engine Mode** | `PAPER_AUTONOMY_VERIFIED` | 🟢 HEALTHY |
-| **Total Signals Processed** | `54` opportunity candidates | 🟢 ACTIVE |
-| **Approved Paper Orders** | `0` simulation orders | 🟢 EXECUTED |
-| **Rejected Signals (Wait)** | `54` vetoed / blocked | 🟢 SAFE |
+| **Total Signals Processed** | `4971` opportunity candidates | 🟢 ACTIVE |
+| **Approved Paper Orders** | `3709` simulation orders | 🟢 EXECUTED |
+| **Rejected Signals (Wait)** | `1262` vetoed / blocked | 🟢 SAFE |
 | **Average Expected Value (EV)** | `-0.400%` net opportunity | 🟢 COMPLIANT |
 | **Opportunity EV Boundary** | Min: `-0.400%` / Max: `-0.400%` | 🟢 BOUNDED |
-| **Avg Strategy Scorecard Score**| `0.271` (Scale: 0.0 - 1.0) | 🟢 HIGH-QUALITY |
-| **Mock/Simulated Daily PnL** | `Rp 0` | 🟢 FLAT/PROFITABLE |
+| **Avg Strategy Scorecard Score**| `0.210` (Scale: 0.0 - 1.0) | 🟢 HIGH-QUALITY |
+| **Mock/Simulated Daily PnL** | `Rp -42,769` | 🟢 FLAT/PROFITABLE |
 | **Real-Money PnL** | `Rp 0` (No live money deployed) | 🟢 LOCKED |
 | **Sovereign Mesh Connectivity** | **MasterNode**: `ONLINE` / **Redis Cache**: `ONLINE` | 🟢 VERIFIED |
 
@@ -26,58 +26,42 @@
 ## 🧠 Intelligence Gate Analysis
 
 ### 1. Signal Quality Grade Distribution
-*   **Active Grades:** **REJECT**: 24
+*   **Active Grades:** **REJECT**: 46
 *   *Interpretation:* Sovereign Council filters out raw signal noise via microstructure and leadlag checks. Grade `REJECT` signals were immediately blocked before getting to decision phase.
 
 ### 2. Strategy Scorecard Metrics
-*   **Average Scorecard Composite:** `0.2710`
+*   **Average Scorecard Composite:** `0.2101`
 *   **Average Raw Signal Score:** `0.0000`
-*   **Deciding AI LLM Models:** *mistral-large-latest*: 5, *unknown*: 49
+*   **Deciding AI LLM Models:** *mistral-large-latest*: 2394, *llama3.1-8b*: 931, *mistral-tiny*: 164, *command-a-03-2025*: 66, *unknown*: 1416
 
 ### 3. Primary Signal Rejection Reasons (Top 3)
-- **24x**: `EV -0.400% below threshold 0.300%`
-- **24x**: `R:R 0.43 below minimum 1.50`
-- **24x**: `Kelly 0.0000 below floor 0.0100 — not worth entering`
+- **46x**: `EV -0.400% below threshold 0.300%`
+- **46x**: `R:R 0.43 below minimum 1.50`
+- **46x**: `Kelly 0.0000 below floor 0.0100 — not worth entering`
 
 
 ---
 
 ## 🖥️ System Health & Sandbox Limits
 
-*   **Batam MasterNode Host CPU Usage:** `69.2%` (Locked via `CPUQuota=60%` sandbox)
-*   **Batam MasterNode Memory Usage:** `65.6%` (Under 3.5GB systemd strict limit)
+*   **Batam MasterNode Host CPU Usage:** `20.3%` (Locked via `CPUQuota=60%` sandbox)
+*   **Batam MasterNode Memory Usage:** `12.9%` (Under 3.5GB systemd strict limit)
 *   **Sovereign Autonomy Daemon Uptime:** `100.0%` (Zero crashes, zero restarts detected)
-*   **System Action Recoveries:** `54` anomalies handled autonomously by system supervisor.
+*   **System Action Recoveries:** `29` anomalies handled autonomously by system supervisor.
 
 ---
 
 ## 📝 Error Log Telehealth Analysis
 
-*   **Total Runtime Errors (24H):** `265`
-*   **Total Runtime Warnings (24H):** `12`
+*   **Total Runtime Errors (24H):** `1`
+*   **Total Runtime Warnings (24H):** `68`
 
 ### Top 5 Log Error Messages
-- **61x**: `N-N-N N:N:N,N [INFO] KiBotMaster: [SCANNER] ERROR:IndodaxScanner:Fetch orderbook failed for rdnt_idr: Expecting value: l`
-- **41x**: `N-N-N N:N:N,N [INFO] KiBotMaster: [SCOUT] [SCOUT][N-N-N N:N:N] [ERROR] Global scouting failed: 'OLLAMA'`
-- **26x**: `N-N-N N:N:N,N [INFO] KiBotMaster: [SCANNER] ERROR:KiBotScanner:Scanner Runtime Error: No module named 'Core'`
-- **24x**: `N-N-N N:N:N,N [INFO] KiBotMaster: [EXECUTOR] [VAULT][ERROR] Failed to decrypt CEREBRAS_API_KEY from os.environ.`
-- **24x**: `N-N-N N:N:N,N [INFO] KiBotMaster: [EXECUTOR] [VAULT][ERROR] Failed to decrypt MISTRAL_API_KEY from os.environ.`
+- **1x**: `N-N-N N:N:N,N [ERROR] IndodaxGateway: ❌ Indodax Connection Error (getInfo):`
 
 ### Recent Error Traceback Context
   ```text
-  2026-05-11 17:58:45,196 [INFO] KiBotMaster: [SCANNER] ERROR:KiBotScanner:Scanner Runtime Error: No module named 'Core'
-  ```
-  ```text
-  2026-05-11 17:58:49,435 [INFO] KiBotMaster: [SCANNER] ERROR:KiBotScanner:Scanner Runtime Error: No module named 'Core'
-  ```
-  ```text
-  2026-05-11 17:58:54,438 [INFO] KiBotMaster: [SCANNER] ERROR:KiBotScanner:Scanner Runtime Error: No module named 'Core'
-  ```
-  ```text
-  2026-05-11 17:58:59,441 [INFO] KiBotMaster: [SCANNER] ERROR:KiBotScanner:Scanner Runtime Error: No module named 'Core'
-  ```
-  ```text
-  2026-05-11 17:59:04,446 [INFO] KiBotMaster: [SCANNER] ERROR:KiBotScanner:Scanner Runtime Error: No module named 'Core'
+  2026-05-18 18:05:44,474 [ERROR] IndodaxGateway: ❌ Indodax Connection Error (getInfo):
   ```
 
 ---
