@@ -122,8 +122,14 @@ class PhantomTreasury:
                     if resp.status == 200:
                         res_json = await resp.json()
                         result_hex = res_json.get("result", "0x0")
-                        val = int(result_hex, 16) if result_hex.startswith("0x") else int(result_hex)
-                        return val / 100.0  # IDRX token has 2 decimals
+                        if result_hex == "0x" or not result_hex:
+                            return 0.0
+                        try:
+                            val = int(result_hex, 16) if result_hex.startswith("0x") else int(result_hex)
+                            return val / 100.0  # IDRX token has 2 decimals
+                        except ValueError:
+                            logger.error(f"❌ Failed to parse hex balance: {result_hex}")
+                            return 0.0
                     else:
                         logger.error(f"❌ Base RPC returned error status: {resp.status}")
         except Exception as e:
