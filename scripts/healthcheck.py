@@ -149,16 +149,106 @@ def audit_log_redaction():
 
 def check_live_trading_gates(KiConfig):
     logger.info("Step 5/8: Verifying runtime safety gates...")
-    # Ensure live trading defaults to False if testing or not explicitly enabled
-    live_trading_env = os.getenv("KIBOT_LIVE_TRADING_ENABLED", "false").lower() == "true"
-    logger.info(f"KIBOT_LIVE_TRADING_ENABLED in env: {live_trading_env}")
-    logger.info(f"KiConfig.LIVE_TRADING_ENABLED resolves to: {KiConfig.LIVE_TRADING_ENABLED}")
+    import json
+    from datetime import datetime
     
-    if not live_trading_env and KiConfig.LIVE_TRADING_ENABLED:
-        logger.error("❌ CRITICAL: Live trading enabled in code but disabled in environment!")
-        safe_exit(7, "Live trading enabled in code but disabled in environment!")
+    # 1. Enforce live-canary mode environment flags
+    live_trading_env = os.getenv("KIBOT_LIVE_TRADING_ENABLED", "false").lower() == "true"
+    canary_live_env = os.getenv("KIBOT_CANARY_LIVE_ENABLED", "false").lower() == "true"
+    
+    logger.info(f"KIBOT_LIVE_TRADING_ENABLED in env: {live_trading_env}")
+    logger.info(f"KIBOT_CANARY_LIVE_ENABLED in env: {canary_live_env}")
+    
+    if live_trading_env:
+        logger.error("❌ CRITICAL: KIBOT_LIVE_TRADING_ENABLED must be False in live-canary mode to force live-canary gates!")
+        safe_exit(30, "KIBOT_LIVE_TRADING_ENABLED must be False in live-canary mode.")
         
-    logger.info("✅ Live trading gates are fully aligned.")
+    if not canary_live_env:
+        logger.error("❌ CRITICAL: KIBOT_CANARY_LIVE_ENABLED must be True!")
+        safe_exit(31, "KIBOT_CANARY_LIVE_ENABLED must be True.")
+        
+    # 2. Assert environmental safety gates are True
+    required_safety_gates = {
+        "KIBOT_BLOCK_TRADE_IF_EV_NEGATIVE": True,
+        "KIBOT_BLOCK_TRADE_IF_STATE_STALE": True,
+        "KIBOT_BLOCK_TRADE_IF_KILL_SWITCH": True
+    }
+    for gate_var, expected in required_safety_gates.items():
+        val = os.getenv(gate_var, "false").lower() == "true"
+        logger.info(f"{gate_var} in env: {val}")
+        if val != expected:
+            logger.error(f"❌ CRITICAL: Environment safety gate {gate_var} must be enabled (True)!")
+            safe_exit(32, f"Environment safety gate {gate_var} must be enabled!")
+
+    # 3. Dynamic 1.5% daily drawdown cap check under WIB timezone reset
+    try:
+        from Core.Support.ki_config import WIB
+    except ImportError:
+        # Fallback if WIB cannot be imported
+        from datetime import timezone, timedelta
+        WIB = timezone(timedelta(hours=7))
+        
+    today_wib = str(datetime.now(WIB).date())
+    anchor_file = PROJECT_ROOT / "state" / "daily_equity_anchor.json"
+    
+    logger.info(f"Checking daily drawdown anchor at {anchor_file} for date {today_wib}...")
+    if not anchor_file.exists():
+        logger.error("❌ CRITICAL: daily_equity_anchor.json is missing!")
+        safe_exit(33, "daily_equity_anchor.json is missing!")
+        
+    try:
+        with open(anchor_file, "r") as f:
+            anchor_data = json.load(f)
+            
+        anchor_date = anchor_data.get("date")
+        max_loss_pct = float(anchor_data.get("max_daily_loss_pct", 0.0))
+        
+        logger.info(f"Daily anchor date: {anchor_date}, max_daily_loss_pct: {max_loss_pct}%")
+        
+        if anchor_date != today_wib:
+            logger.error(f"❌ CRITICAL: daily_equity_anchor.json date ({anchor_date}) is stale! Expected current WIB date ({today_wib}).")
+            safe_exit(33, f"daily_equity_anchor.json is stale (date: {anchor_date}, expected: {today_wib})!")
+            
+        if max_loss_pct != 1.5:
+            logger.error(f"❌ CRITICAL: daily_equity_anchor.json max_daily_loss_pct is {max_loss_pct}%, must be exactly 1.5%!")
+            safe_exit(33, "daily_equity_anchor.json max_daily_loss_pct must be exactly 1.5%!")
+            
+    except Exception as exc:
+        if isinstance(exc, SystemExit):
+            raise
+        logger.error(f"❌ CRITICAL: Failed to validate daily_equity_anchor.json: {exc}")
+        safe_exit(33, f"Failed to validate daily_equity_anchor.json: {exc}")
+
+    # 4. Enforce stop-loss/take-profit in active risk configuration
+    strategy_file = PROJECT_ROOT / "state" / "active_strategy.json"
+    logger.info(f"Enforcing stop-loss/take-profit in active strategy {strategy_file}...")
+    
+    if not strategy_file.exists():
+        logger.error("❌ CRITICAL: active_strategy.json is missing!")
+        safe_exit(34, "active_strategy.json is missing!")
+        
+    try:
+        with open(strategy_file, "r") as f:
+            strategy_data = json.load(f)
+            
+        indodax_config = strategy_data.get("indodax", {})
+        trailing_stop = float(indodax_config.get("trailing_stop_pct", 0.0))
+        hard_stop = float(indodax_config.get("hard_stop_pct", 0.0))
+        
+        logger.info(f"Active indodax strategy: trailing_stop_pct={trailing_stop}%, hard_stop_pct={hard_stop}%")
+        
+        if trailing_stop <= 0.0 or hard_stop <= 0.0:
+            logger.error("❌ CRITICAL: Active risk configuration is missing or has non-positive stop-loss/take-profit parameters!")
+            safe_exit(34, "Active risk configuration is missing trailing_stop_pct or hard_stop_pct!")
+            
+    except Exception as exc:
+        if isinstance(exc, SystemExit):
+            raise
+        logger.error(f"❌ CRITICAL: Failed to validate active_strategy.json: {exc}")
+        safe_exit(34, f"Failed to validate active_strategy.json: {exc}")
+
+    logger.info("✅ Live trading canary gates and safety limits are fully aligned and secured.")
+
 
 def check_network_bindings():
     logger.info("Step 6/8: Auditing zero-trust port bindings...")
