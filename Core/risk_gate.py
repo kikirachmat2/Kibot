@@ -188,11 +188,14 @@ class RiskGate:
             return False, f"All {self.config['max_active_positions']} slots occupied."
 
         # Notional checks
-        budget = float(signal.get("budget_idr", self.config["min_order_notional_idr"]))
-        if budget < self.config["min_order_notional_idr"]:
+        budget_val = signal.get("budget_idr")
+        if budget_val is None:
+            budget_val = self.config.get("min_order_notional_idr", 0.0)
+        budget = float(budget_val)
+        if budget < self.config.get("min_order_notional_idr", 0.0):
             return False, f"Order below minimum notional (Rp{budget})"
         
-        if budget > self.config["max_order_notional_idr"]:
+        if budget > self.config.get("max_order_notional_idr", float('inf')):
             return False, f"Order above extreme sovereign cap (Rp{budget})"
 
         # Balance check
