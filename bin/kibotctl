@@ -7,6 +7,7 @@ set -euo pipefail
 CORE_SERVICES=(
   redis-server
   ollama
+  kibot-capital-governor
   kibot-master
   kibot-scanner
   kibot-executor
