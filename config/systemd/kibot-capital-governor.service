@@ -1,0 +1,33 @@
+[Unit]
+Description=KiBot Sovereign Capital Governor Service (Batam)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+CPUQuota=30%
+ProtectHome=read-only
+Type=simple
+User=ubuntu
+WorkingDirectory=/home/ubuntu/KiBot
+EnvironmentFile=-/home/ubuntu/KiBot/.env
+EnvironmentFile=-/home/ubuntu/KiBot/.env.kiv
+Environment=PYTHONUNBUFFERED=1
+Environment=PYTHONPATH=.
+ExecStart=/home/ubuntu/KiBot/.venv/bin/python3 -u Core/Treasury/capital_governor.py
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+Restart=always
+RestartSec=5
+MemoryMax=1000M
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=kibot-capital-governor
+
+TimeoutStopSec=10
+KillSignal=SIGTERM
+ReadWritePaths=/home/ubuntu/KiBot/state /home/ubuntu/KiBot/Logs /home/ubuntu/KiBot/logs
+LimitNOFILE=65536
+
+[Install]
+WantedBy=multi-user.target
