@@ -131,6 +131,9 @@ class PumpfunScanner:
         candidate["route_type"] = route.get("route_type", "UNSUPPORTED")
         candidate["route_in"] = "Jupiter" if route.get("buy_route_available") else "Pumpfun"
         candidate["route_out"] = "Jupiter" if route.get("sell_route_available") else "none"
+        candidate["route_availability"] = "VERIFIED" if route.get("buy_route_available") else "UNVERIFIED"
+        candidate["exit_route_availability"] = "VERIFIED" if route.get("sell_route_available") else "FAILED"
+        candidate["route_check_source"] = "pumpfun_route_detector"
         candidate["route_state"] = route
 
         strategy_eval = self.strategy.evaluate_candidate(
@@ -190,6 +193,7 @@ class PumpfunScanner:
             if not (quote.get("quote_ok") and safety.get("passed")):
                 candidate["decision"] = "REJECT"
                 candidate["reason"] = quote.get("reason") if not quote.get("quote_ok") else safety.get("reason")
+        candidate["source_proof"] = candidate.get("source_proof") or {}
 
         return candidate
 

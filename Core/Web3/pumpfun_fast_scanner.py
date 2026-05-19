@@ -9,6 +9,7 @@ from typing import Any, Dict, List
 import aiohttp
 
 from Core.Scanner.wave_detection_engine import WaveDetectionEngine
+from Core.Scanner.source_proof import SourceProof
 from Core.Web3.pumpfun_route_detector import PumpfunRouteDetector
 
 logger = logging.getLogger("PumpfunFastScanner")
@@ -156,8 +157,23 @@ class PumpfunFastScanner:
                             "holder_growth_pct": 15.0,
                             "fresh_pair_creation": True,
                             "migration_event": migration,
-                            "route_availability": True,
-                            "exit_liquidity_quality": 0.90
+                            "route_availability": "VERIFIED" if migration else "UNVERIFIED",
+                            "exit_route_availability": "VERIFIED" if migration else "UNVERIFIED",
+                            "route_check_source": "dexscreener_pumpfun_feed",
+                            "liquidity_proof": {
+                                "liquidity_usd": float(liquidity.get("usd", 0.0) or 0.0),
+                                "migration": migration,
+                            },
+                            "exit_liquidity_quality": 0.90 if migration else 0.55,
+                            "source_proof": SourceProof.create(
+                                source_type="REAL_API",
+                                source_name="DexScreener Pump.fun Feed",
+                                source_url_or_endpoint=url,
+                                raw_id=str(pair.get("pairAddress") or mint),
+                                symbol=str(base.get("symbol") or "").upper(),
+                                address_or_mint=mint,
+                                chain="solana",
+                            )
                         })
                     return candidates
         except Exception as e:

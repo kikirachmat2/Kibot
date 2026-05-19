@@ -150,36 +150,51 @@ class ScannerExecutorContract:
         # - If both exist but no exit = BLOCKED_NO_EXIT_ROUTE.
         # - If all complete = LIVE_READY / LIVE_ACTIVE.
         for r in routes:
-            # Skip if explicitly native program blocked already
-            if r["route"] == "pumpfun_native":
-                continue
-
-            scanner_exists = bool(r["scanner"])
-            executor_exists = bool(r["executor"])
-            exit_exists = r["can_exit"]
-
             if not r.get("source_proof_required"):
                 r["source_proof_required"] = True
 
-            if not scanner_exists and executor_exists:
+            scanner_file = STATE_DIR / str(r.get("scanner_state_file") or "")
+            executor_file = STATE_DIR / str(r.get("executor_state_file") or "")
+            position_file = STATE_DIR / str(r.get("position_state_file") or "")
+
+            scanner_exists = bool(r.get("scanner")) and scanner_file.exists()
+            executor_exists = bool(r.get("executor")) and executor_file.exists()
+            exit_exists = bool(r.get("can_exit"))
+
+            scanner_fresh = scanner_file.exists() and (datetime.now(timezone.utc).timestamp() - scanner_file.stat().st_mtime) < 180
+            executor_fresh = executor_file.exists() and (datetime.now(timezone.utc).timestamp() - executor_file.stat().st_mtime) < 180
+
+            if not scanner_exists:
                 r["status"] = "BLOCKED_WITH_REASON"
-                r["reason"] = "scanner_component_missing"
+                r["reason"] = "scanner_missing"
                 r["can_scan"] = False
-            elif scanner_exists and not executor_exists:
+            elif not scanner_fresh:
+                r["status"] = "BLOCKED_WITH_REASON"
+                r["reason"] = "scanner_stale"
+            elif not executor_exists:
                 r["status"] = "SCANNING_ACTIVE_EXECUTOR_BLOCKED"
-                r["reason"] = "executor_component_missing"
+                r["reason"] = "executor_missing"
                 r["can_execute"] = False
-            elif scanner_exists and executor_exists and not exit_exists:
+            elif not executor_fresh:
+                r["status"] = "BLOCKED_WITH_REASON"
+                r["reason"] = "executor_stale"
+            elif not exit_exists:
                 r["status"] = "BLOCKED_NO_EXIT_ROUTE"
-                r["reason"] = "no_exit_route_defined"
+                r["reason"] = "no_exit_route"
             else:
                 r["status"] = "LIVE_READY"
-                r["reason"] = "Scanner and Executor paired cleanly."
+                r["reason"] = "runtime_verified"
+            r["scanner_fresh"] = scanner_fresh
+            r["executor_fresh"] = executor_fresh
+            r["scanner_state_present"] = scanner_file.exists()
+            r["executor_state_present"] = executor_file.exists()
+            r["position_state_present"] = position_file.exists()
 
         return routes
 
     def write_contract_state(self) -> Dict[str, Any]:
         routes = self.get_definitions()
+        self._write_runtime_executor_states(routes)
         payload = {
             "updated_at": datetime.now(timezone.utc).isoformat(),
             "schema_version": "1.0",
@@ -188,6 +203,27 @@ class ScannerExecutorContract:
         CONTRACT_FILE.write_text(json.dumps(payload, indent=2, ensure_ascii=False))
         logger.info(f"Contract state written to {CONTRACT_FILE}")
         return payload
+
+    def _write_runtime_executor_states(self, routes: List[Dict[str, Any]]) -> None:
+        self.state_dir.mkdir(parents=True, exist_ok=True)
+        for route in routes:
+            executor_path = route.get("executor_state_file")
+            if not executor_path:
+                continue
+            path = Path(str(executor_path))
+            if not path.is_absolute():
+                path = STATE_DIR / path.name if str(path).startswith("state/") else STATE_DIR / str(path)
+            payload = {
+                "updated_at": datetime.now(timezone.utc).isoformat(),
+                "route": route.get("route", ""),
+                "status": route.get("status", "BLOCKED_WITH_REASON"),
+                "reason": route.get("reason", ""),
+                "runtime_verified": route.get("status") in {"LIVE_READY", "LIVE_ACTIVE"},
+                "scanner_state_file": route.get("scanner_state_file", ""),
+                "position_state_file": route.get("position_state_file", ""),
+                "source_proof_required": bool(route.get("source_proof_required", True)),
+            }
+            path.write_text(json.dumps(payload, indent=2, ensure_ascii=False))
 
 if __name__ == "__main__":
     c = ScannerExecutorContract()

@@ -350,6 +350,10 @@ def _load_pumpfun_exit_state() -> Dict[str, Any]:
     return _read_json(STATE / "pumpfun_exit_state.json", {})
 
 
+def _load_scanner_executor_contract() -> Dict[str, Any]:
+    return _read_json(STATE / "scanner_executor_contract.json", {})
+
+
 def _load_ai_decision_trace() -> Dict[str, Any]:
     return _read_json(STATE / "ai_decision_trace.json", {})
 
@@ -832,6 +836,7 @@ def _build_summary() -> Dict[str, Any]:
     summary["pumpfun_latency"] = _load_pumpfun_latency_state()
     summary["pumpfun_positions"] = _load_pumpfun_positions()
     summary["pumpfun_exit_state"] = _load_pumpfun_exit_state()
+    summary["scanner_executor_contract"] = _load_scanner_executor_contract()
     summary["ai_decision_trace"] = _load_ai_decision_trace()
     summary["autonomous_sizing"] = _load_autonomous_sizing_state()
     try:
@@ -910,6 +915,7 @@ def _build_summary() -> Dict[str, Any]:
         "pumpfun_route": summary.get("pumpfun_route_state", {}),
         "pumpfun_native": summary.get("pumpfun_native_executor", {}),
     }
+    summary["scanner_coverage"] = summary.get("scanner_executor_contract", {})
 
     summary["ai"] = summary.get("ai_decision_trace", {})
 
@@ -1403,6 +1409,8 @@ def _build_control_plane_payload() -> Dict[str, Any]:
             "pumpfun_positions": summary_data.get("pumpfun_positions", []),
             "pumpfun_exit_state": summary_data.get("pumpfun_exit_state", {}),
         },
+        "scanner_executor_contract": summary_data.get("scanner_executor_contract", {}),
+        "scanner_coverage": summary_data.get("scanner_coverage", {}),
         "gates": gates,
         "runtime": runtime,
         "flow": flow,

@@ -12,6 +12,7 @@ from web3 import Web3
 from Core.Web3.base_allowance_manager import BaseAllowanceManager
 from Core.Web3.base_quote_router import BaseQuoteRouter
 from Core.Web3.base_executor_state import write_base_state
+from Core.Scanner.source_proof import SourceProof
 
 STATE_DIR = Path(__file__).resolve().parent.parent.parent / "state"
 BASE_EXECUTOR_STATE_FILE = STATE_DIR / "base_executor_state.json"
@@ -55,6 +56,8 @@ class BaseSwapExecutor:
             return self._write("BLOCKED_WITH_REASON", approval["reason"])
         if not quote.get("quote_ok"):
             return self._write("BLOCKED_WITH_REASON", quote.get("reason", "no_quote"))
+        proof = quote.get("source_proof")
+        if proof is not None and not SourceProof.validate(proof):
+            return self._write("BLOCKED_WITH_REASON", "invalid_source_proof")
         # Generic live send placeholder via EVM signer path; 0x/aggregator tx building is external-config dependent.
         return self._write("BASE_LIVE_ACTIVE", "", entry_quote=quote, last_action="quote_ready")
-

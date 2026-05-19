@@ -10,6 +10,9 @@ import aiohttp
 
 from Core.Scanner.wave_detection_engine import WaveDetectionEngine
 from Core.Web3.pumpfun_route_detector import PumpfunRouteDetector
+from Core.Scanner.source_proof import SourceProof
+from Core.Web3.web3_quote_router import Web3QuoteRouter
+from Core.Web3.pumpfun_route_detector import JUPITER_SOL_MINT
 
 logger = logging.getLogger("MarketWideWaveScanner")
 
@@ -48,6 +51,10 @@ class MarketWideWaveScanner:
             "candidates_found": 0,
             "hot_waves": [],
             "best_candidates": [],
+            "real_candidates": [],
+            "approved_candidates": [],
+            "rejected_candidates": [],
+            "no_data_reason": "",
             "missed_reason_summary": {},
             "source_errors": {},
             "next_scan_ms": 0
@@ -143,6 +150,9 @@ class MarketWideWaveScanner:
         scored_candidates = []
         best_candidates = []
         hot_waves = []
+        real_candidates = []
+        approved_candidates = []
+        rejected_candidates = []
 
         # Categorize candidates by route for output state mapping
         candidates_by_route = {
@@ -157,16 +167,32 @@ class MarketWideWaveScanner:
         }
 
         for item in candidates:
-            evaluated = self.engine.evaluate_token(item)
+            # Merge evaluation with original item to retain SourceProof and other fields
+            evaluated = {**item, **self.engine.evaluate_token(item)}
+            
+            # Strict SourceProof check
+            proof = evaluated.get("source_proof")
+            is_valid = SourceProof.validate(proof) if proof else False
+            
+            if not is_valid:
+                evaluated["decision"] = "REJECT"
+                evaluated["reason"] = "Invalid/missing source proof"
+                rejected_candidates.append(evaluated)
+                missed_summary["invalid_source_proof"] = missed_summary.get("invalid_source_proof", 0) + 1
+                continue
+                
+            real_candidates.append(evaluated)
             
             # Record missed reasons
             if evaluated.get("decision") == "REJECT":
                 reason = evaluated.get("reason", "rejected")
                 missed_summary[reason] = missed_summary.get(reason, 0) + 1
+                rejected_candidates.append(evaluated)
             else:
                 scored_candidates.append(evaluated)
                 if evaluated.get("decision") == "APPROVE":
                     best_candidates.append(evaluated)
+                    approved_candidates.append(evaluated)
                 if evaluated.get("wave_phase") in ["EARLY_PUMP", "NEW_LAUNCH", "MIGRATED"]:
                     hot_waves.append(evaluated)
 
@@ -192,12 +218,19 @@ class MarketWideWaveScanner:
         # Sort and limit output lists
         best_candidates.sort(key=lambda x: x.get("wave_score", 0), reverse=True)
         hot_waves.sort(key=lambda x: x.get("momentum_score", 0), reverse=True)
+        approved_candidates.sort(key=lambda x: x.get("wave_score", 0), reverse=True)
 
         state["sources_checked"] = sources_checked
         state["source_status"] = source_status
         state["candidates_found"] = len(candidates)
         state["best_candidates"] = best_candidates[:self.max_candidates]
         state["hot_waves"] = hot_waves[:15]
+        
+        state["real_candidates"] = real_candidates
+        state["approved_candidates"] = approved_candidates[:self.max_candidates]
+        state["rejected_candidates"] = rejected_candidates
+        state["no_data_reason"] = "" if real_candidates else "No real/valid candidate opportunities were retrieved in active scan pipelines."
+        
         state["missed_reason_summary"] = missed_summary
         state["source_errors"] = source_errors
         state["next_scan_ms"] = int((datetime.now(timezone.utc).timestamp() * 1000) + 5000)
@@ -216,14 +249,38 @@ class MarketWideWaveScanner:
         """Write compliant scanner status files for every single one of the 8 routes."""
         now = datetime.now(timezone.utc).isoformat()
         
+        def should_preserve(file_path: Path) -> bool:
+            if not file_path.exists():
+                return False
+            try:
+                data = json.loads(file_path.read_text())
+                if data.get("candidates"):
+                    return True
+                updated_at_str = data.get("updated_at")
+                if updated_at_str:
+                    # Strip Z and convert to isoformat if needed or parse with fromisoformat directly
+                    fixed_str = updated_at_str.replace("Z", "+00:00")
+                    dt = datetime.fromisoformat(fixed_str)
+                    if (datetime.now(timezone.utc) - dt).total_seconds() < 300:
+                        return True
+            except Exception as e:
+                logger.debug(f"Error checking file preservation for {file_path}: {e}")
+            return False
+
         # 1. Indodax
         indodax_file = STATE_DIR / "indodax_scanner_state.json"
-        indodax_file.write_text(json.dumps({
-            "updated_at": now,
-            "status": "OK",
-            "scan_mode": "REAL",
-            "candidates": []
-        }, indent=2, ensure_ascii=False))
+        if not should_preserve(indodax_file):
+            indodax_status = source_status.get("base") or source_status.get("indodax") or "NO_DATA"
+            if indodax_status == "OK" and not candidates_by_route["indodax"]:
+                indodax_status = "NO_DATA"
+            indodax_file.write_text(json.dumps({
+                "updated_at": now,
+                "status": indodax_status,
+                "scan_mode": "REAL",
+                "candidates": candidates_by_route["indodax"],
+                "source_status": indodax_status,
+                "rejected_candidates": []
+            }, indent=2, ensure_ascii=False))
 
         # 2. Solana Jupiter
         sol_jup_file = STATE_DIR / "solana_jupiter_scanner_state.json"
@@ -272,21 +329,23 @@ class MarketWideWaveScanner:
 
         # 7. Base Swap
         base_file = STATE_DIR / "base_scanner_state.json"
-        base_file.write_text(json.dumps({
-            "updated_at": now,
-            "status": source_status.get("base", "OK"),
-            "scan_mode": "REAL",
-            "candidates": candidates_by_route["base"]
-        }, indent=2, ensure_ascii=False))
+        if not should_preserve(base_file):
+            base_file.write_text(json.dumps({
+                "updated_at": now,
+                "status": source_status.get("base", "OK"),
+                "scan_mode": "REAL",
+                "candidates": candidates_by_route["base"]
+            }, indent=2, ensure_ascii=False))
 
         # 8. Future Web3
         future_file = STATE_DIR / "future_web3_scanner_state.json"
-        future_file.write_text(json.dumps({
-            "updated_at": now,
-            "status": "OK",
-            "scan_mode": "REAL",
-            "candidates": candidates_by_route["future_web3"]
-        }, indent=2, ensure_ascii=False))
+        if not should_preserve(future_file):
+            future_file.write_text(json.dumps({
+                "updated_at": now,
+                "status": "OK",
+                "scan_mode": "REAL",
+                "candidates": candidates_by_route["future_web3"]
+            }, indent=2, ensure_ascii=False))
 
         logger.info("💾 All 8 individual route scanner state files written successfully.")
 
@@ -301,6 +360,32 @@ class MarketWideWaveScanner:
         except Exception as exc:
             logger.debug(f"Fetch failed for {url}: {exc}")
             return {}
+
+    async def _verify_route(self, route: str, input_asset: str, output_asset: str, amount_raw: int = 1_000_000) -> Dict[str, Any]:
+        router = Web3QuoteRouter()
+        try:
+            quote = await router.quote(route=route, input_asset=input_asset, output_asset=output_asset, amount_raw=amount_raw)
+            return {
+                "route_availability": "VERIFIED" if quote.get("quote_ok") else "FAILED",
+                "route_check_source": f"{route}_quote_router",
+                "exit_route_availability": "VERIFIED" if quote.get("quote_ok") else "FAILED",
+                "liquidity_proof": {
+                    "quote_ok": bool(quote.get("quote_ok")),
+                    "slippage_pct": quote.get("slippage_pct"),
+                    "expected_out": quote.get("expected_out"),
+                    "gas_idr": quote.get("gas_idr"),
+                    "expires_at": quote.get("expires_at"),
+                },
+                "quote": quote,
+            }
+        except Exception as exc:
+            return {
+                "route_availability": "FAILED",
+                "route_check_source": f"{route}_quote_router_error",
+                "exit_route_availability": "FAILED",
+                "liquidity_proof": {"error": str(exc)},
+                "quote": {"quote_ok": False, "reason": str(exc)},
+            }
 
     async def _scan_pumpfun(self) -> List[Dict[str, Any]]:
         """Fetch real early-stage pump.fun tokens from DexScreener search API."""
@@ -326,7 +411,17 @@ class MarketWideWaveScanner:
             liq_expansion = float(liquidity.get("usd", 0.0) or 0.0) / 10000.0
             migration = float(liquidity.get("usd", 0.0) or 0.0) >= 50000.0
 
-            candidates.append({
+            route_eval = await self._verify_route("solana", JUPITER_SOL_MINT, mint)
+            proof = SourceProof.create(
+                source_type="REAL_API",
+                source_name="DexScreener API Search",
+                source_url_or_endpoint=url,
+                raw_id=mint,
+                symbol=str(base.get("symbol") or "").upper(),
+                address_or_mint=mint,
+                chain="solana"
+            )
+            candidate = {
                 "symbol": str(base.get("symbol") or "").upper(),
                 "mint": mint,
                 "chain": "solana",
@@ -339,9 +434,17 @@ class MarketWideWaveScanner:
                 "holder_growth_pct": 15.0,
                 "fresh_pair_creation": True,
                 "migration_event": migration,
-                "route_availability": True,
-                "exit_liquidity_quality": 0.85
-            })
+                "route_availability": route_eval.get("route_availability", "UNVERIFIED"),
+                "route_check_source": route_eval.get("route_check_source", ""),
+                "exit_route_availability": route_eval.get("exit_route_availability", "UNVERIFIED"),
+                "liquidity_proof": route_eval.get("liquidity_proof", {}),
+                "exit_liquidity_quality": float(route_eval.get("liquidity_proof", {}).get("slippage_pct", 999) or 999),
+                "source_proof": proof,
+            }
+            if SourceProof.validate(proof) and candidate["route_availability"] == "VERIFIED":
+                candidates.append(candidate)
+            else:
+                candidates.append({**candidate, "decision": "REJECT", "reason": "invalid_source_or_route"})
         return candidates
 
     async def _scan_jupiter(self) -> List[Dict[str, Any]]:
@@ -367,7 +470,17 @@ class MarketWideWaveScanner:
             vol_accel = float(volume.get("m5", 0.0) or 0.0) / 1000.0
             liq_expansion = float(liquidity.get("usd", 0.0) or 0.0) / 10000.0
 
-            candidates.append({
+            route_eval = await self._verify_route("solana", JUPITER_SOL_MINT, mint)
+            proof = SourceProof.create(
+                source_type="REAL_API",
+                source_name="DexScreener Solana Search",
+                source_url_or_endpoint=url,
+                raw_id=mint,
+                symbol=str(base.get("symbol") or "").upper(),
+                address_or_mint=mint,
+                chain="solana"
+            )
+            candidate = {
                 "symbol": str(base.get("symbol") or "").upper(),
                 "mint": mint,
                 "chain": "solana",
@@ -380,9 +493,17 @@ class MarketWideWaveScanner:
                 "holder_growth_pct": 10.0,
                 "fresh_pair_creation": False,
                 "migration_event": False,
-                "route_availability": True,
-                "exit_liquidity_quality": 0.90
-            })
+                "route_availability": route_eval.get("route_availability", "UNVERIFIED"),
+                "route_check_source": route_eval.get("route_check_source", ""),
+                "exit_route_availability": route_eval.get("exit_route_availability", "UNVERIFIED"),
+                "liquidity_proof": route_eval.get("liquidity_proof", {}),
+                "exit_liquidity_quality": float(route_eval.get("liquidity_proof", {}).get("slippage_pct", 999) or 999),
+                "source_proof": proof,
+            }
+            if SourceProof.validate(proof) and candidate["route_availability"] == "VERIFIED":
+                candidates.append(candidate)
+            else:
+                candidates.append({**candidate, "decision": "REJECT", "reason": "invalid_source_or_route"})
         return candidates
 
     async def _scan_base(self) -> List[Dict[str, Any]]:
@@ -406,7 +527,17 @@ class MarketWideWaveScanner:
             vol_accel = float(volume.get("m5", 0.0) or 0.0) / 1000.0
             liq_expansion = float(liquidity.get("usd", 0.0) or 0.0) / 10000.0
 
-            candidates.append({
+            route_eval = await self._verify_route("base", pair.get("baseToken", {}).get("address") or "", mint)
+            proof = SourceProof.create(
+                source_type="REAL_API",
+                source_name="DexScreener Base Search",
+                source_url_or_endpoint=url,
+                raw_id=mint,
+                symbol=str(base.get("symbol") or "").upper(),
+                address_or_mint=mint,
+                chain="base"
+            )
+            candidate = {
                 "symbol": str(base.get("symbol") or "").upper(),
                 "mint": mint,
                 "chain": "base",
@@ -419,9 +550,17 @@ class MarketWideWaveScanner:
                 "holder_growth_pct": 8.0,
                 "fresh_pair_creation": False,
                 "migration_event": False,
-                "route_availability": True,
-                "exit_liquidity_quality": 0.88
-            })
+                "route_availability": route_eval.get("route_availability", "UNVERIFIED"),
+                "route_check_source": route_eval.get("route_check_source", ""),
+                "exit_route_availability": route_eval.get("exit_route_availability", "UNVERIFIED"),
+                "liquidity_proof": route_eval.get("liquidity_proof", {}),
+                "exit_liquidity_quality": float(route_eval.get("liquidity_proof", {}).get("slippage_pct", 999) or 999),
+                "source_proof": proof,
+            }
+            if SourceProof.validate(proof) and candidate["route_availability"] == "VERIFIED":
+                candidates.append(candidate)
+            else:
+                candidates.append({**candidate, "decision": "REJECT", "reason": "invalid_source_or_route"})
         return candidates
 
     async def _scan_polymarket(self) -> List[Dict[str, Any]]:
@@ -441,7 +580,22 @@ class MarketWideWaveScanner:
                         clob_ids = item.get("clobTokenIds", [])
                         mint = clob_ids[0] if clob_ids else str(item.get("id") or "")
                         
-                        candidates.append({
+                        proof = SourceProof.create(
+                            source_type="REAL_API",
+                            source_name="Polymarket CLOB Gamma API",
+                            source_url_or_endpoint=url,
+                            raw_id=mint,
+                            symbol=symbol,
+                            address_or_mint=mint,
+                            chain="polygon"
+                        )
+                        route_eval = {
+                            "route_availability": "VERIFIED" if mint else "UNVERIFIED",
+                            "route_check_source": "polymarket_gamma_api",
+                            "exit_route_availability": "VERIFIED" if mint else "UNVERIFIED",
+                            "liquidity_proof": {"liquidity": float(item.get("liquidity", 0.0) or 0.0)}
+                        }
+                        candidate = {
                             "symbol": symbol,
                             "mint": mint,
                             "chain": "polygon",
@@ -454,9 +608,17 @@ class MarketWideWaveScanner:
                             "holder_growth_pct": 5.0,
                             "fresh_pair_creation": False,
                             "migration_event": False,
-                            "route_availability": True,
-                            "exit_liquidity_quality": 0.95
-                        })
+                            "route_availability": route_eval["route_availability"],
+                            "route_check_source": route_eval["route_check_source"],
+                            "exit_route_availability": route_eval["exit_route_availability"],
+                            "liquidity_proof": route_eval["liquidity_proof"],
+                            "exit_liquidity_quality": float(item.get("liquidity", 0.0) or 0.0),
+                            "source_proof": proof
+                        }
+                        if SourceProof.validate(proof) and candidate["route_availability"] == "VERIFIED":
+                            candidates.append(candidate)
+                        else:
+                            candidates.append({**candidate, "decision": "REJECT", "reason": "invalid_source_or_route"})
                     return candidates
         except Exception as e:
             logger.warning(f"Error fetching Polymarket data: {e}")

@@ -4,6 +4,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict
 
+from Core.Scanner.source_proof import SourceProof
+
 STATE_DIR = Path(__file__).resolve().parent.parent.parent / 'state'
 POSITION_FILE = STATE_DIR / 'web3_positions.json'
 
@@ -21,6 +23,9 @@ class Web3ExecutorGuard:
 
     def approve(self, *, treasury: Dict[str, Any], route: Dict[str, Any], safety: Dict[str, Any], quote: Dict[str, Any], budget_idr: float, stop_loss_pct: float, take_profit_pct: float, trailing_stop_pct: float = 0.0, time_stop_seconds: int = 0, spend_reserve: bool = False, exit_plan: bool = True, quote_context: str = "ok") -> Dict[str, Any]:
         reasons = []
+        proof = route.get("source_proof")
+        if not SourceProof.validate(proof):
+            reasons.append("invalid_source_proof")
         if not treasury or treasury.get('status') != 'OK' or not treasury.get('reconciliation', {}).get('matches_user_wallet'):
             reasons.append('phantom_not_reconciled')
         if not route.get('allowed'):

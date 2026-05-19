@@ -630,6 +630,23 @@ function render(data) {
   setT('web3-exit-reason', exitState.latest_exit_reason || '—');
   setT('web3-exit-updated', exitState.last_updated ? new Date(exitState.last_updated).toLocaleTimeString('en-GB', {hour12:false, timeZone:'Asia/Jakarta'}) + ' WIB' : '—');
 
+  const scannerContract = data.scanner_executor_contract || data.scanner_coverage || {};
+  const scannerContractRoutes = scannerContract.routes || scannerContract.coverage || scannerContract;
+  const routeKeys = Array.isArray(scannerContractRoutes)
+    ? scannerContractRoutes
+    : Object.keys(scannerContractRoutes || {}).filter(k => !['updated_at', 'status', 'reason', 'blocker', 'source_proof_count'].includes(k));
+  const contractStatus = scannerContract.status || scannerContract.coverage_status || scannerContract.runtime_status || 'UNKNOWN';
+  const contractReason = scannerContract.reason || scannerContract.blocker || scannerContract.latest_blocker || '—';
+  const sourceProofCount = scannerContract.source_proof_count != null
+    ? scannerContract.source_proof_count
+    : (scannerContract.source_proof_ok_count != null ? scannerContract.source_proof_ok_count : '—');
+  setT('scanner-contract-status', contractStatus);
+  setT('scanner-coverage-count', routeKeys.length ? String(routeKeys.length) : '—');
+  setT('scanner-coverage-proof', sourceProofCount !== '—' ? `${sourceProofCount} proven` : '—');
+  setT('scanner-coverage-blocker', contractReason);
+  const latestRoute = scannerContract.latest_route || scannerContract.route || scannerContract.last_route || routeKeys[0] || '—';
+  setT('scanner-coverage-route', latestRoute);
+
   const ai = data.ai || {};
   const sizing = data.autonomous_sizing || {};
   setT('ai-objective', ai.objective || '—');
