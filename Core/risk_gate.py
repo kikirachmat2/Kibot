@@ -34,7 +34,7 @@ class RiskGate:
     No hardcoded limits on exposure or slots—only the Council's wisdom and the balance.
     """
     def __init__(self, config: Optional[Dict] = None):
-        self.config = config or {
+        defaults = {
             "max_slippage_pct": 10.0,          # High tolerance for low-cap gems
             "min_order_notional_idr": 10000, 
             "max_order_notional_idr": 100000000000, # 100 Billion IDR (Sovereign Cap)
@@ -42,6 +42,7 @@ class RiskGate:
             "max_daily_loss_pct": KiConfig.MAX_DAILY_LOSS_PERCENT,          # Manifesto mandated
             "blacklist": ["USDT_IDR"] 
         }
+        self.config = {**defaults, **(config or {})}
         # Hard lock: Enforce the 1.5% maximum daily loss limit under all conditions to prevent overrides
         self.config["max_daily_loss_pct"] = KiConfig.MAX_DAILY_LOSS_PERCENT
         self.daily_pnl = 0.0
