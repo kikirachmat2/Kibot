@@ -58,10 +58,19 @@ class Web3OpportunityScanner:
 
         try:
             defi = await scout.get_best_defi_opportunities()
+            ev = float(defi.get('highest_apy', 0.0))
+            safety_score = 80 if sol.get("ok") else 25
+            decision = "APPROVE" if ev >= 1.0 and sol.get("ok") else "WAIT"
             best.append({
                 "route": "solana",
                 "asset": defi.get('highest_apy_protocol', 'kamino_apy'),
-                "ev": float(defi.get('highest_apy', 0.0)),
+                "ev_pct": ev,
+                "safety_score": safety_score,
+                "quote_ok": bool(sol.get("ok")),
+                "liquidity_ok": bool(sol.get("ok")),
+                "slippage_pct": 0.3 if sol.get("ok") else 2.5,
+                "max_trade_idr": 50000 if sol.get("ok") else 0,
+                "decision": decision,
                 "reason": defi.get('regime', ''),
             })
         except Exception as e:
@@ -69,6 +78,7 @@ class Web3OpportunityScanner:
 
         state = {
             "updated_at": datetime.now(timezone.utc).isoformat(),
+            "objective": "maximize_risk_adjusted_profit_for_boss",
             "best_opportunities": best,
             "rejected": rejected,
             "routes": {

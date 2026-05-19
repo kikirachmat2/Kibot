@@ -1025,9 +1025,9 @@ def _build_control_plane_payload() -> Dict[str, Any]:
             "chains": pt.get("chains", {}),
         },
         "web3": {
-            "routes": summary.get("phantom_multichain", {}).get("registry", {}),
-            "opportunities": summary.get("web3_opportunities", {}),
-            "positions": summary.get("web3_positions", []),
+            "routes": summary_data.get("phantom_multichain", {}).get("registry", {}),
+            "opportunities": summary_data.get("web3_opportunities", {}),
+            "positions": summary_data.get("web3_positions", []),
         },
         "polymarket": {
             "venue": "Polymarket",

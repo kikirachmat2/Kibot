@@ -989,6 +989,44 @@ class SovereignCouncil:
                 json.dumps(scorecard_list, indent=2, default=str),
                 encoding="utf-8"
             )
+
+            best_action = "WAIT"
+            venue = "indodax"
+            reason = "no approved candidate"
+            confidence = 0.0
+            if isinstance(evaluation, dict):
+                if evaluation.get("live_forward"):
+                    best_action = "ENTER"
+                    reason = "approved candidate ready for live forward"
+                    top = evaluation["live_forward"][0] or {}
+                elif evaluation.get("approved"):
+                    best_action = "WAIT"
+                    reason = "approved but live gate off"
+                    top = evaluation["approved"][0] or {}
+                else:
+                    top = {}
+                confidence = float(
+                    top.get("scorecard", {}).get("composite_score", 0.0)
+                    or top.get("confidence", 0.0)
+                    or 0.0
+                )
+                venue = str(top.get("venue") or top.get("exchange") or "indodax").lower()
+
+            decision_trace = {
+                "updated_at": datetime.now(timezone.utc).isoformat(),
+                "objective": "maximize_risk_adjusted_profit_for_boss",
+                "market_summary": str(regime or "UNKNOWN"),
+                "best_action": best_action,
+                "venue": venue,
+                "reason": reason,
+                "confidence": round(confidence, 4),
+                "risk_status": str((evidence_bundle.get("risk_status") or {}).get("state") or "UNKNOWN"),
+                "next_check_seconds": int(max(10, min(300, (minutes_to_midnight or 1) * 60))),
+            }
+            (self.state_dir / "ai_decision_trace.json").write_text(
+                json.dumps(decision_trace, indent=2, default=str),
+                encoding="utf-8",
+            )
             
             logger.info("✅ Autonomous Intelligence Gates executed & persisted successfully.")
         except Exception as _director_err:

@@ -341,7 +341,9 @@ def check_json_states(state_dir):
         "phantom_scout.json",
         "market_rotation.json",
         "punishment_state.json",
-        "expected_value.json"
+        "expected_value.json",
+        "web3_opportunities.json",
+        "ai_decision_trace.json",
     ]
     
     is_bootstrap_allowed = (
@@ -365,7 +367,9 @@ def check_json_states(state_dir):
         "phantom_scout.json": 300.0,
         "market_rotation.json": 90.0,
         "punishment_state.json": 31536000.0,
-        "expected_value.json": 31536000.0
+        "expected_value.json": 31536000.0,
+        "web3_opportunities.json": 120.0,
+        "ai_decision_trace.json": 120.0,
     }
     
     for state_file in required_states:
@@ -397,6 +401,10 @@ def check_json_states(state_dir):
                         default_data = {"schema_version": 1, "status": "idle", "records": {}, "quarantined": []}
                     elif state_file == "expected_value.json":
                         default_data = {"schema_version": 1, "status": "idle", "strategies": {}}
+                    elif state_file == "web3_opportunities.json":
+                        default_data = {"updated_at": "", "best_opportunities": [], "rejected": [], "routes": {"solana": {}, "base": {}, "polymarket": {}, "future_web3": {}}}
+                    elif state_file == "ai_decision_trace.json":
+                        default_data = {"updated_at": "", "objective": "maximize_risk_adjusted_profit_for_boss", "market_summary": "", "best_action": "WAIT", "venue": "indodax", "reason": "bootstrap", "confidence": 0.0, "risk_status": "UNKNOWN", "next_check_seconds": 60}
                     
                     with open(file_path, "w") as f:
                         json.dump(default_data, f, indent=4)
@@ -456,6 +464,36 @@ def check_json_states(state_dir):
                 else:
                     logger.error(f"❌ CRITICAL STATE ERROR: expected_value.json has an invalid type: {type(data)}")
                     safe_exit(19, f"expected_value.json has an invalid type: {type(data)}")
+
+            if state_file == "web3_opportunities.json":
+                if isinstance(data, dict):
+                    required_keys = {"updated_at", "best_opportunities", "rejected", "routes"}
+                    missing_keys = required_keys - set(data.keys())
+                    if missing_keys:
+                        logger.error(f"❌ CRITICAL STATE ERROR: web3_opportunities.json is missing required schema keys: {missing_keys}")
+                        safe_exit(20, f"web3_opportunities.json is missing required schema keys: {missing_keys}")
+                else:
+                    logger.error(f"❌ CRITICAL STATE ERROR: web3_opportunities.json has an invalid type: {type(data)}")
+                    safe_exit(20, f"web3_opportunities.json has an invalid type: {type(data)}")
+
+                positions_file = Path(state_dir) / "web3_positions.json"
+                if positions_file.exists():
+                    try:
+                        positions = json.loads(positions_file.read_text())
+                    except Exception:
+                        positions = []
+                    if positions:
+                        exit_state = Path(state_dir) / "web3_exit_state.json"
+                        if not exit_state.exists():
+                            logger.error("❌ CRITICAL STATE ERROR: web3_positions.json exists but web3_exit_state.json is missing.")
+                            safe_exit(21, "web3_positions.json exists but web3_exit_state.json is missing.")
+
+            if state_file == "ai_decision_trace.json":
+                required_keys = {"updated_at", "objective", "market_summary", "best_action", "venue", "reason", "confidence", "risk_status", "next_check_seconds"}
+                missing_keys = required_keys - set(data.keys()) if isinstance(data, dict) else required_keys
+                if missing_keys:
+                    logger.error(f"❌ CRITICAL STATE ERROR: ai_decision_trace.json is missing required schema keys: {missing_keys}")
+                    safe_exit(22, f"ai_decision_trace.json is missing required schema keys: {missing_keys}")
 
             if state_file == "scanner_runtime.json":
                 mode = data.get("mode")

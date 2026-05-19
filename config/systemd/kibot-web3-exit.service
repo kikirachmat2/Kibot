@@ -1,0 +1,18 @@
+[Unit]
+Description=KiBot Web3 Exit Daemon
+After=network-online.target redis-server.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=ubuntu
+WorkingDirectory=/home/ubuntu/KiBot
+Environment=PYTHONUNBUFFERED=1
+ExecStart=/home/ubuntu/KiBot/.venv/bin/python3 -m Core.Web3.web3_exit_daemon
+Restart=always
+RestartSec=5
+TimeoutStopSec=8
+KillMode=mixed
+
+[Install]
+WantedBy=multi-user.target
