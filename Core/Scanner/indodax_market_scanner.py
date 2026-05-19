@@ -33,7 +33,7 @@ class IndodaxMarketScanner:
                 state = {
                     "updated_at": now_str,
                     "source_status": "NO_DATA",
-                    "scan_mode": "REAL_EXCHANGE",
+                    "scan_mode": "REAL_EXCHANGE_MARKET_WIDE",
                     "pairs_checked": 0,
                     "candidates_found": 0,
                     "candidates": [],
@@ -45,13 +45,55 @@ class IndodaxMarketScanner:
                 return state
 
             pairs_checked = 0
+            categories_checked = ["ALL", "IDR_MARKETS", "NEW_COIN", "MEME", "AI_BIG_DATA", "RWA", "DEFI", "L1_L2", "NFT", "TOKENIZED_STOCKS", "OTHER"]
             candidates = []
             rejected_candidates = []
+            gainers_24h = []
+            volume_leaders = []
 
             for pair, ticker in tickers.items():
                 if not pair.endswith("_idr"):
                     continue
                 pairs_checked += 1
+                last_price = float(ticker.get("last", 0.0) or 0.0)
+                high = float(ticker.get("high", last_price) or last_price)
+                low = float(ticker.get("low", last_price) or last_price)
+                vol_idr = float(ticker.get("vol_idr", ticker.get("volume_idr", 0.0)) or 0.0)
+                change_24h = ((last_price - low) / low * 100.0) if low > 0 else 0.0
+                gainers_24h.append({
+                    "symbol": pair.upper().replace("_", "/"),
+                    "pair": pair,
+                    "change_24h_pct": change_24h,
+                    "volume_idr": vol_idr,
+                    "last_price": last_price,
+                    "source_proof": SourceProof.create(
+                        source_type="REAL_EXCHANGE",
+                        source_name="Indodax",
+                        source_url_or_endpoint="https://indodax.com/api/summaries",
+                        raw_id=pair,
+                        symbol=pair.upper().replace("_", "/"),
+                        address_or_mint=pair,
+                        chain="rupiah",
+                        proof_ok=True
+                    ),
+                })
+                volume_leaders.append({
+                    "symbol": pair.upper().replace("_", "/"),
+                    "pair": pair,
+                    "change_24h_pct": change_24h,
+                    "volume_idr": vol_idr,
+                    "last_price": last_price,
+                    "source_proof": SourceProof.create(
+                        source_type="REAL_EXCHANGE",
+                        source_name="Indodax",
+                        source_url_or_endpoint="https://indodax.com/api/summaries",
+                        raw_id=pair,
+                        symbol=pair.upper().replace("_", "/"),
+                        address_or_mint=pair,
+                        chain="rupiah",
+                        proof_ok=True
+                    ),
+                })
 
                 # Use the real pump detection engine from the smallcap scanner
                 sig = self.scanner.detect_pump(pair, ticker)
@@ -86,12 +128,31 @@ class IndodaxMarketScanner:
                                 "source_proof": proof
                             }
                             candidates.append(candidate)
+                            gainers_24h.append({
+                                "symbol": symbol,
+                                "pair": pair,
+                                "change_24h_pct": float(sig.get("change_pct", 0.0)),
+                                "volume_idr": float(sig.get("volume_idr", sig.get("vol_idr", 0.0)) or 0.0),
+                                "source_proof": proof,
+                            })
+                            volume_leaders.append({
+                                "symbol": symbol,
+                                "pair": pair,
+                                "change_24h_pct": float(sig.get("change_pct", 0.0)),
+                                "volume_idr": float(sig.get("volume_idr", sig.get("vol_idr", 0.0)) or 0.0),
+                                "source_proof": proof,
+                            })
                         else:
                             rejected_candidates.append({
                                 "symbol": symbol,
                                 "reason": "invalid_source_proof",
                                 "proof": proof
                             })
+
+            gainers_24h.sort(key=lambda x: x.get("change_24h_pct", 0.0), reverse=True)
+            volume_leaders.sort(key=lambda x: x.get("volume_idr", 0.0), reverse=True)
+            brutal_momentum_candidates = gainers_24h[:15]
+            pullback_candidates = [c for c in candidates if float(c.get("change_pct", 0.0)) > 0 and float(c.get("confidence", 0.0)) < 0.8]
 
             # Sort by price acceleration descending
             candidates.sort(key=lambda x: x.get("price_acceleration", 0.0), reverse=True)
@@ -100,8 +161,13 @@ class IndodaxMarketScanner:
             state = {
                 "updated_at": now_str,
                 "source_status": "OK" if candidates else "NO_DATA",
-                "scan_mode": "REAL_EXCHANGE",
+                "scan_mode": "REAL_EXCHANGE_MARKET_WIDE",
                 "pairs_checked": pairs_checked,
+                "categories_checked": categories_checked,
+                "gainers_24h": gainers_24h[:20],
+                "volume_leaders": volume_leaders[:20],
+                "brutal_momentum_candidates": brutal_momentum_candidates,
+                "pullback_candidates": pullback_candidates[:20],
                 "candidates_found": len(candidates),
                 "candidates": candidates,
                 "rejected_candidates": rejected_candidates,
@@ -118,7 +184,7 @@ class IndodaxMarketScanner:
             state = {
                 "updated_at": now_str,
                 "source_status": "SOURCE_FAILED",
-                "scan_mode": "REAL_EXCHANGE",
+                "scan_mode": "REAL_EXCHANGE_MARKET_WIDE",
                 "pairs_checked": 0,
                 "candidates_found": 0,
                 "candidates": [],

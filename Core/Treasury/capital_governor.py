@@ -265,10 +265,11 @@ class CapitalGovernor:
             else:
                 self.daily_pnl_pct = 0.0
                 
-            self.status = "RECONCILED" if phantom_ready else "BLOCKED"
+            indodax_ready = indodax_real_balance > 0
+            self.status = "RECONCILED" if (phantom_ready or indodax_ready) else "DEGRADED"
             self.save()
             if not phantom_ready:
-                logger.warning("⚠️ Phantom treasury not yet reconciled; live Phantom routes remain blocked.")
+                logger.warning("⚠️ Phantom treasury not yet reconciled; live Phantom routes remain venue-scoped.")
             
             # 4. Compute target allocation split
             targets = self.policy.compute_targets(phantom_equity_idr)
@@ -281,6 +282,7 @@ class CapitalGovernor:
             
             payload = {
                 "date": self.last_reset_date,
+                "global_status": self.status,
                 "start_total_equity_idr": self.start_total_equity_idr,
                 "current_total_equity_idr": self.current_total_equity_idr,
                 "max_daily_loss_idr": self.max_daily_loss_idr,
@@ -292,6 +294,24 @@ class CapitalGovernor:
                 "reset_withdrawals_offset": self.reset_withdrawals_offset,
                 "in_flight_idr": in_flight_idr,
                 "status": self.status,
+                "venues": {
+                    "indodax": {
+                        "status": "RECONCILED" if indodax_real_balance > 0 else "BLOCKED_WITH_REASON",
+                        "equity_idr": indodax_real_balance,
+                        "allow_orders": bool(indodax_real_balance > 0 and self.daily_pnl_idr > -self.max_daily_loss_idr),
+                        "reason": "" if indodax_real_balance > 0 else "indodax_balance_unavailable",
+                    },
+                    "phantom": {
+                        "status": "RECONCILED" if phantom_ready else "BLOCKED_WITH_REASON",
+                        "equity_idr": phantom_equity_idr,
+                        "allow_orders": bool(phantom_ready and self.daily_pnl_idr > -self.max_daily_loss_idr),
+                        "reason": "" if phantom_ready else "phantom_reconciliation_required",
+                    },
+                },
+                "allow_indodax_orders": bool(indodax_real_balance > 0 and self.daily_pnl_idr > -self.max_daily_loss_idr),
+                "allow_phantom_orders": bool(phantom_ready and self.daily_pnl_idr > -self.max_daily_loss_idr),
+                "bridge": "OFF",
+                "withdrawal": "OFF",
                 "targets": targets,
                 "phantom_details": phantom_summary
             }

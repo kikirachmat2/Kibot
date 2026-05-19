@@ -116,8 +116,8 @@ class PhantomRouter:
         Initiate a cross-chain bridge transaction.
         """
         if not KiConfig.LIVE_TRADING_ENABLED or not KiConfig.ENABLE_REAL_BRIDGE or not KiConfig.ENABLE_REAL_WITHDRAWAL:
-            logger.warning(f"⚠️ [GUARDED] Cross-chain bridge blocked (Real Bridge/Withdrawal OFF): {amount} {token} from {from_chain} to {to_chain}")
-            return True
+            logger.warning(f"⚠️ [OFF] Cross-chain bridge disabled by runtime contract: {amount} {token} from {from_chain} to {to_chain}")
+            return False
         logger.info(f"Guarded Bridge: {amount} {token} from {from_chain} to {to_chain}")
         return True
 

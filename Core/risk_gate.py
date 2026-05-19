@@ -119,7 +119,7 @@ class RiskGate:
             logger.error(f"Failed to save daily equity anchor: {e}")
             return data
 
-    def validate_signal(self, signal: Dict, balance_idr: float, active_positions_count: int) -> Tuple[bool, str]:
+    def validate_signal(self, signal: Dict, balance_idr: float, active_positions_count: int, venue: Optional[str] = None) -> Tuple[bool, str]:
         """
         Validates a trade signal against sovereign risk parameters.
         V3.5: Strategy is to be situational. Limits are advisory, except for the 1.5% Hard Cap.
@@ -138,6 +138,8 @@ class RiskGate:
             starting_equity * (self.config["max_daily_loss_pct"] / 100.0)
         )
         
+        venue = (venue or signal.get("venue") or signal.get("route") or signal.get("network") or "indodax").lower()
+
         # 1. Global Treasury Governor Daily Drawdown, Staleness & Reconcile Check
         from Core.Treasury.capital_governor import GOVERNOR_FILE
         import time
@@ -167,7 +169,7 @@ class RiskGate:
                 return False, "FAIL-CLOSED: Capital Governor state date is from a different day"
 
             phantom_file = STATE_DIR / "phantom_treasury.json"
-            if phantom_file.exists():
+            if venue in {"phantom", "solana", "base", "polymarket", "future_web3", "pumpfun"} and phantom_file.exists():
                 try:
                     with open(phantom_file, "r") as f:
                         phantom_state = json.load(f)

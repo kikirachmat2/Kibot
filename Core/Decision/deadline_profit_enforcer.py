@@ -3,6 +3,7 @@ import logging
 import os
 import time
 import pathlib
+from datetime import datetime, timezone
 from typing import Dict, Any
 
 logger = logging.getLogger("KiBot.DeadlineProfitEnforcer")
@@ -56,23 +57,37 @@ class DeadlineProfitEnforcer:
 
         locked = False
         reason = "No lock active"
+        stage = "NORMAL"
+        if daily_pnl_pct <= 0.0:
+            stage = "PRESSURE"
+        if minutes_to_midnight <= 90 and daily_pnl_pct > 0.0:
+            stage = "AGGRESSIVE_SEARCH"
 
         # Rule 1: Lock Green Target reached
         if daily_pnl_pct >= target_pct:
             locked = True
             reason = f"LOCK_GREEN: Daily profit target reached ({daily_pnl_pct:.2f}% >= {target_pct:.2f}%)"
+            stage = "CLOSING_WINDOW"
         
         # Rule 2: Midnight deadline approaching protection
         elif minutes_to_midnight <= 30 and daily_pnl_pct > 0.0:
             locked = True
             reason = f"LOCK_GREEN: Midnight approaching ({minutes_to_midnight}m left) and green profit protected (+{daily_pnl_pct:.2f}%)"
+            stage = "CLOSING_WINDOW"
 
         enforcer_state = {
             "locked_for_day": locked,
             "lock_reason": reason,
             "daily_pnl_pct": round(daily_pnl_pct, 4),
             "daily_pnl_idr": round(daily_pnl_idr, 2),
-            "last_evaluated_at": time.time()
+            "last_evaluated_at": time.time(),
+            "wib_date": datetime.now(timezone.utc).date().isoformat(),
+            "minutes_to_midnight": int(minutes_to_midnight),
+            "stage": stage,
+            "indodax_pressure": "MAX" if stage in {"PRESSURE", "AGGRESSIVE_SEARCH", "CLOSING_WINDOW"} else "NORMAL",
+            "phantom_pressure": "MAX" if stage in {"PRESSURE", "AGGRESSIVE_SEARCH", "CLOSING_WINDOW"} else "NORMAL",
+            "required_action": "SCAN_NEXT" if not locked else "CLOSE_WINDOW",
+            "reason": reason,
         }
 
         try:

@@ -647,6 +647,32 @@ function render(data) {
   const latestRoute = scannerContract.latest_route || scannerContract.route || scannerContract.last_route || routeKeys[0] || '—';
   setT('scanner-coverage-route', latestRoute);
 
+  const engine = data.engine_independence || {};
+  const indodaxEngine = engine.indodax_engine || {};
+  const phantomEngine = engine.phantom_engine || {};
+  const engineIndo = el('engine-indodax');
+  if (engineIndo) {
+    engineIndo.textContent = indodaxEngine.status || '—';
+    engineIndo.className = 'badge ' + ((indodaxEngine.allow_orders ?? true) ? 'badge--green' : 'badge--red');
+  }
+  const enginePh = el('engine-phantom');
+  if (enginePh) {
+    enginePh.textContent = phantomEngine.status || '—';
+    enginePh.className = 'badge ' + ((phantomEngine.allow_orders ?? true) ? 'badge--green' : 'badge--red');
+  }
+  setT('engine-bridge', engine.bridge || 'OFF');
+  setT('engine-withdrawal', engine.withdrawal || 'OFF');
+
+  const deadline = data.deadline_pressure || {};
+  setT('deadline-minutes', deadline.minutes_to_midnight != null ? String(deadline.minutes_to_midnight) : '—');
+  const deadlineStage = el('deadline-stage');
+  if (deadlineStage) deadlineStage.textContent = deadline.stage || deadline.pressure_level || '—';
+  const deadlineIndo = el('deadline-indodax-pressure');
+  if (deadlineIndo) deadlineIndo.textContent = deadline.indodax_pressure || deadline.pressure_level || '—';
+  const deadlinePh = el('deadline-phantom-pressure');
+  if (deadlinePh) deadlinePh.textContent = deadline.phantom_pressure || deadline.pressure_level || '—';
+  setT('deadline-required-action', deadline.required_action || deadline.reason || '—');
+
   const ai = data.ai || {};
   const sizing = data.autonomous_sizing || {};
   setT('ai-objective', ai.objective || '—');

@@ -354,6 +354,26 @@ def _load_scanner_executor_contract() -> Dict[str, Any]:
     return _read_json(STATE / "scanner_executor_contract.json", {})
 
 
+def _load_engine_independence() -> Dict[str, Any]:
+    return _read_json(STATE / "engine_independence.json", {})
+
+
+def _load_indodax_no_idle() -> Dict[str, Any]:
+    return _read_json(STATE / "indodax_no_idle.json", {})
+
+
+def _load_phantom_capital_mover() -> Dict[str, Any]:
+    return _read_json(STATE / "phantom_capital_mover.json", {})
+
+
+def _load_phantom_network_maximizer() -> Dict[str, Any]:
+    return _read_json(STATE / "phantom_network_maximizer.json", {})
+
+
+def _load_deadline_pressure() -> Dict[str, Any]:
+    return _read_json(STATE / "deadline_profit_enforcer.json", {})
+
+
 def _load_ai_decision_trace() -> Dict[str, Any]:
     return _read_json(STATE / "ai_decision_trace.json", {})
 
@@ -837,6 +857,11 @@ def _build_summary() -> Dict[str, Any]:
     summary["pumpfun_positions"] = _load_pumpfun_positions()
     summary["pumpfun_exit_state"] = _load_pumpfun_exit_state()
     summary["scanner_executor_contract"] = _load_scanner_executor_contract()
+    summary["engine_independence"] = _load_engine_independence()
+    summary["indodax_no_idle"] = _load_indodax_no_idle()
+    summary["phantom_capital_mover"] = _load_phantom_capital_mover()
+    summary["phantom_network_maximizer"] = _load_phantom_network_maximizer()
+    summary["deadline_pressure"] = _load_deadline_pressure()
     summary["ai_decision_trace"] = _load_ai_decision_trace()
     summary["autonomous_sizing"] = _load_autonomous_sizing_state()
     try:
@@ -916,6 +941,7 @@ def _build_summary() -> Dict[str, Any]:
         "pumpfun_native": summary.get("pumpfun_native_executor", {}),
     }
     summary["scanner_coverage"] = summary.get("scanner_executor_contract", {})
+    summary["engine_split"] = summary.get("engine_independence", {})
 
     summary["ai"] = summary.get("ai_decision_trace", {})
 
@@ -1411,6 +1437,11 @@ def _build_control_plane_payload() -> Dict[str, Any]:
         },
         "scanner_executor_contract": summary_data.get("scanner_executor_contract", {}),
         "scanner_coverage": summary_data.get("scanner_coverage", {}),
+        "engine_independence": summary_data.get("engine_independence", {}),
+        "indodax_no_idle": summary_data.get("indodax_no_idle", {}),
+        "phantom_capital_mover": summary_data.get("phantom_capital_mover", {}),
+        "phantom_network_maximizer": summary_data.get("phantom_network_maximizer", {}),
+        "deadline_pressure": summary_data.get("deadline_pressure", {}),
         "gates": gates,
         "runtime": runtime,
         "flow": flow,

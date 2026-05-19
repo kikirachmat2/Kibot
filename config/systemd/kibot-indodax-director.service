@@ -1,0 +1,17 @@
+[Unit]
+Description=KiBot Indodax Independent Director
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/home/ubuntu/KiBot
+EnvironmentFile=/home/ubuntu/KiBot/.env
+ExecStart=/home/ubuntu/KiBot/.venv/bin/python3 -m Core.Decision.indodax_no_idle_loop
+Restart=always
+RestartSec=1
+KillSignal=SIGINT
+
+[Install]
+WantedBy=multi-user.target
+
