@@ -9,6 +9,9 @@ from typing import Any, Dict
 
 from Core.Decision.indodax_target_board import build_indodax_target_board
 from Core.Decision.phantom_target_board import build_phantom_target_board
+from Core.Decision.engine_independence import write_engine_independence
+from Core.Treasury.phantom_capital_mover import write_phantom_capital_mover
+from Core.Treasury.phantom_network_maximizer import write_phantom_network_maximizer
 from Core.Scanner.scanner_health import write_scanner_health
 from Core.Scanner.scanner_executor_contract import ScannerExecutorContract
 from Core.Support.server_telemetry import write_server_telemetry
@@ -47,25 +50,27 @@ def _fresh(path: Path, max_age_s: float = 600.0) -> bool:
 
 
 def build_final_claim() -> Dict[str, Any]:
+    write_engine_independence({})
+    write_phantom_capital_mover({})
+    write_phantom_network_maximizer({})
+    ai_review_path = STATE / "ai_strategy_review.json"
+    ai_review_path.write_text(
+        json.dumps({
+            "updated_at": datetime.now(timezone.utc).isoformat(),
+            "role": "REVIEW_AND_ADAPTATION_ONLY",
+            "hot_path_blocking": False,
+            "missed_opportunities": [],
+            "scanner_weakness": [],
+            "recommended_parameter_changes": [],
+            "deadline_observation": "runtime_refresh",
+            "next_review_seconds": 60,
+        }, indent=2, ensure_ascii=False),
+        encoding="utf-8",
+    )
     indodax = build_indodax_target_board()
     phantom = build_phantom_target_board()
     ScannerExecutorContract().write_contract_state()
     scanner_health = write_scanner_health(_read("scanner_executor_contract.json", {}))
-    ai_review_path = STATE / "ai_strategy_review.json"
-    if not ai_review_path.exists():
-        ai_review_path.write_text(
-            json.dumps({
-                "updated_at": datetime.now(timezone.utc).isoformat(),
-                "role": "REVIEW_AND_ADAPTATION_ONLY",
-                "hot_path_blocking": False,
-                "missed_opportunities": [],
-                "scanner_weakness": [],
-                "recommended_parameter_changes": [],
-                "deadline_observation": "No explicit review yet; runtime writer initialized.",
-                "next_review_seconds": 0,
-            }, indent=2, ensure_ascii=False),
-            encoding="utf-8",
-        )
     telemetry = write_server_telemetry({})
     services = {
         name: _svc(name)

@@ -6,6 +6,9 @@ from pathlib import Path
 
 from Core.Decision.indodax_target_board import build_indodax_target_board
 from Core.Decision.phantom_target_board import build_phantom_target_board
+from Core.Treasury.phantom_capital_mover import write_phantom_capital_mover
+from Core.Treasury.phantom_network_maximizer import write_phantom_network_maximizer
+from Core.Decision.engine_independence import write_engine_independence
 
 logger = logging.getLogger("TargetBoardRunner")
 STATE_DIR = Path(__file__).resolve().parent.parent.parent / "state"
@@ -31,6 +34,9 @@ async def run_forever() -> None:
         try:
             indo = build_indodax_target_board()
             ph = build_phantom_target_board()
+            write_phantom_capital_mover({})
+            write_phantom_network_maximizer({})
+            write_engine_independence({})
             _write_runtime(indo, ph, "")
         except Exception as exc:  # pragma: no cover
             logger.exception("target board refresh failed: %s", exc)
