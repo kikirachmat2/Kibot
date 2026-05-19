@@ -1,5 +1,5 @@
 [Unit]
-Description=KiBot Indodax Live Brain
+Description=KiBot Autonomous Trading Brain
 After=network-online.target redis-server.service
 Wants=network-online.target
 
@@ -7,7 +7,7 @@ Wants=network-online.target
 Type=simple
 WorkingDirectory=/home/ubuntu/KiBot
 EnvironmentFile=/home/ubuntu/KiBot/.env
-ExecStart=/home/ubuntu/KiBot/.venv/bin/python3 -m Core.Decision.indodax_live_brain
+ExecStart=/home/ubuntu/KiBot/.venv/bin/python3 -m Core.Decision.autonomous_trading_brain
 Restart=always
 RestartSec=1
 

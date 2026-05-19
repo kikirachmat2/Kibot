@@ -401,6 +401,22 @@ def _load_ai_decision_trace() -> Dict[str, Any]:
 def _load_autonomous_sizing_state() -> Dict[str, Any]:
     return _read_json(STATE / "autonomous_sizing.json", {})
 
+
+def _load_autonomous_trading_brain() -> Dict[str, Any]:
+    return _read_json(STATE / "autonomous_trading_brain.json", {})
+
+
+def _load_indodax_live_brain() -> Dict[str, Any]:
+    return _read_json(STATE / "indodax_live_brain.json", {})
+
+
+def _load_phantom_live_brain() -> Dict[str, Any]:
+    return _read_json(STATE / "phantom_live_brain.json", {})
+
+
+def _load_capital_movement_runtime() -> Dict[str, Any]:
+    return _read_json(STATE / "capital_movement_runtime.json", {})
+
 def _build_portfolio(telemetry: Dict[str, Any]) -> Dict[str, Any]:
     portfolio = telemetry.get("portfolio") if isinstance(telemetry, dict) else {}
     portfolio = portfolio if isinstance(portfolio, dict) else {}
@@ -889,6 +905,10 @@ def _build_summary() -> Dict[str, Any]:
     summary["phantom_top_targets"] = _load_phantom_top_targets()
     summary["ai_decision_trace"] = _load_ai_decision_trace()
     summary["autonomous_sizing"] = _load_autonomous_sizing_state()
+    summary["autonomous_trading_brain"] = _load_autonomous_trading_brain()
+    summary["indodax_live_brain"] = _load_indodax_live_brain()
+    summary["phantom_live_brain"] = _load_phantom_live_brain()
+    summary["capital_movement_runtime"] = _load_capital_movement_runtime()
     try:
         from Core.Treasury.phantom_multichain_controller import PhantomMultichainController
 

@@ -507,8 +507,8 @@ function render(data) {
   setT('risk-metric', `${rg.max_drawdown_limit||1.5}% cap`);
 
   // Indodax Executor card
-  setT('indodax-status', mode.live_trading_enabled ? 'LIVE' : 'BLOCKED');
-  setT('indodax-metric', mode.live_trading_enabled ? '⚠ LIVE' : 'orders blocked');
+  setT('indodax-status', indoBrain.status || (mode.live_trading_enabled ? 'LIVE' : 'BLOCKED'));
+  setT('indodax-metric', indoBrain.decision || (mode.live_trading_enabled ? '⚠ LIVE' : 'orders blocked'));
 
   // LeadLag
   const sq = gates.signal_quality || {};
@@ -528,7 +528,7 @@ function render(data) {
 
   // Phantom
   const ph = venues.phantom || {};
-  setT('phantom-metric', `${ph.opportunities||0} opportunities`);
+  setT('phantom-metric', phBrain.decision || `${ph.opportunities||0} opportunities`);
 
   // Polymarket
   const poly = venues.polymarket || {};
@@ -652,12 +652,12 @@ function render(data) {
   const phantomEngine = engine.phantom_engine || {};
   const engineIndo = el('engine-indodax');
   if (engineIndo) {
-    engineIndo.textContent = indodaxEngine.status || '—';
+    engineIndo.textContent = indoBrain.status || indodaxEngine.status || '—';
     engineIndo.className = 'badge ' + ((indodaxEngine.allow_orders ?? true) ? 'badge--green' : 'badge--red');
   }
   const enginePh = el('engine-phantom');
   if (enginePh) {
-    enginePh.textContent = phantomEngine.status || '—';
+    enginePh.textContent = phBrain.status || phantomEngine.status || '—';
     enginePh.className = 'badge ' + ((phantomEngine.allow_orders ?? true) ? 'badge--green' : 'badge--red');
   }
   setT('engine-bridge', engine.bridge || 'OFF');
@@ -709,14 +709,18 @@ function render(data) {
 
   const ai = data.ai || {};
   const sizing = data.autonomous_sizing || {};
+  const brain = data.autonomous_trading_brain || {};
+  const indoBrain = data.indodax_live_brain || {};
+  const phBrain = data.phantom_live_brain || {};
   setT('ai-objective', ai.objective || '—');
-  setT('ai-best-action', ai.best_action || '—');
+  setT('ai-best-action', brain.current_best_action || ai.best_action || '—');
   setT('ai-confidence', ai.confidence != null ? Number(ai.confidence).toFixed(2) : '—');
   setT('ai-venue', ai.venue || '—');
-  setT('autonomous-size', sizing.size_idr != null ? idr(sizing.size_idr) : '—');
-  setT('autonomous-size-reason', sizing.reason || '—');
+  const brainSize = brain.sizing || sizing || {};
+  setT('autonomous-size', brainSize.size_idr != null ? idr(brainSize.size_idr) : '—');
+  setT('autonomous-size-reason', brain.reason || sizing.reason || '—');
   setT('autonomous-guard-action', sizing.guard_action || '—');
-  setT('autonomous-max-loss', sizing.max_loss_if_stop_hit_idr != null ? idr(sizing.max_loss_if_stop_hit_idr) : '—');
+  setT('autonomous-max-loss', brainSize.max_loss_if_stop_hit_idr != null ? idr(brainSize.max_loss_if_stop_hit_idr) : (sizing.max_loss_if_stop_hit_idr != null ? idr(sizing.max_loss_if_stop_hit_idr) : '—'));
   setT('ai-reason', ai.reason || '—');
   setT('ai-next-check', ai.next_check_seconds != null ? `${ai.next_check_seconds}s` : '—');
 

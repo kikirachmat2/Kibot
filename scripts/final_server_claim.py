@@ -76,7 +76,9 @@ def build_final_claim() -> Dict[str, Any]:
         name: _svc(name)
         for name in [
             "kibot-capital-governor",
+            "kibot-autonomous-brain",
             "kibot-indodax-director",
+            "kibot-phantom-brain",
             "kibot-scanner",
             "kibot-scanner-health",
             "kibot-executor",
@@ -97,6 +99,10 @@ def build_final_claim() -> Dict[str, Any]:
         "capital_governor": _fresh(STATE / "capital_governor.json"),
         "indodax_scanner": _fresh(STATE / "indodax_scanner_state.json"),
         "indodax_no_idle": _fresh(STATE / "indodax_no_idle.json"),
+        "autonomous_trading_brain": _fresh(STATE / "autonomous_trading_brain.json"),
+        "indodax_live_brain": _fresh(STATE / "indodax_live_brain.json"),
+        "phantom_live_brain": _fresh(STATE / "phantom_live_brain.json"),
+        "capital_movement_runtime": _fresh(STATE / "capital_movement_runtime.json"),
         "indodax_top_targets": _fresh(STATE / "indodax_top_targets.json"),
         "phantom_treasury": _fresh(STATE / "phantom_treasury.json"),
         "phantom_capital_mover": _fresh(STATE / "phantom_capital_mover.json"),
