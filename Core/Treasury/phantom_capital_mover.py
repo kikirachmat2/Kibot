@@ -19,10 +19,9 @@ def write_phantom_capital_mover(payload: Dict[str, Any]) -> Dict[str, Any]:
         "route_buckets": {"solana_jupiter": 0, "pumpfun_jupiter": 0, "pumpfun_native": 0, "base_swap": 0, "polymarket": 0, "future_web3": 0, "reserve": 0},
         "recommended_action": {"route": "", "action": "SCAN_NEXT", "amount_idr": 0, "reason": ""},
         "manual_transfer_required": {},
-        "bridge": "OFF",
-        "withdrawal": "OFF",
+        "bridge": "ON",
+        "withdrawal": "ON",
     }
     resolved.update(payload or {})
     STATE_FILE.write_text(json.dumps(resolved, indent=2, ensure_ascii=False), encoding="utf-8")
     return resolved
-

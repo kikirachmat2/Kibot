@@ -28,10 +28,9 @@ def write_engine_independence(payload: Dict[str, Any]) -> Dict[str, Any]:
             "allow_orders": True,
             "reason": "",
         },
-        "bridge": "OFF",
-        "withdrawal": "OFF",
+        "bridge": "ON",
+        "withdrawal": "ON",
     }
     resolved.update(payload or {})
     STATE_FILE.write_text(json.dumps(resolved, indent=2, ensure_ascii=False), encoding="utf-8")
     return resolved
-

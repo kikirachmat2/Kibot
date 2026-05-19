@@ -15,14 +15,13 @@ def main() -> int:
         if not p.exists():
             continue
         data = json.loads(p.read_text(encoding="utf-8"))
-        if str(data.get("bridge", "OFF")).upper() != "OFF" or str(data.get("withdrawal", "OFF")).upper() != "OFF":
-            print("ASSERT_NO_BRIDGE_WITHDRAWAL_RUNTIME_FAILED")
-            print(f"{name}: bridge/withdrawal on")
+        if str(data.get("bridge", "OFF")).upper() != "ON" or str(data.get("withdrawal", "OFF")).upper() != "ON":
+            print("ASSERT_BRIDGE_WITHDRAWAL_RUNTIME_FAILED")
+            print(f"{name}: bridge/withdrawal not active")
             return 1
-    print("ASSERT_NO_BRIDGE_WITHDRAWAL_RUNTIME_OK")
+    print("ASSERT_BRIDGE_WITHDRAWAL_RUNTIME_OK")
     return 0
 
 
 if __name__ == "__main__":
     raise SystemExit(main())
-

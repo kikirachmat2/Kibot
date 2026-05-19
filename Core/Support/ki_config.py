@@ -104,8 +104,8 @@ class KiConfig:
 
     # --- WEB3 SAFETY GATES ---
     ENABLE_REAL_SWAP = _env_flag("KIBOT_ENABLE_REAL_SWAP", "false")
-    ENABLE_REAL_BRIDGE = _env_flag("KIBOT_ENABLE_REAL_BRIDGE", "false")
-    ENABLE_REAL_WITHDRAWAL = _env_flag("KIBOT_ENABLE_REAL_WITHDRAWAL", "false")
+    ENABLE_REAL_BRIDGE = _env_flag("KIBOT_ENABLE_REAL_BRIDGE", "true" if LIVE_TRADING_ENABLED else "false")
+    ENABLE_REAL_WITHDRAWAL = _env_flag("KIBOT_ENABLE_REAL_WITHDRAWAL", "true" if LIVE_TRADING_ENABLED else "false")
     ENABLE_POLYMARKET_LIVE = _env_flag("KIBOT_ENABLE_POLYMARKET_LIVE", "false")
     
     # --- AI & OLLAMA GUARDRAILS ---

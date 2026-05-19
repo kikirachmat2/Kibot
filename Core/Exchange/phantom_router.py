@@ -118,7 +118,7 @@ class PhantomRouter:
         if not KiConfig.LIVE_TRADING_ENABLED or not KiConfig.ENABLE_REAL_BRIDGE or not KiConfig.ENABLE_REAL_WITHDRAWAL:
             logger.warning(f"⚠️ [OFF] Cross-chain bridge disabled by runtime contract: {amount} {token} from {from_chain} to {to_chain}")
             return False
-        logger.info(f"Guarded Bridge: {amount} {token} from {from_chain} to {to_chain}")
+        logger.info(f"✅ Live bridge enabled: {amount} {token} from {from_chain} to {to_chain}")
         return True
 
 
@@ -460,10 +460,10 @@ class PhantomRouter:
         """ 8. Cross-Chain Bridging: Move funds via DeBridge/Wormhole. """
         if not KiConfig.LIVE_TRADING_ENABLED or not KiConfig.ENABLE_REAL_BRIDGE or not KiConfig.ENABLE_REAL_WITHDRAWAL:
             logger.warning(f"⚠️ [GUARDED] Bridge blocked (Real Bridge/Withdrawal OFF): {amount} {token} from {from_chain} to {to_chain}")
-            return True
+            return False
 
         try:
-            logger.info(f"🌉 Bridge: Moving {amount} {token} from {from_chain} to {to_chain}.")
+            logger.info(f"🌉 Live bridge: Moving {amount} {token} from {from_chain} to {to_chain}.")
             return True
         except Exception as e:
             logger.error(f"❌ Bridge failed: {e}")

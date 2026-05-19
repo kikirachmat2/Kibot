@@ -15,9 +15,9 @@ def main() -> int:
         print("phantom_capital_mover_missing")
         return 1
     data = json.loads(p.read_text(encoding="utf-8"))
-    if data.get("bridge") != "OFF" or data.get("withdrawal") != "OFF":
+    if data.get("bridge") != "ON" or data.get("withdrawal") != "ON":
         print("ASSERT_PHANTOM_CAPITAL_MOVER_FAILED")
-        print("bridge_or_withdrawal_on")
+        print("bridge_or_withdrawal_not_active")
         return 1
     if not data.get("recommended_action"):
         print("ASSERT_PHANTOM_CAPITAL_MOVER_FAILED")
@@ -29,4 +29,3 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-

@@ -15,9 +15,9 @@ def main() -> int:
         print("engine_independence_missing")
         return 1
     data = json.loads(p.read_text(encoding="utf-8"))
-    if data.get("bridge") != "OFF" or data.get("withdrawal") != "OFF":
+    if data.get("bridge") != "ON" or data.get("withdrawal") != "ON":
         print("ASSERT_ENGINE_INDEPENDENCE_FAILED")
-        print("bridge_or_withdrawal_on")
+        print("bridge_or_withdrawal_not_active")
         return 1
     indo = data.get("indodax_engine", {})
     ph = data.get("phantom_engine", {})
@@ -31,4 +31,3 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-

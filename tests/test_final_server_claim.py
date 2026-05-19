@@ -16,7 +16,7 @@ def test_final_server_claim_writes_state(tmp_path, monkeypatch):
     (tmp_path / "indodax_scanner_state.json").write_text(json.dumps({"source_status": "OK", "pairs_checked": 1, "gainers_24h": [{"symbol": "AAA/IDR", "pair": "aaa_idr", "source_proof": {"proof_ok": True}}]}), encoding="utf-8")
     (tmp_path / "indodax_no_idle.json").write_text(json.dumps({"posture": "ACTIVE_SEARCHING"}), encoding="utf-8")
     (tmp_path / "phantom_treasury.json").write_text(json.dumps({"buckets": {"swap_idr": 1000, "base_idrx_idr": 1000}}), encoding="utf-8")
-    (tmp_path / "phantom_capital_mover.json").write_text(json.dumps({"bridge": "OFF", "withdrawal": "OFF"}), encoding="utf-8")
+    (tmp_path / "phantom_capital_mover.json").write_text(json.dumps({"bridge": "ON", "withdrawal": "ON"}), encoding="utf-8")
     (tmp_path / "phantom_network_maximizer.json").write_text(json.dumps({"best_route": "solana_jupiter"}), encoding="utf-8")
     (tmp_path / "deadline_profit_enforcer.json").write_text(json.dumps({"stage": "NORMAL"}), encoding="utf-8")
     (tmp_path / "scanner_executor_contract.json").write_text(json.dumps({"routes": {"indodax": {}}, "source_proof_count": 1}), encoding="utf-8")

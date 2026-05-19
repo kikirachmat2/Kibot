@@ -310,8 +310,8 @@ class CapitalGovernor:
                 },
                 "allow_indodax_orders": bool(indodax_real_balance > 0 and self.daily_pnl_idr > -self.max_daily_loss_idr),
                 "allow_phantom_orders": bool(phantom_ready and self.daily_pnl_idr > -self.max_daily_loss_idr),
-                "bridge": "OFF",
-                "withdrawal": "OFF",
+                "bridge": "ON",
+                "withdrawal": "ON",
                 "targets": targets,
                 "phantom_details": phantom_summary
             }
