@@ -514,6 +514,9 @@ function render(data) {
   // Indodax Executor card
   setT('indodax-status', indoBrain.status || (mode.live_trading_enabled ? 'LIVE' : 'BLOCKED'));
   setT('indodax-metric', indoBrain.decision || (mode.live_trading_enabled ? '⚠ LIVE' : 'orders blocked'));
+  if (indoBrain.recovery_mode) {
+    setT('indodax-metric', `${indoBrain.decision || 'SCAN_NEXT'} · RECOVERY`);
+  }
 
   // LeadLag
   const sq = gates.signal_quality || {};
@@ -534,6 +537,9 @@ function render(data) {
   // Phantom
   const ph = venues.phantom || {};
   setT('phantom-metric', phBrain.decision || `${ph.opportunities||0} opportunities`);
+  if (phBrain.recovery_mode) {
+    setT('phantom-metric', `${phBrain.decision || 'SCAN_NEXT'} · RECOVERY`);
+  }
 
   // Polymarket
   const poly = venues.polymarket || {};
@@ -673,6 +679,12 @@ function render(data) {
   setT('deadline-minutes', deadline.minutes_to_midnight != null ? String(deadline.minutes_to_midnight) : '—');
   const deadlineStage = el('deadline-stage');
   if (deadlineStage) deadlineStage.textContent = deadline.stage || deadline.pressure_level || '—';
+  const deadlineRecovery = el('deadline-recovery-mode');
+  if (deadlineRecovery) {
+    const recovery = deadline.stage === 'RECOVERY' || deadline.stage === 'PRESSURE';
+    deadlineRecovery.textContent = recovery ? 'ON' : 'OFF';
+    deadlineRecovery.className = 'badge ' + (recovery ? 'badge--yellow' : 'badge--ghost');
+  }
   const deadlineIndo = el('deadline-indodax-pressure');
   if (deadlineIndo) deadlineIndo.textContent = deadline.indodax_pressure || deadline.pressure_level || '—';
   const deadlinePh = el('deadline-phantom-pressure');

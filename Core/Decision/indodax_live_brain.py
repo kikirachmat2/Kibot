@@ -8,6 +8,8 @@ from typing import Any, Dict
 
 from Core.Decision.indodax_target_board import build_indodax_target_board
 from Core.Intelligence.no_idle_director import write_no_idle_state
+from Core.Decision.deadline_profit_enforcer import DeadlineProfitEnforcer
+from Core.Treasury.capital_governor import GOVERNOR_FILE
 
 STATE_DIR = Path(__file__).resolve().parent.parent.parent / "state"
 STATE_FILE = STATE_DIR / "indodax_live_brain.json"
@@ -40,8 +42,20 @@ def build_indodax_live_brain() -> Dict[str, Any]:
     board = build_indodax_target_board()
     targets = board.get("top_targets", []) if isinstance(board, dict) else []
     best = targets[0] if targets else {}
-    status = "ENTERING" if best and best.get("route_status") == "EXECUTABLE" else "ACTIVE"
-    decision = "ENTER" if best and best.get("recommended_action") == "ENTER" else "SCAN_NEXT"
+    deadline = DeadlineProfitEnforcer().evaluate_enforcer(0.0, 0.0, 999)
+    try:
+        if GOVERNOR_FILE.exists():
+            gov = json.loads(GOVERNOR_FILE.read_text(encoding="utf-8"))
+            deadline = DeadlineProfitEnforcer().evaluate_enforcer(
+                float(gov.get("daily_pnl_pct", 0.0) or 0.0),
+                float(gov.get("daily_pnl_idr", 0.0) or 0.0),
+                int(board.get("minutes_to_midnight", 999) if isinstance(board, dict) else 999),
+            )
+    except Exception:
+        pass
+    recovery_mode = str(deadline.get("stage") or "").upper() in {"RECOVERY", "PRESSURE"}
+    status = "ENTERING" if best and best.get("route_status") == "EXECUTABLE" else ("RECOVERY" if recovery_mode else "ACTIVE")
+    decision = "ENTER" if best and best.get("recommended_action") == "ENTER" else ("SCAN_NEXT" if not recovery_mode else "ROTATE")
     size_idr = int(best.get("size_idr") or best.get("entry_score") or 0)
     notes = []
     if best and best.get("reason"):
@@ -71,6 +85,8 @@ def build_indodax_live_brain() -> Dict[str, Any]:
         "size_idr": size_idr,
         "fatal_blocker": "",
         "advisory_notes": notes,
+        "recovery_mode": recovery_mode,
+        "deadline_stage": deadline.get("stage"),
         "next_action": decision,
         "next_check_seconds": 5,
     })

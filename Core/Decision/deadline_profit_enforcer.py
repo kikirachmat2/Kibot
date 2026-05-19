@@ -58,10 +58,14 @@ class DeadlineProfitEnforcer:
         locked = False
         reason = "No lock active"
         stage = "NORMAL"
-        if daily_pnl_pct <= 0.0:
-            stage = "PRESSURE"
-        if minutes_to_midnight <= 90 and daily_pnl_pct > 0.0:
+        if daily_pnl_idr < 0.0:
+            stage = "RECOVERY"
+        elif daily_pnl_pct > 0.0:
+            stage = "GREEN"
+        if minutes_to_midnight <= 180 and daily_pnl_pct > 0.0:
             stage = "AGGRESSIVE_SEARCH"
+        if daily_pnl_pct <= 0.0:
+            stage = "RECOVERY"
 
         # Rule 1: Lock Green Target reached
         if daily_pnl_pct >= target_pct:
@@ -75,6 +79,13 @@ class DeadlineProfitEnforcer:
             reason = f"LOCK_GREEN: Midnight approaching ({minutes_to_midnight}m left) and green profit protected (+{daily_pnl_pct:.2f}%)"
             stage = "CLOSING_WINDOW"
 
+        if stage == "RECOVERY" and not locked:
+            reason = "RECOVERY: day is red; widen scan, lower nonfatal thresholds, keep searching"
+        elif stage == "GREEN" and not locked:
+            reason = "GREEN: profits present; keep hunting for continuation setups"
+        elif stage == "AGGRESSIVE_SEARCH" and not locked:
+            reason = f"AGGRESSIVE_SEARCH: {minutes_to_midnight}m left; continue hunting with tighter execution"
+
         enforcer_state = {
             "locked_for_day": locked,
             "lock_reason": reason,
@@ -84,8 +95,8 @@ class DeadlineProfitEnforcer:
             "wib_date": datetime.now(timezone.utc).date().isoformat(),
             "minutes_to_midnight": int(minutes_to_midnight),
             "stage": stage,
-            "indodax_pressure": "MAX" if stage in {"PRESSURE", "AGGRESSIVE_SEARCH", "CLOSING_WINDOW"} else "NORMAL",
-            "phantom_pressure": "MAX" if stage in {"PRESSURE", "AGGRESSIVE_SEARCH", "CLOSING_WINDOW"} else "NORMAL",
+            "indodax_pressure": "MAX" if stage in {"RECOVERY", "AGGRESSIVE_SEARCH", "CLOSING_WINDOW"} else "NORMAL",
+            "phantom_pressure": "MAX" if stage in {"RECOVERY", "AGGRESSIVE_SEARCH", "CLOSING_WINDOW"} else "NORMAL",
             "required_action": "SCAN_NEXT" if not locked else "CLOSE_WINDOW",
             "reason": reason,
         }
