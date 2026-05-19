@@ -288,6 +288,10 @@ def _load_web3_state() -> Dict[str, Any]:
     return _read_json(STATE / "web3_opportunities.json", {})
 
 
+def _load_solana_trending_state() -> Dict[str, Any]:
+    return _read_json(STATE / "solana_trending_candidates.json", {})
+
+
 def _load_web3_positions() -> List[Dict[str, Any]]:
     positions = _read_json(STATE / "web3_positions.json", [])
     return positions if isinstance(positions, list) else []
@@ -766,6 +770,7 @@ def _build_summary() -> Dict[str, Any]:
     summary["green_probability"] = _read_json(STATE / "green_probability.json", {})
     summary["scanner_candidates"] = _read_json(STATE / "scanner_candidates.json", {})
     summary["web3_opportunities"] = _load_web3_state()
+    summary["solana_trending_candidates"] = _load_solana_trending_state()
     summary["web3_positions"] = _load_web3_positions()
     summary["web3_exit"] = _load_web3_exit_state()
     summary["ai_decision_trace"] = _load_ai_decision_trace()
@@ -1075,6 +1080,8 @@ def _build_control_plane_payload() -> Dict[str, Any]:
         "web3": {
             "routes": summary_data.get("phantom_multichain", {}).get("registry", {}),
             "opportunities": summary_data.get("web3_opportunities", {}),
+            "meme_hunter": summary_data.get("web3_opportunities", {}).get("meme_hunter", summary_data.get("solana_trending_candidates", {})),
+            "solana_trending": summary_data.get("solana_trending_candidates", {}),
             "positions": summary_data.get("web3_positions", []),
             "exit": summary_data.get("web3_exit", {}),
         },
@@ -1299,10 +1306,26 @@ def _build_control_plane_payload() -> Dict[str, Any]:
         },
         "capital": capital_block,
         "venues": venues,
+        "web3": {
+            "routes": summary_data.get("phantom_multichain", {}).get("registry", {}),
+            "opportunities": summary_data.get("web3_opportunities", {}),
+            "meme_hunter": summary_data.get("web3_opportunities", {}).get("meme_hunter", summary_data.get("solana_trending_candidates", {})),
+            "solana_trending": summary_data.get("solana_trending_candidates", {}),
+            "positions": summary_data.get("web3_positions", []),
+            "exit": summary_data.get("web3_exit", {}),
+        },
         "gates": gates,
         "runtime": runtime,
         "flow": flow,
         "workflow": workflow,
+        "meme_hunter": {
+            "enabled": bool(summary_data.get("web3_opportunities", {}).get("meme_hunter", {}).get("enabled", False)),
+            "best_candidate": summary_data.get("web3_opportunities", {}).get("meme_hunter", {}).get("best_candidate", {}),
+            "candidates_found": int(summary_data.get("web3_opportunities", {}).get("meme_hunter", {}).get("candidates_found", 0) or 0),
+            "rejected_count": int(summary_data.get("web3_opportunities", {}).get("meme_hunter", {}).get("rejected_count", 0) or 0),
+            "latest_update": str(summary_data.get("web3_opportunities", {}).get("meme_hunter", {}).get("latest_update", "")),
+            "sources": summary_data.get("web3_opportunities", {}).get("meme_hunter", {}).get("sources", []),
+        },
         "recent_decisions": decisions,
         "decisions": decisions,
         "warnings": warnings,

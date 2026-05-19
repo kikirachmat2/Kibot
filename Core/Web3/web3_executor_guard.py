@@ -19,7 +19,7 @@ class Web3ExecutorGuard:
             pass
         return default
 
-    def approve(self, *, treasury: Dict[str, Any], route: Dict[str, Any], safety: Dict[str, Any], quote: Dict[str, Any], budget_idr: float, stop_loss_pct: float, take_profit_pct: float, trailing_stop_pct: float = 0.0, time_stop_seconds: int = 0, spend_reserve: bool = False) -> Dict[str, Any]:
+    def approve(self, *, treasury: Dict[str, Any], route: Dict[str, Any], safety: Dict[str, Any], quote: Dict[str, Any], budget_idr: float, stop_loss_pct: float, take_profit_pct: float, trailing_stop_pct: float = 0.0, time_stop_seconds: int = 0, spend_reserve: bool = False, exit_plan: bool = True, quote_context: str = "ok") -> Dict[str, Any]:
         reasons = []
         if not treasury or treasury.get('status') != 'OK' or not treasury.get('reconciliation', {}).get('matches_user_wallet'):
             reasons.append('phantom_not_reconciled')
@@ -40,6 +40,10 @@ class Web3ExecutorGuard:
 
         if stop_loss_pct <= 0 or take_profit_pct <= 0:
             reasons.append('missing_stop_or_take_profit')
+        if not exit_plan:
+            reasons.append('exit_plan_missing')
+        if quote_context == "quote_context_missing":
+            reasons.append('quote_context_missing')
         if spend_reserve:
             reasons.append('reserve_locked')
         if route.get('network') == 'base' and route.get('executor') is False:

@@ -230,6 +230,7 @@ These exist on the server but are easy to miss if you only inspect the code tree
 51. Dashboard System Brain now consumes a stable `system_brain` summary contract, so inventory utilization, source health, and drift status are rendered from live state instead of mismatched frontend IDs.
 52. Backup automation now defaults to non-secret protected archives (`state/`, strategy docs, inventory) with private file permissions. Plaintext `.env` is excluded unless `KIBOT_BACKUP_INCLUDE_SECRETS=1` is deliberately set.
 53. Server-only legacy systemd restart loops and stale timers were retired/disabled so missing historical `Batam/...` paths no longer spam logs or burn CPU. Canonical runtime remains `kibot-master`, `kibot-scanner`, `kibot-executor`, `kibot-executor-polymarket`, `kibot-ai-scout`, `kibot-janitor`, `kibot-dashboard`, `ollama`, and `redis-server`.
+54. Solana trending meme hunter now exists as a guarded live-control module: `Core/Web3/solana_trending_scanner.py` feeds `state/solana_trending_candidates.json`, `Core/Intelligence/strategy/solana_momentum_meme_strategy.py` scores small-cap momentum, and dashboard/control-plane surfaces the best candidate plus reject reason without enabling reserve spend or bypassing exit plans.
 
 ---
 

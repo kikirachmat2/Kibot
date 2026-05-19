@@ -18,13 +18,32 @@ class Web3OpportunityScanner:
         self.base_rpc = os.getenv('BASE_RPC_URL', 'https://mainnet.base.org')
         self.updated_at = None
 
+    def _blank_state(self) -> Dict[str, Any]:
+        return {
+            "updated_at": "",
+            "objective": "maximize_risk_adjusted_profit_for_boss",
+            "best_opportunities": [],
+            "rejected": [],
+            "routes": {"solana": {}, "base": {}, "polymarket": {}, "future_web3": {}},
+            "meme_hunter": {
+                "enabled": bool(int(os.getenv("WEB3_MEME_HUNTER_ENABLED", "1") or 1)),
+                "best_candidate": {},
+                "candidates_found": 0,
+                "rejected_count": 0,
+                "sources": [],
+                "latest_update": "",
+            },
+        }
+
     def _load_state(self) -> Dict[str, Any]:
         if not OPPS_FILE.exists():
-            return {"updated_at": "", "best_opportunities": [], "rejected": [], "routes": {"solana": {}, "base": {}, "polymarket": {}, "future_web3": {}}}
+            return self._blank_state()
         try:
-            return json.loads(OPPS_FILE.read_text())
+            payload = json.loads(OPPS_FILE.read_text())
+            payload.setdefault("meme_hunter", self._blank_state()["meme_hunter"])
+            return payload
         except Exception:
-            return {"updated_at": "", "best_opportunities": [], "rejected": [], "routes": {"solana": {}, "base": {}, "polymarket": {}, "future_web3": {}}}
+            return self._blank_state()
 
     def _save_state(self, state: Dict[str, Any]) -> None:
         STATE_DIR.mkdir(parents=True, exist_ok=True)
@@ -50,11 +69,15 @@ class Web3OpportunityScanner:
 
     async def scan(self) -> Dict[str, Any]:
         from Core.Intelligence.phantom_opportunity_scout import PhantomOpportunityScout
+        from Core.Web3.solana_trending_scanner import SolanaTrendingScanner
         scout = PhantomOpportunityScout()
+        meme_scanner = SolanaTrendingScanner()
         sol = await self._solana_health()
         base = await self._base_health()
         best = []
         rejected = []
+        meme_state = await meme_scanner.scan()
+        meme_best = meme_state.get("best_candidate", {}) if isinstance(meme_state, dict) else {}
 
         try:
             defi = await scout.get_best_defi_opportunities()
@@ -76,6 +99,31 @@ class Web3OpportunityScanner:
         except Exception as e:
             rejected.append({"route": "solana", "reason": f"defi scout failed: {e}"})
 
+        if meme_best:
+            meme_decision = {
+                "route": "solana",
+                "asset": meme_best.get("symbol") or meme_best.get("mint") or "meme_candidate",
+                "ev_pct": float(meme_best.get("ev_pct", 0) or 0),
+                "safety_score": float(meme_best.get("safety_score", 0) or 0),
+                "quote_ok": bool(meme_best.get("decision") == "APPROVE"),
+                "liquidity_ok": float(meme_best.get("liquidity_usd", 0) or 0) >= float(os.getenv("WEB3_MEME_MIN_LIQUIDITY_USD", "10000") or 10000),
+                "slippage_pct": float(meme_best.get("slippage_pct", 0) or 0),
+                "max_trade_idr": int(meme_best.get("max_trade_idr", 0) or 0),
+                "decision": str(meme_best.get("decision") or "WATCH"),
+                "reason": str(meme_best.get("reason") or ""),
+                "category": "solana_meme",
+                "candidate": meme_best,
+            }
+            if meme_decision["decision"] == "APPROVE":
+                best.insert(0, meme_decision)
+            else:
+                rejected.append({
+                    "route": "solana",
+                    "reason": meme_decision["reason"],
+                    "asset": meme_decision["asset"],
+                    "category": "solana_meme",
+                })
+
         state = {
             "updated_at": datetime.now(timezone.utc).isoformat(),
             "objective": "maximize_risk_adjusted_profit_for_boss",
@@ -86,6 +134,14 @@ class Web3OpportunityScanner:
                 "base": {"health": base, "status": "SCOUTING" if base.get('ok') else "SCOUTING"},
                 "polymarket": {"status": "SCOUTING"},
                 "future_web3": {"status": "SCOUTING"},
+            },
+            "meme_hunter": {
+                "enabled": bool(int(os.getenv("WEB3_MEME_HUNTER_ENABLED", "1") or 1)),
+                "best_candidate": meme_best if meme_best else {},
+                "candidates_found": len(meme_state.get("candidates", []) if isinstance(meme_state, dict) else []),
+                "rejected_count": len(meme_state.get("rejected", []) if isinstance(meme_state, dict) else []),
+                "sources": meme_state.get("source", ["dexscreener", "jupiter"]) if isinstance(meme_state, dict) else ["dexscreener", "jupiter"],
+                "latest_update": meme_state.get("updated_at", "") if isinstance(meme_state, dict) else "",
             },
         }
         self._save_state(state)

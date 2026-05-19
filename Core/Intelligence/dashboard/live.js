@@ -605,6 +605,10 @@ function render(data) {
   setT('web3-bestopp', bestOpp ? `${bestOpp.route}:${bestOpp.asset}` : '—');
   const rej = (web3.opportunities?.rejected || [])[0];
   setT('web3-rejected', rej ? String(rej.reason || '—').slice(0, 36) : '—');
+  const memeHunter = web3.meme_hunter || {};
+  const memeBest = memeHunter.best_candidate || web3.solana_trending?.best_candidate || {};
+  setT('meme-best-candidate', memeBest?.symbol ? `${memeBest.symbol} ${memeBest.change_24h_pct != null ? pct(memeBest.change_24h_pct) : ''}`.trim() : '—');
+  setT('meme-reason', memeBest?.reason || (memeHunter.enabled ? `${memeHunter.candidates_found || 0} scanned` : 'disabled'));
   setT('web3-openpos', Array.isArray(web3.positions) ? String(web3.positions.length) : '0');
   const exitState = web3.exit || {};
   setT('web3-exit-status', exitState.status || '—');

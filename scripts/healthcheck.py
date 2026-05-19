@@ -415,7 +415,7 @@ def check_json_states(state_dir):
         
         # Self-healing / bootstrapping capability
         if not file_path.exists():
-            if is_bootstrap_allowed:
+            if is_bootstrap_allowed or state_file in {"web3_opportunities.json", "ai_decision_trace.json"}:
                 logger.info(f"State file {state_file} missing. Bootstrapping with default secure config...")
                 try:
                     default_data = {}

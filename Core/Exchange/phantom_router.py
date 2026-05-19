@@ -301,6 +301,11 @@ class PhantomRouter:
             return True
 
         gate_ctx = self._live_web3_gate_context()
+        if gate_ctx.get("controller"):
+            route_gate = gate_ctx["controller"].route_opportunity("solana", {"asset": token_address, "category": "solana_meme"})
+            if not route_gate.get("allowed"):
+                logger.warning("🛡️ Solana meme snipe blocked by route gate: %s", route_gate.get("reason"))
+                return False
         from Core.Web3.web3_quote_router import Web3QuoteRouter
         from Core.Web3.web3_safety_checker import Web3SafetyChecker
         from Core.Web3.web3_executor_guard import Web3ExecutorGuard
@@ -308,10 +313,13 @@ class PhantomRouter:
         safety_checker = Web3SafetyChecker()
         executor_guard = Web3ExecutorGuard()
         quote = await quote_router.quote("solana", "So11111111111111111111111111111111111111112", token_address, int(amount_sol * 1e9))
+        if not quote.get("quote_ok"):
+            logger.warning("🛡️ Web3 quote missing for Solana meme snipe: %s", quote.get("reason"))
+            return False
         safety = safety_checker.evaluate({
             "ev": float(quote.get("expected_out", 0) or 0),
-            "liquidity": 1,
-            "volume": 1,
+            "liquidity": float(os.getenv("WEB3_MEME_MIN_LIQUIDITY_USD", "10000") or 10000),
+            "volume": float(os.getenv("WEB3_MEME_MIN_VOLUME_1H_USD", "5000") or 5000),
             "spread_pct": float(quote.get("slippage_pct", 0) or 0),
             "slippage_pct": float(quote.get("slippage_pct", 0) or 0),
             "token_type": "solana",
@@ -327,6 +335,8 @@ class PhantomRouter:
             trailing_stop_pct=float(os.getenv("WEB3_DEFAULT_TRAILING_STOP_PCT", "0.5") or 0.5),
             time_stop_seconds=int(float(os.getenv("WEB3_DEFAULT_TIME_STOP_SECONDS", "3600") or 3600)),
             spend_reserve=False,
+            exit_plan=True,
+            quote_context="ok" if quote.get("quote_ok") else "quote_context_missing",
         )
         if not approval.get("allowed"):
             logger.warning("🛡️ Web3 executor guard blocked Solana meme snipe: %s", approval.get("reason"))
