@@ -197,7 +197,7 @@ class RiskGate:
         if symbol == "UNKNOWN" or price <= 0:
             return False, "Invalid signal data"
 
-        if symbol in self.config["blacklist"]:
+        if symbol in self.config.get("blacklist", []):
             return False, f"Symbol {symbol} is blacklisted"
 
         # Position slots
