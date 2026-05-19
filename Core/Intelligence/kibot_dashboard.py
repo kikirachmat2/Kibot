@@ -669,6 +669,7 @@ def _build_events(summary: Dict[str, Any], limit: int = 30) -> List[Dict[str, st
     ph_brain = summary.get("phantom_live_brain", {})
     dispatcher = summary.get("live_order_dispatcher", {})
     capital = summary.get("capital", {})
+    order_tracker = summary.get("order_tracker", {})
     events: List[Dict[str, str]] = []
 
     def add_event(tag: str, message: str, agent: str = "System") -> None:
@@ -676,32 +677,35 @@ def _build_events(summary: Dict[str, Any], limit: int = 30) -> List[Dict[str, st
             return
         events.append({"time": now, "agent": agent, "message": message, "tag": tag, "offset": str(len(events))})
 
-    if int((indo_brain or {}).get("decision") == "ENTER" or (brain or {}).get("selected_engine") == "indodax") and (brain or {}).get("current_best_action") == "ENTER":
-        cand = brain.get("selected_candidate") or indo_brain.get("selected_candidate") or {}
-        symbol = cand.get("symbol") or cand.get("pair") or "INDODAX"
-        size = brain.get("sizing", {}).get("size_idr") or indo_brain.get("size_idr") or 0
-        add_event("BUY", f"{symbol} Rp {int(size):,}".replace(",", "."), "Indodax")
-
-    if (ph_brain or {}).get("capital_action") == "TRADE_ON_CURRENT_CHAIN":
-        mover = summary.get("phantom_capital_mover", {})
-        action = mover.get("recommended_action", {}) if isinstance(mover, dict) else {}
-        route = action.get("route") or ph_brain.get("selected_route") or "PHANTOM"
-        amount = action.get("amount_idr") or ph_brain.get("size", {}).get("amount_idr") or 0
-        if route:
-            add_event("SWAP", f"{route} Rp {int(amount):,}".replace(",", "."), "Phantom")
+    active_trades = summary.get("active_trades", {})
+    open_trade_items = list(active_trades.items()) if isinstance(active_trades, dict) else []
+    for pair, trade in open_trade_items[:3]:
+        if not isinstance(trade, dict):
+            continue
+        entry_price = float(trade.get("price") or trade.get("entry_price") or trade.get("price_idr") or 0.0)
+        amount = float(trade.get("amount") or trade.get("filled_size") or 0.0)
+        cost = float(trade.get("cost") or trade.get("budget_idr") or 0.0)
+        if entry_price > 0 and amount > 0:
+            add_event("BUY", f"{str(pair).upper()} @ Rp {int(entry_price):,} x {amount:g}".replace(",", "."), "Indodax")
+        elif cost > 0:
+            add_event("BUY", f"{str(pair).upper()} Rp {int(cost):,}".replace(",", "."), "Indodax")
 
     if dispatcher.get("status") == "ACTIVE":
         ind = dispatcher.get("indodax", {}) if isinstance(dispatcher, dict) else {}
         if ind.get("status") == "DISPATCHED":
             cand = ind.get("candidate") or {}
             symbol = cand.get("symbol") or ind.get("symbol") or "INDODAX"
-            add_event("BUY", f"{symbol} dispatched", "Dispatcher")
+            price = float(cand.get("last_price") or cand.get("price") or 0.0)
+            add_event("BUY", f"{symbol} @ Rp {int(price):,}".replace(",", ".") if price > 0 else f"{symbol} dispatched", "Dispatcher")
 
-    realized = float(portfolio.get("real_pnl_idr", portfolio.get("daily_pnl_idr", 0.0)) or 0.0)
-    if realized > 0:
-        add_event("SELL PROFIT", f"+Rp {int(realized):,}".replace(",", "."), "Portfolio")
-    elif realized < 0:
-        add_event("SELL LOSS", f"-Rp {int(abs(realized)):,}".replace(",", "."), "Portfolio")
+    tracker_today = order_tracker.get("today_summary", {}) if isinstance(order_tracker, dict) else {}
+    closed_pnl = float(tracker_today.get("realized_pnl_idr", tracker_today.get("daily_realized_pnl_idr", 0.0)) or 0.0)
+    if closed_pnl > 0:
+        closed_pct = float(tracker_today.get("realized_pnl_pct", 0.0) or 0.0)
+        add_event("SELL PROFIT", f"+Rp {int(closed_pnl):,} ({closed_pct:+.2f}%)".replace(",", "."), "Portfolio")
+    elif closed_pnl < 0:
+        closed_pct = float(tracker_today.get("realized_pnl_pct", 0.0) or 0.0)
+        add_event("SELL LOSS", f"-Rp {int(abs(closed_pnl)):,} ({closed_pct:+.2f}%)".replace(",", "."), "Portfolio")
 
     council_state = council.get("decision_state") or council.get("last_decision") or brain.get("reason") or "WAIT"
     council_conf = council.get("confidence", 0.0)
@@ -714,7 +718,7 @@ def _build_events(summary: Dict[str, Any], limit: int = 30) -> List[Dict[str, st
     )
     add_event(
         "SYSTEM EVENT",
-        f"equity Rp {int(portfolio.get('combined_equity_idr', 0) or 0):,}".replace(",", "."),
+        f"equity Rp {int(portfolio.get('combined_equity_idr', 0) or 0):,} | realized Rp {int(portfolio.get('realized_pnl_idr', 0) or 0):,} | unrealized Rp {int(portfolio.get('unrealized_pnl_idr', 0) or 0):,}".replace(",", "."),
         "Portfolio",
     )
     add_event(

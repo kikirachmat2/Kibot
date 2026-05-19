@@ -597,12 +597,17 @@ function render(data) {
   setT('pi-start-equity', idr(data.capital?.starting_equity_today_idr || data.capital?.start_total_equity_idr || data.capital?.starting_equity_idr || 0));
   setT('pi-cash',   idr(port.idr_cash || 0));
   setT('pi-coin',   idr(port.coin_holdings_idr || 0));
-  setPnl('pi-real-pnl',  port.real_pnl_idr   || port.daily_pnl_real_idr || 0);
-  setPct('pi-real-pnl-pct',  port.daily_pnl_pct || data.capital?.daily_pnl_pct || 0);
+  const realizedPnL = port.realized_pnl_idr ?? port.real_pnl_idr ?? port.daily_pnl_real_idr ?? 0;
+  const realizedPct = (Array.isArray(port.open_position_pnl) && port.open_position_pnl.length)
+    ? 0
+    : (port.daily_pnl_pct || data.capital?.daily_pnl_pct || 0);
+  setPnl('pi-real-pnl',  realizedPnL);
+  setPct('pi-real-pnl-pct',  realizedPct);
   setPnl('pi-risk-remaining', data.capital?.risk_remaining_idr || 0);
   setT('pi-allow-orders', allowNew ? 'YES' : 'NO');
   setT('pi-current-entry', data.current_entry_approved ? 'YES' : 'NO');
-  setT('pi-blocked-reason', mode.allow_new_live_orders_reason || '—');
+  const openPnLCount = Array.isArray(port.open_position_pnl) ? port.open_position_pnl.length : 0;
+  setT('pi-blocked-reason', openPnLCount ? `${openPnLCount} open position(s)` : (mode.allow_new_live_orders_reason || '—'));
 
   // Venue equities
   setT('eq-indodax-real',  idr(venues.indodax_real?.equity_idr  || 0));
