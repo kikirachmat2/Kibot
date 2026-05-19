@@ -17,6 +17,16 @@ class Web3OpportunityScanner:
         self.solana_rpc = os.getenv('SOLANA_RPC_URL', 'https://api.mainnet-beta.solana.com')
         self.base_rpc = os.getenv('BASE_RPC_URL', 'https://mainnet.base.org')
         self.updated_at = None
+        self._heartbeat_state()
+
+    def _heartbeat_state(self) -> None:
+        try:
+            state = self._load_state()
+            state["updated_at"] = datetime.now(timezone.utc).isoformat()
+            self._save_state(state)
+            self.updated_at = state["updated_at"]
+        except Exception:
+            pass
 
     def _blank_state(self) -> Dict[str, Any]:
         return {
