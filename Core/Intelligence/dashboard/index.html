@@ -127,10 +127,11 @@
 
       <div class="info-section">
         <div class="info-section__title">🛡 Safety Gates</div>
-        <div class="kv"><span>Live Trading</span><span class="badge badge--red">OFF</span></div>
-        <div class="kv"><span>Bridge</span><span class="badge badge--ghost">OFF</span></div>
-        <div class="kv"><span>Swap</span><span class="badge badge--ghost">OFF</span></div>
-        <div class="kv"><span>Withdrawal</span><span class="badge badge--ghost">OFF</span></div>
+        <div class="kv"><span>Live Trading</span><span id="gate-live-trading" class="badge badge--red">OFF</span></div>
+        <div class="kv"><span>Bridge</span><span id="gate-bridge" class="badge badge--ghost">OFF</span></div>
+        <div class="kv"><span>Swap</span><span id="gate-swap" class="badge badge--ghost">OFF</span></div>
+        <div class="kv"><span>Withdrawal</span><span id="gate-withdrawal" class="badge badge--ghost">OFF</span></div>
+        <div class="kv"><span>Allow Orders</span><span id="gate-allow-new-orders" class="badge badge--ghost">—</span></div>
         <div class="kv"><span>Max Daily Loss</span><strong>1.5%</strong></div>
       </div>
 
@@ -156,9 +157,16 @@
           <summary class="venue-row">
             <span class="venue-name">Phantom Scout</span>
             <span class="badge badge--purple">SIM</span>
-            <span class="mono" id="eq-phantom" style="font-size:10px">sim only</span>
+            <span class="mono" id="eq-phantom" style="font-size:10px">—</span>
           </summary>
-          <div class="venue-sub">Solana microstructure scouting. No real funds.</div>
+          <div class="venue-sub">
+            <div class="kv" style="font-size:10px; margin-top:2px;"><span>SOL</span><span id="phantom-sol">—</span></div>
+            <div class="kv" style="font-size:10px; margin-top:2px;"><span>USDC</span><span id="phantom-usdc">—</span></div>
+            <div class="kv" style="font-size:10px; margin-top:2px;"><span>Base IDRX</span><span id="phantom-base-idrx">—</span></div>
+            <div class="kv" style="font-size:10px; margin-top:2px;"><span>Bucket Swap</span><span id="phantom-bucket-swap">—</span></div>
+            <div class="kv" style="font-size:10px; margin-top:2px;"><span>Bucket Poly</span><span id="phantom-bucket-polymarket">—</span></div>
+            <div class="kv" style="font-size:10px; margin-top:2px;"><span>Bucket Reserve</span><span id="phantom-bucket-reserve">—</span></div>
+          </div>
         </details>
         <details class="venue-detail">
           <summary class="venue-row">

@@ -522,6 +522,35 @@ function render(data) {
   const poly = venues.polymarket || {};
   setT('poly-metric', poly.equity_idr ? idr(poly.equity_idr) : 'sim');
 
+  // Safety Gates Badges (Dynamic)
+  const gateLive = el('gate-live-trading');
+  if (gateLive) {
+    gateLive.textContent = mode.live_trading_enabled ? 'ON' : 'OFF';
+    gateLive.className = 'badge ' + (mode.live_trading_enabled ? 'badge--red' : 'badge--ghost');
+  }
+  const gateBridge = el('gate-bridge');
+  if (gateBridge) {
+    gateBridge.textContent = mode.real_bridge_enabled ? 'ON' : 'OFF';
+    gateBridge.className = 'badge ' + (mode.real_bridge_enabled ? 'badge--red' : 'badge--ghost');
+  }
+  const gateSwap = el('gate-swap');
+  if (gateSwap) {
+    gateSwap.textContent = mode.real_swap_enabled ? 'ON' : 'OFF';
+    gateSwap.className = 'badge ' + (mode.real_swap_enabled ? 'badge--red' : 'badge--ghost');
+  }
+  const gateWithdrawal = el('gate-withdrawal');
+  if (gateWithdrawal) {
+    gateWithdrawal.textContent = mode.real_withdrawal_enabled ? 'ON' : 'OFF';
+    gateWithdrawal.className = 'badge ' + (mode.real_withdrawal_enabled ? 'badge--red' : 'badge--ghost');
+  }
+  const allowNew = mode.allow_new_live_orders;
+  const allowBadge = el('gate-allow-new-orders');
+  if (allowBadge) {
+    allowBadge.textContent = allowNew ? 'YES' : 'NO';
+    allowBadge.className = 'badge ' + (allowNew ? 'badge--green' : 'badge--red');
+    allowBadge.title = mode.allow_new_live_orders_reason || '';
+  }
+
   // Right panel — Portfolio
   setT('pi-equity', idr(port.combined_equity_idr || port.equity_idr || 0));
   setT('pi-cash',   idr(port.idr_cash || 0));
@@ -534,6 +563,15 @@ function render(data) {
   setT('eq-indodax-real',  idr(venues.indodax_real?.equity_idr  || 0));
   setT('eq-indodax-paper', idr(venues.indodax_paper?.equity_idr || 0));
   setT('eq-polymarket',    idr(venues.polymarket?.equity_idr    || 0));
+  
+  // Phantom Scout details
+  setT('eq-phantom', idr(ph.total_value_idr || 0));
+  setT('phantom-sol', (ph.sol_balance || 0).toFixed(4) + ' SOL');
+  setT('phantom-usdc', (ph.usdc_balance || 0).toFixed(2) + ' USDC');
+  setT('phantom-base-idrx', idr(ph.base_idrx_balance || 0));
+  setT('phantom-bucket-swap', idr(ph.buckets?.swap_idr || 0));
+  setT('phantom-bucket-polymarket', idr(ph.buckets?.polymarket_idr || 0));
+  setT('phantom-bucket-reserve', idr(ph.buckets?.reserve_idr || 0));
 
   // Gate stack
   function setGate(key, badgeId, scoreId) {

@@ -866,6 +866,40 @@ def _check_file_quality(filename: str) -> Dict[str, Any]:
 
 
 def _build_control_plane_payload() -> Dict[str, Any]:
+    import time
+    
+    # Calculate allow_new_live_orders based on the RiskGate system logic
+    allow_new_live_orders = False
+    rejection_reason = "No governor data"
+    gov_file = STATE / "capital_governor.json"
+    if not gov_file.exists():
+        rejection_reason = "FAIL-CLOSED: Capital Governor state file does not exist"
+    else:
+        try:
+            mtime = gov_file.stat().st_mtime
+            age = time.time() - mtime
+            if age > 90.0:
+                rejection_reason = f"FAIL-CLOSED: Capital Governor state file is stale ({age:.1f}s > 90s)"
+            else:
+                with open(gov_file, "r") as f:
+                    gov_data = json.load(f)
+                
+                today = datetime.now(WIB).strftime("%Y-%m-%d")
+                if gov_data.get("status") != "RECONCILED":
+                    rejection_reason = f"FAIL-CLOSED: Capital Governor status is '{gov_data.get('status')}' (expected 'RECONCILED')"
+                elif gov_data.get("date") != today:
+                    rejection_reason = f"FAIL-CLOSED: Capital Governor state date '{gov_data.get('date')}' is not today '{today}'"
+                else:
+                    gov_loss_cap = _safe_float(gov_data.get("max_daily_loss_idr"), 0.0)
+                    gov_daily_pnl = _safe_float(gov_data.get("daily_pnl_idr"), 0.0)
+                    if gov_daily_pnl < -gov_loss_cap:
+                        rejection_reason = f"MANIFESTO CAP: Global daily loss cap reached (PnL: {gov_daily_pnl:.2f} < Cap: -{gov_loss_cap:.2f})"
+                    else:
+                        allow_new_live_orders = True
+                        rejection_reason = "Active and fully operational"
+        except Exception as e:
+            rejection_reason = f"FAIL-CLOSED: Error validating Capital Governor: {e}"
+
     # 1. Mode config
     mode = {
         "trading_mode": str(KiConfig.TRADING_MODE),
@@ -875,6 +909,8 @@ def _build_control_plane_payload() -> Dict[str, Any]:
         "real_bridge_enabled": bool(KiConfig.ENABLE_REAL_BRIDGE),
         "real_withdrawal_enabled": bool(KiConfig.ENABLE_REAL_WITHDRAWAL),
         "polymarket_live_enabled": bool(KiConfig.ENABLE_POLYMARKET_LIVE),
+        "allow_new_live_orders": allow_new_live_orders,
+        "allow_new_live_orders_reason": rejection_reason,
     }
 
     # 2. Portfolio stats from build_summary / build_portfolio
@@ -928,6 +964,9 @@ def _build_control_plane_payload() -> Dict[str, Any]:
         }
     }
 
+    # Load Phantom Treasury State
+    pt = _read_json(STATE / "phantom_treasury.json", {})
+
     # 4. Venues
     venues = {
         "indodax_real": {
@@ -952,6 +991,12 @@ def _build_control_plane_payload() -> Dict[str, Any]:
             "status": "ACTIVE",
             "opportunities": len(portfolio.get("phantom", {}).get("active_opportunities", []) if isinstance(portfolio.get("phantom"), dict) else []),
             "reason": "Scanning Solana microstructure",
+            "sol_balance": _safe_float(pt.get("sol_balance"), 0.0),
+            "usdc_balance": _safe_float(pt.get("usdc_balance"), 0.0),
+            "base_idrx_balance": _safe_float(pt.get("base_idrx_balance"), 0.0),
+            "total_value_idr": _safe_float(pt.get("total_value_idr"), 0.0),
+            "buckets": pt.get("buckets", {}),
+            "bucket_percentages": pt.get("bucket_percentages", {}),
         },
         "polymarket": {
             "venue": "Polymarket",
