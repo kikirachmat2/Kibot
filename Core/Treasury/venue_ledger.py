@@ -13,7 +13,7 @@ class VenueLedger:
     """
     Sovereign Venue Ledger
     Tracks equity, realized PnL, unrealized PnL, and open exposure per venue.
-    Modes: REAL | PAPER | SIMULATION | VIEW_ONLY
+    Modes: REAL | CONTROLLED_LIVE | SCOUTING_ONLY | SHADOW
     """
     def __init__(self):
         self.venues: Dict[str, Dict[str, Any]] = {}
@@ -42,32 +42,32 @@ class VenueLedger:
                 "status": "ACTIVE",
                 "reason": "Operational"
             },
-            "indodax_paper": {
-                "venue": "Indodax Paper/Mock",
-                "mode": "PAPER",
-                "equity_idr": 1000000.0, # Initial paper demo balance
+            "indodax_shadow": {
+                "venue": "Indodax Shadow",
+                "mode": "SHADOW",
+                "equity_idr": 1000000.0, # Initial shadow reserve balance
                 "daily_pnl_idr": 0.0,
                 "open_exposure_idr": 0.0,
                 "status": "ACTIVE",
-                "reason": "Paper soak test active"
+                "reason": "Shadow ledger active"
             },
             "phantom": {
-                "venue": "Phantom Scouting",
-                "mode": "SIMULATION",
+                "venue": "Phantom Treasury",
+                "mode": "SCOUTING_ONLY",
                 "equity_idr": 0.0,
                 "daily_pnl_idr": 0.0,
                 "open_exposure_idr": 0.0,
                 "status": "ACTIVE",
-                "reason": "Scanning Solana microstructure"
+                "reason": "Treasury visibility"
             },
             "polymarket": {
                 "venue": "Polymarket",
-                "mode": "SIMULATION",
+                "mode": "SCOUTING_ONLY",
                 "equity_idr": 0.0,
                 "daily_pnl_idr": 0.0,
                 "open_exposure_idr": 0.0,
                 "status": "ACTIVE",
-                "reason": "Prediction market scanning"
+                "reason": "Prediction market scouting"
             },
             "cash_wait": {
                 "venue": "Cash Wait",
@@ -94,7 +94,7 @@ class VenueLedger:
         if venue_key not in self.venues:
             self.venues[venue_key] = {
                 "venue": venue_key.replace("_", " ").title(),
-                "mode": "SIMULATION",
+                "mode": "SHADOW",
                 "equity_idr": 0.0,
                 "daily_pnl_idr": 0.0,
                 "open_exposure_idr": 0.0,

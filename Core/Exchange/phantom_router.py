@@ -114,9 +114,9 @@ class PhantomRouter:
         Initiate a cross-chain bridge transaction.
         """
         if not KiConfig.LIVE_TRADING_ENABLED or not KiConfig.ENABLE_REAL_BRIDGE or not KiConfig.ENABLE_REAL_WITHDRAWAL:
-            logger.warning(f"⚠️ [SIMULATION] Cross-chain bridge simulated (Paper Mode / Real Bridge/Withdrawal OFF): {amount} {token} from {from_chain} to {to_chain}")
+            logger.warning(f"⚠️ [GUARDED] Cross-chain bridge blocked (Real Bridge/Withdrawal OFF): {amount} {token} from {from_chain} to {to_chain}")
             return True
-        logger.info(f"Mock Bridge: {amount} {token} from {from_chain} to {to_chain}")
+        logger.info(f"Guarded Bridge: {amount} {token} from {from_chain} to {to_chain}")
         return True
 
 
@@ -139,7 +139,7 @@ class PhantomRouter:
             logger.warning(f"⚠️ Pre-trade Web3 scouting failed/bypassed: {e}")
 
         if not KiConfig.LIVE_TRADING_ENABLED or not KiConfig.ENABLE_REAL_SWAP:
-            logger.warning(f"⚠️ [SIMULATION] Swap simulated successfully (Paper Mode / Real Swap OFF): {amount_in} of {token_in} -> {token_out} on {chain}")
+            logger.warning(f"⚠️ [GUARDED] Swap blocked (Real Swap OFF): {amount_in} of {token_in} -> {token_out} on {chain}")
             return True
 
         gate_ctx = self._live_web3_gate_context()
@@ -253,7 +253,7 @@ class PhantomRouter:
     async def execute_polymarket_trade(self, market_id: str, outcome: str, amount_usdc: float) -> bool:
         """ 1. Prediction Markets: Execute trade on Polymarket (Polygon). """
         if not KiConfig.LIVE_TRADING_ENABLED or not KiConfig.ENABLE_POLYMARKET_LIVE:
-            logger.warning(f"⚠️ [SIMULATION] Polymarket trade simulated (Paper Mode / Polymarket Live OFF): {amount_usdc} USDC on {outcome} in {market_id}")
+            logger.warning(f"⚠️ [GUARDED] Polymarket trade blocked (Live OFF): {amount_usdc} USDC on {outcome} in {market_id}")
             return True
 
         gate_ctx = self._live_web3_gate_context()
@@ -273,7 +273,7 @@ class PhantomRouter:
     async def deposit_kamino_yield(self, token: str, amount: float) -> bool:
         """ 2. Yield Farming: Supply asset to Kamino Finance (Solana). """
         if not KiConfig.LIVE_TRADING_ENABLED:
-            logger.warning(f"⚠️ [SIMULATION] Kamino deposit simulated (Paper Mode): {amount} {token}")
+            logger.warning(f"⚠️ [GUARDED] Kamino deposit blocked: {amount} {token}")
             return True
         try:
             logger.info(f"🚜 Yield: Depositing {amount} {token} into Kamino.")
@@ -285,7 +285,7 @@ class PhantomRouter:
     async def execute_drift_perp(self, symbol: str, side: str, leverage: float, amount: float) -> bool:
         """ 3. Perpetual DEX: Open Long/Short on Drift Protocol (Solana). """
         if not KiConfig.LIVE_TRADING_ENABLED:
-            logger.warning(f"⚠️ [SIMULATION] Drift perp simulated (Paper Mode): {side} {symbol} with {leverage}x leverage")
+            logger.warning(f"⚠️ [GUARDED] Drift perp blocked: {side} {symbol} with {leverage}x leverage")
             return True
         try:
             logger.info(f"📉 Perp: Opening {side} on {symbol} with {leverage}x leverage on Drift.")
@@ -297,7 +297,7 @@ class PhantomRouter:
     async def snipe_meme_coin(self, token_address: str, amount_sol: float, slippage_bps: int = 1000) -> bool:
         """ 4. Meme Sniping: Fast swap via Jupiter with high slippage (Solana). """
         if not KiConfig.LIVE_TRADING_ENABLED or not KiConfig.ENABLE_REAL_SWAP:
-            logger.warning(f"⚠️ [SIMULATION] Meme snipe simulated successfully (Paper Mode / Real Swap OFF): {token_address} with {amount_sol} SOL")
+            logger.warning(f"⚠️ [GUARDED] Meme snipe blocked: {token_address} with {amount_sol} SOL")
             return True
 
         gate_ctx = self._live_web3_gate_context()
@@ -384,7 +384,7 @@ class PhantomRouter:
     async def stake_jito_sol(self, amount_sol: float) -> bool:
         """ 5. Liquid Staking: Stake SOL for JitoSOL (Solana). """
         if not KiConfig.LIVE_TRADING_ENABLED:
-            logger.warning(f"⚠️ [SIMULATION] Jito staking simulated (Paper Mode): {amount_sol} SOL")
+            logger.warning(f"⚠️ [GUARDED] Jito staking blocked: {amount_sol} SOL")
             return True
         try:
             logger.info(f"💧 Staking: Converting {amount_sol} SOL to JitoSOL.")
@@ -396,7 +396,7 @@ class PhantomRouter:
     async def farm_airdrop(self, target_protocol: str, action: str) -> bool:
         """ 6. Airdrop Farming: Execute low-value interactions to build volume. """
         if not KiConfig.LIVE_TRADING_ENABLED:
-            logger.warning(f"⚠️ [SIMULATION] Airdrop farm simulated (Paper Mode): {action} on {target_protocol}")
+            logger.warning(f"⚠️ [GUARDED] Airdrop farm blocked: {action} on {target_protocol}")
             return True
         try:
             logger.info(f"🪂 Airdrop Farm: Executing {action} on {target_protocol}.")
@@ -408,7 +408,7 @@ class PhantomRouter:
     async def provide_orca_liquidity(self, pool_id: str, amount_a: float, amount_b: float) -> bool:
         """ 7. Liquidity Provision: Supply concentrated LP on Orca/Meteora. """
         if not KiConfig.LIVE_TRADING_ENABLED:
-            logger.warning(f"⚠️ [SIMULATION] Orca LP provision simulated (Paper Mode): pool {pool_id}")
+            logger.warning(f"⚠️ [GUARDED] Orca LP provision blocked: pool {pool_id}")
             return True
         try:
             logger.info(f"🌊 LP: Supplying {amount_a} and {amount_b} to Orca pool {pool_id}.")
@@ -420,7 +420,7 @@ class PhantomRouter:
     async def bridge_debridge(self, amount: float, token: str, from_chain: str, to_chain: str) -> bool:
         """ 8. Cross-Chain Bridging: Move funds via DeBridge/Wormhole. """
         if not KiConfig.LIVE_TRADING_ENABLED or not KiConfig.ENABLE_REAL_BRIDGE or not KiConfig.ENABLE_REAL_WITHDRAWAL:
-            logger.warning(f"⚠️ [SIMULATION] Bridge simulated (Paper Mode / Real Bridge/Withdrawal OFF): {amount} {token} from {from_chain} to {to_chain}")
+            logger.warning(f"⚠️ [GUARDED] Bridge blocked (Real Bridge/Withdrawal OFF): {amount} {token} from {from_chain} to {to_chain}")
             return True
 
         try:
@@ -433,7 +433,7 @@ class PhantomRouter:
     async def offer_nft_loan(self, collection_slug: str, offer_usdc: float) -> bool:
         """ 9. NFT Lending: Offer a loan on SharkyFi (Solana). """
         if not KiConfig.LIVE_TRADING_ENABLED:
-            logger.warning(f"⚠️ [SIMULATION] NFT loan simulated (Paper Mode): {offer_usdc} USDC for {collection_slug}")
+            logger.warning(f"⚠️ [GUARDED] NFT loan blocked: {offer_usdc} USDC for {collection_slug}")
             return True
         try:
             logger.info(f"🖼️ NFT Loan: Offering {offer_usdc} USDC for {collection_slug} on SharkyFi.")
@@ -445,7 +445,7 @@ class PhantomRouter:
     async def execute_mev_arbitrage(self, token: str, buy_dex: str, sell_dex: str) -> bool:
         """ 10. MEV Arbitrage: Flash loan or instant arb across DEXs. """
         if not KiConfig.LIVE_TRADING_ENABLED:
-            logger.warning(f"⚠️ [SIMULATION] MEV Arbitrage simulated (Paper Mode): Buy {token} on {buy_dex}, Sell on {sell_dex}")
+            logger.warning(f"⚠️ [GUARDED] MEV arbitrage blocked: Buy {token} on {buy_dex}, Sell on {sell_dex}")
             return True
         try:
             logger.info(f"⚡ MEV Arb: Buying {token} on {buy_dex} and selling on {sell_dex}.")

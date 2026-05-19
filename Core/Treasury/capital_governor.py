@@ -224,15 +224,15 @@ class CapitalGovernor:
                 except Exception as e:
                     logger.error(f"❌ Failed to query Indodax balance: {e}")
                     
-            # If we are in paper mode, default or load paper balance
-            indodax_paper_balance = 1000000.0
-            paper_ledger = self.ledger.get_venue("indodax_paper")
-            if paper_ledger:
-                indodax_paper_balance = paper_ledger.get("equity_idr", 1000000.0)
+            # Shadow reserve is only used when live trading is disabled.
+            indodax_shadow_balance = 1000000.0
+            shadow_ledger = self.ledger.get_venue("indodax_shadow")
+            if shadow_ledger:
+                indodax_shadow_balance = shadow_ledger.get("equity_idr", 1000000.0)
 
             # 3. Calculate Total Consolidated Equity
-            # Real-canary / Real Mode takes actual Indodax, otherwise paper
-            primary_indodax_balance = indodax_real_balance if KiConfig.LIVE_TRADING_ENABLED else indodax_paper_balance
+            # Controlled-live mode takes actual Indodax, otherwise shadow reserve.
+            primary_indodax_balance = indodax_real_balance if KiConfig.LIVE_TRADING_ENABLED else indodax_shadow_balance
             phantom_reconciliation = phantom_summary.get("reconciliation", {}) if isinstance(phantom_summary, dict) else {}
             phantom_ready = (
                 phantom_summary.get("status") in {"OK", "SCOUTING"}
@@ -275,7 +275,7 @@ class CapitalGovernor:
             
             # 5. Sync to Venue Ledger
             self.ledger.update_venue("indodax_real", equity_idr=indodax_real_balance)
-            self.ledger.update_venue("indodax_paper", equity_idr=indodax_paper_balance)
+            self.ledger.update_venue("indodax_shadow", equity_idr=indodax_shadow_balance)
             self.ledger.update_venue("phantom", equity_idr=phantom_equity_idr)
             self.ledger.update_venue("cash_wait", equity_idr=self.current_total_equity_idr * targets.get("reserve", 0.20))
             

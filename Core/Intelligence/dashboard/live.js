@@ -102,11 +102,11 @@ function drawConnectors() {
     {from:'card-council',   to:'card-director',  style:'solid',  color:'#a855f7'},
     {from:'card-director',  to:'card-risk',      style:'solid',  color:'#3b82f6'},
     {from:'card-director',  to:'card-indodax-real',  style:'solid',  color:'#ef4444'},
-    {from:'card-director',  to:'card-indodax-paper', style:'solid',  color:'#64748b'},
+    {from:'card-director',  to:'card-indodax-shadow', style:'solid',  color:'#64748b'},
     {from:'card-risk',      to:'card-phantom',   style:'dashed', color:'#a855f7'},
     {from:'card-risk',      to:'card-polymarket',style:'dashed', color:'#f97316'},
     {from:'card-indodax-real', to:'card-pnl-feedback', style:'dotted', color:'#ef4444'},
-    {from:'card-indodax-paper',to:'card-pnl-feedback', style:'dotted', color:'#64748b'},
+    {from:'card-indodax-shadow',to:'card-pnl-feedback', style:'dotted', color:'#64748b'},
     {from:'card-phantom',    to:'card-cashwait',  style:'dashed', color:'#a855f7'},
     {from:'card-polymarket', to:'card-cashwait',  style:'dashed', color:'#f97316'},
     {from:'card-pnl-feedback', to:'card-punishment', style:'dotted', color:'#22c55e'},
@@ -186,7 +186,7 @@ function drawConnectors() {
 
 /* ─── Agent Modal ────────────────────────────────────────── */
 const AGENT_META = {
-  operator:   { letter:'K', color:'blue',   name:'Kiki / Operator',       role:'Human In The Loop',     row: 1, isSm: false, desc:'The sovereign operator. Sets policy, approves live gate, monitors all agents. View-only mode active on Batam node.', inputs:[], outputs:[], stateFile:null },
+  operator:   { letter:'K', color:'blue',   name:'Kiki / Operator',       role:'Human In The Loop',     row: 1, isSm: false, desc:'The sovereign operator. Sets policy, approves live gate, monitors all agents. Controlled-live mode active on Batam node.', inputs:[], outputs:[], stateFile:null },
   council:    { letter:'Ω', color:'purple', name:'Sovereign Council',     role:'Governance Gate',       row: 1, isSm: false, desc:'High-level deliberation chamber. Aggregates and debates predictions, scanner data, and sentiment before approving order execution.', inputs:['strategy_scorecard.json', 'expected_value.json'], outputs:['council_decisions.jsonl'], stateFile:'council_decisions.jsonl' },
   director:   { letter:'D', color:'blue',   name:'Autonomous Director',   role:'Lead Coordinator',      row: 2, isSm: false, desc:'Core state orchestrator. Reads signal qualities and EV gates. Issues WAIT, APPROVE, or REJECT decisions based on rules.',  inputs:['signal_quality.json','expected_value.json','strategy_scorecard.json','punishment_state.json'], outputs:['autonomous_director.json'], stateFile:'autonomous_director.json' },
   risk:       { letter:'R', color:'red',    name:'RiskGate Shield',       role:'Drawdown Shield',       row: 2, isSm: false, desc:'Safety gate enforcing 1.5% maximum daily drawdown. Blocks all downstream order execution if drawdown is breached.', inputs:['portfolio_summary.json'], outputs:[], stateFile:'portfolio_summary.json' },
@@ -194,11 +194,11 @@ const AGENT_META = {
   leadlag:    { letter:'L', color:'green',  name:'LeadLag Alpha',         role:'Correlation Engine',    row: 3, isSm: true,  desc:'Computes high-speed lead-lag correlations between major assets (BTC/ETH) and altcoins to detect leading momentum.', inputs:['scanner_runtime.json'], outputs:['leadlag_alpha.json', 'signal_quality.json'], stateFile:'signal_quality.json' },
   ev:         { letter:'V', color:'yellow', name:'Expected Value Gate',   role:'EV Threshold Gate',     row: 3, isSm: true,  desc:'Evaluates candidate trades based on expected value (EV) after fees. Blocks execution if EV is negative or below threshold.', inputs:['signal_quality.json'], outputs:['expected_value.json'], stateFile:'expected_value.json' },
   scorecard:  { letter:'C', color:'purple', name:'Strategy Scorecard',     role:'Deliberation Score',    row: 3, isSm: true,  desc:'Grades strategies against current market regimes and recent trade outcomes. Submits composite scorecard to Council.', inputs:['signal_quality.json', 'expected_value.json'], outputs:['strategy_scorecard.json'], stateFile:'strategy_scorecard.json' },
-  indodax_real: { letter:'IR', color:'red',  name:'Indodax Real Spot',     role:'Live Spot Venue',       row: 4, isSm: true,  desc:'Real exchange order placement. Locked in view-only paper soak mode on Batam server. Real orders disabled.', inputs:['autonomous_director.json'], outputs:['live_trades.json'], stateFile:null },
-  indodax_paper: { letter:'IP', color:'gray', name:'Indodax Paper Spot',    role:'Sandbox Spot Venue',    row: 4, isSm: true,  desc:'Simulates spot order matching and balance accounting using real-time price feeds for safe telemetry tracking.', inputs:['autonomous_director.json'], outputs:['paper_trades.json'], stateFile:'portfolio_summary.json' },
-  phantom:    { letter:'Φ', color:'purple', name:'Phantom Scout',         role:'Solana Scouting',       row: 4, isSm: true,  desc:'Simulation channel scouting Solana microstructure and DEX pricing anomalies. No real SOL/USDC assets used.', inputs:[], outputs:['phantom_scout.json'], stateFile:'phantom_scout.json' },
-  polymarket: { letter:'M', color:'orange', name:'Polymarket Agent',      role:'Arbitrage Scout',       row: 4, isSm: true,  desc:'Prediction market arbitrage scout. Tracks odds and executes paper trades. Real wallet connection disabled.', inputs:[], outputs:['polymarket_state.json'], stateFile:'polymarket_state.json' },
-  pnl_feedback: { letter:'F', color:'green', name:'PnL Feedback Loop',     role:'Adaptive Learning',     row: 5, isSm: true,  desc:'Post-trade feedback analyzer. Reviews real/simulated trade execution quality and adjusts expected value coefficients.', inputs:['paper_trades.json', 'live_trades.json'], outputs:['pnl_feedback.json'], stateFile:null },
+  indodax_real: { letter:'IR', color:'red',  name:'Indodax Spot',         role:'Live Spot Venue',       row: 4, isSm: true,  desc:'Controlled-live exchange order placement with RiskGate and Capital Governor enforcement.', inputs:['autonomous_director.json'], outputs:['live_trades.json'], stateFile:null },
+  indodax_shadow: { letter:'IS', color:'gray', name:'Indodax Shadow',       role:'Shadow Ledger',         row: 4, isSm: true,  desc:'Shadow accounting for internal analysis only.', inputs:['autonomous_director.json'], outputs:['shadow_trades.json'], stateFile:'portfolio_summary.json' },
+  phantom:    { letter:'Φ', color:'purple', name:'Phantom Treasury',      role:'Solana / Web3 Capital',  row: 4, isSm: true,  desc:'Treasury and route visibility for Phantom multichain capital.', inputs:[], outputs:['phantom_scout.json'], stateFile:'phantom_scout.json' },
+  polymarket: { letter:'M', color:'orange', name:'Polymarket',           role:'Prediction Market',     row: 4, isSm: true,  desc:'Prediction market control with guarded settlement-aware lifecycle.', inputs:[], outputs:['polymarket_state.json'], stateFile:'polymarket_state.json' },
+  pnl_feedback: { letter:'F', color:'green', name:'PnL Feedback',          role:'Adaptive Learning',     row: 5, isSm: true,  desc:'Post-trade feedback analyzer. Reviews execution quality and adjusts expected value coefficients.', inputs:['shadow_trades.json', 'live_trades.json'], outputs:['pnl_feedback.json'], stateFile:null },
   cashwait:   { letter:'W', color:'gray',   name:'Cash Wait Reserve',     role:'Idle Capital',          row: 5, isSm: true,  desc:'Liquidity reservoir tracking idle assets waiting for high-conviction opportunities. Prevents over-trading.', inputs:[], outputs:[], stateFile:'market_rotation.json' },
   punishment: { letter:'P', color:'red',    name:'Punishment Gate',       role:'Strike Guard',          row: 5, isSm: true,  desc:'Monitors execution failures and consecutive losses. Imposes cooling-off periods and quarantines underperforming pathways.', inputs:['pnl_feedback.json'], outputs:['punishment_state.json'], stateFile:'punishment_state.json' },
 };
@@ -218,8 +218,8 @@ function openModal(agentId) {
   let status = '—', metric = '', decision = meta.desc, stale = false;
 
   if (agentId === 'operator') {
-    status = 'VIEW-ONLY';
-    metric = data.mode?.live_trading_enabled ? 'live active' : 'view active';
+    status = data.mode?.live_trading_enabled ? 'CONTROLLED-LIVE' : 'BLOCKED';
+    metric = data.mode?.live_trading_enabled ? 'live active' : 'orders blocked';
   } else if (agentId === 'council') {
     const c = data.council || {};
     status = c.decision_state || 'IDLE';
@@ -273,20 +273,20 @@ function openModal(agentId) {
     decision = data.mode?.live_trading_enabled
       ? '⚠ Live trading ACTIVE — real orders enabled.'
       : 'Real exchange orders muted. live_trading_enabled=false.';
-  } else if (agentId === 'indodax_paper') {
-    status = 'PAPER';
+  } else if (agentId === 'indodax_shadow') {
+    status = 'SHADOW';
     metric = 'active';
-    decision = 'Indodax Spot Sandbox. Executing virtual matching using live websockets orderbook ticker data.';
+    decision = 'Shadow ledger only. Production route text intentionally hidden from the live dashboard.';
   } else if (agentId === 'phantom') {
     const d = runtime.phantom_scout || {};
-    status = d.status || 'SCOUTING';
-    metric = 'sim only';
+    status = d.status || 'SCOUTING_ONLY';
+    metric = 'live route';
     const age = fresh.phantom_scout_age_s;
     if (age > STALE_SECS) stale = true;
   } else if (agentId === 'polymarket') {
     const d = runtime.polymarket_state || {};
-    status = d.status || 'PAPER';
-    metric = 'sim';
+    status = d.status || 'SCOUTING_ONLY';
+    metric = 'live route';
     const age = fresh.polymarket_state_age_s;
     if (age > STALE_SECS) stale = true;
   } else if (agentId === 'pnl_feedback') {
@@ -327,7 +327,7 @@ function openModal(agentId) {
       <div class="modal-section">
         <div class="modal-section-label">Status</div>
         <div class="modal-kv"><span class="k">Status</span><strong>${esc(status)}</strong></div>
-        <div class="modal-kv"><span class="k">Mode</span><strong>${esc((data.mode||{}).trading_mode||'PAPER')}</strong></div>
+        <div class="modal-kv"><span class="k">Mode</span><strong>${esc((data.mode||{}).trading_mode||'CONTROLLED-LIVE')}</strong></div>
         ${metric ? `<div class="modal-kv"><span class="k">Metric</span><span>${esc(metric)}</span></div>` : ''}
       </div>
       <div class="modal-section">
@@ -462,8 +462,8 @@ function render(data) {
   // Top bar badges
   const modeBadge = el('mode-badge');
   if (modeBadge) {
-    modeBadge.textContent = (mode.trading_mode||'PAPER').toUpperCase();
-    modeBadge.className = mode.live_trading_enabled ? 'badge badge--red' : 'badge badge--paper';
+    modeBadge.textContent = (mode.trading_mode||'controlled-live').toUpperCase();
+    modeBadge.className = mode.live_trading_enabled ? 'badge badge--green' : 'badge badge--red';
   }
 
   const warn = data.warnings||[];
@@ -500,8 +500,8 @@ function render(data) {
   setT('risk-metric', `${rg.max_drawdown_limit||1.5}% cap`);
 
   // Indodax Executor card
-  setT('indodax-status', mode.live_trading_enabled ? 'LIVE' : 'PAPER');
-  setT('indodax-metric', mode.live_trading_enabled ? '⚠ LIVE' : 'live off');
+  setT('indodax-status', mode.live_trading_enabled ? 'LIVE' : 'BLOCKED');
+  setT('indodax-metric', mode.live_trading_enabled ? '⚠ LIVE' : 'orders blocked');
 
   // LeadLag
   const sq = gates.signal_quality || {};
@@ -515,9 +515,9 @@ function render(data) {
   setT('ev-status', ev.status||'WAIT');
   el('card-ev')?.classList.toggle('is-stale', evAge>STALE_SECS);
 
-  // Paper PnL
-  const mockPnl = port.mock_pnl_idr || 0;
-  setT('paperpnl-status', `+Rp ${Math.abs(mockPnl).toLocaleString('id-ID')}`);
+  // Risk remaining
+  const riskRemaining = data.capital?.risk_remaining_idr || 0;
+  setT('risk-remaining-status', `Rp ${Math.abs(riskRemaining).toLocaleString('id-ID')}`);
 
   // Phantom
   const ph = venues.phantom || {};
@@ -525,7 +525,7 @@ function render(data) {
 
   // Polymarket
   const poly = venues.polymarket || {};
-  setT('poly-metric', poly.equity_idr ? idr(poly.equity_idr) : 'sim');
+  setT('poly-metric', poly.equity_idr ? idr(poly.equity_idr) : 'live route');
 
   // Safety Gates Badges (Dynamic)
   const gateLive = el('gate-live-trading');
@@ -561,12 +561,13 @@ function render(data) {
   setT('pi-cash',   idr(port.idr_cash || 0));
   setT('pi-coin',   idr(port.coin_holdings_idr || 0));
   setPnl('pi-real-pnl',  port.real_pnl_idr   || port.daily_pnl_real_idr || 0);
-  setPnl('pi-paper-pnl', port.mock_pnl_idr   || port.daily_pnl_sim_idr  || 0);
-  setPnl('pi-sim-pnl',   port.simulated_pnl_idr || 0);
+  setPnl('pi-risk-remaining', data.capital?.risk_remaining_idr || 0);
+  setT('pi-allow-orders', allowNew ? 'YES' : 'NO');
+  setT('pi-blocked-reason', mode.allow_new_live_orders_reason || '—');
 
   // Venue equities
   setT('eq-indodax-real',  idr(venues.indodax_real?.equity_idr  || 0));
-  setT('eq-indodax-paper', idr(venues.indodax_paper?.equity_idr || 0));
+  setT('eq-indodax-live', idr(venues.indodax_live?.equity_idr || 0));
   setT('eq-polymarket',    idr(venues.polymarket?.equity_idr    || 0));
   
   // Phantom Scout details
@@ -640,7 +641,7 @@ function render(data) {
     events.slice(0,5).reverse().forEach(e => pushLog(_actLog,'activity-log',{message:e.message,tag:e.level==='ERROR'?'ERROR':e.level==='WARNING'?'WARN':'INFO'}));
   } else {
     pushLog(_actLog,'activity-log',{
-      message: mode.live_trading_enabled ? '⚠ Live trading ACTIVE' : '✓ Paper soak mode active — live trading OFF',
+      message: mode.live_trading_enabled ? '⚠ Live trading ACTIVE' : '✓ Controlled-live mode active — live trading OFF',
       tag: mode.live_trading_enabled ? 'WARN' : 'INFO'
     });
   }
@@ -693,10 +694,10 @@ function ensureAgentCardsCreated() {
         <span id="indodax-real-metric">—</span>
         <span id="indodax-metric" style="display:none"></span>
       `;
-    } else if (agentId === 'indodax_paper') {
+    } else if (agentId === 'indodax_shadow') {
       statusHtml = `
-        <span id="indodax-paper-status">WAIT</span>
-        <span id="paperpnl-status" style="display:none"></span>
+        <span id="indodax-shadow-status">WAIT</span>
+        <span id="risk-remaining-status" style="display:none"></span>
       `;
     } else if (agentId === 'polymarket') {
       metricHtml = `

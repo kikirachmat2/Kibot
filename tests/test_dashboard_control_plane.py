@@ -26,7 +26,7 @@ def test_control_plane_payload_structure():
     mode = data["mode"]
     assert "trading_mode" in mode
     assert isinstance(mode["live_trading_enabled"], bool)
-    assert isinstance(mode["canary_enabled"], bool)
+    assert isinstance(mode["legacy_modes_disabled"], bool)
     assert isinstance(mode["real_swap_enabled"], bool)
     assert isinstance(mode["real_bridge_enabled"], bool)
     assert isinstance(mode["real_withdrawal_enabled"], bool)
@@ -37,15 +37,13 @@ def test_control_plane_payload_structure():
     assert "combined_equity_idr" in port
     assert "total_equity_idr" in port
     assert "daily_pnl_real_idr" in port
-    assert "daily_pnl_sim_idr" in port
+    assert "daily_pnl_shadow_idr" in port
     assert "real_pnl_idr" in port
-    assert "mock_pnl_idr" in port
-    assert "simulated_pnl_idr" in port
 
     # 3. Venue command performance cards
     assert "venues" in data
     venues = data["venues"]
-    for venue_key in ["indodax_real", "indodax_paper", "phantom", "polymarket", "cash_wait"]:
+    for venue_key in ["indodax_real", "indodax_shadow", "phantom", "polymarket", "cash_wait"]:
         assert venue_key in venues
         v = venues[venue_key]
         assert "venue" in v
@@ -129,7 +127,7 @@ def test_simulated_vs_real_pnl_isolation(tmp_path, monkeypatch):
             "idr_cash": 15_000_000,
             "coin_holdings_idr": 30_000_000,
             "daily_pnl_real_idr": 500_000,
-            "daily_pnl_sim_idr": -250_000,
+            "daily_pnl_shadow_idr": -250_000,
             "daily_pnl_idr": 250_000,
             "daily_pnl_pct": 0.25,
             "phantom": {
@@ -149,10 +147,8 @@ def test_simulated_vs_real_pnl_isolation(tmp_path, monkeypatch):
     
     port = data["portfolio"]
     assert port["daily_pnl_real_idr"] == 500_000
-    assert port["daily_pnl_sim_idr"] == -250_000
+    assert port["daily_pnl_shadow_idr"] == -250_000
     assert port["real_pnl_idr"] == 500_000
-    assert port["mock_pnl_idr"] == -250_000
-    assert port["simulated_pnl_idr"] == 75_000
 
 
 @pytest.mark.anyio

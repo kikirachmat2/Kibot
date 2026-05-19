@@ -13,7 +13,7 @@ const AGENTS = {
     label: "Kiki / Operator",
     service: "kibot-master",
     runtime: "systemd: kibot-master",
-    copy: "The sovereign operator. Sets policy, approves live gate, monitors all agents. View-only mode active on Batam node.",
+    copy: "The sovereign operator. Sets policy, approves live gate, monitors all agents. Controlled-live mode active on Batam node.",
     metric(summary) {
       return summary?.mode?.live_trading_enabled ? "live active" : "view active";
     }
@@ -57,7 +57,7 @@ const AGENTS = {
       const candidates = Number(summary?.scanner_candidates?.total || 0);
       if (candidates > 0) return `${candidates} candidates`;
       const count = Number(summary?.whatif?.count || 0);
-      return count > 0 ? `${count} sims` : "scan live";
+      return count > 0 ? `${count} signals` : "scan live";
     }
   },
   leadlag: {
@@ -91,47 +91,47 @@ const AGENTS = {
     }
   },
   indodax_real: {
-    label: "Indodax Real Spot",
+    label: "Indodax Spot",
     service: "kibot-executor",
     runtime: "systemd: kibot-executor",
-    copy: "Real exchange order placement. Locked in view-only paper soak mode on Batam server. Real orders disabled.",
+    copy: "Controlled-live exchange order placement with RiskGate and Capital Governor enforcement.",
     metric(summary) {
       return summary?.mode?.live_trading_enabled ? "live active" : "live off";
     }
   },
-  indodax_paper: {
-    label: "Indodax Paper Spot",
+  indodax_shadow: {
+    label: "Indodax Shadow",
     service: "kibot-executor",
     runtime: "systemd: kibot-executor",
-    copy: "Simulates spot order matching and balance accounting using real-time price feeds for safe telemetry tracking.",
+    copy: "Shadow accounting for internal analysis only.",
     metric(summary) {
       return "active";
     }
   },
   phantom: {
-    label: "Phantom Scout",
+    label: "Phantom Treasury",
     service: "kibot-scanner",
     runtime: "systemd: kibot-scanner",
-    copy: "Simulation channel scouting Solana microstructure and DEX pricing anomalies. No real SOL/USDC assets used.",
+    copy: "Treasury and route visibility for Phantom multichain capital.",
     metric(summary) {
-      return "sim only";
+      return "live route";
     }
   },
   polymarket: {
-    label: "Polymarket Agent",
+    label: "Polymarket",
     service: "kibot-executor-polymarket",
     runtime: "systemd: kibot-executor-polymarket",
-    copy: "Prediction market arbitrage scout. Tracks odds and executes paper trades. Real wallet connection disabled.",
+    copy: "Prediction market control with guarded settlement-aware lifecycle.",
     metric(summary) {
       const poly = summary?.venues?.polymarket || {};
-      return poly.usdc_balance != null ? `$${Number(poly.usdc_balance).toFixed(2)}` : "sim";
+      return poly.usdc_balance != null ? `$${Number(poly.usdc_balance).toFixed(2)}` : "live route";
     }
   },
   pnl_feedback: {
-    label: "PnL Feedback Loop",
+    label: "PnL Feedback",
     service: "kibot-janitor",
     runtime: "systemd: kibot-janitor",
-    copy: "Post-trade feedback analyzer. Reviews real/simulated trade execution quality and adjusts expected value coefficients.",
+    copy: "Post-trade feedback analyzer. Reviews execution quality and adjusts expected value coefficients.",
     metric(summary) {
       return "tracking";
     }
@@ -297,7 +297,7 @@ function renderWorkflow(summary) {
       `${statusLabel(services["kibot-ai-scout"])} · ${summary?.world_model?.market_regime || "NEUTRAL"}`,
       normalizedStatus(services["kibot-ai-scout"]) === "active" ? "live" : ""
     ),
-    taskCard("What-If Batch", `${summary?.whatif?.count || 0} pairs simulated`),
+    taskCard("What-If Batch", `${summary?.whatif?.count || 0} pairs scanned`),
     taskCard("Scanner Slate", `${scanner.total || 0} live candidates`, Number(scanner.total || 0) ? "live" : ""),
     taskCard("Deadline Brain", `${dailyCtx.deadline_mode || "PATIENT"} · ${dailyCtx.allowed_risk_mode || "NORMAL"}`),
   ];

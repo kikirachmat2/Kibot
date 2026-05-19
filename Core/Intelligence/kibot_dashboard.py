@@ -280,8 +280,8 @@ def _load_polymarket_state() -> Dict[str, Any]:
 def _load_phantom_state() -> Dict[str, Any]:
     return _read_json(STATE / "phantom_scout.json", {})
 
-def _load_mock_state() -> Dict[str, Any]:
-    return _read_json(STATE / "mock_portfolio.json", {})
+def _load_shadow_state() -> Dict[str, Any]:
+    return _read_json(STATE / "shadow_portfolio.json", {})
 
 
 def _load_web3_state() -> Dict[str, Any]:
@@ -374,7 +374,7 @@ def _build_portfolio(telemetry: Dict[str, Any]) -> Dict[str, Any]:
     from Core.Support.ki_config import KiConfig
     live_trading_enabled = KiConfig.LIVE_TRADING_ENABLED
     daily_pnl_real_idr = daily_pnl if live_trading_enabled else 0.0
-    daily_pnl_sim_idr = daily_pnl if not live_trading_enabled else 0.0
+    daily_pnl_shadow_idr = daily_pnl if not live_trading_enabled else 0.0
 
     return {
         "equity_idr": indodax_equity,
@@ -383,7 +383,7 @@ def _build_portfolio(telemetry: Dict[str, Any]) -> Dict[str, Any]:
         "combined_equity_idr": combined_equity,
         "daily_pnl_idr": daily_pnl,
         "daily_pnl_real_idr": daily_pnl_real_idr,
-        "daily_pnl_sim_idr": daily_pnl_sim_idr,
+        "daily_pnl_shadow_idr": daily_pnl_shadow_idr,
         "live_trading_enabled": live_trading_enabled,
         "daily_pnl_pct": daily_pnl_pct,
         "daily_color": daily_color,
@@ -402,7 +402,7 @@ def _build_portfolio(telemetry: Dict[str, Any]) -> Dict[str, Any]:
             "wallet_ready": bool(polymarket.get("wallet_ready")),
         },
         "phantom": _load_phantom_state(),
-        "mock": _load_mock_state(),
+        "shadow": _load_shadow_state(),
     }
 
 
@@ -516,15 +516,15 @@ def _translate_to_human(agent: str, message: str, tag: str) -> str:
     if "OLLAMA" in upper or "MODEL" in upper:
         return "Sovereign AI Council mensinkronisasi data kognitif dan model instruksi terbaru dari server lokal."
     if "BRIDGE" in upper or "FEE" in upper:
-        return "BridgeRouter menghitung skema biaya optimal dan mensimulasikan rute arbitrage koin di Indodax."
+        return "BridgeRouter menghitung skema biaya optimal dan memvalidasi rute perpindahan modal yang aman."
     if "FIREWALL" in upper or "UFW" in upper or "PORT" in upper:
         return "Sistem memvalidasi konfigurasi firewall UFW. Seluruh akses eksternal yang tidak sah terblokir aman."
     if "SQLITE" in upper or "DATABASE" in upper:
         return "Penyimpanan database transaksi lokal dioptimalkan untuk performa query berkecepatan tinggi."
     if "SIM" in upper or "PAPER" in upper:
-        return "Sistem mencatat simulasi paper trading untuk memvalidasi PnL virtual sebelum deployment riil."
+        return "Sistem mencatat mode latihan internal untuk memvalidasi PnL virtual sebelum eksekusi produksi."
     if "LIVE_TRADING" in upper or "KIBOT_LIVE" in upper:
-        return "Verifikasi gerbang live-trading. Transaksi langsung terkunci di balik pertahanan gerbang simulasi."
+        return "Verifikasi gerbang live-trading. Transaksi langsung terkunci di balik pertahanan RiskGate."
     if "ERROR" in upper or "FAILED" in upper:
         return f"Sistem mendeteksi peringatan log teknis: '{message[:120]}'. Janitor otomatis melakukan mitigasi pemulihan."
     
@@ -679,7 +679,7 @@ def _build_summary() -> Dict[str, Any]:
         "commander": commander_state,
         "whatif": {
             "top": top_whatif,
-            "count": _safe_int(whatif.get("pairsSimulated") or whatif.get("pairs_simulated"), 0) if isinstance(whatif, dict) else 0,
+            "count": _safe_int(whatif.get("pairs_scanned") or whatif.get("pairs_scanned"), 0) if isinstance(whatif, dict) else 0,
         },
         "snapshots": {
             "telemetry": _latest_mtime(STATE / "telemetry_snapshot.json"),
@@ -945,7 +945,7 @@ def _build_control_plane_payload() -> Dict[str, Any]:
     mode = {
         "trading_mode": str(KiConfig.TRADING_MODE),
         "live_trading_enabled": bool(KiConfig.LIVE_TRADING_ENABLED),
-        "canary_enabled": bool(KiConfig.CANARY_LIVE_ENABLED),
+        "legacy_modes_disabled": bool(KiConfig.LEGACY_TRADING_MODES_DISABLED),
         "real_swap_enabled": bool(KiConfig.ENABLE_REAL_SWAP),
         "real_bridge_enabled": bool(KiConfig.ENABLE_REAL_BRIDGE),
         "real_withdrawal_enabled": bool(KiConfig.ENABLE_REAL_WITHDRAWAL),
@@ -1018,20 +1018,20 @@ def _build_control_plane_payload() -> Dict[str, Any]:
             "status": "ACTIVE" if KiConfig.LIVE_TRADING_ENABLED else "BLOCKED",
             "reason": "Live trading disabled" if not KiConfig.LIVE_TRADING_ENABLED else "Operational",
         },
-        "indodax_paper": {
-            "venue": "Indodax Paper/Mock",
-            "mode": "PAPER",
-            "equity_idr": _safe_float(portfolio.get("mock", {}).get("equity_idr"), 0.0),
-            "daily_pnl_idr": _safe_float(portfolio.get("daily_pnl_sim_idr"), 0.0) if not KiConfig.LIVE_TRADING_ENABLED else 0.0,
+        "indodax_shadow": {
+            "venue": "Indodax Shadow",
+            "mode": "SHADOW",
+            "equity_idr": _safe_float(portfolio.get("daily_pnl_shadow_idr"), 0.0),
+            "daily_pnl_idr": _safe_float(portfolio.get("daily_pnl_shadow_idr"), 0.0),
             "status": "ACTIVE",
-            "reason": "Paper soak test active",
+            "reason": "Shadow ledger active",
         },
         "phantom": {
-            "venue": "Phantom Scouting",
-            "mode": "SIMULATION",
+            "venue": "Phantom Treasury",
+            "mode": "CONTROLLED_LIVE" if pt.get("status") == "OK" else "BLOCKED_WITH_REASON",
             "status": "BLOCKED" if summary_data.get("phantom_multichain", {}).get("reconciliation_blocked") else "ACTIVE",
             "opportunities": len(portfolio.get("phantom", {}).get("active_opportunities", []) if isinstance(portfolio.get("phantom"), dict) else []),
-            "reason": "Phantom not reconciled" if summary_data.get("phantom_multichain", {}).get("reconciliation_blocked") else "Scanning Solana microstructure",
+            "reason": "Phantom not reconciled" if summary_data.get("phantom_multichain", {}).get("reconciliation_blocked") else "Treasury reconciled",
             "sol_balance": _safe_float(pt.get("sol_balance"), 0.0),
             "usdc_balance": _safe_float(pt.get("usdc_balance"), 0.0),
             "base_idrx_balance": _safe_float(pt.get("base_idrx_balance"), 0.0),
@@ -1067,7 +1067,7 @@ def _build_control_plane_payload() -> Dict[str, Any]:
         },
         "polymarket": {
             "venue": "Polymarket",
-            "mode": "SIMULATION" if not KiConfig.ENABLE_POLYMARKET_LIVE else "REAL",
+            "mode": "CONTROLLED_LIVE" if KiConfig.ENABLE_POLYMARKET_LIVE else "SCOUTING_ONLY",
             "equity_idr": _safe_float(portfolio.get("polymarket", {}).get("equity_idr"), 0.0),
             "daily_pnl_idr": _safe_float(portfolio.get("polymarket", {}).get("daily_pnl_idr"), 0.0),
             "status": "ACTIVE" if portfolio.get("polymarket", {}).get("wallet_ready") else "WAIT",
@@ -1075,7 +1075,7 @@ def _build_control_plane_payload() -> Dict[str, Any]:
         },
         "cash_wait": {
             "venue": "Cash Wait",
-            "mode": "REAL" if KiConfig.LIVE_TRADING_ENABLED else "PAPER",
+            "mode": "RESERVE",
             "equity_idr": _safe_float(portfolio.get("idr_cash"), 0.0),
             "status": "ACTIVE",
             "reason": "Sovereign reserve liquidity",
@@ -1107,7 +1107,7 @@ def _build_control_plane_payload() -> Dict[str, Any]:
         "autonomous_director": {
             "status": "ACTIVE" if summary_data.get("autonomous_director") else "WAIT",
             "approved_count": len(summary_data.get("autonomous_director", {}).get("approved", []) if isinstance(summary_data.get("autonomous_director"), dict) else []),
-            "paper_count": len(summary_data.get("autonomous_director", {}).get("paper", []) if isinstance(summary_data.get("autonomous_director"), dict) else []),
+            "shadow_count": len(summary_data.get("autonomous_director", {}).get("shadow", []) if isinstance(summary_data.get("autonomous_director"), dict) else []),
             "rejected_count": len(summary_data.get("autonomous_director", {}).get("rejected", []) if isinstance(summary_data.get("autonomous_director"), dict) else []),
         },
         "healthcheck": {
@@ -1147,10 +1147,8 @@ def _build_control_plane_payload() -> Dict[str, Any]:
             {"id": "RiskGate Shield", "label": "RiskGate Shield", "role": "risk_gate"},
             {"id": "Executor", "label": "Executor Block", "role": "executor"},
             {"id": "Indodax Spot", "label": "Indodax Spot Venue", "role": "venue"},
-            {"id": "Indodax Real Balance", "label": "Indodax Real Balance", "role": "wallet"},
-            {"id": "Indodax Paper", "label": "Indodax Paper", "role": "wallet"},
-            {"id": "Paper PnL", "label": "Paper PnL Tracker", "role": "metric"},
-            {"id": "Phantom Scout", "label": "Phantom Scout", "role": "scout"},
+            {"id": "Indodax Balance", "label": "Indodax Balance", "role": "wallet"},
+            {"id": "Phantom Treasury", "label": "Phantom Treasury", "role": "wallet"},
             {"id": "Polymarket", "label": "Polymarket Venue", "role": "venue"},
             {"id": "Cash Wait", "label": "Cash Wait Reserves", "role": "reserve"},
             {"id": "Ollama / AI Scout", "label": "Ollama / AI Scout", "role": "advisory"}
@@ -1167,10 +1165,8 @@ def _build_control_plane_payload() -> Dict[str, Any]:
             {"from": "Sovereign Council", "to": "RiskGate Shield"},
             {"from": "RiskGate Shield", "to": "Executor"},
             {"from": "Executor", "to": "Indodax Spot"},
-            {"from": "Indodax Spot", "to": "Indodax Real Balance"},
-            {"from": "Indodax Spot", "to": "Indodax Paper"},
-            {"from": "Indodax Paper", "to": "Paper PnL"},
-            {"from": "Scanner", "to": "Phantom Scout", "type": "dotted"},
+            {"from": "Indodax Spot", "to": "Indodax Balance"},
+            {"from": "Scanner", "to": "Phantom Treasury", "type": "dotted"},
             {"from": "Scanner", "to": "Polymarket", "type": "dotted"},
             {"from": "Expected Value", "to": "Cash Wait", "type": "dotted"},
             {"from": "Autonomous Director", "to": "Ollama / AI Scout", "type": "dotted"}
@@ -1187,7 +1183,6 @@ def _build_control_plane_payload() -> Dict[str, Any]:
         "strategy_scorecard.json",
         "punishment_state.json",
         "autonomous_director.json",
-        "canary_daily_stats.json",
     ]
     
     missing_states = []
@@ -1252,13 +1247,8 @@ def _build_control_plane_payload() -> Dict[str, Any]:
             "daily_pnl_idr": _safe_float(portfolio.get("daily_pnl_idr"), 0.0),
             "daily_pnl_pct": _safe_float(portfolio.get("daily_pnl_pct"), 0.0),
             "daily_pnl_real_idr": _safe_float(portfolio.get("daily_pnl_real_idr"), 0.0),
-            "daily_pnl_sim_idr": _safe_float(portfolio.get("daily_pnl_sim_idr"), 0.0),
+            "daily_pnl_shadow_idr": _safe_float(portfolio.get("daily_pnl_shadow_idr"), 0.0),
             "real_pnl_idr": _safe_float(portfolio.get("daily_pnl_real_idr"), 0.0),
-            "mock_pnl_idr": _safe_float(portfolio.get("daily_pnl_sim_idr"), 0.0),
-            "paper_pnl_idr": _safe_float(portfolio.get("daily_pnl_sim_idr"), 0.0) if not KiConfig.LIVE_TRADING_ENABLED else 0.0,
-            "simulated_pnl_idr": _safe_float(portfolio.get("phantom", {}).get("opportunity_pnl_idr"), 0.0) if isinstance(portfolio.get("phantom"), dict) else (
-                _safe_float(portfolio.get("simulated_pnl_idr"), 0.0)
-            ),
             "max_daily_loss_pct": 1.5
         },
         "venues": venues,
@@ -1271,6 +1261,18 @@ def _build_control_plane_payload() -> Dict[str, Any]:
         "warnings": warnings,
         "data_quality": data_quality_dict,
     })
+    for legacy_key in (
+        "indodax_paper",
+        "paper_count",
+        "paper_pnl_idr",
+        "mock_pnl_idr",
+        "simulated_pnl_idr",
+    ):
+        merged_data.pop(legacy_key, None)
+    if isinstance(merged_data.get("portfolio"), dict):
+        merged_data["portfolio"].setdefault("daily_pnl_shadow_idr", _safe_float(portfolio.get("daily_pnl_shadow_idr"), 0.0))
+    if isinstance(merged_data.get("venues"), dict):
+        merged_data["venues"].setdefault("indodax_shadow", merged_data["venues"].get("indodax_shadow", {}))
     return merged_data
 
 

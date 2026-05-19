@@ -247,11 +247,34 @@ def check_live_trading_gates(KiConfig):
         logger.error(f"❌ CRITICAL: Failed to validate active_strategy.json: {exc}")
         safe_exit(34, f"Failed to validate active_strategy.json: {exc}")
 
-    logger.info("✅ Live trading canary gates and safety limits are fully aligned and secured.")
+    logger.info("✅ Live trading gates and safety limits are fully aligned and secured.")
+
+
+def check_no_legacy_modes():
+    logger.info("Step 6/8: Verifying production dashboard contains no legacy paper/sim/canary labels...")
+    import urllib.request
+
+    endpoints = [
+        "http://127.0.0.1:8787/",
+        "http://127.0.0.1:8787/api/control-plane",
+    ]
+    forbidden = ("paper", "sim", "mock", "canary", "view-only")
+    for url in endpoints:
+        try:
+            with urllib.request.urlopen(url, timeout=5) as res:
+                body = res.read().decode("utf-8", errors="ignore").lower()
+            hits = [term for term in forbidden if term in body]
+            if hits:
+                logger.error(f"❌ CRITICAL: Legacy labels found in {url}: {hits}")
+                safe_exit(35, f"Legacy labels found in {url}: {hits}")
+        except Exception as exc:
+            logger.error(f"❌ CRITICAL: Could not inspect {url}: {exc}")
+            safe_exit(35, f"Could not inspect {url}: {exc}")
+    logger.info("✅ Production dashboard/control-plane are free of legacy labels.")
 
 
 def check_network_bindings():
-    logger.info("Step 6/8: Auditing zero-trust port bindings...")
+    logger.info("Step 7/8: Auditing zero-trust port bindings...")
     try:
         import psutil
     except ImportError:
@@ -331,7 +354,7 @@ def get_history_path():
     return Path(tempfile.gettempdir()) / ".kibot_healthcheck_history.json"
 
 def check_json_states(state_dir):
-    logger.info("Step 7/8: Auditing state JSON freshness and validity...")
+    logger.info("Step 8/8: Auditing state JSON freshness and validity...")
     import time
     import json
     
@@ -613,6 +636,7 @@ def main():
     check_directory_permissions(state_dir)
     audit_log_redaction()
     check_live_trading_gates(KiConfig)
+    check_no_legacy_modes()
     check_network_bindings()
     check_json_states(state_dir)
     check_scanner_service()

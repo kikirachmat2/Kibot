@@ -125,17 +125,17 @@ class BridgeRouter:
         logger.info(f"🌉 FEE GUARD PASSED: Proceeding to bridge via {coin.upper()}.")
         
         # 2. Determine if real live trading is allowed
-        # Enforce simulation mode unless KiConfig.ENABLE_REAL_BRIDGE and KiConfig.ENABLE_REAL_WITHDRAWAL are true.
+        # Enforce guarded mode unless KiConfig.ENABLE_REAL_BRIDGE and KiConfig.ENABLE_REAL_WITHDRAWAL are true.
         is_live = KiConfig.LIVE_TRADING_ENABLED and KiConfig.ENABLE_REAL_BRIDGE and KiConfig.ENABLE_REAL_WITHDRAWAL
 
 
         amount_coin = (amount_idr / price_idr) * 0.998 # Approximate amount after 0.2% trading fee
         
         if not is_live:
-            self.transition_to("simulation_approved", "Running in simulation mode (real bridge or withdrawal is disabled)")
-            logger.warning(f"🧪 PAPER MODE: Skipping actual market buy and withdrawal for {coin.upper()}. Mocking successful transaction.")
-            telegram_send(f"🧪 *PAPER BRIDGE INITIATED*\nBot simulated buy and withdrawal of `{amount_coin:.4f} {coin.upper()}` to `{destination_address}` on {network}.\nFee Paid: ~Rp {fee_idr:,.0f}")
-            self.transition_to("executed", f"Mocked bridge of {amount_coin:.4f} {coin.upper()}")
+            self.transition_to("guarded_approved", "Running in guarded mode (real bridge or withdrawal is disabled)")
+            logger.warning(f"🧪 GUARDED MODE: Skipping actual market buy and withdrawal for {coin.upper()}.")
+            telegram_send(f"🧪 *GUARDED BRIDGE INITIATED*\nBot guarded buy and withdrawal of `{amount_coin:.4f} {coin.upper()}` to `{destination_address}` on {network}.\nFee Paid: ~Rp {fee_idr:,.0f}")
+            self.transition_to("executed", f"Guarded bridge of {amount_coin:.4f} {coin.upper()}")
             return True
 
         # Real Live Mode execution

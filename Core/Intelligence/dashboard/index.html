@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>KiBot Delegation — Sovereign Control Room</title>
-  <meta name="description" content="KiBot Sovereign autonomous trading control plane — paper soak mode active." />
+  <meta name="description" content="KiBot Sovereign autonomous trading control plane — controlled live mode active." />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
   <link rel="icon" type="image/png" href="/assets/kibot.png" />
@@ -23,9 +23,9 @@
       <span class="brand-pill">Batam MasterNode</span>
     </div>
     <div class="top-bar__center">
-      <span id="mode-badge" class="badge badge--paper">PAPER</span>
+      <span id="mode-badge" class="badge badge--green">CONTROLLED-LIVE</span>
       <span id="global-status" class="badge badge--green">GREEN</span>
-      <span class="badge badge--ghost">🛡 VIEW-ONLY</span>
+      <span class="badge badge--ghost">🛡 GUARDS ACTIVE</span>
     </div>
     <div class="top-bar__right">
       <span id="server-clock" class="mono text-muted">--:--:-- WIB</span>
@@ -56,7 +56,7 @@
       <!-- Canvas toolbar -->
       <div class="canvas-toolbar">
         <span class="canvas-title">Agent Delegation Graph</span>
-        <span id="canvas-subtitle" class="text-muted" style="font-size:11px">Autonomous Orchestration · Paper Mode</span>
+        <span id="canvas-subtitle" class="text-muted" style="font-size:11px">Autonomous Orchestration · Controlled Live</span>
         <div class="canvas-controls">
           <button class="ctrl-btn" id="btn-zoom-in" title="Zoom in">+</button>
           <button class="ctrl-btn" id="btn-zoom-out" title="Zoom out">−</button>
@@ -122,9 +122,10 @@
         <div class="kv kv--sub"><span>Cash</span><span id="pi-cash">—</span></div>
         <div class="kv kv--sub"><span>Coin Value</span><span id="pi-coin">—</span></div>
         <div class="divider"></div>
-        <div class="kv"><span>Real PnL <span class="badge badge--xs badge--red">REAL</span></span><strong id="pi-real-pnl" class="pnl">—</strong></div>
-        <div class="kv"><span>Paper PnL <span class="badge badge--xs badge--blue">PAPER</span></span><strong id="pi-paper-pnl" class="pnl">—</strong></div>
-        <div class="kv"><span>Sim PnL <span class="badge badge--xs badge--purple">SIM</span></span><strong id="pi-sim-pnl" class="pnl">—</strong></div>
+        <div class="kv"><span>Daily PnL <span class="badge badge--xs badge--red">LIVE</span></span><strong id="pi-real-pnl" class="pnl">—</strong></div>
+        <div class="kv"><span>Risk Remaining</span><strong id="pi-risk-remaining" class="pnl">—</strong></div>
+        <div class="kv"><span>Allow New Orders</span><span id="pi-allow-orders" class="badge badge--ghost">—</span></div>
+        <div class="kv"><span>Blocked Reason</span><span id="pi-blocked-reason" class="mono">—</span></div>
       </div>
 
       <div class="info-section">
@@ -149,16 +150,16 @@
         </details>
         <details class="venue-detail">
           <summary class="venue-row">
-            <span class="venue-name">Indodax Paper</span>
-            <span class="badge badge--blue">PAPER</span>
-            <span class="mono" id="eq-indodax-paper" style="font-size:10px">—</span>
+            <span class="venue-name">Indodax Spot</span>
+            <span class="badge badge--green">LIVE</span>
+            <span class="mono" id="eq-indodax-live" style="font-size:10px">—</span>
           </summary>
-          <div class="venue-sub">Paper soak test. Orders simulated only.</div>
+          <div class="venue-sub">Controlled-live spot venue. Orders routed through RiskGate.</div>
         </details>
         <details class="venue-detail">
           <summary class="venue-row">
-            <span class="venue-name">Phantom Scout</span>
-            <span class="badge badge--purple">SIM</span>
+            <span class="venue-name">Phantom Treasury</span>
+            <span class="badge badge--green">RECONCILED</span>
             <span class="mono" id="eq-phantom" style="font-size:10px">—</span>
           </summary>
           <div class="venue-sub">
@@ -197,10 +198,10 @@
         <details class="venue-detail">
           <summary class="venue-row">
             <span class="venue-name">Polymarket</span>
-            <span class="badge badge--orange">PAPER</span>
+            <span class="badge badge--green">LIVE</span>
             <span class="mono" id="eq-polymarket" style="font-size:10px">—</span>
           </summary>
-          <div class="venue-sub">Paper prediction market. Wallet not connected.</div>
+          <div class="venue-sub">Controlled-live prediction market. Wallet route gated.</div>
         </details>
       </div>
 
