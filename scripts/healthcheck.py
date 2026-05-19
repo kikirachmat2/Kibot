@@ -39,7 +39,7 @@ def _hydrate_env_from_dotenv() -> None:
             key, value = line.split("=", 1)
             key = key.strip()
             value = value.strip()
-            if key and key not in os.environ:
+            if key:
                 os.environ[key] = value
     except Exception:
         return
