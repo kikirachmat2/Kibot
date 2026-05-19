@@ -332,6 +332,14 @@ def _build_portfolio(telemetry: Dict[str, Any]) -> Dict[str, Any]:
     daily_pnl = realized_daily_pnl + unrealized_daily_pnl + poly_daily_pnl_idr
     pnl_base = max(combined_equity - daily_pnl, _safe_float(open_pnl.get("position_cost_basis_idr"), 0.0), 1.0)
     daily_pnl_pct = (daily_pnl / pnl_base) * 100.0
+
+    # Load Capital Governor Reconciled Data if available and fresh for today
+    gov_data = _read_json(STATE / "capital_governor.json", {})
+    if gov_data and gov_data.get("date") == datetime.now(WIB).strftime("%Y-%m-%d"):
+        combined_equity = _safe_float(gov_data.get("current_total_equity_idr"), combined_equity)
+        daily_pnl = _safe_float(gov_data.get("daily_pnl_idr"), daily_pnl)
+        daily_pnl_pct = _safe_float(gov_data.get("daily_pnl_pct"), daily_pnl_pct)
+
     daily_state = portfolio.get("daily_state") if isinstance(portfolio.get("daily_state"), dict) else {}
     daily_color = "GREEN" if daily_pnl > 0 else "RECOVERY" if daily_pnl < 0 else "FLAT"
     daily_state = {
