@@ -24,6 +24,7 @@ from Core.Support.ki_config import STATE_DIR
 from Core.Intelligence.defi_metrics_fetcher import DeFiMetricsFetcher
 
 WORLD_MODEL_FILE = STATE_DIR / "world_model.json"
+AI_TRACE_FILE = STATE_DIR / "ai_decision_trace.json"
 
 # Lazy imports to avoid circular dependency
 def get_ai_search():
@@ -54,6 +55,23 @@ class WorldScout:
     def _log(self, msg: str):
         print(f"[SCOUT][{time.strftime('%Y-%m-%d %H:%M:%S')}] {msg}", flush=True)
 
+    def _write_ai_trace(self, *, best_action: str = "WAIT", venue: str = "indodax", reason: str = "heartbeat", confidence: float = 0.0, risk_status: str = "UNKNOWN", next_check_seconds: int = 60, market_summary: str = ""):
+        try:
+            payload = {
+                "updated_at": datetime.now(timezone.utc).isoformat(),
+                "objective": "maximize_risk_adjusted_profit_for_boss",
+                "market_summary": market_summary,
+                "best_action": best_action,
+                "venue": venue,
+                "reason": reason,
+                "confidence": float(confidence),
+                "risk_status": risk_status,
+                "next_check_seconds": int(next_check_seconds),
+            }
+            AI_TRACE_FILE.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+        except Exception as exc:
+            self._log(f"[WARN] Failed to write ai_decision_trace heartbeat: {exc}")
+
     async def perform_scouting(self):
         self._log("Initiating global scouting mission...")
         
@@ -77,6 +95,16 @@ class WorldScout:
             "current_time": time.ctime(),
             "daily_state": daily_state,
         }
+
+        self._write_ai_trace(
+            best_action="WAIT",
+            venue="indodax",
+            reason="scouting_heartbeat",
+            confidence=0.05,
+            risk_status="SCOUTING",
+            next_check_seconds=60,
+            market_summary="global scouting in progress",
+        )
         
         # We use a specific prompt type for intelligence synthesis
         analysis = await self.coordinator.query_ai(
@@ -111,12 +139,35 @@ class WorldScout:
                 
                 WORLD_MODEL_FILE.write_text(json.dumps(world_model, indent=2), encoding="utf-8")
                 self._log("World Model updated successfully with Possibility Matrix.")
+                summary_text = ""
+                try:
+                    summary_text = str((analysis or {}).get("market_summary") or (analysis or {}).get("summary") or "")
+                except Exception:
+                    summary_text = ""
+                self._write_ai_trace(
+                    best_action=str((analysis or {}).get("best_action") or "WAIT"),
+                    venue=str((analysis or {}).get("venue") or "indodax"),
+                    reason=str((analysis or {}).get("reason") or "analysis_update"),
+                    confidence=float((analysis or {}).get("confidence") or 0.0),
+                    risk_status=str((analysis or {}).get("risk_status") or "UNKNOWN"),
+                    next_check_seconds=int((analysis or {}).get("next_check_seconds") or 60),
+                    market_summary=summary_text,
+                )
                 self.breaker.record_success()
             except Exception as e:
                 self._log(f"Failed to save World Model: {e}")
                 self.breaker.record_failure()
         else:
             self._log("[WARN] Intelligence synthesis failed (no AI response).")
+            self._write_ai_trace(
+                best_action="WAIT",
+                venue="indodax",
+                reason="analysis_unavailable",
+                confidence=0.0,
+                risk_status="UNKNOWN",
+                next_check_seconds=60,
+                market_summary="analysis unavailable",
+            )
             if self.breaker.record_failure() == "ESCALATE":
                 self._log("[CRITICAL] Scout circuit opened. Escalating to Council/Human.")
 
@@ -179,6 +230,7 @@ async def run_scout_loop():
     print("[SCOUT] Starting World Scout service with Fast-Poll (5s) for urgent requests...", flush=True)
     scout = WorldScout()
     last_global_scout = 0
+    last_trace_heartbeat = 0.0
     
     while True:
         now = time.time()
@@ -203,6 +255,22 @@ async def run_scout_loop():
             except Exception as e:
                 import traceback
                 scout._log(f"[ERROR] Global scouting failed: {e}\n{traceback.format_exc()}")
+
+        # 3. AI decision heartbeat every 60s so healthchecks see a fresh trace
+        if (now - last_trace_heartbeat) >= 60:
+            try:
+                scout._write_ai_trace(
+                    best_action="WAIT",
+                    venue="indodax",
+                    reason="heartbeat",
+                    confidence=0.0,
+                    risk_status="SCOUTING",
+                    next_check_seconds=60,
+                    market_summary="heartbeat refresh",
+                )
+                last_trace_heartbeat = now
+            except Exception as e:
+                scout._log(f"[WARN] AI trace heartbeat failed: {e}")
         
         await asyncio.sleep(5) # Fast poll interval
 
