@@ -292,8 +292,9 @@ class MarketWideWaveScanner:
 
     async def _fetch_json(self, url: str) -> Dict[str, Any]:
         try:
-            async with aiohttp.ClientSession() as session:
-                async with session.get(url, timeout=10) as resp:
+            timeout = aiohttp.ClientTimeout(total=10)
+            async with aiohttp.ClientSession(timeout=timeout) as session:
+                async with session.get(url) as resp:
                     if resp.status != 200:
                         return {}
                     return await resp.json()
@@ -427,8 +428,9 @@ class MarketWideWaveScanner:
         """Fetch real live outcome predictions from Polymarket CLOB Gamma API."""
         url = "https://gamma-api.polymarket.com/markets?limit=15&active=true"
         try:
-            async with aiohttp.ClientSession() as session:
-                async with session.get(url, timeout=10) as resp:
+            timeout = aiohttp.ClientTimeout(total=10)
+            async with aiohttp.ClientSession(timeout=timeout) as session:
+                async with session.get(url) as resp:
                     if resp.status != 200:
                         return []
                     data = await resp.json()
