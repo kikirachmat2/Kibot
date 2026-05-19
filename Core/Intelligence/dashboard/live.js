@@ -442,6 +442,13 @@ function setPnl(elId, val) {
   e.className = 'pnl ' + (n>0?'pnl-pos':n<0?'pnl-neg':'');
 }
 
+function setPct(elId, val) {
+  const e = el(elId); if (!e) return;
+  const n = +val || 0;
+  e.textContent = `${n>=0?'+':''}${n.toFixed(2)}%`;
+  e.className = 'pnl ' + (n>0?'pnl-pos':n<0?'pnl-neg':'');
+}
+
 function freshnessLabel(age) {
   if (age == null) return 'WAITING FOR TELEMETRY';
   if (age > STALE_SECS) return `STALE (${Math.round(age)}s)`;
@@ -558,9 +565,11 @@ function render(data) {
 
   // Right panel — Portfolio
   setT('pi-equity', idr(port.combined_equity_idr || port.equity_idr || 0));
+  setT('pi-start-equity', idr(data.capital?.starting_equity_today_idr || data.capital?.start_total_equity_idr || data.capital?.starting_equity_idr || 0));
   setT('pi-cash',   idr(port.idr_cash || 0));
   setT('pi-coin',   idr(port.coin_holdings_idr || 0));
   setPnl('pi-real-pnl',  port.real_pnl_idr   || port.daily_pnl_real_idr || 0);
+  setPct('pi-real-pnl-pct',  port.daily_pnl_pct || data.capital?.daily_pnl_pct || 0);
   setPnl('pi-risk-remaining', data.capital?.risk_remaining_idr || 0);
   setT('pi-allow-orders', allowNew ? 'YES' : 'NO');
   setT('pi-blocked-reason', mode.allow_new_live_orders_reason || '—');

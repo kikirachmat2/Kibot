@@ -918,6 +918,16 @@ def _build_control_plane_payload() -> Dict[str, Any]:
     # Calculate allow_new_live_orders based on the RiskGate system logic
     allow_new_live_orders = False
     rejection_reason = "No governor data"
+    capital_block = {
+        "status": "UNRECONCILED",
+        "starting_equity_today_idr": 0.0,
+        "current_total_equity_idr": 0.0,
+        "daily_pnl_idr": 0.0,
+        "daily_pnl_pct": 0.0,
+        "max_daily_loss_pct": 1.5,
+        "risk_remaining_idr": 0.0,
+        "date": "",
+    }
     gov_file = STATE / "capital_governor.json"
     if not gov_file.exists():
         rejection_reason = "FAIL-CLOSED: Capital Governor state file does not exist"
@@ -939,6 +949,20 @@ def _build_control_plane_payload() -> Dict[str, Any]:
                 else:
                     gov_loss_cap = _safe_float(gov_data.get("max_daily_loss_idr"), 0.0)
                     gov_daily_pnl = _safe_float(gov_data.get("daily_pnl_idr"), 0.0)
+                    start_equity = _safe_float(gov_data.get("start_total_equity_idr"), 0.0)
+                    current_equity = _safe_float(gov_data.get("current_total_equity_idr"), 0.0)
+                    daily_pct = _safe_float(gov_data.get("daily_pnl_pct"), 0.0)
+                    risk_remaining = max(0.0, gov_loss_cap + gov_daily_pnl)
+                    capital_block.update({
+                        "status": str(gov_data.get("status") or "RECONCILED"),
+                        "starting_equity_today_idr": start_equity,
+                        "current_total_equity_idr": current_equity,
+                        "daily_pnl_idr": gov_daily_pnl,
+                        "daily_pnl_pct": daily_pct,
+                        "max_daily_loss_pct": _safe_float(gov_data.get("max_daily_loss_pct"), 1.5),
+                        "risk_remaining_idr": risk_remaining,
+                        "date": str(gov_data.get("date") or today),
+                    })
                     if gov_daily_pnl < -gov_loss_cap:
                         rejection_reason = f"MANIFESTO CAP: Global daily loss cap reached (PnL: {gov_daily_pnl:.2f} < Cap: -{gov_loss_cap:.2f})"
                     else:
@@ -1257,6 +1281,7 @@ def _build_control_plane_payload() -> Dict[str, Any]:
             "real_pnl_idr": _safe_float(portfolio.get("daily_pnl_real_idr"), 0.0),
             "max_daily_loss_pct": 1.5
         },
+        "capital": capital_block,
         "venues": venues,
         "gates": gates,
         "runtime": runtime,
