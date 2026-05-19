@@ -239,6 +239,8 @@ class CapitalGovernor:
                     continue
                 try:
                     ticker = await asyncio.wait_for(self.indodax.get_ticker(pair), timeout=5)
+                    if not isinstance(ticker, dict):
+                        continue
                     price = float(ticker.get("last", 0.0) or 0.0)
                 except Exception:
                     price = float(trade.get("price", 0.0) or 0.0)
