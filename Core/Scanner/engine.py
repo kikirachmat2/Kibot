@@ -54,6 +54,8 @@ class ScannerEngine:
         self._heatmap_interval_s = float(os.getenv("KIBOT_HEATMAP_REFRESH_SEC", "60") or 60)
         self._last_web3_scan = 0.0
         self._web3_scan_interval_s = float(os.getenv("KIBOT_WEB3_SCAN_INTERVAL_SEC", "30") or 30)
+        self._last_ai_trace_refresh = 0.0
+        self._ai_trace_interval_s = float(os.getenv("KIBOT_AI_TRACE_REFRESH_SEC", "60") or 60)
 
         # LeadLag alpha engine setup
         self.leadlag_enabled = os.getenv("KIBOT_LEADLAG_ENABLED", "true").strip().lower() in {"1", "true", "yes", "on"}
