@@ -41,6 +41,23 @@ class PumpfunLiveRunner:
         self.decision_engine = os.getenv("PUMPFUN_DECISION_ENGINE", "SCRIPT_ONLY")
         self.state_file = STATE_DIR / "pumpfun_candidates.json"
 
+    def _write_ai_heartbeat(self, *, best_action: str, venue: str, reason: str, confidence: float, risk_status: str, next_check_seconds: int, market_summary: str) -> None:
+        payload = {
+            "updated_at": datetime.now(timezone.utc).isoformat(),
+            "objective": "maximize_risk_adjusted_profit_for_boss",
+            "market_summary": market_summary,
+            "best_action": best_action,
+            "venue": venue,
+            "reason": reason,
+            "confidence": float(confidence),
+            "risk_status": risk_status,
+            "next_check_seconds": int(next_check_seconds),
+            "mode": "controlled-live",
+            "pumpfun_hot_path": "script_only",
+            "ai_role": "monitoring_context_summary",
+        }
+        (STATE_DIR / "ai_decision_trace.json").write_text(json.dumps(payload, indent=2), encoding="utf-8")
+
     async def _maybe_trade(self, candidate: Dict[str, Any]) -> Dict[str, Any]:
         route_type = str(candidate.get("route_type") or "UNSUPPORTED")
         if route_type == "UNSUPPORTED":
@@ -165,6 +182,19 @@ class PumpfunLiveRunner:
             "decision_source": "script_only",
         }
         write_latency(latency)
+
+        try:
+            self._write_ai_heartbeat(
+                best_action="SCAN" if best else "WAIT",
+                venue="pumpfun",
+                reason=reason,
+                confidence=float((best or {}).get("safety_score", 0) or 0) / 100.0,
+                risk_status="READY" if (best and best.get("can_sell")) else "BLOCKED",
+                next_check_seconds=max(1, int(self.poll_seconds)),
+                market_summary=str((best or {}).get("symbol") or (best or {}).get("mint") or "pumpfun live runner heartbeat"),
+            )
+        except Exception as exc:
+            logger.warning("Pumpfun AI heartbeat write failed: %s", exc)
 
         state.update(
             {
