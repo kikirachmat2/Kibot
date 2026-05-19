@@ -1,0 +1,9 @@
+{
+  "version": 2,
+  "public": true,
+  "functions": {
+    "api/[...path].js": {
+      "runtime": "nodejs20.x"
+    }
+  }
+}
