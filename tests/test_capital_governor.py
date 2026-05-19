@@ -203,3 +203,79 @@ async def test_capital_governor_flows_and_hardenings(tmp_path):
     is_valid, reason = risk.validate_signal(signal, balance_idr=280000.0, active_positions_count=0)
     assert not is_valid
     assert "is stale" in reason
+
+@pytest.mark.anyio
+async def test_capital_governor_manual_reset():
+    # Setup mock Indodax and Phantom router
+    indodax = AsyncMock()
+    indodax.get_info = AsyncMock(return_value={
+        "success": 1,
+        "return": {
+            "balance": {
+                "idr": 200000.0
+            }
+        }
+    })
+    
+    router = MagicMock()
+    router.wallet_address = "0xPhantomWalletAddress"
+    router.get_balances = AsyncMock(return_value={
+        "usdc_balance": 5.0,
+        "sol_balance": 0.0,
+        "matic_balance": 0.0
+    })
+    
+    from Core.Treasury.capital_governor import STATE_DIR
+    STATE_DIR.mkdir(parents=True, exist_ok=True)
+    transfers_file = STATE_DIR / "treasury_transfers.jsonl"
+    
+    from datetime import datetime
+    import pytz
+    wib = pytz.timezone('Asia/Jakarta')
+    today_str = datetime.now(wib).strftime('%Y-%m-%d')
+    
+    # Write some transfers: one deposit of 20,000 IDR
+    records = [
+        {"date": today_str, "timestamp": "", "type": "deposit", "amount_idr": 20000.0, "description": "external deposit"}
+    ]
+    with open(transfers_file, "w") as f:
+        for r in records:
+            f.write(json.dumps(r) + "\n")
+            
+    with patch.object(KiConfig, "LIVE_TRADING_ENABLED", True), \
+         patch.object(KiConfig, "ENABLE_POLYMARKET_LIVE", False):
+         
+        governor = CapitalGovernor(indodax, router)
+        governor.start_total_equity_idr = 0.0
+        
+        gov_data = await governor.reconcile_governor()
+        # current_total_equity = 200k + 80k = 280,000 IDR
+        assert gov_data["current_total_equity_idr"] == 280000.0
+        # start_total_equity = 280,000 IDR
+        # daily_pnl_idr = 280,000 - 280,000 - 20,000 = -20,000 IDR
+        assert gov_data["daily_pnl_idr"] == -20000.0
+        
+        # Now trigger manual pnl reset
+        governor.manual_pnl_reset()
+        
+        assert governor.start_total_equity_idr == 280000.0
+        assert governor.reset_deposits_offset == 20000.0
+        assert governor.daily_pnl_idr == 0.0
+        assert governor.daily_pnl_pct == 0.0
+        
+        # Run reconcile again to ensure it remains at 0 with offset adjustment
+        gov_data_after = await governor.reconcile_governor()
+        assert gov_data_after["daily_pnl_idr"] == 0.0
+        assert gov_data_after["daily_pnl_pct"] == 0.0
+        
+        # Now write a NEW transfer of 10,000 IDR
+        with open(transfers_file, "a") as f:
+            f.write(json.dumps({"date": today_str, "timestamp": "", "type": "deposit", "amount_idr": 10000.0, "description": "new deposit"}) + "\n")
+            
+        # Reconcile again, daily PnL should be -10,000 IDR (because of the new deposit)
+        gov_data_new = await governor.reconcile_governor()
+        assert gov_data_new["daily_pnl_idr"] == -10000.0
+        
+        # Clean up transfers file
+        if transfers_file.exists():
+            transfers_file.unlink()

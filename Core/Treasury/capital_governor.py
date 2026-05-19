@@ -43,6 +43,8 @@ class CapitalGovernor:
         self.daily_pnl_pct = 0.0
         self.external_deposits_today = 0.0
         self.external_withdrawals_today = 0.0
+        self.reset_deposits_offset = 0.0
+        self.reset_withdrawals_offset = 0.0
         self.status = "UNRECONCILED"
         self.last_reset_date = _today_wib()
         
@@ -64,6 +66,8 @@ class CapitalGovernor:
                         self.daily_pnl_pct = float(data.get("daily_pnl_pct", 0.0))
                         self.external_deposits_today = float(data.get("external_deposits_today", 0.0))
                         self.external_withdrawals_today = float(data.get("external_withdrawals_today", 0.0))
+                        self.reset_deposits_offset = float(data.get("reset_deposits_offset", 0.0))
+                        self.reset_withdrawals_offset = float(data.get("reset_withdrawals_offset", 0.0))
                     else:
                         self.last_reset_date = today
                         self.start_total_equity_idr = 0.0
@@ -72,6 +76,8 @@ class CapitalGovernor:
                         self.daily_pnl_pct = 0.0
                         self.external_deposits_today = 0.0
                         self.external_withdrawals_today = 0.0
+                        self.reset_deposits_offset = 0.0
+                        self.reset_withdrawals_offset = 0.0
             except Exception as e:
                 logger.error(f"❌ Failed to load Capital Governor state: {e}")
         else:
@@ -91,6 +97,8 @@ class CapitalGovernor:
                     "daily_pnl_pct": self.daily_pnl_pct,
                     "external_deposits_today": self.external_deposits_today,
                     "external_withdrawals_today": self.external_withdrawals_today,
+                    "reset_deposits_offset": self.reset_deposits_offset,
+                    "reset_withdrawals_offset": self.reset_withdrawals_offset,
                     "status": self.status
                 }, f, indent=4)
         except Exception as e:
@@ -165,8 +173,32 @@ class CapitalGovernor:
             self.last_reset_date = today
             self.start_total_equity_idr = total_equity_idr
             self.max_daily_loss_idr = total_equity_idr * (KiConfig.MAX_DAILY_LOSS_PERCENT / 100.0)
+            self.reset_deposits_offset = 0.0
+            self.reset_withdrawals_offset = 0.0
             self.save()
             logger.info(f"⚓ Daily Total Equity Anchor Reset: Rp{self.start_total_equity_idr:,.2f} (Cap: Rp{self.max_daily_loss_idr:,.2f})")
+
+    def manual_pnl_reset(self):
+        """
+        Manually reset the daily PnL anchor to the current consolidated equity.
+        Maintains an audit trail by logging and updating the governor state file,
+        but does not delete trade or transfer history.
+        """
+        logger.info(f"🔄 Manual daily PnL anchor reset initiated. Current total equity: Rp{self.current_total_equity_idr:,.2f}")
+        
+        # Read the raw daily transfers so far to establish the offset
+        raw_deposits, raw_withdrawals = self._read_daily_transfers(self.last_reset_date)
+        
+        self.start_total_equity_idr = self.current_total_equity_idr
+        self.max_daily_loss_idr = self.current_total_equity_idr * (KiConfig.MAX_DAILY_LOSS_PERCENT / 100.0)
+        self.reset_deposits_offset = raw_deposits
+        self.reset_withdrawals_offset = raw_withdrawals
+        self.daily_pnl_idr = 0.0
+        self.daily_pnl_pct = 0.0
+        self.external_deposits_today = 0.0
+        self.external_withdrawals_today = 0.0
+        self.save()
+        logger.info(f"⚓ PnL Anchor reset to current reconciled equity. Starting Equity: Rp{self.start_total_equity_idr:,.2f}. Offsets registered: Dep Rp{self.reset_deposits_offset:,.2f}, Wd Rp{self.reset_withdrawals_offset:,.2f}")
 
     async def reconcile_governor(self) -> Dict[str, Any]:
         """
@@ -213,11 +245,14 @@ class CapitalGovernor:
             
             # Read daily transfers to adjust starting equity
             deposits, withdrawals = self._read_daily_transfers(self.last_reset_date)
-            self.external_deposits_today = deposits
-            self.external_withdrawals_today = withdrawals
+            adjusted_deposits = deposits - self.reset_deposits_offset
+            adjusted_withdrawals = withdrawals - self.reset_withdrawals_offset
             
-            # Compute daily consolidated PnL (adjusted for capital flows)
-            self.daily_pnl_idr = self.current_total_equity_idr - self.start_total_equity_idr - deposits + withdrawals
+            self.external_deposits_today = adjusted_deposits
+            self.external_withdrawals_today = adjusted_withdrawals
+            
+            # Compute daily consolidated PnL (adjusted for capital flows and offset)
+            self.daily_pnl_idr = self.current_total_equity_idr - self.start_total_equity_idr - adjusted_deposits + adjusted_withdrawals
             
             # Compute PnL percentage
             if self.start_total_equity_idr > 0.0:
@@ -246,6 +281,8 @@ class CapitalGovernor:
                 "daily_pnl_pct": self.daily_pnl_pct,
                 "external_deposits_today": self.external_deposits_today,
                 "external_withdrawals_today": self.external_withdrawals_today,
+                "reset_deposits_offset": self.reset_deposits_offset,
+                "reset_withdrawals_offset": self.reset_withdrawals_offset,
                 "in_flight_idr": in_flight_idr,
                 "status": self.status,
                 "targets": targets,
@@ -260,6 +297,8 @@ class CapitalGovernor:
 
 if __name__ == "__main__":
     import asyncio
+    import argparse
+    import sys
     
     # Configure logging to stdout
     logging.basicConfig(
@@ -267,9 +306,11 @@ if __name__ == "__main__":
         format="%(asctime)s [%(levelname)s] %(name)s - %(message)s"
     )
     
-    async def run_governor_service():
-        logger.info("Initializing Capital Governor standalone service loop...")
-        
+    parser = argparse.ArgumentParser(description="KiBot Capital Governor CLI/Service")
+    parser.add_argument("--reset-pnl", action="store_true", help="Trigger manual PnL reset to current reconciled equity")
+    args = parser.parse_args()
+    
+    async def run_governor_service(reset_only=False):
         # Instantiate gateways
         try:
             from Core.Exchange.indodax import IndodaxGateway
@@ -287,6 +328,14 @@ if __name__ == "__main__":
             
         gov = CapitalGovernor(indodax, phantom_router)
         
+        if reset_only:
+            logger.info("Executing initial reconciliation to get current consolidated equity...")
+            await gov.reconcile_governor()
+            gov.manual_pnl_reset()
+            logger.info("✅ Manual Daily PnL Reset completed successfully.")
+            return
+
+        logger.info("Initializing Capital Governor standalone service loop...")
         # Infinite reconciliation loop (every 10 seconds)
         while True:
             try:
@@ -301,6 +350,9 @@ if __name__ == "__main__":
             await asyncio.sleep(10)
 
     try:
-        asyncio.run(run_governor_service())
+        if args.reset_pnl:
+            asyncio.run(run_governor_service(reset_only=True))
+        else:
+            asyncio.run(run_governor_service(reset_only=False))
     except KeyboardInterrupt:
         logger.info("Capital Governor Service stopped by user.")

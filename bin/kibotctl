@@ -33,6 +33,7 @@ if [[ $# -lt 1 ]]; then
 Usage:
   kibotctl status
   kibotctl doctor
+  kibotctl reset-pnl
   kibotctl up
   kibotctl down
   kibotctl restart
@@ -311,9 +312,23 @@ cmd_backup() {
   fi
 }
 
+cmd_reset_pnl() {
+  section "Manual PnL Anchor Reset"
+  local py_bin="/home/ubuntu/KiBot/.venv/bin/python3"
+  if [[ -n "${SUDO_USER:-}" ]]; then
+    py_bin="sudo -u $SUDO_USER /home/ubuntu/KiBot/.venv/bin/python3"
+  fi
+  # Fallback to local system python if venv not present (e.g. during local tests)
+  if [[ ! -f "/home/ubuntu/KiBot/.venv/bin/python3" ]]; then
+    py_bin="python3"
+  fi
+  PYTHONPATH="." "$py_bin" Core/Treasury/capital_governor.py --reset-pnl
+}
+
 case "${1:-}" in
   status) shift; cmd_status "$@" ;;
   doctor) shift; cmd_doctor "$@" ;;
+  reset-pnl) shift; cmd_reset_pnl "$@" ;;
   up) shift; cmd_up "$@" ;;
   down) shift; cmd_down "$@" ;;
   restart) shift; cmd_restart "$@" ;;
