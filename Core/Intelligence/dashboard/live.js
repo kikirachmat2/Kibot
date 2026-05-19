@@ -616,10 +616,13 @@ function render(data) {
   setT('web3-exit-updated', exitState.last_updated ? new Date(exitState.last_updated).toLocaleTimeString('en-GB', {hour12:false, timeZone:'Asia/Jakarta'}) + ' WIB' : '—');
 
   const ai = data.ai || {};
+  const sizing = data.autonomous_sizing || {};
   setT('ai-objective', ai.objective || '—');
   setT('ai-best-action', ai.best_action || '—');
   setT('ai-confidence', ai.confidence != null ? Number(ai.confidence).toFixed(2) : '—');
   setT('ai-venue', ai.venue || '—');
+  setT('autonomous-size', sizing.size_idr != null ? idr(sizing.size_idr) : '—');
+  setT('autonomous-size-reason', sizing.reason || '—');
   setT('ai-reason', ai.reason || '—');
   setT('ai-next-check', ai.next_check_seconds != null ? `${ai.next_check_seconds}s` : '—');
 

@@ -57,6 +57,7 @@ logging.basicConfig(
 logger = logging.getLogger("IndodaxExecutor")
 
 from Core.Support.ki_config import KiConfig
+from Core.Trading.autonomous_sizing import AutonomousSizing
 LISTEN_PORT = KiConfig.INDO_SIGNAL_PORT
 REPORT_PORT = 9997 # Port to report back to Batam
 
@@ -73,6 +74,7 @@ class IndodaxExecutor:
         self.reservations = {} # To prevent race conditions
         self._last_wallet_reconcile = 0.0
         self._wallet_reconcile_interval = float(os.getenv("KIBOT_EXECUTOR_RECONCILE_INTERVAL_S", "60") or 60)
+        self.sizing = AutonomousSizing()
         self._load_active_trades()
 
     def _load_active_trades(self):
@@ -885,33 +887,64 @@ class IndodaxExecutor:
                 )
                 return
             
-            # 2. Risk Validation
-            # 2. Dynamic Budget Allocation (V3.1 Sovereign Balance Awareness)
-            # --> [CAPITAL COMMANDER HOOK]
-            # In a full deployment, this will query CapitalCommander via MasterNode RPC.
-            remaining_slots = max(1, max_slots - len(self.active_trades))
-            
-            if max_exposure == 0:
-                budget = max(10_000.0, (current_balance / remaining_slots) * 0.98)
-            else:
-                budget = max_exposure / max(1, max_slots)
-
-            budget = min(budget, current_balance * 0.99)
-
-            if learning_probe:
-                probe_cap = max(10_000.0, current_balance * 0.02)
-                budget = min(budget, probe_cap)
-                logger.info(
-                    f"🧪 LEARNING PROBE: budget capped to Rp{budget:,.0f} "
-                    f"(cap Rp{probe_cap:,.0f}) for {symbol}"
-                )
-
-            if KiConfig.CANARY_LIVE_ENABLED and side.upper() == "BUY":
+            # 2. Autonomous sizing
+            if KiConfig.CANARY_LIVE_ENABLED:
+                # Legacy compatibility path kept for tests / retired canary mode.
+                remaining_slots = max(1, max_slots - len(self.active_trades))
+                if max_exposure == 0:
+                    budget = max(10_000.0, (current_balance / remaining_slots) * 0.98)
+                else:
+                    budget = max_exposure / max(1, max_slots)
+                budget = min(budget, current_balance * 0.99)
+                if learning_probe:
+                    probe_cap = max(10_000.0, current_balance * 0.02)
+                    budget = min(budget, probe_cap)
                 max_budget = KiConfig.CANARY_MAX_TRADE_IDR
                 if budget > max_budget:
                     logger.info(f"🛡️ CANARY CONSTRAINT: Clamping budget from Rp{budget:,.0f} to Rp{max_budget:,.0f}")
                     budget = max_budget
-
+                sizing = {
+                    "approved": True,
+                    "reason": "legacy_canary_compat",
+                    "size_idr": budget,
+                    "capital_fraction": round(budget / max(current_balance, 1), 4),
+                    "confidence": float(signal.get("confidence") or 0.0),
+                    "max_loss_if_stop_hit_idr": round(budget * (float(signal.get("stop_loss_pct") or 1.5) / 100.0), 2),
+                }
+            else:
+                liquidity_usd = float(signal.get("liquidity_usd") or signal.get("liquidity") or 0.0)
+                slippage_pct = float(signal.get("slippage_pct") or signal.get("spread_pct") or 0.0)
+                confidence = float(signal.get("confidence") or signal.get("score") or 0.0)
+                ev_pct = float(signal.get("expected_net_pct") or signal.get("ev_pct") or signal.get("expected_value_pct") or 0.0)
+                volatility_pct = float(signal.get("volatility_pct") or abs(signal.get("change_24h_pct") or signal.get("change_pct") or 0.0))
+                route_bucket_idr = float(signal.get("route_bucket_idr") or signal.get("budget_idr") or 0.0)
+                if route_bucket_idr <= 0:
+                    route_bucket_idr = current_balance
+                sizing = self.sizing.size(
+                    total_capital_idr=float(signal.get("total_equity_idr") or signal.get("combined_equity_idr") or current_balance or 0.0),
+                    venue_capital_idr=float(current_balance or 0.0),
+                    route_bucket_idr=float(route_bucket_idr),
+                    available_balance_idr=float(current_balance or 0.0),
+                    daily_risk_remaining_idr=float(signal.get("daily_risk_remaining_idr") or current_balance * (KiConfig.MAX_DAILY_LOSS_PERCENT / 100.0)),
+                    liquidity_usd=liquidity_usd,
+                    slippage_pct=slippage_pct,
+                    confidence=confidence,
+                    ev_pct=ev_pct,
+                    volatility_pct=volatility_pct,
+                    current_open_exposure_idr=float(signal.get("current_open_exposure_idr") or 0.0),
+                    exit_available=bool(signal.get("exit_plan") or signal.get("exit_available", True)),
+                    route="indodax",
+                    reserve_locked=True,
+                    hard_cap_idr=float(signal.get("hard_cap_idr") or 0.0),
+                    liquidity_safe_size_idr=float(signal.get("liquidity_safe_size_idr") or 0.0),
+                )
+                if not sizing.get("approved"):
+                    logger.warning("🛡️ REJECTED (Sizing): %s for %s", sizing.get("reason"), symbol)
+                    return
+                budget = float(sizing.get("size_idr") or 0.0)
+                if learning_probe:
+                    budget = min(budget, max(10_000.0, current_balance * 0.02))
+                signal["autonomous_sizing"] = sizing
             signal["budget_idr"] = budget
 
 

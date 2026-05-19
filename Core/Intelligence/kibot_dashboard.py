@@ -304,6 +304,10 @@ def _load_web3_exit_state() -> Dict[str, Any]:
 def _load_ai_decision_trace() -> Dict[str, Any]:
     return _read_json(STATE / "ai_decision_trace.json", {})
 
+
+def _load_autonomous_sizing_state() -> Dict[str, Any]:
+    return _read_json(STATE / "autonomous_sizing.json", {})
+
 def _build_portfolio(telemetry: Dict[str, Any]) -> Dict[str, Any]:
     portfolio = telemetry.get("portfolio") if isinstance(telemetry, dict) else {}
     portfolio = portfolio if isinstance(portfolio, dict) else {}
@@ -774,6 +778,7 @@ def _build_summary() -> Dict[str, Any]:
     summary["web3_positions"] = _load_web3_positions()
     summary["web3_exit"] = _load_web3_exit_state()
     summary["ai_decision_trace"] = _load_ai_decision_trace()
+    summary["autonomous_sizing"] = _load_autonomous_sizing_state()
     try:
         from Core.Treasury.phantom_multichain_controller import PhantomMultichainController
 
@@ -1102,6 +1107,7 @@ def _build_control_plane_payload() -> Dict[str, Any]:
             "reason": str(summary_data.get("ai_decision_trace", {}).get("reason", "")),
             "next_check_seconds": _safe_int(summary_data.get("ai_decision_trace", {}).get("next_check_seconds"), 0),
         },
+        "autonomous_sizing": summary_data.get("autonomous_sizing", {}),
         "polymarket": {
             "venue": "Polymarket",
             "mode": "CONTROLLED_LIVE" if KiConfig.ENABLE_POLYMARKET_LIVE else "SCOUTING_ONLY",

@@ -8,6 +8,7 @@ import time
 
 import aiohttp
 from Core.Support.ki_config import KiConfig
+from Core.Trading.autonomous_sizing import AutonomousSizing
 from solana.rpc.async_api import AsyncClient
 from solana.rpc.commitment import Confirmed
 from solders.keypair import Keypair
@@ -31,6 +32,7 @@ class PhantomRouter:
         # Initialize the PhantomOpportunityScout
         from Core.Intelligence.phantom_opportunity_scout import PhantomOpportunityScout
         self.scout = PhantomOpportunityScout()
+        self.sizing = AutonomousSizing()
         
         if not self.private_key_str:
             logger.error("🚨 CRITICAL: PhantomRouter initialized without a Private Key. All Web3 txs will fail.")
@@ -150,8 +152,29 @@ class PhantomRouter:
         safety_checker = Web3SafetyChecker()
         executor_guard = Web3ExecutorGuard()
         quote = await quote_router.quote("solana", token_in, token_out, int(amount_in))
+        sizing = self.sizing.size(
+            total_capital_idr=float(gate_ctx.get("treasury", {}).get("total_value_idr", 0.0) or 0.0),
+            venue_capital_idr=float(gate_ctx.get("treasury", {}).get("total_value_idr", 0.0) or 0.0),
+            route_bucket_idr=float(gate_ctx.get("treasury", {}).get("buckets", {}).get("swap_idr", 0.0) or 0.0),
+            available_balance_idr=float(gate_ctx.get("treasury", {}).get("buckets", {}).get("swap_idr", 0.0) or 0.0),
+            daily_risk_remaining_idr=float(gate_ctx.get("treasury", {}).get("daily_risk_remaining_idr", 0.0) or 0.0),
+            liquidity_usd=float(scout_res.get("liquidity", 0.0) or 0.0),
+            slippage_pct=float(quote.get("slippage_pct", 0) or 0),
+            confidence=float(scout_res.get("confidence", 0.0) or 0.0),
+            ev_pct=float(scout_res.get("estimated_out", 0.0) or 0.0),
+            volatility_pct=float(scout_res.get("volatility_pct", 0.0) or 0.0),
+            current_open_exposure_idr=0.0,
+            exit_available=True,
+            route="solana",
+            reserve_locked=True,
+            hard_cap_idr=float(os.getenv("WEB3_SOLANA_SWAP_HARD_CAP_IDR", "0") or 0.0),
+            liquidity_safe_size_idr=float(scout_res.get("liquidity", 0.0) or 0.0) * 16000.0 * 0.015,
+        )
+        if not sizing.get("approved"):
+            logger.warning("🛡️ Web3 autonomous sizing rejected Solana swap: %s", sizing.get("reason"))
+            return False
         safety = safety_checker.evaluate({
-            "ev": scout_res.get("estimated_out", 0.0),
+            "ev": float(scout_res.get("estimated_out", 0.0) or 0.0),
             "liquidity": scout_res.get("liquidity", 0.0),
             "volume": scout_res.get("volume", 0.0),
             "spread_pct": scout_res.get("price_impact_pct", 0.0),
@@ -163,7 +186,7 @@ class PhantomRouter:
             route={"network": "solana", "allowed": gate_ctx.get("route", {}).get("status") == "LIVE_READY", "reason": gate_ctx.get("route", {}).get("status", "SCOUTING")},
             safety=safety,
             quote=quote,
-            budget_idr=float(os.getenv("WEB3_SOLANA_SWAP_BUCKET_CAP_IDR", "25000") or 25000),
+            budget_idr=float(sizing.get("size_idr") or os.getenv("WEB3_SOLANA_SWAP_BUCKET_CAP_IDR", "25000") or 25000),
             stop_loss_pct=float(os.getenv("WEB3_DEFAULT_STOP_LOSS_PCT", "1.5") or 1.5),
             take_profit_pct=float(os.getenv("WEB3_DEFAULT_TAKE_PROFIT_PCT", "2.0") or 2.0),
             trailing_stop_pct=float(os.getenv("WEB3_DEFAULT_TRAILING_STOP_PCT", "0.5") or 0.5),
@@ -232,6 +255,7 @@ class PhantomRouter:
                     "entry_value_idr": approval.get("max_trade_idr", 0),
                     "amount": amount_in,
                     "entry_quote": quote,
+                    "autonomous_sizing": sizing,
                     "stop_loss_pct": float(os.getenv("WEB3_DEFAULT_STOP_LOSS_PCT", "1.5") or 1.5),
                     "take_profit_pct": float(os.getenv("WEB3_DEFAULT_TAKE_PROFIT_PCT", "2.0") or 2.0),
                     "trailing_stop_pct": float(os.getenv("WEB3_DEFAULT_TRAILING_STOP_PCT", "0.5") or 0.5),
