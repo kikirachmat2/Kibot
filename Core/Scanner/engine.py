@@ -442,6 +442,36 @@ class ScannerEngine:
             except Exception as _web3_err:
                 logger.debug(f"[Scanner] web3 opportunity scan skipped: {_web3_err}")
 
+        if started_at - self._last_ai_trace_refresh >= self._ai_trace_interval_s:
+            self._last_ai_trace_refresh = started_at
+            try:
+                from Core.Intelligence.kibot_ai_scout import AI_TRACE_FILE
+                import tempfile
+
+                trace_path = Path(AI_TRACE_FILE)
+                trace_path.parent.mkdir(parents=True, exist_ok=True)
+                payload = {
+                    "updated_at": datetime.now(timezone.utc).isoformat(),
+                    "objective": "maximize_risk_adjusted_profit_for_boss",
+                    "market_summary": "scanner heartbeat",
+                    "best_action": "WAIT",
+                    "venue": "indodax",
+                    "reason": "scanner_heartbeat",
+                    "confidence": 0.0,
+                    "risk_status": "SCANNING",
+                    "next_check_seconds": 60,
+                }
+                tmp = tempfile.NamedTemporaryFile(
+                    mode="w", encoding="utf-8",
+                    dir=str(trace_path.parent), delete=False, suffix=".tmp"
+                )
+                json.dump(payload, tmp, ensure_ascii=False, default=str)
+                tmp.flush()
+                tmp.close()
+                Path(tmp.name).replace(trace_path)
+            except Exception as _ai_err:
+                logger.debug(f"[Scanner] ai_decision_trace heartbeat skipped: {_ai_err}")
+
         # ── §17.2 Persist best Indodax signal for dashboard Signal Intel panel ──
         if indo_signals:
             try:
