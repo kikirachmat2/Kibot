@@ -856,16 +856,33 @@ function ensureAgentCardsCreated() {
 /* ─── Poll loop ──────────────────────────────────────────── */
 async function poll() {
   try {
-    const r = await fetch('/api/control-plane');
+    const r = await fetch('/api/control-plane', { cache: 'no-store' });
     if (!r.ok) throw new Error(`HTTP ${r.status}`);
     render(await r.json());
   } catch(err) {
+    const gateLive = el('gate-live-trading');
+    if (gateLive && gateLive.textContent === 'OFF') {
+      gateLive.textContent = 'SYNCING';
+      gateLive.className = 'badge badge--ghost';
+    }
     pushLog(_techLog,'technical-log',{message:`API error: ${err.message}`, tag:'ERROR'});
   }
 }
 
 /* ─── Init ───────────────────────────────────────────────── */
 document.addEventListener('DOMContentLoaded', () => {
+  const syncBadge = (id) => {
+    const node = el(id);
+    if (node && (node.textContent === 'OFF' || node.textContent === 'ON' || node.textContent === '—')) {
+      node.textContent = 'SYNCING';
+      node.className = 'badge badge--ghost';
+    }
+  };
+  syncBadge('gate-live-trading');
+  syncBadge('gate-bridge');
+  syncBadge('gate-swap');
+  syncBadge('gate-withdrawal');
+  syncBadge('gate-allow-new-orders');
   ensureAgentCardsCreated();
   initCanvas();
   initModal();
