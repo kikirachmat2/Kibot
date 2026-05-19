@@ -46,6 +46,7 @@ SERVICE_NAMES = [
     "kibot-scanner",
     "kibot-executor",
     "kibot-executor-polymarket",
+    "kibot-pumpfun",
     "kibot-ai-scout",
     "kibot-janitor",
     "kibot-dashboard",
@@ -311,6 +312,19 @@ def _load_pumpfun_candidates() -> Dict[str, Any]:
 
 def _load_pumpfun_native_state() -> Dict[str, Any]:
     return _read_json(STATE / "pumpfun_native_executor_state.json", {})
+
+
+def _load_pumpfun_latency_state() -> Dict[str, Any]:
+    return _read_json(STATE / "pumpfun_latency.json", {})
+
+
+def _load_pumpfun_positions() -> List[Dict[str, Any]]:
+    payload = _read_json(STATE / "pumpfun_positions.json", [])
+    return payload if isinstance(payload, list) else []
+
+
+def _load_pumpfun_exit_state() -> Dict[str, Any]:
+    return _read_json(STATE / "pumpfun_exit_state.json", {})
 
 
 def _load_ai_decision_trace() -> Dict[str, Any]:
@@ -792,6 +806,9 @@ def _build_summary() -> Dict[str, Any]:
     summary["pumpfun_route_state"] = _load_pumpfun_route_state()
     summary["pumpfun_candidates"] = _load_pumpfun_candidates()
     summary["pumpfun_native_executor"] = _load_pumpfun_native_state()
+    summary["pumpfun_latency"] = _load_pumpfun_latency_state()
+    summary["pumpfun_positions"] = _load_pumpfun_positions()
+    summary["pumpfun_exit_state"] = _load_pumpfun_exit_state()
     summary["ai_decision_trace"] = _load_ai_decision_trace()
     summary["autonomous_sizing"] = _load_autonomous_sizing_state()
     try:
@@ -1110,6 +1127,9 @@ def _build_control_plane_payload() -> Dict[str, Any]:
             "pumpfun": summary_data.get("pumpfun_candidates", {}),
             "pumpfun_route": summary_data.get("pumpfun_route_state", {}),
             "pumpfun_native": summary_data.get("pumpfun_native_executor", {}),
+            "pumpfun_latency": summary_data.get("pumpfun_latency", {}),
+            "pumpfun_positions": summary_data.get("pumpfun_positions", []),
+            "pumpfun_exit_state": summary_data.get("pumpfun_exit_state", {}),
         },
         "web3_exit": {
             "status": str(summary_data.get("web3_exit", {}).get("status", "STALE" if summary_data.get("web3_positions") else "OK")),
@@ -1128,6 +1148,9 @@ def _build_control_plane_payload() -> Dict[str, Any]:
             "candidates_found": int(len(summary_data.get("pumpfun_candidates", {}).get("candidates", []) or [])),
             "rejected_count": int(len(summary_data.get("pumpfun_candidates", {}).get("rejected", []) or [])),
             "native_executor": summary_data.get("pumpfun_native_executor", {}),
+            "latency": summary_data.get("pumpfun_latency", {}),
+            "positions": summary_data.get("pumpfun_positions", []),
+            "exit_state": summary_data.get("pumpfun_exit_state", {}),
         },
         "ai": {
             "updated_at": str(summary_data.get("ai_decision_trace", {}).get("updated_at", "")),
@@ -1353,6 +1376,9 @@ def _build_control_plane_payload() -> Dict[str, Any]:
             "pumpfun": summary_data.get("pumpfun_candidates", {}),
             "pumpfun_route": summary_data.get("pumpfun_route_state", {}),
             "pumpfun_native": summary_data.get("pumpfun_native_executor", {}),
+            "pumpfun_latency": summary_data.get("pumpfun_latency", {}),
+            "pumpfun_positions": summary_data.get("pumpfun_positions", []),
+            "pumpfun_exit_state": summary_data.get("pumpfun_exit_state", {}),
         },
         "gates": gates,
         "runtime": runtime,

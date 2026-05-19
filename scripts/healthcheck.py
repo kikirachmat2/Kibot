@@ -564,6 +564,10 @@ def check_json_states(state_dir):
                         if missing_keys:
                             logger.error(f"❌ CRITICAL STATE ERROR: pumpfun_route_state.json is missing required schema keys: {missing_keys}")
                             safe_exit(23, f"pumpfun_route_state.json is missing required schema keys: {missing_keys}")
+                        if os.getenv("PUMPFUN_NATIVE_EXECUTOR_ENABLED", "false").lower() == "true":
+                            native_state = Path(state_dir) / "pumpfun_native_executor_state.json"
+                            if not native_state.exists():
+                                logger.warning("⚠️ Pump.fun native executor enabled but native state is missing; continuing in guarded mode.")
 
             if state_file == "ai_decision_trace.json":
                 required_keys = {"updated_at", "objective", "market_summary", "best_action", "venue", "reason", "confidence", "risk_status", "next_check_seconds"}

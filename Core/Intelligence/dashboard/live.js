@@ -618,6 +618,12 @@ function render(data) {
   setT('pumpfun-reason', pumpfun.reason || pumpfunRoute.reason || '—');
   setT('pumpfun-best-candidate', pumpfunBest?.symbol ? `${pumpfunBest.symbol} ${pumpfunBest.route_type ? `(${pumpfunBest.route_type})` : ''}`.trim() : '—');
   setT('pumpfun-native-status', pumpfunNative.status ? `${pumpfunNative.status}${pumpfunNative.reason ? ` · ${pumpfunNative.reason}` : ''}` : '—');
+  const lat = pumpfun.latency || {};
+  setT('pumpfun-latency', lat.hot_path_total_ms != null ? `${lat.hot_path_total_ms}ms` : '—');
+  const pumpfunPos = Array.isArray(pumpfun.positions) ? pumpfun.positions[0] : null;
+  setT('pumpfun-position', pumpfunPos ? `${pumpfunPos.symbol || pumpfunPos.asset || 'pos'} · ${pumpfunPos.status || 'OPEN'}` : '—');
+  const pumpfunExitState = pumpfun.exit_state || {};
+  setT('pumpfun-exit-state', pumpfunExitState.status ? `${pumpfunExitState.status}${pumpfunExitState.latest_exit_reason ? ` · ${pumpfunExitState.latest_exit_reason}` : ''}` : '—');
   setT('web3-openpos', Array.isArray(web3.positions) ? String(web3.positions.length) : '0');
   const exitState = web3.exit || {};
   setT('web3-exit-status', exitState.status || '—');
