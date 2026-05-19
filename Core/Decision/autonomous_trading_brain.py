@@ -60,24 +60,6 @@ def build_autonomous_trading_brain() -> Dict[str, Any]:
         int((indo.get("minutes_to_midnight") or 60)),
     )
     write_phantom_network_maximizer({})
-    daily_risk_remaining_idr = max(0.0, max_daily_loss_idr + trading_pnl_idr)
-    sizing = AutonomousSizing().size(
-        total_capital_idr=float((indo.get("capital_idr") or phantom.get("available_balances", {}).get("solana_sol_idr") or 0.0)),
-        venue_capital_idr=float((indo.get("capital_idr") or 0.0)),
-        route_bucket_idr=float((phantom.get("available_balances", {}).get("solana_sol_idr") or 0.0)),
-        available_balance_idr=float((phantom.get("available_balances", {}).get("solana_sol_idr") or 0.0)),
-        daily_risk_remaining_idr=daily_risk_remaining_idr,
-        liquidity_usd=float((phantom.get("top_targets") or [{}])[0].get("volume_or_liquidity") or 0.0 if phantom.get("top_targets") else 0.0),
-        slippage_pct=1.0,
-        confidence=float((phantom.get("top_targets") or [{}])[0].get("wave_score") or 0.0 if phantom.get("top_targets") else 0.0) / 100.0,
-        ev_pct=float((indo.get("top_targets") or [{}])[0].get("entry_score") or 0.0 if indo.get("top_targets") else 0.0),
-        volatility_pct=1.0,
-        current_open_exposure_idr=0.0,
-        exit_available=True,
-        route=str((phantom.get("top_targets") or [{}])[0].get("route") or "indodax"),
-        reserve_locked=True,
-        hard_cap_idr=0.0,
-    )
 
     def _candidate_is_enter(c: Dict[str, Any]) -> bool:
         if not isinstance(c, dict):
@@ -144,6 +126,42 @@ def build_autonomous_trading_brain() -> Dict[str, Any]:
         reason = str(phantom.get("why_empty") or "scan_more")
     else:
         reason = str(indo.get("why_not_trading") or phantom.get("why_empty") or deadline.get("reason") or "scan_more")
+
+    daily_risk_remaining_idr = max(0.0, max_daily_loss_idr + trading_pnl_idr)
+    if selected_engine == "indodax":
+        sizing_route = "indodax"
+        sizing_liquidity = float(selected_candidate.get("volume_24h_idr") or 0.0)
+        sizing_confidence = float(selected_candidate.get("momentum_score") or selected_candidate.get("change_24h_pct") or 0.0) / 100.0
+        sizing_ev = float(selected_candidate.get("entry_score") or 0.0)
+        sizing_balance = float(indo.get("capital_idr") or capital_governor.get("current_total_equity_idr") or capital_governor.get("current_equity_idr") or 0.0)
+        sizing_bucket = float(indo.get("capital_idr") or capital_governor.get("current_total_equity_idr") or 0.0)
+        sizing_exit_available = True
+    else:
+        sizing_route = str(selected_candidate.get("route") or "indodax")
+        sizing_liquidity = float(selected_candidate.get("volume_or_liquidity") or 0.0)
+        sizing_confidence = float(selected_candidate.get("wave_score") or 0.0) / 100.0
+        sizing_ev = float(selected_candidate.get("wave_score") or 0.0)
+        sizing_balance = float(phantom.get("available_balances", {}).get("solana_sol_idr") or 0.0)
+        sizing_bucket = float(phantom.get("available_balances", {}).get("solana_sol_idr") or 0.0)
+        sizing_exit_available = bool(selected_candidate.get("exit_route_ok", True))
+
+    sizing = AutonomousSizing().size(
+        total_capital_idr=float((indo.get("capital_idr") or phantom.get("available_balances", {}).get("solana_sol_idr") or 0.0)),
+        venue_capital_idr=sizing_balance,
+        route_bucket_idr=sizing_bucket,
+        available_balance_idr=sizing_balance,
+        daily_risk_remaining_idr=daily_risk_remaining_idr,
+        liquidity_usd=sizing_liquidity,
+        slippage_pct=1.0,
+        confidence=sizing_confidence,
+        ev_pct=sizing_ev,
+        volatility_pct=1.0,
+        current_open_exposure_idr=0.0,
+        exit_available=sizing_exit_available,
+        route=sizing_route,
+        reserve_locked=True,
+        hard_cap_idr=0.0,
+    )
 
     return write_autonomous_trading_brain({
         "posture": posture,

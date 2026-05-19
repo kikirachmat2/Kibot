@@ -69,6 +69,10 @@ def build_indodax_target_board() -> Dict[str, Any]:
                 c["route_status"] = "BLOCKED_WITH_REASON"
                 c["recommended_action"] = "REJECT"
                 c["reason"] = "no_real_volume"
+            elif c["exit_score"] < 0.5:
+                c["route_status"] = "BLOCKED_WITH_REASON"
+                c["recommended_action"] = "REJECT"
+                c["reason"] = "exit_liquidity_too_thin"
             candidates.append(c)
 
     candidates.sort(key=lambda x: (x["entry_score"], x["volume_24h_idr"], x["change_24h_pct"]), reverse=True)
@@ -77,10 +81,13 @@ def build_indodax_target_board() -> Dict[str, Any]:
         item = dict(item)
         item["rank"] = idx
         if item["route_status"] == "EXECUTABLE":
-            item["recommended_action"] = "ENTER" if item["entry_score"] >= 15 else "WATCH"
+            item["recommended_action"] = "ENTER" if item["entry_score"] >= 15 and item["exit_score"] >= 0.5 else "WATCH"
             if item["volume_24h_idr"] < 200_000_000:
                 item["recommended_action"] = "WATCH"
                 item["reason"] = item["reason"] or "below_volume_preference"
+            if item["exit_score"] < 1.0:
+                item["recommended_action"] = "WATCH"
+                item["reason"] = item["reason"] or "thin_exit_liquidity"
         top_targets.append(item)
 
     why_empty = ""
