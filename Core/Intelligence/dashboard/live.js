@@ -572,6 +572,7 @@ function render(data) {
   setPct('pi-real-pnl-pct',  port.daily_pnl_pct || data.capital?.daily_pnl_pct || 0);
   setPnl('pi-risk-remaining', data.capital?.risk_remaining_idr || 0);
   setT('pi-allow-orders', allowNew ? 'YES' : 'NO');
+  setT('pi-current-entry', data.current_entry_approved ? 'YES' : 'NO');
   setT('pi-blocked-reason', mode.allow_new_live_orders_reason || '—');
 
   // Venue equities

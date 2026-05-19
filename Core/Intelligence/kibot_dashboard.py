@@ -1112,6 +1112,20 @@ def _build_control_plane_payload() -> Dict[str, Any]:
         }
     }
 
+    route_live_ready = any(
+        str((venues.get(name) or {}).get("status") or "").upper() in {"ACTIVE", "LIVE_READY", "RECONCILED"}
+        for name in ("indodax_real", "phantom", "polymarket", "cash_wait")
+    )
+    current_entry_approved = bool(
+        allow_new_live_orders
+        and route_live_ready
+        and gates["signal_quality"]["status"] == "PASS"
+        and gates["expected_value"]["status"] == "PASS"
+        and gates["strategy_scorecard"]["status"] == "PASS"
+        and gates["risk_gate"]["status"] == "PASS"
+        and gates["microstructure"]["status"] == "PASS"
+    )
+
     # 5. Runtime Health
     scanner_stats = _read_json(STATE / "scanner_runtime.json", {})
     leadlag_stats = _read_json(STATE / "leadlag_alpha.json", {})
@@ -1271,6 +1285,8 @@ def _build_control_plane_payload() -> Dict[str, Any]:
             "telemetry_age_s": _file_age_s(STATE / "telemetry_snapshot.json"),
         },
         "mode": mode,
+        "route_live_ready": route_live_ready,
+        "current_entry_approved": current_entry_approved,
         "portfolio": {
             "combined_equity_idr": _safe_float(portfolio.get("combined_equity_idr"), 0.0),
             "total_equity_idr": _safe_float(portfolio.get("combined_equity_idr"), 0.0),
