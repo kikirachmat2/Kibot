@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import time
 from pathlib import Path
 
 STATE = Path("state")
@@ -28,17 +29,26 @@ def main() -> int:
     if missing:
         print(f"missing_state_files:{','.join(missing)}")
         return 1
+    stale = []
     bad = []
     for name in REQUIRED:
         try:
-            payload = json.loads((STATE / name).read_text(encoding="utf-8"))
+            path = STATE / name
+            payload = json.loads(path.read_text(encoding="utf-8"))
         except Exception:
             bad.append(name)
             continue
         if not isinstance(payload, dict):
             bad.append(name)
+            continue
+        age = time.time() - path.stat().st_mtime
+        if age > 900:
+            stale.append(name)
     if bad:
         print(f"invalid_state_files:{','.join(bad)}")
+        return 1
+    if stale:
+        print(f"stale_state_files:{','.join(stale)}")
         return 1
     print("ASSERT_SERVER_TRUTH_RUNTIME_OK")
     return 0

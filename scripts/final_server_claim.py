@@ -49,6 +49,21 @@ def build_final_claim() -> Dict[str, Any]:
     indodax = build_indodax_target_board()
     phantom = build_phantom_target_board()
     scanner_health = write_scanner_health(_read("scanner_executor_contract.json", {}))
+    ai_review_path = STATE / "ai_strategy_review.json"
+    if not ai_review_path.exists():
+        ai_review_path.write_text(
+            json.dumps({
+                "updated_at": datetime.now(timezone.utc).isoformat(),
+                "role": "REVIEW_AND_ADAPTATION_ONLY",
+                "hot_path_blocking": False,
+                "missed_opportunities": [],
+                "scanner_weakness": [],
+                "recommended_parameter_changes": [],
+                "deadline_observation": "No explicit review yet; runtime writer initialized.",
+                "next_review_seconds": 0,
+            }, indent=2, ensure_ascii=False),
+            encoding="utf-8",
+        )
     telemetry = write_server_telemetry({})
     services = {
         name: _svc(name)
