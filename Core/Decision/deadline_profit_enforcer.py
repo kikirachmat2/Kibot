@@ -1,0 +1,101 @@
+import json
+import logging
+import os
+import time
+import pathlib
+from typing import Dict, Any
+
+logger = logging.getLogger("KiBot.DeadlineProfitEnforcer")
+
+DEFAULT_STATE_DIR = pathlib.Path(__file__).resolve().parent.parent.parent / "state"
+
+class DeadlineProfitEnforcer:
+    """
+    Deadline Profit Enforcer (§12.1).
+    Locks in trading gains and blocks further entry/execution when daily targets
+    are hit, or when the midnight deadline approaches under profitable postures.
+    """
+
+    def __init__(self, state_dir: pathlib.Path = DEFAULT_STATE_DIR):
+        self.state_dir = state_dir
+        self.state_dir.mkdir(parents=True, exist_ok=True)
+        self.enforcer_path = self.state_dir / "deadline_profit_enforcer.json"
+        self.authority_path = self.state_dir / "decision_authority.json"
+        self._ensure_defaults()
+
+    def _ensure_defaults(self) -> None:
+        """Sets up default enforcer config if missing."""
+        if not self.enforcer_path.exists():
+            defaults = {
+                "locked_for_day": False,
+                "lock_reason": "No lock active",
+                "daily_pnl_pct": 0.0,
+                "daily_pnl_idr": 0.0,
+                "last_evaluated_at": time.time()
+            }
+            try:
+                self.enforcer_path.write_text(json.dumps(defaults, indent=2), encoding="utf-8")
+            except Exception as e:
+                logger.error(f"Failed to write default enforcer file: {e}")
+
+    def evaluate_enforcer(self, daily_pnl_pct: float, daily_pnl_idr: float, minutes_to_midnight: int) -> Dict[str, Any]:
+        """
+        Main enforcer evaluation loop.
+        Applies targets and deadlines to lock/protect PnL.
+        """
+        self._ensure_defaults()
+        
+        # Load profit targets from Decision Authority config
+        target_pct = 1.5
+        if self.authority_path.exists():
+            try:
+                auth_cfg = json.loads(self.authority_path.read_text(encoding="utf-8"))
+                target_pct = float(auth_cfg.get("lock_green_pnl_pct", 1.5))
+            except Exception:
+                pass
+
+        locked = False
+        reason = "No lock active"
+
+        # Rule 1: Lock Green Target reached
+        if daily_pnl_pct >= target_pct:
+            locked = True
+            reason = f"LOCK_GREEN: Daily profit target reached ({daily_pnl_pct:.2f}% >= {target_pct:.2f}%)"
+        
+        # Rule 2: Midnight deadline approaching protection
+        elif minutes_to_midnight <= 30 and daily_pnl_pct > 0.0:
+            locked = True
+            reason = f"LOCK_GREEN: Midnight approaching ({minutes_to_midnight}m left) and green profit protected (+{daily_pnl_pct:.2f}%)"
+
+        enforcer_state = {
+            "locked_for_day": locked,
+            "lock_reason": reason,
+            "daily_pnl_pct": round(daily_pnl_pct, 4),
+            "daily_pnl_idr": round(daily_pnl_idr, 2),
+            "last_evaluated_at": time.time()
+        }
+
+        try:
+            self.enforcer_path.write_text(json.dumps(enforcer_state, indent=2), encoding="utf-8")
+            if locked:
+                logger.warning(f"🔒 [DEADLINE ENFORCER] Active Lock Engaged: {reason}")
+        except Exception as e:
+            logger.error(f"Failed to write deadline enforcer state: {e}")
+
+        return enforcer_state
+
+    def reset_daily_lock(self) -> None:
+        """Manually unlocks the daily profit enforcer (typically run at midnight)."""
+        self._ensure_defaults()
+        try:
+            state = {
+                "locked_for_day": False,
+                "lock_reason": "Daily reset performed",
+                "daily_pnl_pct": 0.0,
+                "daily_pnl_idr": 0.0,
+                "last_evaluated_at": time.time()
+            }
+            self.enforcer_path.write_text(json.dumps(state, indent=2), encoding="utf-8")
+            logger.info("🔓 [DEADLINE ENFORCER] Daily lock reset successfully.")
+        except Exception as e:
+            logger.error(f"Failed to reset daily enforcer lock: {e}")

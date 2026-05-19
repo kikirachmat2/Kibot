@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import os
@@ -77,6 +78,18 @@ class PumpfunScanner:
             "buttcoin",
             "no",
         ]
+        # Dynamically append user watchlist symbols from state/user_watchlist.json
+        watchlist_file = Path(__file__).resolve().parent.parent.parent / "state" / "user_watchlist.json"
+        if watchlist_file.exists():
+            try:
+                wl = json.loads(watchlist_file.read_text(encoding="utf-8"))
+                for sym in wl.get("symbols", []):
+                    sym_clean = str(sym).strip().lower()
+                    if sym_clean and sym_clean not in search_terms:
+                        search_terms.append(sym_clean)
+            except Exception as e:
+                logger.debug(f"Failed to load user watchlist in pumpfun scanner: {e}")
+
         out: List[Dict[str, Any]] = []
         for term in search_terms:
             data = await self._fetch_json(f"{self.dexscreener_base}{term}")
@@ -182,11 +195,35 @@ class PumpfunScanner:
 
     async def scan(self) -> Dict[str, Any]:
         raw = await self._dexscreener_candidates()
+        
+        # Deduplicate candidates by mint
+        seen_mints = set()
+        unique_raw = []
+        for c in raw:
+            mint = c.get("mint")
+            if mint and mint not in seen_mints:
+                seen_mints.add(mint)
+                unique_raw.append(c)
+
         evaluated: List[Dict[str, Any]] = []
         rejected: List[Dict[str, Any]] = []
+        sem = asyncio.Semaphore(10)
 
-        for candidate in raw:
-            scored = await self._score_candidate(candidate)
+        async def evaluate_one(candidate: Dict[str, Any]):
+            async with sem:
+                try:
+                    scored = await self._score_candidate(candidate)
+                    return scored
+                except Exception as exc:
+                    logger.debug("Failed evaluating pumpfun candidate %s: %s", candidate.get("symbol"), exc)
+                    return None
+
+        tasks = [evaluate_one(c) for c in unique_raw]
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+
+        for scored in results:
+            if not scored or isinstance(scored, Exception):
+                continue
             if scored.get("decision") == "APPROVE":
                 evaluated.append(scored)
             else:

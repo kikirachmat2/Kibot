@@ -1103,25 +1103,14 @@ class SovereignCouncil:
             "deadline_pressure": deadline_pressure,
         }
         
-        # 1. Council Consensus
-        # First gather an explicit antagonistic view, then let the speaker reconcile both sides.
-        antagonist_view = await self._query_ai_guarded("COUNCIL_ANTAGONIST", {
-            **signals_context,
-            "current_strategy": load_strategy(),
-            "is_midnight_approaching": signals_context.get("is_midnight_approaching", False),
-        }, timeout=float(os.getenv("KIBOT_COUNCIL_ANTAGONIST_TIMEOUT_SEC", "14") or 14))
-
-        # We use COUNCIL_SPEAKER to synthesize the final verdict from signals
-        is_midnight = signals_context.get("is_midnight_approaching", False)
-        decision = await self._query_ai_guarded("COUNCIL_SPEAKER", {
-            **signals_context,
-            "antagonist_view": antagonist_view,
-            "is_midnight_approaching": is_midnight
-        }, timeout=float(os.getenv("KIBOT_COUNCIL_SPEAKER_TIMEOUT_SEC", "18") or 18))
-        
-        if not decision or not isinstance(decision, dict) or decision.get("is_fallback"):
-            reason = decision.get("reason", "invalid_ai_decision") if isinstance(decision, dict) else str(type(decision))
-            logger.warning(f"⚠️ Council AI unavailable; using deterministic trade fallback: {reason}")
+        # [REFINED] Script-Only Hot-Path: Evaluate via DecisionAuthority
+        try:
+            from Core.Decision.decision_authority import DecisionAuthority
+            da = DecisionAuthority(state_dir=self.state_dir)
+            decision = da.evaluate(signals_context)
+            logger.info(f"✅ [SCRIPT-ONLY HOT-PATH] Evaluated via DecisionAuthority: action={decision.get('action')}, ticker={decision.get('ticker')}")
+        except Exception as da_err:
+            logger.warning(f"⚠️ DecisionAuthority failed, falling back to local deterministic: {da_err}")
             decision = self._deterministic_trade_decision(
                 signals_context=signals_context,
                 evidence_bundle=evidence_bundle,
@@ -1130,8 +1119,15 @@ class SovereignCouncil:
                 today_trade_activity=today_trade_activity,
                 minutes_to_midnight=minutes_to_midnight,
                 confidence_floor=self._evidence_floor(evidence_bundle, whatif_snapshot),
-                fallback_reason=reason,
+                fallback_reason=f"DecisionAuthority error: {da_err}",
             )
+
+        # AI Deliberation is processed purely out-of-band/background to generate strategy reviews
+        # and propose adaptive parameters via `state/ai_strategy_review.json`
+        asyncio.create_task(self.run_background_ai_review(signals_context, decision))
+        
+        # Initialize default mock antagonist_view so subsequent telemetry / logic doesn't break
+        antagonist_view = {"review": "Passive background review scheduled."}
 
         # 2. Add metadata and match source signal
         decision["timestamp"] = time.time()
@@ -1831,3 +1827,54 @@ class SovereignCouncil:
                 f"veto={deep.get('veto_by')} reason={deep.get('reason')}"
             )
         return deep
+
+    async def run_background_ai_review(self, signals_context: Dict[str, Any], decision: Dict[str, Any]) -> None:
+        """
+        Asynchronously runs COUNCIL_ANTAGONIST and COUNCIL_SPEAKER to construct
+        and persist an out-of-band strategy audit file `state/ai_strategy_review.json`.
+        Does NOT block or influence the hot-path decision thread.
+        """
+        try:
+            logger.info("🤖 Starting out-of-band AI Council deliberation review task...")
+            
+            # Query Antagonist View in background
+            antagonist_view = await self._query_ai_guarded("COUNCIL_ANTAGONIST", {
+                **signals_context,
+                "current_strategy": load_strategy(),
+                "is_midnight_approaching": signals_context.get("is_midnight_approaching", False),
+            }, timeout=float(os.getenv("KIBOT_COUNCIL_ANTAGONIST_TIMEOUT_SEC", "14") or 14))
+
+            # Query Speaker verdict / summary review
+            speaker_view = await self._query_ai_guarded("COUNCIL_SPEAKER", {
+                **signals_context,
+                "antagonist_view": antagonist_view,
+                "is_midnight_approaching": signals_context.get("is_midnight_approaching", False)
+            }, timeout=float(os.getenv("KIBOT_COUNCIL_SPEAKER_TIMEOUT_SEC", "18") or 18))
+
+            # Formulate the audit block
+            review_payload = {
+                "timestamp": time.time(),
+                "datetime": time.strftime("%Y-%m-%d %H:%M:%S WIB", time.localtime()),
+                "status": "COMPLETED",
+                "hot_path_decision": {
+                    "action": decision.get("action"),
+                    "ticker": decision.get("ticker"),
+                    "confidence": decision.get("confidence")
+                },
+                "ai_review": {
+                    "antagonist_view": antagonist_view,
+                    "speaker_view": speaker_view
+                },
+                "proposed_adjustments": {
+                    "confidence_floor_delta": -0.02 if str(speaker_view.get("verdict") or "").upper() == "BULLISH" else 0.01,
+                    "reasoning": str(speaker_view.get("reason") or "Neutral outlook")
+                }
+            }
+
+            review_file = self.state_dir / "ai_strategy_review.json"
+            review_file.write_text(json.dumps(review_payload, indent=2), encoding="utf-8")
+            logger.info(f"💾 Asynchronous AI review saved successfully at {review_file}")
+
+        except Exception as e:
+            logger.error(f"❌ Error in asynchronous AI Strategy Review: {e}")
+

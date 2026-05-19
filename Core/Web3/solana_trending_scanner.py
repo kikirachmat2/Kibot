@@ -88,8 +88,21 @@ class SolanaTrendingScanner:
             "scam",
             "rocky",
         ]
+        # Dynamically append user watchlist symbols from state/user_watchlist.json
+        watchlist_file = Path(__file__).resolve().parent.parent.parent / "state" / "user_watchlist.json"
+        if watchlist_file.exists():
+            try:
+                wl = json.loads(watchlist_file.read_text(encoding="utf-8"))
+                for sym in wl.get("symbols", []):
+                    sym_clean = str(sym).strip().lower()
+                    if sym_clean and sym_clean not in search_terms:
+                        search_terms.append(sym_clean)
+            except Exception as e:
+                logger.debug(f"Failed to load user watchlist in scanner: {e}")
+
         raw: List[Dict[str, Any]] = []
         for term in search_terms:
+
             data = await self._fetch_json(f"{self.dexscreener_url}{term}")
             for pair in data.get("pairs", []) or []:
                 if str(pair.get("chainId", "")).lower() != "solana":
@@ -167,55 +180,87 @@ class SolanaTrendingScanner:
             if isinstance(block, list):
                 candidates.extend(block)
 
+        # Remove duplicate candidates by mint address
+        unique_candidates = []
+        seen_mints = set()
+        for c in candidates:
+            mint = c.get("mint")
+            if mint and mint not in seen_mints:
+                seen_mints.add(mint)
+                unique_candidates.append(c)
+
         scored = []
         rejected = []
-        for item in candidates:
-            evaluated = strategy.evaluate_candidate(item)
-            merged = {**item, **evaluated}
-            route_state = await self.route_detector.detect_best_effort(
-                merged.get("mint", ""),
-                pair_hint=item.get("pair") if isinstance(item.get("pair"), dict) else {},
-            )
-            merged["route_type"] = route_state.get("route_type", "UNSUPPORTED")
-            merged["route_state"] = route_state
-            merged["can_buy"] = bool(route_state.get("buy_route_available"))
-            merged["can_sell"] = bool(route_state.get("sell_route_available"))
-            mint = str(merged.get("mint") or "")
-            if merged.get("decision") == "APPROVE":
-                if not mint:
+        sem = asyncio.Semaphore(10)
+
+        async def process_one(item: Dict[str, Any]):
+            try:
+                evaluated = strategy.evaluate_candidate(item)
+                merged = {**item, **evaluated}
+                route_state = await self.route_detector.detect_best_effort(
+                    merged.get("mint", ""),
+                    pair_hint=item.get("pair") if isinstance(item.get("pair"), dict) else {},
+                )
+                merged["route_type"] = route_state.get("route_type", "UNSUPPORTED")
+                merged["route_state"] = route_state
+                merged["can_buy"] = bool(route_state.get("buy_route_available"))
+                merged["can_sell"] = bool(route_state.get("sell_route_available"))
+                mint = str(merged.get("mint") or "")
+
+                if merged.get("decision") == "APPROVE":
+                    if not mint:
+                        merged["decision"] = "REJECT"
+                        merged["reason"] = "mint_missing"
+                        return {"type": "rejected", "data": {
+                            "symbol": merged.get("symbol"),
+                            "mint": merged.get("mint"),
+                            "reason": "mint_missing",
+                            "decision": "REJECT",
+                        }}
+
+                    amount_raw = int(os.getenv("WEB3_MEME_SCAN_QUOTE_RAW", "10000000") or 10000000)
+                    quote = await self._quote_candidate(mint, amount_raw)
+                    merged["quote_ok"] = bool(quote.get("quote_ok"))
+                    merged["quote_reason"] = quote.get("reason", "")
+                    merged["expected_out"] = quote.get("expected_out", 0)
+                    merged["slippage_pct"] = float(quote.get("slippage_pct", merged.get("slippage_pct", 0)) or 0)
+                    safety = self._evaluate_safety(merged, quote)
+                    merged["safety_score"] = float(safety.get("score", merged.get("safety_score", 0)) or 0)
+                    merged["max_trade_idr"] = int(min(int(merged.get("max_trade_idr", 0) or 0), int(safety.get("max_trade_idr", 0) or 0)) if safety.get("passed") else 0)
+
+                    if quote.get("quote_ok") and safety.get("passed"):
+                        return {"type": "scored", "data": merged}
+
                     merged["decision"] = "REJECT"
-                    merged["reason"] = "mint_missing"
-                    rejected.append({
+                    merged["reason"] = safety.get("reason") if not safety.get("passed") else quote.get("reason", "quote_missing")
+                    if merged.get("route_type") == "PUMPFUN_BONDING_CURVE" and not merged.get("can_sell"):
+                        merged["reason"] = "no_exit_route"
+                    return {"type": "rejected", "data": merged}
+                else:
+                    return {"type": "rejected", "data": {
                         "symbol": merged.get("symbol"),
                         "mint": merged.get("mint"),
-                        "reason": merged.get("reason", "mint_missing"),
+                        "reason": merged.get("reason", "rejected"),
                         "decision": merged.get("decision", "REJECT"),
-                    })
-                    continue
+                    }}
+            except Exception as exc:
+                logger.debug("Failed processing candidate %s: %s", item.get("symbol"), exc)
+                return None
 
-                amount_raw = int(os.getenv("WEB3_MEME_SCAN_QUOTE_RAW", "10000000") or 10000000)
-                quote = await self._quote_candidate(mint, amount_raw)
-                merged["quote_ok"] = bool(quote.get("quote_ok"))
-                merged["quote_reason"] = quote.get("reason", "")
-                merged["expected_out"] = quote.get("expected_out", 0)
-                merged["slippage_pct"] = float(quote.get("slippage_pct", merged.get("slippage_pct", 0)) or 0)
-                safety = self._evaluate_safety(merged, quote)
-                merged["safety_score"] = float(safety.get("score", merged.get("safety_score", 0)) or 0)
-                merged["max_trade_idr"] = int(min(int(merged.get("max_trade_idr", 0) or 0), int(safety.get("max_trade_idr", 0) or 0)) if safety.get("passed") else 0)
-                if quote.get("quote_ok") and safety.get("passed"):
-                    scored.append(merged)
-                    continue
-                merged["decision"] = "REJECT"
-                merged["reason"] = safety.get("reason") if not safety.get("passed") else quote.get("reason", "quote_missing")
-                if merged.get("route_type") == "PUMPFUN_BONDING_CURVE" and not merged.get("can_sell"):
-                    merged["reason"] = "no_exit_route"
-            else:
-                rejected.append({
-                    "symbol": merged.get("symbol"),
-                    "mint": merged.get("mint"),
-                    "reason": merged.get("reason", "rejected"),
-                    "decision": merged.get("decision", "REJECT"),
-                })
+        async def run_task(item: Dict[str, Any]):
+            async with sem:
+                return await process_one(item)
+
+        tasks = [run_task(c) for c in unique_candidates]
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+
+        for res in results:
+            if not res or isinstance(res, Exception):
+                continue
+            if res["type"] == "scored":
+                scored.append(res["data"])
+            elif res["type"] == "rejected":
+                rejected.append(res["data"])
 
         scored.sort(key=lambda x: (
             float(x.get("momentum_score", 0) or 0),
