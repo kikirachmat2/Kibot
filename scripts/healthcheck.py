@@ -181,6 +181,12 @@ def check_live_trading_gates(KiConfig):
     
     # 1. Enforce controlled-live mode environment flags
     live_trading_env = os.getenv("KIBOT_LIVE_TRADING_ENABLED", "false").lower() == "true"
+    if getattr(KiConfig, "TRADING_MODE", "") == "controlled-live" and bool(getattr(KiConfig, "LIVE_TRADING_ENABLED", False)):
+        # KiConfig normalizes controlled-live into live-enabled even when a
+        # stale legacy env flag says false. Treat the canonical runtime config
+        # as source of truth to avoid false kill-switch rollbacks.
+        live_trading_env = True
+        os.environ["KIBOT_LIVE_TRADING_ENABLED"] = "true"
     canary_live_env = os.getenv("KIBOT_CANARY_LIVE_ENABLED", "false").lower() == "true"
     
     logger.info(f"KIBOT_LIVE_TRADING_ENABLED in env: {live_trading_env}")
