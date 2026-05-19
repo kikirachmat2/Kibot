@@ -141,19 +141,24 @@ class PhantomTreasury:
 
         payload = {"jsonrpc": "2.0", "method": method, "params": params, "id": 1}
         async with aiohttp.ClientSession() as session:
-            async with session.post(
-                self.base_rpc_url,
-                json=payload,
-                headers={"Content-Type": "application/json"},
-                timeout=8.0,
-            ) as resp:
-                if resp.status != 200:
-                    logger.error("❌ Base RPC returned error status: %s", resp.status)
-                    return {}
-                try:
-                    return await resp.json()
-                except Exception:
-                    return {}
+            for attempt in range(3):
+                async with session.post(
+                    self.base_rpc_url,
+                    json=payload,
+                    headers={"Content-Type": "application/json"},
+                    timeout=8.0,
+                ) as resp:
+                    if resp.status == 200:
+                        try:
+                            return await resp.json()
+                        except Exception:
+                            return {}
+                    if resp.status != 429:
+                        logger.error("❌ Base RPC returned error status: %s", resp.status)
+                        return {}
+                await asyncio.sleep(0.5 * (attempt + 1))
+        logger.error("❌ Base RPC rate-limited after retries for method %s", method)
+        return {}
 
     async def _erc20_call(self, selector: str) -> str:
         if not self.evm_address or not self.base_rpc_url or not self.idrx_token_address:
@@ -169,11 +174,9 @@ class PhantomTreasury:
 
     async def _fetch_base_metadata(self) -> None:
         try:
-            symbol_hex, decimals_hex, block_hex = await asyncio.gather(
-                self._erc20_call("0x95d89b41"),
-                self._erc20_call("0x313ce567"),
-                self._rpc_call("eth_blockNumber", []),
-            )
+            symbol_hex = await self._erc20_call("0x95d89b41")
+            decimals_hex = await self._erc20_call("0x313ce567")
+            block_hex = await self._rpc_call("eth_blockNumber", [])
             self.base_rpc_ok = bool(self.base_rpc_url and self.idrx_token_address and self.evm_address)
 
             if symbol_hex and symbol_hex.startswith("0x"):
