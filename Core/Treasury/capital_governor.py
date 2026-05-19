@@ -173,6 +173,49 @@ class CapitalGovernor:
             logger.error(f"Error reading treasury_transfers.jsonl: {e}")
         return in_flight
 
+    async def _read_indodax_coin_holdings_from_active_trades(self) -> float:
+        """
+        Fallback for equity reconciliation when the exchange balance endpoint
+        does not expose held coins consistently in the governor process.
+        Uses open Indodax positions + live tickers to estimate mark-to-market.
+        """
+        active_trades_file = STATE_DIR / "active_trades.json"
+        if not active_trades_file.exists():
+            return 0.0
+        try:
+            with open(active_trades_file, "r") as f:
+                active_trades = json.load(f)
+        except Exception as e:
+            logger.error(f"Failed to load active_trades.json for governor fallback: {e}")
+            return 0.0
+
+        if not isinstance(active_trades, dict):
+            return 0.0
+
+        holdings_value = 0.0
+        try:
+            for symbol, trade in active_trades.items():
+                if not isinstance(trade, dict):
+                    continue
+                pair = str(symbol or "").lower().replace("/", "_")
+                if "_" not in pair:
+                    pair = f"{pair}_idr"
+                coin = pair.split("_", 1)[0]
+                amount = float(trade.get("amount", 0.0) or 0.0)
+                if amount <= 0:
+                    continue
+                try:
+                    ticker = await asyncio.wait_for(self.indodax.get_ticker(pair), timeout=5)
+                    price = float(ticker.get("last", 0.0) or 0.0)
+                except Exception:
+                    price = float(trade.get("price", 0.0) or 0.0)
+                if price > 0:
+                    holdings_value += amount * price
+        except Exception as e:
+            logger.error(f"Failed to compute active trade holdings fallback: {e}")
+            return 0.0
+        return holdings_value
+
 
     async def check_daily_reset(self, total_equity_idr: float):
         """Reset starting total equity anchor if a new WIB day has begun."""
@@ -222,6 +265,7 @@ class CapitalGovernor:
             
             # 2. Reconcile Indodax balance
             indodax_real_balance = 0.0
+            indodax_coin_holdings_idr = 0.0
             if self.indodax:
                 try:
                     # Query real balance with 5 second timeout
@@ -229,6 +273,35 @@ class CapitalGovernor:
                     if indo_info.get("success") == 1:
                         balances = indo_info.get("return", {}).get("balance", {})
                         indodax_real_balance = float(balances.get("idr", 0.0) or 0.0)
+                        held_coins = []
+                        for coin, amount in balances.items():
+                            if coin == "idr":
+                                continue
+                            try:
+                                amt = float(amount or 0.0)
+                            except Exception:
+                                continue
+                            if amt > 1e-6:
+                                held_coins.append((coin, amt))
+                        if held_coins:
+                            coin_tasks = []
+                            for coin, amt in held_coins:
+                                coin_tasks.append(self.indodax.get_ticker(f"{coin}_idr"))
+                            try:
+                                tickers = await asyncio.gather(*coin_tasks, return_exceptions=True)
+                                for (coin, amt), ticker in zip(held_coins, tickers):
+                                    if isinstance(ticker, Exception):
+                                        continue
+                                    try:
+                                        price = float(ticker.get("last", 0.0) or 0.0)
+                                    except Exception:
+                                        price = 0.0
+                                    if price > 0:
+                                        indodax_coin_holdings_idr += amt * price
+                            except Exception as e:
+                                logger.error(f"❌ Failed to query Indodax coin holdings: {e}")
+                    if indodax_coin_holdings_idr <= 0.0:
+                        indodax_coin_holdings_idr = await self._read_indodax_coin_holdings_from_active_trades()
                 except Exception as e:
                     logger.error(f"❌ Failed to query Indodax balance: {e}")
                     
@@ -239,8 +312,13 @@ class CapitalGovernor:
                 indodax_shadow_balance = shadow_ledger.get("equity_idr", 1000000.0)
 
             # 3. Calculate Total Consolidated Equity
-            # Controlled-live mode takes actual Indodax, otherwise shadow reserve.
-            primary_indodax_balance = indodax_real_balance if KiConfig.LIVE_TRADING_ENABLED else indodax_shadow_balance
+            # Controlled-live mode takes actual Indodax cash + mark-to-market coin holdings,
+            # otherwise shadow reserve.
+            primary_indodax_balance = (
+                (indodax_real_balance + indodax_coin_holdings_idr)
+                if KiConfig.LIVE_TRADING_ENABLED
+                else indodax_shadow_balance
+            )
             phantom_reconciliation = phantom_summary.get("reconciliation", {}) if isinstance(phantom_summary, dict) else {}
             phantom_ready = (
                 phantom_summary.get("status") in {"OK", "SCOUTING"}
@@ -276,7 +354,7 @@ class CapitalGovernor:
                 self.daily_pnl_pct = 0.0
                 self.trading_pnl_pct = 0.0
                 
-            indodax_ready = indodax_real_balance > 0
+            indodax_ready = (indodax_real_balance + indodax_coin_holdings_idr) > 0
             self.status = "RECONCILED" if (phantom_ready or indodax_ready) else "DEGRADED"
             self.save()
             if not phantom_ready:
@@ -286,7 +364,7 @@ class CapitalGovernor:
             targets = self.policy.compute_targets(phantom_equity_idr)
             
             # 5. Sync to Venue Ledger
-            self.ledger.update_venue("indodax_real", equity_idr=indodax_real_balance)
+            self.ledger.update_venue("indodax_real", equity_idr=indodax_real_balance + indodax_coin_holdings_idr)
             self.ledger.update_venue("indodax_shadow", equity_idr=indodax_shadow_balance)
             self.ledger.update_venue("phantom", equity_idr=phantom_equity_idr)
             self.ledger.update_venue("cash_wait", equity_idr=self.current_total_equity_idr * targets.get("reserve", 0.20))
@@ -307,10 +385,10 @@ class CapitalGovernor:
                 "status": self.status,
                 "venues": {
                     "indodax": {
-                        "status": "RECONCILED" if indodax_real_balance > 0 else "BLOCKED_WITH_REASON",
-                        "equity_idr": indodax_real_balance,
-                        "allow_orders": bool(indodax_real_balance > 0 and self.trading_pnl_idr > -self.max_daily_loss_idr),
-                        "reason": "" if indodax_real_balance > 0 else "indodax_balance_unavailable",
+                        "status": "RECONCILED" if indodax_ready else "BLOCKED_WITH_REASON",
+                        "equity_idr": indodax_real_balance + indodax_coin_holdings_idr,
+                        "allow_orders": bool(indodax_ready and self.trading_pnl_idr > -self.max_daily_loss_idr),
+                        "reason": "" if indodax_ready else "indodax_balance_unavailable",
                     },
                     "phantom": {
                         "status": "RECONCILED" if phantom_ready else "BLOCKED_WITH_REASON",
@@ -319,7 +397,7 @@ class CapitalGovernor:
                         "reason": "" if phantom_ready else "phantom_reconciliation_required",
                     },
                 },
-                "allow_indodax_orders": bool(indodax_real_balance > 0 and self.trading_pnl_idr > -self.max_daily_loss_idr),
+                "allow_indodax_orders": bool(indodax_ready and self.trading_pnl_idr > -self.max_daily_loss_idr),
                 "allow_phantom_orders": bool(phantom_ready and self.trading_pnl_idr > -self.max_daily_loss_idr),
                 "bridge": "ON",
                 "withdrawal": "ON",
