@@ -370,10 +370,18 @@ function initModal() {
 
 /* ─── Log feeds ──────────────────────────────────────────── */
 let _actLog = [], _techLog = [];
+let _actKeys = new Set(), _techKeys = new Set();
 
 function pushLog(arr, domId, entry) {
   const time  = new Date().toLocaleTimeString('id-ID',{hour:'2-digit',minute:'2-digit',second:'2-digit'});
   const tag   = String(entry.tag || 'SYSTEM EVENT').toUpperCase();
+  const key   = `${tag}::${String(entry.message || '').trim()}`;
+  const keyStore = domId === 'activity-log' ? _actKeys : _techKeys;
+  if (keyStore.has(key)) return;
+  keyStore.add(key);
+  if (keyStore.size > MAX_LOGS * 2) {
+    keyStore.clear();
+  }
   const tagCl = {
     INFO:'info', WARN:'warn', ERROR:'error', SUCCESS:'success',
     BUY:'buy', SWAP:'swap', 'SELL PROFIT':'sell-profit', 'SELL LOSS':'sell-loss',
@@ -400,6 +408,7 @@ function initTabs() {
   });
   el('clear-logs-btn').onclick = () => {
     _actLog=[]; _techLog=[];
+    _actKeys.clear(); _techKeys.clear();
     el('activity-log').innerHTML='';
     el('technical-log').innerHTML='';
   };

@@ -178,16 +178,24 @@ html, body {
 }
 .log-entry {
   display: grid;
-  grid-template-columns: 44px 32px 1fr;
-  gap: 4px;
-  padding: 4px 14px;
-  align-items: baseline;
+  grid-template-columns: 52px 88px 1fr;
+  gap: 6px;
+  padding: 6px 14px;
+  align-items: center;
   border-bottom: 1px solid transparent;
   animation: fadein .25s ease;
 }
 .log-entry:hover { background: var(--gray-soft); }
 .log-time { color: var(--muted); font-size: 10px; line-height: 1.5; font-family: 'JetBrains Mono', monospace; }
-.log-tag { font-size: 9px; font-weight: 700; border-radius: 3px; padding: 1px 4px; text-align: center; }
+.log-time, .log-tag { white-space: nowrap; }
+.log-tag {
+  font-size: 9px;
+  font-weight: 700;
+  border-radius: 999px;
+  padding: 2px 7px;
+  text-align: center;
+  width: fit-content;
+}
 .log-tag--info    { background: var(--blue-soft);   color: var(--blue); }
 .log-tag--warn    { background: var(--yellow-soft); color: var(--yellow); }
 .log-tag--error   { background: var(--red-soft);    color: var(--red); }
@@ -198,7 +206,12 @@ html, body {
 .log-tag--sell-loss { background: #fee2e2; color: #b91c1c; }
 .log-tag--council { background: #ede9fe; color: #6d28d9; }
 .log-tag--system { background: #e2e8f0; color: #334155; }
-.log-msg { color: var(--ink); line-height: 1.5; }
+.log-msg {
+  color: var(--ink);
+  line-height: 1.35;
+  font-size: 12px;
+  word-break: break-word;
+}
 
 @keyframes fadein { from { opacity: 0; transform: translateY(-3px); } to { opacity: 1; } }
 
