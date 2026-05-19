@@ -192,6 +192,12 @@ html, body {
 .log-tag--warn    { background: var(--yellow-soft); color: var(--yellow); }
 .log-tag--error   { background: var(--red-soft);    color: var(--red); }
 .log-tag--success { background: var(--green-soft);  color: var(--green); }
+.log-tag--buy { background: #dcfce7; color: #166534; }
+.log-tag--swap { background: #e0e7ff; color: #3730a3; }
+.log-tag--sell-profit { background: #d1fae5; color: #047857; }
+.log-tag--sell-loss { background: #fee2e2; color: #b91c1c; }
+.log-tag--council { background: #ede9fe; color: #6d28d9; }
+.log-tag--system { background: #e2e8f0; color: #334155; }
 .log-msg { color: var(--ink); line-height: 1.5; }
 
 @keyframes fadein { from { opacity: 0; transform: translateY(-3px); } to { opacity: 1; } }

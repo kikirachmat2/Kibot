@@ -638,79 +638,95 @@ def _translate_to_human(agent: str, message: str, tag: str) -> str:
     if "DRAWDOWN" in upper:
         return "RiskGate mengaudit batas drawdown portofolio. Keamanan modal terjamin di bawah batas harian 1.5%."
     if "OLLAMA" in upper or "MODEL" in upper:
-        return "Sovereign AI Council mensinkronisasi data kognitif dan model instruksi terbaru dari server lokal."
+        return "Council sync model."
     if "BRIDGE" in upper or "FEE" in upper:
-        return "BridgeRouter menghitung skema biaya optimal dan memvalidasi rute perpindahan modal yang aman."
+        return "Bridge route checked."
     if "FIREWALL" in upper or "UFW" in upper or "PORT" in upper:
-        return "Sistem memvalidasi konfigurasi firewall UFW. Seluruh akses eksternal yang tidak sah terblokir aman."
+        return "Firewall checked."
     if "SQLITE" in upper or "DATABASE" in upper:
-        return "Penyimpanan database transaksi lokal dioptimalkan untuk performa query berkecepatan tinggi."
+        return "Database check."
     if "SIM" in upper or "PAPER" in upper:
-        return "Sistem mencatat mode latihan internal untuk memvalidasi PnL virtual sebelum eksekusi produksi."
+        return "Legacy mode noted."
     if "LIVE_TRADING" in upper or "KIBOT_LIVE" in upper:
-        return "Verifikasi gerbang live-trading. Transaksi langsung terkunci di balik pertahanan RiskGate."
+        return "Live-trading gate checked."
     if "ERROR" in upper or "FAILED" in upper:
-        return f"Sistem mendeteksi peringatan log teknis: '{message[:120]}'. Janitor otomatis melakukan mitigasi pemulihan."
+        return f"Technical warning: '{message[:80]}'."
     
     # Generic backup translation
     return f"Log aktivitas mencatat: {message}"
 
 
 def _build_events(summary: Dict[str, Any], limit: int = 30) -> List[Dict[str, str]]:
-    now = datetime.now(WIB)
+    now = datetime.now(WIB).replace(microsecond=0).isoformat()
     portfolio = summary.get("portfolio", {})
     council = summary.get("council", {})
     world_model = summary.get("world_model", {})
     system = summary.get("system", {})
     services = summary.get("services", {})
     strategy_intel = summary.get("strategy_intelligence", {})
-    scanner = summary.get("scanner_candidates", {})
-    journal = summary.get("decision_journal", {})
-    base_events = [
-        ("Portfolio", f"Combined {portfolio.get('combined_equity_idr', 0):,.0f} IDR | cash {portfolio.get('idr_cash', 0):,.0f} | koin {portfolio.get('coin_holdings_idr', 0):,.0f}", "INFO"),
-        ("Council", f"{council.get('decision_state', 'WAIT')} {council.get('ticker', '')} | conf {council.get('confidence', 0):.2f}", "INFO"),
-        ("Deadline", f"{strategy_intel.get('deadline_mode', 'PATIENT')} | risk {strategy_intel.get('allowed_risk_mode', 'NORMAL')} | quality {strategy_intel.get('required_trade_quality', 'NORMAL')}", "WARN" if strategy_intel.get("deadline_mode") in {"URGENT", "LOCK_GREEN"} else "INFO"),
-        ("Scanner", f"{scanner.get('total', 0)} candidates | journal E/W/X {journal.get('entries', 0)}/{journal.get('waits', 0)}/{journal.get('exits', 0)}", "INFO"),
-        ("Probability", f"green {strategy_intel.get('green_probability_pct', 0)}% | breadth {strategy_intel.get('market_breadth', 'UNKNOWN')}", "INFO"),
-        ("Market", f"{world_model.get('market_regime', 'NEUTRAL')} | risk {world_model.get('risk_level', 'LOW')}", "INFO"),
-        ("Janitor", f"CPU {system.get('cpu', 0):.1f}% | RAM {system.get('ram', 0):.1f}% | Disk {system.get('disk', 0):.1f}%", "WARN" if _safe_float(system.get("disk"), 0) > 85 else "INFO"),
-        ("Services", " | ".join(f"{name}:{status}" for name, status in services.items() if name in ("kibot-master", "kibot-scanner", "kibot-executor", "ollama")), "INFO"),
-    ]
-    events = []
-    for index, (agent, message, tag) in enumerate(base_events):
-        translated = _translate_to_human(agent, message, tag)
-        events.append({
-            "time": (now.replace(microsecond=0)).isoformat(),
-            "agent": agent,
-            "message": translated,
-            "tag": tag,
-            "offset": str(index),
-        })
+    brain = summary.get("autonomous_trading_brain", {})
+    indo_brain = summary.get("indodax_live_brain", {})
+    ph_brain = summary.get("phantom_live_brain", {})
+    dispatcher = summary.get("live_order_dispatcher", {})
+    capital = summary.get("capital", {})
+    events: List[Dict[str, str]] = []
 
-    for path in (LOGS / "kibot_sovereign.log", LOGS / "startup.log"):
-        try:
-            lines = path.read_text(encoding="utf-8", errors="ignore").splitlines()[-10:]
-        except Exception:
-            lines = []
-        for line in reversed(lines):
-            upper = line.upper()
-            tag = "ERROR" if "ERROR" in upper or "FAILED" in upper else "WARN" if "WARN" in upper else "INFO"
-            agent = "Log"
-            if "SCANNER" in upper:
-                agent = "Scanner"
-            elif "COUNCIL" in upper:
-                agent = "Council"
-            elif "EXECUTOR" in upper:
-                agent = "Executor"
-            elif "JANITOR" in upper:
-                agent = "Janitor"
-            translated = _translate_to_human(agent, line[-180:], tag)
-            events.append({
-                "time": now.replace(microsecond=0).isoformat(),
-                "agent": agent,
-                "message": translated,
-                "tag": tag,
-            })
+    def add_event(tag: str, message: str, agent: str = "System") -> None:
+        if len(events) >= limit:
+            return
+        events.append({"time": now, "agent": agent, "message": message, "tag": tag, "offset": str(len(events))})
+
+    if int((indo_brain or {}).get("decision") == "ENTER" or (brain or {}).get("selected_engine") == "indodax") and (brain or {}).get("current_best_action") == "ENTER":
+        cand = brain.get("selected_candidate") or indo_brain.get("selected_candidate") or {}
+        symbol = cand.get("symbol") or cand.get("pair") or "INDODAX"
+        size = brain.get("sizing", {}).get("size_idr") or indo_brain.get("size_idr") or 0
+        add_event("BUY", f"{symbol} Rp {int(size):,}".replace(",", "."), "Indodax")
+
+    if (ph_brain or {}).get("capital_action") == "TRADE_ON_CURRENT_CHAIN":
+        mover = summary.get("phantom_capital_mover", {})
+        action = mover.get("recommended_action", {}) if isinstance(mover, dict) else {}
+        route = action.get("route") or ph_brain.get("selected_route") or "PHANTOM"
+        amount = action.get("amount_idr") or ph_brain.get("size", {}).get("amount_idr") or 0
+        if route:
+            add_event("SWAP", f"{route} Rp {int(amount):,}".replace(",", "."), "Phantom")
+
+    if dispatcher.get("status") == "ACTIVE":
+        ind = dispatcher.get("indodax", {}) if isinstance(dispatcher, dict) else {}
+        if ind.get("status") == "DISPATCHED":
+            cand = ind.get("candidate") or {}
+            symbol = cand.get("symbol") or ind.get("symbol") or "INDODAX"
+            add_event("BUY", f"{symbol} dispatched", "Dispatcher")
+
+    realized = float(portfolio.get("real_pnl_idr", portfolio.get("daily_pnl_idr", 0.0)) or 0.0)
+    if realized > 0:
+        add_event("SELL PROFIT", f"+Rp {int(realized):,}".replace(",", "."), "Portfolio")
+    elif realized < 0:
+        add_event("SELL LOSS", f"-Rp {int(abs(realized)):,}".replace(",", "."), "Portfolio")
+
+    council_state = council.get("decision_state") or council.get("last_decision") or brain.get("reason") or "WAIT"
+    council_conf = council.get("confidence", 0.0)
+    add_event("COUNCIL REPORT", f"{council_state} conf {council_conf:.2f}", "Council")
+
+    add_event(
+        "SYSTEM EVENT",
+        f"live={'ON' if summary.get('mode', {}).get('live_trading_enabled') else 'OFF'} bridge={'ON' if summary.get('mode', {}).get('real_bridge_enabled') else 'OFF'} swap={'ON' if summary.get('mode', {}).get('real_swap_enabled') else 'OFF'}",
+        "System",
+    )
+    add_event(
+        "SYSTEM EVENT",
+        f"equity Rp {int(portfolio.get('combined_equity_idr', 0) or 0):,}".replace(",", "."),
+        "Portfolio",
+    )
+    add_event(
+        "SYSTEM EVENT",
+        f"{system.get('cpu', 0):.1f}% CPU / {system.get('ram', 0):.1f}% RAM / {system.get('disk', 0):.1f}% Disk",
+        "Janitor",
+    )
+    add_event(
+        "SYSTEM EVENT",
+        f"{services.get('kibot-scanner', '—')} scanner · {services.get('kibot-executor', '—')} executor",
+        "Services",
+    )
     return events[:limit]
 
 

@@ -373,8 +373,12 @@ let _actLog = [], _techLog = [];
 
 function pushLog(arr, domId, entry) {
   const time  = new Date().toLocaleTimeString('id-ID',{hour:'2-digit',minute:'2-digit',second:'2-digit'});
-  const tag   = entry.tag || 'INFO';
-  const tagCl = {INFO:'info',WARN:'warn',ERROR:'error',SUCCESS:'success'}[tag]||'info';
+  const tag   = String(entry.tag || 'SYSTEM EVENT').toUpperCase();
+  const tagCl = {
+    INFO:'info', WARN:'warn', ERROR:'error', SUCCESS:'success',
+    BUY:'buy', SWAP:'swap', 'SELL PROFIT':'sell-profit', 'SELL LOSS':'sell-loss',
+    'COUNCIL REPORT':'council', 'SYSTEM EVENT':'system'
+  }[tag] || 'info';
   const div   = document.createElement('div');
   div.className = 'log-entry';
   div.innerHTML = `<span class="log-time">${time}</span><span class="log-tag log-tag--${tagCl}">${esc(tag)}</span><span class="log-msg">${esc(entry.message||'')}</span>`;
@@ -801,12 +805,14 @@ function render(data) {
 
   // Logs — activity
   const events = (data.events || []).filter(e => !NOISE_RE.test(e.message||''));
-  if (events.length) {
-    events.slice(0,5).reverse().forEach(e => pushLog(_actLog,'activity-log',{message:e.message,tag:e.level==='ERROR'?'ERROR':e.level==='WARNING'?'WARN':'INFO'}));
+  const allowTags = new Set(['BUY','SWAP','SELL PROFIT','SELL LOSS','COUNCIL REPORT','SYSTEM EVENT']);
+  const activityEvents = events.filter(e => allowTags.has(String(e.tag || '').toUpperCase()));
+  if (activityEvents.length) {
+    activityEvents.slice(0,5).reverse().forEach(e => pushLog(_actLog,'activity-log',{message:e.message,tag:String(e.tag || 'SYSTEM EVENT').toUpperCase()}));
   } else {
     pushLog(_actLog,'activity-log',{
-      message: mode.live_trading_enabled ? '⚠ Live trading ACTIVE' : '✓ Controlled-live mode active — live trading OFF',
-      tag: mode.live_trading_enabled ? 'WARN' : 'INFO'
+      message: mode.live_trading_enabled ? 'LIVE TRADING ON' : 'LIVE TRADING OFF',
+      tag: 'SYSTEM EVENT'
     });
   }
 
