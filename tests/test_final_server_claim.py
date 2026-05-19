@@ -8,6 +8,7 @@ def test_final_server_claim_writes_state(tmp_path, monkeypatch):
     monkeypatch.setattr(claim, "CLAIM_FILE", tmp_path / "final_server_claim.json")
     monkeypatch.setattr(claim, "build_indodax_target_board", lambda: {"top_targets": [{"rank": 1}]})
     monkeypatch.setattr(claim, "build_phantom_target_board", lambda: {"top_targets": [{"rank": 1}]})
+    monkeypatch.setattr(claim.ScannerExecutorContract, "write_contract_state", lambda self: {"routes": []})
     monkeypatch.setattr(claim, "write_scanner_health", lambda contract=None: {"status": "OK"})
     monkeypatch.setattr(claim, "write_server_telemetry", lambda payload=None: {"cpu": 1.0})
     (tmp_path / "engine_independence.json").write_text(json.dumps({"ok": True}), encoding="utf-8")
