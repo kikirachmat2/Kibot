@@ -374,6 +374,22 @@ def _load_deadline_pressure() -> Dict[str, Any]:
     return _read_json(STATE / "deadline_profit_enforcer.json", {})
 
 
+def _load_server_telemetry() -> Dict[str, Any]:
+    return _read_json(STATE / "server_telemetry.json", {})
+
+
+def _load_scanner_health() -> Dict[str, Any]:
+    return _read_json(STATE / "scanner_health.json", {})
+
+
+def _load_indodax_top_targets() -> Dict[str, Any]:
+    return _read_json(STATE / "indodax_top_targets.json", {})
+
+
+def _load_phantom_top_targets() -> Dict[str, Any]:
+    return _read_json(STATE / "phantom_top_targets.json", {})
+
+
 def _load_ai_decision_trace() -> Dict[str, Any]:
     return _read_json(STATE / "ai_decision_trace.json", {})
 
@@ -862,6 +878,10 @@ def _build_summary() -> Dict[str, Any]:
     summary["phantom_capital_mover"] = _load_phantom_capital_mover()
     summary["phantom_network_maximizer"] = _load_phantom_network_maximizer()
     summary["deadline_pressure"] = _load_deadline_pressure()
+    summary["server_telemetry"] = _load_server_telemetry()
+    summary["scanner_health"] = _load_scanner_health()
+    summary["indodax_top_targets"] = _load_indodax_top_targets()
+    summary["phantom_top_targets"] = _load_phantom_top_targets()
     summary["ai_decision_trace"] = _load_ai_decision_trace()
     summary["autonomous_sizing"] = _load_autonomous_sizing_state()
     try:
@@ -942,6 +962,12 @@ def _build_summary() -> Dict[str, Any]:
     }
     summary["scanner_coverage"] = summary.get("scanner_executor_contract", {})
     summary["engine_split"] = summary.get("engine_independence", {})
+    summary["top_targets"] = {
+        "indodax": summary.get("indodax_top_targets", {}),
+        "phantom": summary.get("phantom_top_targets", {}),
+    }
+    summary["server_truth"] = summary.get("server_telemetry", {})
+    summary["scanner_health_state"] = summary.get("scanner_health", {})
 
     summary["ai"] = summary.get("ai_decision_trace", {})
 
@@ -1442,6 +1468,16 @@ def _build_control_plane_payload() -> Dict[str, Any]:
         "phantom_capital_mover": summary_data.get("phantom_capital_mover", {}),
         "phantom_network_maximizer": summary_data.get("phantom_network_maximizer", {}),
         "deadline_pressure": summary_data.get("deadline_pressure", {}),
+        "server_telemetry": summary_data.get("server_telemetry", {}),
+        "scanner_health": summary_data.get("scanner_health", {}),
+        "indodax_top_targets": summary_data.get("indodax_top_targets", {}),
+        "phantom_top_targets": summary_data.get("phantom_top_targets", {}),
+        "system_truth": {
+            "batam_server_online": bool(summary_data.get("server_telemetry")),
+            "git_commit": subprocess.run(["git", "rev-parse", "HEAD"], capture_output=True, text=True).stdout.strip(),
+            "service_health": summary_data.get("services", {}),
+            "state_freshness": summary_data.get("freshness", {}),
+        },
         "gates": gates,
         "runtime": runtime,
         "flow": flow,

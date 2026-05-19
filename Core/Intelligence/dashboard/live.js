@@ -673,6 +673,40 @@ function render(data) {
   if (deadlinePh) deadlinePh.textContent = deadline.phantom_pressure || deadline.pressure_level || '—';
   setT('deadline-required-action', deadline.required_action || deadline.reason || '—');
 
+  const systemTruth = data.system_truth || {};
+  setT('sys-batam-online', systemTruth.batam_server_online ? 'ONLINE' : 'OFFLINE');
+  setT('sys-git-commit', systemTruth.git_commit || '—');
+  const serviceHealth = systemTruth.service_health || {};
+  const stateFreshness = systemTruth.state_freshness || {};
+  const servicesOnline = Object.entries(serviceHealth).filter(([, v]) => v && (v.active === 'active' || v === 'active')).length;
+  setT('sys-service-health', servicesOnline ? `${servicesOnline} active` : '0 active');
+  setT('sys-state-freshness', Object.keys(stateFreshness).length ? `${Object.values(stateFreshness).filter(v => v && v.fresh !== false).length}/${Object.keys(stateFreshness).length} fresh` : '—');
+
+  function renderTopTargets(nodeId, emptyId, payload) {
+    const node = el(nodeId);
+    const empty = el(emptyId);
+    if (!node) return;
+    const targets = Array.isArray(payload?.top_targets) ? payload.top_targets : [];
+    if (!targets.length) {
+      node.innerHTML = '';
+      if (empty) empty.textContent = payload?.why_empty || payload?.source_status || '—';
+      return;
+    }
+    if (empty) empty.textContent = payload?.why_empty || '—';
+    node.innerHTML = targets.map(t => {
+      const score = t.entry_score ?? t.wave_score ?? 0;
+      const action = t.recommended_action || 'WATCH';
+      const reason = t.reason || '—';
+      const label = t.symbol || t.route || 'unknown';
+      const secondary = t.pair || t.chain || t.mint_or_market || '';
+      const metric = t.volume_24h_idr ?? t.volume_or_liquidity ?? 0;
+      const change = t.change_24h_pct ?? t.change_pct ?? 0;
+      return `<div style="margin-bottom:4px"><strong>#${t.rank}</strong> ${label} ${secondary ? `· ${secondary}` : ''}<br/><span class="text-muted">${pct(change)} | ${idr(metric)} | ${Number(score).toFixed(1)} | ${action} | ${reason}</span></div>`;
+    }).join('');
+  }
+  renderTopTargets('indodax-top-targets', 'indodax-top-empty', data.indodax_top_targets || data.top_targets?.indodax || {});
+  renderTopTargets('phantom-top-targets', 'phantom-top-empty', data.phantom_top_targets || data.top_targets?.phantom || {});
+
   const ai = data.ai || {};
   const sizing = data.autonomous_sizing || {};
   setT('ai-objective', ai.objective || '—');
