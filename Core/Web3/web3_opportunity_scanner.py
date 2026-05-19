@@ -160,7 +160,7 @@ class Web3OpportunityScanner:
                 "future_web3": {"status": "SCOUTING"},
             },
             "meme_hunter": {
-                "enabled": bool(int(os.getenv("WEB3_MEME_HUNTER_ENABLED", "1") or 1)),
+                "enabled": _env_bool("WEB3_MEME_HUNTER_ENABLED", True),
                 "best_candidate": meme_best if meme_best else {},
                 "candidates_found": len(meme_state.get("candidates", []) if isinstance(meme_state, dict) else []),
                 "rejected_count": len(meme_state.get("rejected", []) if isinstance(meme_state, dict) else []),
