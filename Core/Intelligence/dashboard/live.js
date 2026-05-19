@@ -535,25 +535,26 @@ function render(data) {
   setT('poly-metric', poly.equity_idr ? idr(poly.equity_idr) : 'live route');
 
   // Safety Gates Badges (Dynamic)
+  const liveEnabled = Boolean(mode.live_trading_enabled ?? data.mode?.live_trading_enabled ?? rt.mode?.live_trading_enabled ?? false);
   const gateLive = el('gate-live-trading');
   if (gateLive) {
-    gateLive.textContent = mode.live_trading_enabled ? 'ON' : 'OFF';
-    gateLive.className = 'badge ' + (mode.live_trading_enabled ? 'badge--red' : 'badge--ghost');
+    gateLive.textContent = liveEnabled ? 'ON' : 'OFF';
+    gateLive.className = 'badge ' + (liveEnabled ? 'badge--red' : 'badge--ghost');
   }
   const gateBridge = el('gate-bridge');
   if (gateBridge) {
-    gateBridge.textContent = mode.real_bridge_enabled ? 'ON' : 'OFF';
-    gateBridge.className = 'badge ' + (mode.real_bridge_enabled ? 'badge--red' : 'badge--ghost');
+    gateBridge.textContent = Boolean(mode.real_bridge_enabled ?? data.mode?.real_bridge_enabled ?? false) ? 'ON' : 'OFF';
+    gateBridge.className = 'badge ' + (Boolean(mode.real_bridge_enabled ?? data.mode?.real_bridge_enabled ?? false) ? 'badge--red' : 'badge--ghost');
   }
   const gateSwap = el('gate-swap');
   if (gateSwap) {
-    gateSwap.textContent = mode.real_swap_enabled ? 'ON' : 'OFF';
-    gateSwap.className = 'badge ' + (mode.real_swap_enabled ? 'badge--red' : 'badge--ghost');
+    gateSwap.textContent = Boolean(mode.real_swap_enabled ?? data.mode?.real_swap_enabled ?? false) ? 'ON' : 'OFF';
+    gateSwap.className = 'badge ' + (Boolean(mode.real_swap_enabled ?? data.mode?.real_swap_enabled ?? false) ? 'badge--red' : 'badge--ghost');
   }
   const gateWithdrawal = el('gate-withdrawal');
   if (gateWithdrawal) {
-    gateWithdrawal.textContent = mode.real_withdrawal_enabled ? 'ON' : 'OFF';
-    gateWithdrawal.className = 'badge ' + (mode.real_withdrawal_enabled ? 'badge--red' : 'badge--ghost');
+    gateWithdrawal.textContent = Boolean(mode.real_withdrawal_enabled ?? data.mode?.real_withdrawal_enabled ?? false) ? 'ON' : 'OFF';
+    gateWithdrawal.className = 'badge ' + (Boolean(mode.real_withdrawal_enabled ?? data.mode?.real_withdrawal_enabled ?? false) ? 'badge--red' : 'badge--ghost');
   }
   const allowNew = mode.allow_new_live_orders;
   const allowBadge = el('gate-allow-new-orders');
