@@ -60,7 +60,7 @@ def _env_flag(name: str, default: str = "false") -> bool:
 def _sanitize_live_autonomous_strategy(strategy: Dict[str, Any]) -> Dict[str, Any]:
     """Keep stale defensive council snapshots from freezing live autonomous routing."""
     mode = os.getenv("KIBOT_TRADING_MODE", "controlled-live").strip().lower()
-    live_enabled = _env_flag("KIBOT_LIVE_TRADING_ENABLED", "true" if mode == "controlled-live" else "false")
+    live_enabled = _env_flag("KIBOT_LIVE_TRADING_ENABLED", "true" if mode == "controlled-live" else "false") or mode in {"controlled-live", "live", "real", "production"}
     force = _env_flag("KIBOT_FORCE_AUTONOMOUS_LIVE_STRATEGY", "true")
     if not force or not live_enabled:
         return strategy
