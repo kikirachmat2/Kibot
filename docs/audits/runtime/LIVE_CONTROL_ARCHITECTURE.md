@@ -53,8 +53,8 @@ Live trading cannot be bypassed or accidentally triggered. It is guarded by mult
 ### B. Decentralized Web3 Safety Gates
 For high-risk Web3 interactions, four sub-gates isolate external contract risks:
 * **`KIBOT_ENABLE_REAL_SWAP`**: Restricts actual SPL/EVM token swaps on Raydium/Jupiter.
-* **`KIBOT_ENABLE_REAL_BRIDGE`**: Prevents actual cross-chain bridging of assets.
-* **`KIBOT_ENABLE_REAL_WITHDRAWAL`**: Restricts the hot wallets from executing transfers to external addresses.
+* **`KIBOT_ENABLE_REAL_BRIDGE`**: Enables actual cross-chain bridging of assets in controlled-live mode.
+* **`KIBOT_ENABLE_REAL_WITHDRAWAL`**: Enables transfers to external addresses when bridge runtime is explicitly allowed.
 * **`KIBOT_ENABLE_POLYMARKET_LIVE`**: Controls whether Polymarket contracts are executed with real USDC.
 
 ---
