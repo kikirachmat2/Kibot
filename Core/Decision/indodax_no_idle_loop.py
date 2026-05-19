@@ -33,6 +33,16 @@ class IndodaxNoIdleLoop:
         pnl_pct = float(scan.get("daily_pnl_pct", 0.0) or 0.0) if isinstance(scan, dict) else 0.0
         pnl_idr = float(scan.get("daily_pnl_idr", 0.0) or 0.0) if isinstance(scan, dict) else 0.0
         deadline = self.enforcer.evaluate_enforcer(pnl_pct, pnl_idr, 1416) if hasattr(self.enforcer, "evaluate_enforcer") else {}
+        governor = {}
+        gov_path = STATE_DIR / "capital_governor.json"
+        if gov_path.exists():
+            try:
+                governor = json.loads(gov_path.read_text(encoding="utf-8"))
+            except Exception:
+                governor = {}
+        indodax_state = ((governor.get("venues", {}) or {}).get("indodax", {}) if isinstance(governor, dict) else {})
+        indodax_allow = bool(indodax_state.get("allow_orders", scan.get("source_status") == "OK"))
+        indodax_reason = str(indodax_state.get("reason") or scan.get("no_data_reason") or "")
         posture = "ACTIVE_SEARCHING" if candidates else "ACTIVE_SEARCHING"
         reason = best.get("reason") if isinstance(best, dict) else ""
         state = {
@@ -50,11 +60,11 @@ class IndodaxNoIdleLoop:
         self._write_state(state)
         write_engine_independence({
             "indodax_engine": {
-                "status": "ACTIVE" if scan.get("source_status") == "OK" else "BLOCKED_WITH_REASON",
+                "status": "ACTIVE" if scan.get("source_status") == "OK" and indodax_allow else "BLOCKED_WITH_REASON",
                 "scanner": "ACTIVE" if scan.get("source_status") == "OK" else "BLOCKED_WITH_REASON",
-                "executor": "ACTIVE",
-                "allow_orders": scan.get("source_status") == "OK",
-                "reason": scan.get("no_data_reason", ""),
+                "executor": "ACTIVE" if indodax_allow else "BLOCKED_WITH_REASON",
+                "allow_orders": indodax_allow,
+                "reason": indodax_reason,
             }
         })
         return state
@@ -75,4 +85,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-

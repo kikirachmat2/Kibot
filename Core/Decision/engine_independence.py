@@ -11,6 +11,14 @@ STATE_FILE = STATE_DIR / "engine_independence.json"
 
 def write_engine_independence(payload: Dict[str, Any]) -> Dict[str, Any]:
     STATE_DIR.mkdir(parents=True, exist_ok=True)
+    existing = {}
+    if STATE_FILE.exists():
+        try:
+            existing = json.loads(STATE_FILE.read_text(encoding="utf-8"))
+            if not isinstance(existing, dict):
+                existing = {}
+        except Exception:
+            existing = {}
     resolved = {
         "updated_at": datetime.now(timezone.utc).isoformat(),
         "global_mode": "CONTROLLED_LIVE_INDEPENDENT_ENGINES",
@@ -31,6 +39,7 @@ def write_engine_independence(payload: Dict[str, Any]) -> Dict[str, Any]:
         "bridge": "ON",
         "withdrawal": "ON",
     }
+    resolved.update(existing)
     resolved.update(payload or {})
     STATE_FILE.write_text(json.dumps(resolved, indent=2, ensure_ascii=False), encoding="utf-8")
     return resolved

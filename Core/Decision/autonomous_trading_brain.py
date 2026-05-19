@@ -55,6 +55,25 @@ def build_autonomous_trading_brain() -> Dict[str, Any]:
     trading_pnl_idr = float(capital_governor.get("trading_pnl_idr", capital_governor.get("daily_pnl_idr", 0.0)) or 0.0)
     max_daily_loss_idr = float(capital_governor.get("max_daily_loss_idr", 0.0) or 0.0)
     governor_total_equity = float(capital_governor.get("current_total_equity_idr") or capital_governor.get("current_equity_idr") or 0.0)
+    venue_states = capital_governor.get("venues", {}) if isinstance(capital_governor.get("venues"), dict) else {}
+
+    def _venue_state(engine: str) -> Dict[str, Any]:
+        key = "indodax" if engine == "indodax" else "phantom"
+        state = venue_states.get(key, {}) if isinstance(venue_states, dict) else {}
+        return state if isinstance(state, dict) else {}
+
+    def _venue_allowed(engine: str) -> bool:
+        state = _venue_state(engine)
+        if not state:
+            return True
+        return bool(state.get("allow_orders", True))
+
+    def _venue_reason(engine: str) -> str:
+        state = _venue_state(engine)
+        if not state:
+            return ""
+        return str(state.get("reason") or "").strip()
+
     deadline = DeadlineProfitEnforcer().evaluate_enforcer(
         trading_pnl_pct,
         trading_pnl_idr,
@@ -87,13 +106,22 @@ def build_autonomous_trading_brain() -> Dict[str, Any]:
 
     indo_targets = list(indo.get("top_targets") or [])
     phantom_targets = list(phantom.get("top_targets") or [])
+    venue_blockers = []
+    if indo_targets and not _venue_allowed("indodax"):
+        venue_blockers.append(f"indodax:{_venue_reason('indodax') or 'indodax_orders_blocked'}")
+    if phantom_targets and not _venue_allowed("phantom"):
+        venue_blockers.append(f"phantom:{_venue_reason('phantom') or 'phantom_orders_blocked'}")
 
     priority_candidates = []
-    priority_candidates.extend(("indodax", c) for c in indo_targets if _candidate_is_enter(c))
-    priority_candidates.extend(("phantom", c) for c in phantom_targets if _candidate_is_enter(c))
+    if _venue_allowed("indodax"):
+        priority_candidates.extend(("indodax", c) for c in indo_targets if _candidate_is_enter(c))
+    if _venue_allowed("phantom"):
+        priority_candidates.extend(("phantom", c) for c in phantom_targets if _candidate_is_enter(c))
     if not priority_candidates:
-        priority_candidates.extend(("indodax", c) for c in indo_targets if _candidate_is_liveable(c))
-        priority_candidates.extend(("phantom", c) for c in phantom_targets if _candidate_is_liveable(c))
+        if _venue_allowed("indodax"):
+            priority_candidates.extend(("indodax", c) for c in indo_targets if _candidate_is_liveable(c))
+        if _venue_allowed("phantom"):
+            priority_candidates.extend(("phantom", c) for c in phantom_targets if _candidate_is_liveable(c))
 
     if priority_candidates:
         selected_engine, selected_candidate = max(
@@ -115,20 +143,25 @@ def build_autonomous_trading_brain() -> Dict[str, Any]:
                 "deadline_pressure" if str(deadline.get("stage") or "") in {"PRESSURE", "AGGRESSIVE_SEARCH", "CLOSING_WINDOW"} else "",
             ] if s
         ]
-    elif indo_targets:
-        selected_engine = "indodax"
-        selected_candidate = indo_targets[0]
-        selected_route = "indodax"
-        reason = str(indo.get("why_not_trading") or "scan_more")
-    elif phantom_targets:
-        selected_engine = "phantom"
-        selected_candidate = phantom_targets[0]
-        selected_route = str(selected_candidate.get("route") or "")
-        reason = str(phantom.get("why_empty") or "scan_more")
     else:
-        reason = str(indo.get("why_not_trading") or phantom.get("why_empty") or deadline.get("reason") or "scan_more")
+        if venue_blockers:
+            fatal_blockers = venue_blockers
+            reason = "; ".join(venue_blockers)
+        else:
+            reason = str(indo.get("why_not_trading") or phantom.get("why_empty") or deadline.get("reason") or "scan_more")
 
-    daily_risk_remaining_idr = max(0.0, max_daily_loss_idr + trading_pnl_idr)
+    if selected_engine == "indodax":
+        venue_state = _venue_state("indodax")
+        venue_cap = float(venue_state.get("daily_loss_cap_idr", max_daily_loss_idr) or max_daily_loss_idr)
+        venue_pnl = float(venue_state.get("daily_pnl_idr", trading_pnl_idr) or trading_pnl_idr)
+        daily_risk_remaining_idr = max(0.0, venue_cap + venue_pnl)
+    elif selected_engine == "phantom":
+        venue_state = _venue_state("phantom")
+        venue_cap = float(venue_state.get("daily_loss_cap_idr", max_daily_loss_idr) or max_daily_loss_idr)
+        venue_pnl = float(venue_state.get("daily_pnl_idr", trading_pnl_idr) or trading_pnl_idr)
+        daily_risk_remaining_idr = max(0.0, venue_cap + venue_pnl)
+    else:
+        daily_risk_remaining_idr = max(0.0, max_daily_loss_idr + trading_pnl_idr)
     if selected_engine == "indodax":
         sizing_route = "indodax"
         sizing_liquidity = float(selected_candidate.get("volume_24h_idr") or 0.0)
@@ -137,7 +170,7 @@ def build_autonomous_trading_brain() -> Dict[str, Any]:
         sizing_balance = float(indo.get("capital_idr") or governor_total_equity or 0.0)
         sizing_bucket = float(indo.get("capital_idr") or governor_total_equity or 0.0)
         sizing_exit_available = True
-    else:
+    elif selected_engine == "phantom":
         sizing_route = str(selected_candidate.get("route") or "indodax")
         sizing_liquidity = float(selected_candidate.get("volume_or_liquidity") or 0.0)
         sizing_confidence = float(selected_candidate.get("wave_score") or 0.0) / 100.0
@@ -145,6 +178,14 @@ def build_autonomous_trading_brain() -> Dict[str, Any]:
         sizing_balance = float(phantom.get("available_balances", {}).get("solana_sol_idr") or 0.0)
         sizing_bucket = float(phantom.get("available_balances", {}).get("solana_sol_idr") or 0.0)
         sizing_exit_available = bool(selected_candidate.get("exit_route_ok", True))
+    else:
+        sizing_route = ""
+        sizing_liquidity = 0.0
+        sizing_confidence = 0.0
+        sizing_ev = 0.0
+        sizing_balance = 0.0
+        sizing_bucket = 0.0
+        sizing_exit_available = False
 
     sizing_total_capital = max(
         governor_total_equity,

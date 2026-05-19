@@ -9,6 +9,15 @@ from Core.Scanner.source_proof import SourceProof
 STATE_DIR = Path(__file__).resolve().parent.parent.parent / 'state'
 POSITION_FILE = STATE_DIR / 'web3_positions.json'
 
+
+def _normalize_venue_key(route: Dict[str, Any]) -> str:
+    raw = str(route.get("venue") or route.get("network") or route.get("route") or "").strip().lower()
+    if raw in {"indodax", "indodax_real", "indodax_spot"}:
+        return "indodax"
+    if raw in {"base", "solana", "pumpfun", "polymarket", "future_web3", "phantom"}:
+        return "phantom"
+    return raw or "phantom"
+
 class Web3ExecutorGuard:
     def __init__(self):
         self.max_daily_loss_pct = float(os.getenv('WEB3_DAILY_LOSS_CAP_PCT', '1.5'))
@@ -41,10 +50,21 @@ class Web3ExecutorGuard:
         # fatal checks remain wallet, treasury, route, quote, tx, and loss cap.
 
         governor = self._read_json(STATE_DIR / 'capital_governor.json', {})
-        daily_pnl = float(governor.get('daily_pnl_idr', 0.0) or 0.0)
-        max_loss = float(governor.get('max_daily_loss_idr', 0.0) or 0.0)
-        if max_loss and daily_pnl < -max_loss:
-            reasons.append('daily_cap_breached')
+        venue_key = _normalize_venue_key(route if isinstance(route, dict) else {})
+        venues = governor.get('venues', {}) if isinstance(governor, dict) else {}
+        venue_state = venues.get(venue_key, {}) if isinstance(venues, dict) else {}
+        if isinstance(venue_state, dict) and venue_state:
+            if not bool(venue_state.get('allow_orders', False)):
+                reasons.append(str(venue_state.get('reason') or f'{venue_key}_orders_blocked'))
+            venue_loss_cap = float(venue_state.get('daily_loss_cap_idr', 0.0) or 0.0)
+            venue_daily_pnl = float(venue_state.get('daily_pnl_idr', 0.0) or 0.0)
+            if venue_loss_cap and venue_daily_pnl < -venue_loss_cap:
+                reasons.append(f'{venue_key}_daily_cap_breached')
+        else:
+            daily_pnl = float(governor.get('daily_pnl_idr', 0.0) or 0.0)
+            max_loss = float(governor.get('max_daily_loss_idr', 0.0) or 0.0)
+            if max_loss and daily_pnl < -max_loss:
+                reasons.append('daily_cap_breached')
 
         if stop_loss_pct <= 0 or take_profit_pct <= 0:
             reasons.append('missing_stop_or_take_profit')

@@ -53,6 +53,13 @@ def _active_symbols() -> set[str]:
     return {str(symbol).upper() for symbol in active.keys()}
 
 
+def _venue_state(venue: str) -> Dict[str, Any]:
+    gov = _read_json(STATE_DIR / "capital_governor.json", {})
+    venues = gov.get("venues", {}) if isinstance(gov, dict) else {}
+    state = venues.get(venue, {}) if isinstance(venues, dict) else {}
+    return state if isinstance(state, dict) else {}
+
+
 class LiveOrderDispatcher:
     """Dispatches autonomous runtime decisions into real executors.
 
@@ -113,6 +120,10 @@ class LiveOrderDispatcher:
     def _build_indodax_signal(self, candidate: Dict[str, Any]) -> Dict[str, Any]:
         gov = _read_json(STATE_DIR / "capital_governor.json", {})
         total_equity = float(gov.get("current_total_equity_idr") or gov.get("current_equity_idr") or 0.0)
+        venue = _venue_state("indodax")
+        venue_cap = float(venue.get("daily_loss_cap_idr") or gov.get("max_daily_loss_idr") or 0.0)
+        venue_pnl = float(venue.get("daily_pnl_idr") or 0.0)
+        venue_risk_remaining = max(0.0, venue_cap + venue_pnl)
         change = float(candidate.get("change_24h_pct") or 0.0)
         entry_score = float(candidate.get("entry_score") or 0.0)
         confidence = max(0.55, min(0.96, max(change / 100.0, entry_score / 300.0)))
@@ -146,7 +157,7 @@ class LiveOrderDispatcher:
             "budget_idr": budget_idr,
             "route_bucket_idr": total_equity,
             "total_equity_idr": total_equity,
-            "daily_risk_remaining_idr": max(0.0, float(gov.get("max_daily_loss_idr") or 0.0) + float(gov.get("trading_pnl_idr", gov.get("daily_pnl_idr", 0.0)) or 0.0)),
+            "daily_risk_remaining_idr": venue_risk_remaining,
             "exit_available": True,
             "exit_quality": "A",
             "trade_grade": "A",
@@ -164,6 +175,12 @@ class LiveOrderDispatcher:
             return {"status": "BLOCKED_WITH_REASON", "reason": "kibot_secret_missing"}
         if (STATE_DIR / "KILL_SWITCH").exists():
             return {"status": "BLOCKED_WITH_REASON", "reason": "kill_switch"}
+        venue = _venue_state("indodax")
+        if venue and not bool(venue.get("allow_orders", True)):
+            return {
+                "status": "BLOCKED_WITH_REASON",
+                "reason": str(venue.get("reason") or "indodax_venue_blocked"),
+            }
 
         candidates = self._indodax_candidates()
         if not candidates:

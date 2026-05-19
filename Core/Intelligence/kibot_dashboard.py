@@ -1107,7 +1107,7 @@ def _build_control_plane_payload() -> Dict[str, Any]:
     summary_data = _build_summary()
     portfolio_live = summary_data.get("portfolio", {}) if isinstance(summary_data, dict) else {}
     
-    # Calculate allow_new_live_orders based on the RiskGate system logic.
+    # Build a live treasury snapshot first; venue-scoped permission is derived later.
     allow_new_live_orders = False
     rejection_reason = "No governor data"
     capital_block = {
@@ -1119,6 +1119,7 @@ def _build_control_plane_payload() -> Dict[str, Any]:
         "max_daily_loss_pct": 1.5,
         "risk_remaining_idr": 0.0,
         "date": "",
+        "global_risk_remaining_idr": 0.0,
     }
     gov_file = STATE / "capital_governor.json"
     if not gov_file.exists():
@@ -1163,13 +1164,10 @@ def _build_control_plane_payload() -> Dict[str, Any]:
                         "daily_pnl_source": "live_portfolio" if live_open_positions else "governor",
                         "max_daily_loss_pct": _safe_float(gov_data.get("max_daily_loss_pct"), 1.5),
                         "risk_remaining_idr": risk_remaining,
+                        "global_risk_remaining_idr": risk_remaining,
                         "date": str(gov_data.get("date") or today),
                     })
-                    if gov_daily_pnl < -gov_loss_cap:
-                        rejection_reason = f"MANIFESTO CAP: Global daily loss cap reached (PnL: {gov_daily_pnl:.2f} < Cap: -{gov_loss_cap:.2f})"
-                    else:
-                        allow_new_live_orders = True
-                        rejection_reason = "Active and fully operational"
+                    rejection_reason = "Governor reconciled; venue-scoped permission pending"
         except Exception as e:
             rejection_reason = f"FAIL-CLOSED: Error validating Capital Governor: {e}"
 
@@ -1364,6 +1362,35 @@ def _build_control_plane_payload() -> Dict[str, Any]:
         }
     }
 
+    venue_permissions = {
+        name: bool(
+            (venues.get(name) or {}).get("allow_orders", True)
+            and str((venues.get(name) or {}).get("status") or "").upper() in {"ACTIVE", "LIVE_READY", "RECONCILED"}
+        )
+        for name in ("indodax_real", "phantom", "polymarket")
+    }
+    venue_permissions["cash_wait"] = True
+    allow_new_live_orders = any(venue_permissions.get(name, False) for name in ("indodax_real", "phantom", "polymarket"))
+    if allow_new_live_orders:
+        ready_venues = [name for name in ("indodax_real", "phantom", "polymarket") if venue_permissions.get(name)]
+        rejection_reason = "venue-scoped allowances active: " + ", ".join(ready_venues)
+        capital_block["risk_remaining_idr"] = sum(
+            max(0.0, _safe_float((venues.get(name) or {}).get("daily_loss_cap_idr"), 0.0) + _safe_float((venues.get(name) or {}).get("daily_pnl_idr"), 0.0))
+            for name in ("indodax_real", "phantom", "polymarket")
+            if venue_permissions.get(name)
+        )
+    else:
+        blocked_venues = []
+        for name in ("indodax_real", "phantom", "polymarket"):
+            venue = venues.get(name) or {}
+            status = str(venue.get("status") or "BLOCKED_WITH_REASON").upper()
+            reason = str(venue.get("reason") or "blocked").strip()
+            blocked_venues.append(f"{name}={status}:{reason}")
+        rejection_reason = "; ".join(blocked_venues) if blocked_venues else rejection_reason
+        capital_block["risk_remaining_idr"] = max(
+            0.0,
+            _safe_float(capital_block.get("global_risk_remaining_idr"), 0.0),
+        )
     route_live_ready = any(
         str((venues.get(name) or {}).get("status") or "").upper() in {"ACTIVE", "LIVE_READY", "RECONCILED"}
         for name in ("indodax_real", "phantom", "polymarket", "cash_wait")
@@ -1380,6 +1407,7 @@ def _build_control_plane_payload() -> Dict[str, Any]:
         "microstructure": gates["microstructure"]["status"],
         "effect": "does_not_block_live_orders",
     }
+    mode["venue_allowances"] = venue_permissions
 
     # 5. Runtime Health
     scanner_stats = _read_json(STATE / "scanner_runtime.json", {})

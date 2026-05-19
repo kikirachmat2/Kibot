@@ -25,6 +25,15 @@ def _today_wib() -> str:
     """Business day boundary follows WIB, not the server's UTC clock."""
     return str(datetime.now(WIB).date())
 
+
+def _normalize_venue_key(value: Optional[str]) -> str:
+    raw = str(value or "").strip().lower()
+    if raw in {"indodax", "indodax_real", "indodax_spot"}:
+        return "indodax"
+    if raw in {"phantom", "solana", "pumpfun", "base", "polymarket", "future_web3"}:
+        return "phantom"
+    return raw or "indodax"
+
 class RiskGate:
     """
     Sovereign Risk Guard
@@ -139,7 +148,8 @@ class RiskGate:
             starting_equity * (self.config["max_daily_loss_pct"] / 100.0)
         )
         
-        venue = (venue or signal.get("venue") or signal.get("route") or signal.get("network") or "indodax").lower()
+        explicit_venue_source = venue or signal.get("venue") or signal.get("route") or signal.get("network")
+        venue = _normalize_venue_key(explicit_venue_source) if explicit_venue_source else ""
 
         # 1. Global Treasury Governor Daily Drawdown, Staleness & Reconcile Check
         from Core.Treasury.capital_governor import GOVERNOR_FILE
@@ -162,15 +172,37 @@ class RiskGate:
                 return False, f"FAIL-CLOSED: Capital Governor status is '{gov_data.get('status')}' (expected 'RECONCILED')"
                 
             if gov_data.get("date") == today:
-                gov_loss_cap = float(gov_data.get("max_daily_loss_idr", effective_daily_loss_cap_idr))
-                gov_daily_pnl = float(gov_data.get("daily_pnl_idr", 0.0))
-                if gov_daily_pnl < -gov_loss_cap:
-                    return False, f"MANIFESTO CAP: Global daily loss cap reached ({gov_daily_pnl:.2f} < -{gov_loss_cap:.2f})"
+                venues = gov_data.get("venues", {}) if isinstance(gov_data.get("venues"), dict) else {}
+                if not explicit_venue_source:
+                    global_pnl = float(gov_data.get("daily_pnl_idr", 0.0) or 0.0)
+                    global_cap = float(gov_data.get("max_daily_loss_idr", effective_daily_loss_cap_idr) or effective_daily_loss_cap_idr)
+                    if global_cap and global_pnl < -global_cap:
+                        return False, f"MANIFESTO CAP: Global daily loss cap reached ({global_pnl:.2f} < -{global_cap:.2f})"
+                else:
+                    venue_state = venues.get(venue, {})
+                    if not isinstance(venue_state, dict) or not venue_state:
+                        # Fallback to top-level booleans if the per-venue structure is absent.
+                        if venue == "indodax" and not bool(gov_data.get("allow_indodax_orders", False)):
+                            return False, "FAIL-CLOSED: Indodax venue orders disabled"
+                        if venue != "indodax" and not bool(gov_data.get("allow_phantom_orders", False)):
+                            return False, f"FAIL-CLOSED: {venue} venue orders disabled"
+                    else:
+                        venue_status = str(venue_state.get("status") or "").upper()
+                        venue_allow = bool(venue_state.get("allow_orders", False))
+                        venue_reason = str(venue_state.get("reason") or "").strip()
+                        if venue_status not in {"RECONCILED", "ACTIVE", "LIVE_READY", "OK"} and not venue_allow:
+                            return False, f"FAIL-CLOSED: {venue} venue status is '{venue_status or 'UNKNOWN'}'"
+                        if not venue_allow:
+                            return False, venue_reason or f"FAIL-CLOSED: {venue} venue orders disabled"
+                        venue_loss_cap = float(venue_state.get("daily_loss_cap_idr", effective_daily_loss_cap_idr) or effective_daily_loss_cap_idr)
+                        venue_daily_pnl = float(venue_state.get("daily_pnl_idr", 0.0) or 0.0)
+                        if venue_loss_cap and venue_daily_pnl < -venue_loss_cap:
+                            return False, f"MANIFESTO CAP: {venue} daily loss cap reached ({venue_daily_pnl:.2f} < -{venue_loss_cap:.2f})"
             else:
                 return False, "FAIL-CLOSED: Capital Governor state date is from a different day"
 
             phantom_file = STATE_DIR / "phantom_treasury.json"
-            if venue in {"phantom", "solana", "base", "polymarket", "future_web3", "pumpfun"} and phantom_file.exists():
+            if venue in {"phantom"} and phantom_file.exists():
                 try:
                     with open(phantom_file, "r") as f:
                         phantom_state = json.load(f)
@@ -186,9 +218,9 @@ class RiskGate:
         except Exception as e:
             logger.error(f"❌ Failed to validate Capital Governor state inside RiskGate: {e}")
             return False, f"FAIL-CLOSED: Error validating Capital Governor state: {e}"
-        
-        # 2. Hard Venue Manifesto Cap
-        if self.daily_pnl < -effective_daily_loss_cap_idr:
+
+        # 2. Hard Venue Manifesto Cap fallback for legacy callers without venue data.
+        if venue not in {"indodax", "phantom"} and self.daily_pnl < -effective_daily_loss_cap_idr:
             return False, f"MANIFESTO CAP: Daily loss reached ({self.daily_pnl:.2f} < -{effective_daily_loss_cap_idr:.2f})"
 
         symbol = signal.get("symbol", "UNKNOWN").upper()

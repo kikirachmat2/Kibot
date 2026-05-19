@@ -610,7 +610,14 @@ function render(data) {
   setT('pi-allow-orders', allowNew ? 'YES' : 'NO');
   setT('pi-current-entry', data.current_entry_approved ? 'YES' : 'NO');
   const openPnLCount = Array.isArray(port.open_position_pnl) ? port.open_position_pnl.length : 0;
-  setT('pi-blocked-reason', openPnLCount ? `${openPnLCount} open position(s)` : (mode.allow_new_live_orders_reason || '—'));
+  const venueAllowances = mode.venue_allowances || {};
+  const readyVenues = Object.entries(venueAllowances).filter(([, allowed]) => allowed).map(([name]) => name);
+  const blockedVenues = Object.entries(venueAllowances).filter(([, allowed]) => !allowed).map(([name]) => name);
+  if (allowNew) {
+    setT('pi-blocked-reason', readyVenues.length ? `venue-scoped ready: ${readyVenues.join(', ')}` : 'venue-scoped allowance active');
+  } else {
+    setT('pi-blocked-reason', blockedVenues.length ? `blocked venues: ${blockedVenues.join(', ')}` : (openPnLCount ? `${openPnLCount} open position(s)` : (mode.allow_new_live_orders_reason || '—')));
+  }
 
   // Venue equities
   setT('eq-indodax-real',  idr(venues.indodax_real?.equity_idr  || 0));
