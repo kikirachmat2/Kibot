@@ -15,9 +15,9 @@ class PhantomMultichainController:
     def __init__(self):
         self.registry: Dict[str, Dict[str, Any]] = {
             "solana": {"status": "SCOUTING", "balance_reader": True, "opportunity_scanner": True, "swap_executor": True, "risk_guard": True},
-            "base": {"status": "SCOUTING", "balance_reader": True, "opportunity_scanner": True, "swap_executor": False, "risk_guard": True},
+            "base": {"status": "BLOCKED_WITH_REASON", "balance_reader": True, "opportunity_scanner": True, "quote_router": True, "swap_executor": True, "executor": True, "risk_guard": True, "reason": "base_not_refreshed"},
             "polymarket": {"status": "SCOUTING", "balance_reader": True, "opportunity_scanner": True, "executor": True, "risk_guard": True},
-            "future_web3": {"status": "SCOUTING", "balance_reader": False, "opportunity_scanner": True, "swap_executor": False, "executor": False, "risk_guard": True},
+            "future_web3": {"status": "BLOCKED_WITH_REASON", "balance_reader": False, "opportunity_scanner": True, "swap_executor": False, "executor": False, "risk_guard": True, "reason": "registry_not_refreshed"},
         }
 
     def _load_treasury_state(self) -> Dict[str, Any]:
@@ -43,10 +43,12 @@ class PhantomMultichainController:
     def _apply_base_gate(self, treasury: Dict[str, Any]) -> None:
         blocked = self._reconciliation_blocked()
         base = self.registry["base"]
-        base["status"] = "BLOCKED" if blocked else "SCOUTING"
+        base["status"] = "BLOCKED_WITH_REASON" if blocked else "LIVE_READY"
+        base["reason"] = "treasury_reconciliation_required" if blocked else ""
         base["balance_reader"] = bool(treasury.get("chains", {}).get("base", {}).get("rpc_ok"))
-        base["swap_executor"] = False
-        base["executor"] = False
+        base["quote_router"] = bool(base["balance_reader"])
+        base["swap_executor"] = bool(base["balance_reader"] and not blocked)
+        base["executor"] = bool(base["swap_executor"])
 
     def refresh(self) -> Dict[str, Dict[str, Any]]:
         treasury = self._load_treasury_state()
@@ -67,7 +69,20 @@ class PhantomMultichainController:
         poly["executor"] = True
         poly["risk_guard"] = True
 
-        self.registry["future_web3"].update({"status": "SCOUTING", "balance_reader": False, "swap_executor": False, "executor": False, "risk_guard": True})
+        future = self.registry["future_web3"]
+        try:
+            from Core.Web3.future_web3_registry import FutureWeb3Registry
+            registry = FutureWeb3Registry().refresh()
+            adapters = registry.get("adapters", {}) if isinstance(registry, dict) else {}
+            executable = [name for name, item in adapters.items() if isinstance(item, dict) and str(item.get("status", "")).upper() == "LIVE_READY"]
+            future["adapters"] = adapters
+            future["status"] = "LIVE_READY" if executable else "BLOCKED_WITH_REASON"
+            future["executor"] = bool(executable)
+            future["swap_executor"] = bool(executable)
+            future["reason"] = "" if executable else registry.get("reason") or "adapter_registry_missing"
+            future["balance_reader"] = bool(executable)
+        except Exception as exc:
+            future.update({"status": "BLOCKED_WITH_REASON", "balance_reader": False, "swap_executor": False, "executor": False, "risk_guard": True, "reason": f"future_web3_registry_error:{exc}"})
         return self.registry
 
     def get_route(self, network: str) -> Dict[str, Any]:
@@ -83,10 +98,10 @@ class PhantomMultichainController:
             return {"allowed": False, "reason": "network blocked", "network": network}
         if not node.get("balance_reader") or not node.get("risk_guard"):
             return {"allowed": False, "reason": "gates missing", "network": network}
-        if network == "base":
-            return {"allowed": False, "reason": "base_executor_missing", "network": network}
-        if network == "future_web3":
-            return {"allowed": False, "reason": "future_web3_scout_only", "network": network}
+        if network == "base" and not node.get("executor"):
+            return {"allowed": False, "reason": str(node.get("reason") or "base_blocked"), "network": network}
+        if network == "future_web3" and not node.get("executor"):
+            return {"allowed": False, "reason": str(node.get("reason") or "future_web3_blocked"), "network": network}
         if network == "solana" and not node.get("swap_executor"):
             return {"allowed": False, "reason": "swap_executor_disabled", "network": network}
         if network == "polymarket" and not node.get("executor"):

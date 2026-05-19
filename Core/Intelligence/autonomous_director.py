@@ -27,6 +27,7 @@ from .signal_quality import batch_evaluate as sq_batch
 from .expected_value import batch_evaluate_ev
 from .strategy_scorecard import run_scorecard, ScorecardVerdict
 from .punishment_engine import get_engine as get_punishment_engine
+from .no_idle_director import NoIdleDirector
 
 log = logging.getLogger(__name__)
 
@@ -43,6 +44,7 @@ class AutonomousDirector:
     def __init__(self, market_regime: str = "UNKNOWN") -> None:
         self.market_regime = market_regime
         self._punishment = get_punishment_engine()
+        self._no_idle = NoIdleDirector()
 
     def update_regime(self, regime: str) -> None:
         self.market_regime = regime.upper()
@@ -114,6 +116,18 @@ class AutonomousDirector:
             )
 
         elapsed_ms = round((time.time() - start) * 1000, 1)
+        best_route = "indodax" if approved else ("scanning" if rejected else "wait")
+        self._no_idle.update(
+            best_route_now=best_route,
+            best_candidate_now=approved[0] if approved else (rejected[0] if rejected else {}),
+            why_not_trading="no candidate approved" if not approved else "",
+            next_action="SCAN" if not approved else "ENTER",
+            routes_checked_this_cycle=["indodax", "phantom", "web3", "polymarket", "base", "future_web3"],
+            approved_candidates=len(approved),
+            rejected_candidates=len(rejected),
+            posture="ENTERING" if approved else "ACTIVE_SEARCHING",
+            next_check_seconds=10,
+        )
         return {
             "approved": approved,
             "shadow": shadow,
