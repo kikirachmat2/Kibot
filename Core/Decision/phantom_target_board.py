@@ -58,6 +58,7 @@ def build_phantom_target_board() -> Dict[str, Any]:
                 if isinstance(item, dict):
                     routes.append(_normalize_route(item))
 
+    ranked_routes = []
     executable_routes = []
     blocked_routes = {}
     for route in routes:
@@ -70,21 +71,28 @@ def build_phantom_target_board() -> Dict[str, Any]:
             reason = "no_exit_route"
         elif route["executor_status"].upper().startswith("BLOCKED"):
             reason = route["reason"] or "executor_blocked"
+        candidate = dict(route)
         if reason:
-            blocked_routes.setdefault(route["route"], []).append({**route, "reason": reason})
+            candidate["executor_status"] = "BLOCKED_WITH_REASON"
+            candidate["reason"] = reason
+            candidate["recommended_action"] = "REJECT" if reason not in {"manual_transfer_required"} else "MANUAL_TRANSFER_REQUIRED"
+            blocked_routes.setdefault(route["route"], []).append(candidate)
         else:
-            executable_routes.append(route)
+            candidate["executor_status"] = "EXECUTABLE"
+            candidate["recommended_action"] = "ENTER" if candidate["wave_score"] >= 10 else "WATCH"
+            executable_routes.append(candidate)
+        ranked_routes.append(candidate)
 
     executable_routes.sort(key=lambda x: (x["wave_score"], x["volume_or_liquidity"], x["change_pct"]), reverse=True)
+    ranked_routes.sort(key=lambda x: (x["wave_score"], x["volume_or_liquidity"], x["change_pct"]), reverse=True)
     top_targets: List[Dict[str, Any]] = []
-    for idx, item in enumerate(executable_routes[:5], start=1):
+    for idx, item in enumerate(ranked_routes[:5], start=1):
         item = dict(item)
         item["rank"] = idx
-        item["recommended_action"] = "ENTER" if item["wave_score"] >= 10 else "WATCH"
         top_targets.append(item)
 
     source_status = "OK" if top_targets else ("NO_DATA" if not routes else "BLOCKED_WITH_REASON")
-    why_empty = "" if top_targets else "no_executable_phantom_route_after_quote_exit_executor_checks"
+    why_empty = "" if top_targets else "no_phantom_candidates_after_source_proof_checks"
 
     sol_idr = float(treasury.get("buckets", {}).get("swap_idr", treasury.get("sol_balance_idr", 0.0)) or 0.0)
     base_idrx = float(treasury.get("buckets", {}).get("base_idrx_idr", treasury.get("base_idrx_balance_idr", 0.0)) or 0.0)
