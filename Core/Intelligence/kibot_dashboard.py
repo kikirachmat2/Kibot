@@ -60,6 +60,9 @@ PRICE_CACHE_TTL_SEC = 15.0
 
 if DASHBOARD_DIR.exists():
     app.mount("/static", StaticFiles(directory=str(DASHBOARD_DIR)), name="static")
+    assets_dir = DASHBOARD_DIR / "assets"
+    if assets_dir.exists():
+        app.mount("/assets", StaticFiles(directory=str(assets_dir)), name="assets")
 
 
 def _safe_float(value: Any, default: float = 0.0) -> float:
@@ -292,6 +295,10 @@ def _load_web3_positions() -> List[Dict[str, Any]]:
 
 def _load_web3_exit_state() -> Dict[str, Any]:
     return _read_json(STATE / "web3_exit_state.json", {})
+
+
+def _load_ai_decision_trace() -> Dict[str, Any]:
+    return _read_json(STATE / "ai_decision_trace.json", {})
 
 def _build_portfolio(telemetry: Dict[str, Any]) -> Dict[str, Any]:
     portfolio = telemetry.get("portfolio") if isinstance(telemetry, dict) else {}
@@ -755,6 +762,7 @@ def _build_summary() -> Dict[str, Any]:
     summary["web3_opportunities"] = _load_web3_state()
     summary["web3_positions"] = _load_web3_positions()
     summary["web3_exit"] = _load_web3_exit_state()
+    summary["ai_decision_trace"] = _load_ai_decision_trace()
     try:
         from Core.Treasury.phantom_multichain_controller import PhantomMultichainController
 
@@ -829,6 +837,8 @@ def _build_summary() -> Dict[str, Any]:
         "exit": summary.get("web3_exit", {}),
     }
 
+    summary["ai"] = summary.get("ai_decision_trace", {})
+
     summary["events"] = _build_events(summary)
     return summary
 
@@ -841,6 +851,8 @@ async def home() -> HTMLResponse:
         if "style.css" not in html:
             html = html.replace(
                 "</head>",
+                '  <link rel="icon" type="image/png" href="/assets/kibot.png" />\n'
+                '  <link rel="apple-touch-icon" href="/assets/kibot.png" />\n'
                 '  <link rel="stylesheet" href="/static/style.css?v=5.0" />\n</head>',
                 1,
             )
@@ -1043,6 +1055,15 @@ def _build_control_plane_payload() -> Dict[str, Any]:
             "positions_blocked": int(summary_data.get("web3_exit", {}).get("positions_blocked", 0) or 0),
             "last_updated": str(summary_data.get("web3_exit", {}).get("updated_at", "")),
             "latest_exit_reason": str(summary_data.get("web3_exit", {}).get("latest_exit_reason", "")),
+        },
+        "ai": {
+            "updated_at": str(summary_data.get("ai_decision_trace", {}).get("updated_at", "")),
+            "objective": str(summary_data.get("ai_decision_trace", {}).get("objective", "")),
+            "best_action": str(summary_data.get("ai_decision_trace", {}).get("best_action", "WAIT")),
+            "venue": str(summary_data.get("ai_decision_trace", {}).get("venue", "")),
+            "confidence": _safe_float(summary_data.get("ai_decision_trace", {}).get("confidence"), 0.0),
+            "reason": str(summary_data.get("ai_decision_trace", {}).get("reason", "")),
+            "next_check_seconds": _safe_int(summary_data.get("ai_decision_trace", {}).get("next_check_seconds"), 0),
         },
         "polymarket": {
             "venue": "Polymarket",

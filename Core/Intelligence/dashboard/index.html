@@ -7,6 +7,8 @@
   <meta name="description" content="KiBot Sovereign autonomous trading control plane — paper soak mode active." />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <link rel="icon" type="image/png" href="/assets/kibot.png" />
+  <link rel="apple-touch-icon" href="/assets/kibot.png" />
   <link rel="stylesheet" href="/static/style.css?v=5.0" />
 </head>
 <body>
@@ -16,7 +18,7 @@
   <!-- ─── TOP BAR ─────────────────────────────────────────── -->
   <header class="top-bar">
     <div class="top-bar__brand">
-      <span class="brand-icon">⌘</span>
+      <img src="/assets/kibot.png" alt="KiBot" class="kibot-logo" />
       <strong class="brand-name">KiBot Delegation</strong>
       <span class="brand-pill">Batam MasterNode</span>
     </div>
@@ -189,6 +191,7 @@
             <div class="kv" style="font-size:10px; margin-top:2px;"><span>Open Pos</span><span id="web3-openpos">—</span></div>
             <div class="kv" style="font-size:10px; margin-top:2px;"><span>Web3 Exit</span><span id="web3-exit-status">—</span></div>
             <div class="kv" style="font-size:10px; margin-top:2px;"><span>Exit Reason</span><span id="web3-exit-reason">—</span></div>
+            <div class="kv" style="font-size:10px; margin-top:2px;"><span>Exit Updated</span><span id="web3-exit-updated">—</span></div>
           </div>
         </details>
         <details class="venue-detail">
@@ -199,6 +202,16 @@
           </summary>
           <div class="venue-sub">Paper prediction market. Wallet not connected.</div>
         </details>
+      </div>
+
+      <div class="info-section">
+        <div class="info-section__title">🧠 AI Trace</div>
+        <div class="kv"><span>Objective</span><span id="ai-objective">—</span></div>
+        <div class="kv"><span>Best Action</span><span id="ai-best-action">—</span></div>
+        <div class="kv"><span>Confidence</span><span id="ai-confidence">—</span></div>
+        <div class="kv"><span>Venue</span><span id="ai-venue">—</span></div>
+        <div class="kv"><span>Reason</span><span id="ai-reason">—</span></div>
+        <div class="kv"><span>Next Check</span><span id="ai-next-check">—</span></div>
       </div>
 
       <div class="info-section">

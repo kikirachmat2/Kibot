@@ -598,6 +598,15 @@ function render(data) {
   const exitState = web3.exit || {};
   setT('web3-exit-status', exitState.status || '—');
   setT('web3-exit-reason', exitState.latest_exit_reason || '—');
+  setT('web3-exit-updated', exitState.last_updated ? new Date(exitState.last_updated).toLocaleTimeString('en-GB', {hour12:false, timeZone:'Asia/Jakarta'}) + ' WIB' : '—');
+
+  const ai = data.ai || {};
+  setT('ai-objective', ai.objective || '—');
+  setT('ai-best-action', ai.best_action || '—');
+  setT('ai-confidence', ai.confidence != null ? Number(ai.confidence).toFixed(2) : '—');
+  setT('ai-venue', ai.venue || '—');
+  setT('ai-reason', ai.reason || '—');
+  setT('ai-next-check', ai.next_check_seconds != null ? `${ai.next_check_seconds}s` : '—');
 
   // Gate stack
   function setGate(key, badgeId, scoreId) {

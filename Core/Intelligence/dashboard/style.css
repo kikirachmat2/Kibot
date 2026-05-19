@@ -82,6 +82,14 @@ html, body {
 .top-bar__right  { display: flex; align-items: center; gap: 8px; }
 
 .brand-icon  { font-size: 18px; color: var(--blue); }
+.kibot-logo {
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  object-fit: cover;
+  display: inline-block;
+  box-shadow: 0 0 0 1px rgba(15,23,42,0.08);
+}
 .brand-name  { font-size: 15px; font-weight: 700; letter-spacing: -.4px; }
 .brand-pill  {
   padding: 2px 8px;
