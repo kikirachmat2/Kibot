@@ -46,6 +46,8 @@ class SolanaMomentumMemeStrategy:
         safety_score = float(candidate.get("safety_score", 0) or 0)
         holders = int(candidate.get("holders", 0) or 0)
         age = float(candidate.get("age_minutes", 0) or 0)
+        route_type = str(candidate.get("route_type") or "").upper()
+        route_state = candidate.get("route_state") if isinstance(candidate.get("route_state"), dict) else {}
 
         reasons = []
         if liquidity < self.min_liquidity_usd:
@@ -66,6 +68,10 @@ class SolanaMomentumMemeStrategy:
         momentum_score = self._momentum_score(candidate)
         if safety_score <= 0:
             safety_score = 0.0
+        if route_type == "PUMPFUN_BONDING_CURVE" and not bool(route_state.get("sell_route_available", False)):
+            reasons.append("no_exit_route")
+        if route_type == "UNSUPPORTED":
+            reasons.append("unsupported_route")
 
         ev_pct = round((momentum_score * 0.12) + (safety_score * 0.08) - (price_impact * 4.0), 2)
         decision = "APPROVE" if not reasons and momentum_score >= 35 and ev_pct > 0 else "REJECT"
@@ -91,4 +97,3 @@ class SolanaMomentumMemeStrategy:
             "time_stop_seconds": self.time_stop_seconds,
             "exit_plan_required": True,
         }
-

@@ -9,6 +9,7 @@ from typing import Any, Dict, List
 import aiohttp
 
 from Core.Intelligence.defi_metrics_fetcher import DeFiMetricsFetcher
+from Core.Web3.pumpfun_route_detector import PumpfunRouteDetector
 from Core.Web3.web3_quote_router import Web3QuoteRouter
 from Core.Web3.web3_safety_checker import Web3SafetyChecker
 
@@ -27,6 +28,7 @@ class SolanaTrendingScanner:
         self.birdeye_api_key = os.getenv("BIRDEYE_API_KEY", "").strip()
         self.helius_api_key = os.getenv("HELIUS_API_KEY", "").strip()
         self.max_candidates = int(os.getenv("SOLANA_MEME_MAX_CANDIDATES", "20") or 20)
+        self.route_detector = PumpfunRouteDetector()
         self.state = self._blank_state()
 
     def _blank_state(self) -> Dict[str, Any]:
@@ -170,8 +172,16 @@ class SolanaTrendingScanner:
         for item in candidates:
             evaluated = strategy.evaluate_candidate(item)
             merged = {**item, **evaluated}
+            route_state = await self.route_detector.detect_best_effort(
+                merged.get("mint", ""),
+                pair_hint=item.get("pair") if isinstance(item.get("pair"), dict) else {},
+            )
+            merged["route_type"] = route_state.get("route_type", "UNSUPPORTED")
+            merged["route_state"] = route_state
+            merged["can_buy"] = bool(route_state.get("buy_route_available"))
+            merged["can_sell"] = bool(route_state.get("sell_route_available"))
+            mint = str(merged.get("mint") or "")
             if merged.get("decision") == "APPROVE":
-                mint = str(merged.get("mint") or "")
                 if not mint:
                     merged["decision"] = "REJECT"
                     merged["reason"] = "mint_missing"
@@ -197,6 +207,8 @@ class SolanaTrendingScanner:
                     continue
                 merged["decision"] = "REJECT"
                 merged["reason"] = safety.get("reason") if not safety.get("passed") else quote.get("reason", "quote_missing")
+                if merged.get("route_type") == "PUMPFUN_BONDING_CURVE" and not merged.get("can_sell"):
+                    merged["reason"] = "no_exit_route"
             else:
                 rejected.append({
                     "symbol": merged.get("symbol"),

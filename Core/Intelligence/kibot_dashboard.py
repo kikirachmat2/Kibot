@@ -301,6 +301,18 @@ def _load_web3_exit_state() -> Dict[str, Any]:
     return _read_json(STATE / "web3_exit_state.json", {})
 
 
+def _load_pumpfun_route_state() -> Dict[str, Any]:
+    return _read_json(STATE / "pumpfun_route_state.json", {})
+
+
+def _load_pumpfun_candidates() -> Dict[str, Any]:
+    return _read_json(STATE / "pumpfun_candidates.json", {})
+
+
+def _load_pumpfun_native_state() -> Dict[str, Any]:
+    return _read_json(STATE / "pumpfun_native_executor_state.json", {})
+
+
 def _load_ai_decision_trace() -> Dict[str, Any]:
     return _read_json(STATE / "ai_decision_trace.json", {})
 
@@ -777,6 +789,9 @@ def _build_summary() -> Dict[str, Any]:
     summary["solana_trending_candidates"] = _load_solana_trending_state()
     summary["web3_positions"] = _load_web3_positions()
     summary["web3_exit"] = _load_web3_exit_state()
+    summary["pumpfun_route_state"] = _load_pumpfun_route_state()
+    summary["pumpfun_candidates"] = _load_pumpfun_candidates()
+    summary["pumpfun_native_executor"] = _load_pumpfun_native_state()
     summary["ai_decision_trace"] = _load_ai_decision_trace()
     summary["autonomous_sizing"] = _load_autonomous_sizing_state()
     try:
@@ -851,6 +866,9 @@ def _build_summary() -> Dict[str, Any]:
         "opportunities": summary.get("web3_opportunities", {}),
         "positions": summary.get("web3_positions", []),
         "exit": summary.get("web3_exit", {}),
+        "pumpfun": summary.get("pumpfun_candidates", {}),
+        "pumpfun_route": summary.get("pumpfun_route_state", {}),
+        "pumpfun_native": summary.get("pumpfun_native_executor", {}),
     }
 
     summary["ai"] = summary.get("ai_decision_trace", {})
@@ -1089,6 +1107,9 @@ def _build_control_plane_payload() -> Dict[str, Any]:
             "solana_trending": summary_data.get("solana_trending_candidates", {}),
             "positions": summary_data.get("web3_positions", []),
             "exit": summary_data.get("web3_exit", {}),
+            "pumpfun": summary_data.get("pumpfun_candidates", {}),
+            "pumpfun_route": summary_data.get("pumpfun_route_state", {}),
+            "pumpfun_native": summary_data.get("pumpfun_native_executor", {}),
         },
         "web3_exit": {
             "status": str(summary_data.get("web3_exit", {}).get("status", "STALE" if summary_data.get("web3_positions") else "OK")),
@@ -1097,6 +1118,16 @@ def _build_control_plane_payload() -> Dict[str, Any]:
             "positions_blocked": int(summary_data.get("web3_exit", {}).get("positions_blocked", 0) or 0),
             "last_updated": str(summary_data.get("web3_exit", {}).get("updated_at", "")),
             "latest_exit_reason": str(summary_data.get("web3_exit", {}).get("latest_exit_reason", "")),
+        },
+        "pumpfun": {
+            "route_type": str(summary_data.get("pumpfun_route_state", {}).get("route_type", "UNSUPPORTED")),
+            "can_buy": bool(summary_data.get("pumpfun_route_state", {}).get("buy_route_available", False)),
+            "can_sell": bool(summary_data.get("pumpfun_route_state", {}).get("sell_route_available", False)),
+            "reason": str(summary_data.get("pumpfun_route_state", {}).get("reason", "")),
+            "best_candidate": summary_data.get("pumpfun_candidates", {}).get("best_candidate", {}),
+            "candidates_found": int(len(summary_data.get("pumpfun_candidates", {}).get("candidates", []) or [])),
+            "rejected_count": int(len(summary_data.get("pumpfun_candidates", {}).get("rejected", []) or [])),
+            "native_executor": summary_data.get("pumpfun_native_executor", {}),
         },
         "ai": {
             "updated_at": str(summary_data.get("ai_decision_trace", {}).get("updated_at", "")),
@@ -1319,6 +1350,9 @@ def _build_control_plane_payload() -> Dict[str, Any]:
             "solana_trending": summary_data.get("solana_trending_candidates", {}),
             "positions": summary_data.get("web3_positions", []),
             "exit": summary_data.get("web3_exit", {}),
+            "pumpfun": summary_data.get("pumpfun_candidates", {}),
+            "pumpfun_route": summary_data.get("pumpfun_route_state", {}),
+            "pumpfun_native": summary_data.get("pumpfun_native_executor", {}),
         },
         "gates": gates,
         "runtime": runtime,
@@ -1331,6 +1365,16 @@ def _build_control_plane_payload() -> Dict[str, Any]:
             "rejected_count": int(summary_data.get("web3_opportunities", {}).get("meme_hunter", {}).get("rejected_count", 0) or 0),
             "latest_update": str(summary_data.get("web3_opportunities", {}).get("meme_hunter", {}).get("latest_update", "")),
             "sources": summary_data.get("web3_opportunities", {}).get("meme_hunter", {}).get("sources", []),
+        },
+        "pumpfun": {
+            "route_type": str(summary_data.get("pumpfun_route_state", {}).get("route_type", "UNSUPPORTED")),
+            "can_buy": bool(summary_data.get("pumpfun_route_state", {}).get("buy_route_available", False)),
+            "can_sell": bool(summary_data.get("pumpfun_route_state", {}).get("sell_route_available", False)),
+            "reason": str(summary_data.get("pumpfun_route_state", {}).get("reason", "")),
+            "best_candidate": summary_data.get("pumpfun_candidates", {}).get("best_candidate", {}),
+            "candidates_found": int(len(summary_data.get("pumpfun_candidates", {}).get("candidates", []) or [])),
+            "rejected_count": int(len(summary_data.get("pumpfun_candidates", {}).get("rejected", []) or [])),
+            "native_executor": summary_data.get("pumpfun_native_executor", {}),
         },
         "recent_decisions": decisions,
         "decisions": decisions,

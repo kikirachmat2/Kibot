@@ -609,6 +609,15 @@ function render(data) {
   const memeBest = memeHunter.best_candidate || web3.solana_trending?.best_candidate || {};
   setT('meme-best-candidate', memeBest?.symbol ? `${memeBest.symbol} ${memeBest.change_24h_pct != null ? pct(memeBest.change_24h_pct) : ''}`.trim() : '—');
   setT('meme-reason', memeBest?.reason || (memeHunter.enabled ? `${memeHunter.candidates_found || 0} scanned` : 'disabled'));
+  const pumpfun = web3.pumpfun || {};
+  const pumpfunRoute = web3.pumpfun_route || {};
+  const pumpfunNative = web3.pumpfun_native || {};
+  const pumpfunBest = pumpfun.best_candidate || {};
+  setT('pumpfun-route-type', pumpfun.route_type || pumpfunRoute.route_type || '—');
+  setT('pumpfun-buy-sell', `${pumpfun.can_buy ? 'BUY' : 'NO BUY'} / ${pumpfun.can_sell ? 'SELL' : 'NO SELL'}`);
+  setT('pumpfun-reason', pumpfun.reason || pumpfunRoute.reason || '—');
+  setT('pumpfun-best-candidate', pumpfunBest?.symbol ? `${pumpfunBest.symbol} ${pumpfunBest.route_type ? `(${pumpfunBest.route_type})` : ''}`.trim() : '—');
+  setT('pumpfun-native-status', pumpfunNative.status ? `${pumpfunNative.status}${pumpfunNative.reason ? ` · ${pumpfunNative.reason}` : ''}` : '—');
   setT('web3-openpos', Array.isArray(web3.positions) ? String(web3.positions.length) : '0');
   const exitState = web3.exit || {};
   setT('web3-exit-status', exitState.status || '—');
@@ -718,12 +727,17 @@ function ensureAgentCardsCreated() {
         <span id="indodax-shadow-status">WAIT</span>
         <span id="risk-remaining-status" style="display:none"></span>
       `;
-    } else if (agentId === 'polymarket') {
-      metricHtml = `
+  } else if (agentId === 'polymarket') {
+    metricHtml = `
         <span id="polymarket-metric">—</span>
         <span id="poly-metric" style="display:none"></span>
       `;
-    }
+  } else if (agentId === 'phantom') {
+    metricHtml = `
+        <span id="phantom-metric">—</span>
+        <span id="phantom-route-metric" style="display:none"></span>
+      `;
+  }
 
     card.innerHTML = `
       <div class="agent-avatar av--${meta.color}">${meta.letter}</div>

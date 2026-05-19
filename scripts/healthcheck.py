@@ -551,6 +551,20 @@ def check_json_states(state_dir):
                             logger.error("❌ CRITICAL STATE ERROR: web3_positions.json exists but web3_exit_state.json is missing.")
                             safe_exit(21, "web3_positions.json exists but web3_exit_state.json is missing.")
 
+                pumpfun_route = Path(state_dir) / "pumpfun_route_state.json"
+                if pumpfun_route.exists():
+                    try:
+                        pump_state = json.loads(pumpfun_route.read_text())
+                    except Exception as exc:
+                        logger.error(f"❌ CRITICAL STATE ERROR: pumpfun_route_state.json is invalid JSON: {exc}")
+                        safe_exit(23, f"pumpfun_route_state.json is invalid JSON: {exc}")
+                    if isinstance(pump_state, dict):
+                        required_keys = {"updated_at", "mint", "route_type", "buy_route_available", "sell_route_available", "jupiter_quote", "pumpfun_curve", "reason"}
+                        missing_keys = required_keys - set(pump_state.keys())
+                        if missing_keys:
+                            logger.error(f"❌ CRITICAL STATE ERROR: pumpfun_route_state.json is missing required schema keys: {missing_keys}")
+                            safe_exit(23, f"pumpfun_route_state.json is missing required schema keys: {missing_keys}")
+
             if state_file == "ai_decision_trace.json":
                 required_keys = {"updated_at", "objective", "market_summary", "best_action", "venue", "reason", "confidence", "risk_status", "next_check_seconds"}
                 missing_keys = required_keys - set(data.keys()) if isinstance(data, dict) else required_keys

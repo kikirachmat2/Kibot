@@ -85,20 +85,24 @@ class Web3OpportunityScanner:
 
     async def scan(self) -> Dict[str, Any]:
         from Core.Intelligence.phantom_opportunity_scout import PhantomOpportunityScout
+        from Core.Web3.pumpfun_scanner import PumpfunScanner
         from Core.Web3.solana_trending_scanner import SolanaTrendingScanner
         scout = PhantomOpportunityScout()
         meme_scanner = SolanaTrendingScanner()
+        pumpfun_scanner = PumpfunScanner()
         sol = {"ok": False, "reason": "not_run"}
         base = {"ok": False, "reason": "not_run"}
         best = []
         rejected = []
         meme_state: Dict[str, Any] = self._blank_state()["meme_hunter"]
         meme_best: Dict[str, Any] = {}
+        pumpfun_state: Dict[str, Any] = {}
 
         try:
             sol = await self._solana_health()
             base = await self._base_health()
             meme_state = await meme_scanner.scan()
+            pumpfun_state = await pumpfun_scanner.scan()
             meme_best = meme_state.get("best_candidate", {}) if isinstance(meme_state, dict) else {}
 
             try:
@@ -120,6 +124,32 @@ class Web3OpportunityScanner:
                 })
             except Exception as e:
                 rejected.append({"route": "solana", "reason": f"defi scout failed: {e}"})
+
+            pump_best = pumpfun_state.get("best_candidate", {}) if isinstance(pumpfun_state, dict) else {}
+            if pump_best:
+                pump_decision = {
+                    "route": "solana",
+                    "asset": pump_best.get("symbol") or pump_best.get("mint") or "pumpfun_candidate",
+                    "ev_pct": float(pump_best.get("ev_pct", 0) or 0),
+                    "safety_score": float(pump_best.get("safety_score", 0) or 0),
+                    "quote_ok": bool(pump_best.get("quote_ok", False)),
+                    "liquidity_ok": float(pump_best.get("liquidity_usd", 0) or 0) >= float(os.getenv("WEB3_MEME_MIN_LIQUIDITY_USD", "10000") or 10000),
+                    "slippage_pct": float(pump_best.get("slippage_pct", 0) or 0),
+                    "max_trade_idr": int(pump_best.get("max_trade_idr", 0) or 0),
+                    "decision": str(pump_best.get("decision") or "WATCH"),
+                    "reason": str(pump_best.get("reason") or ""),
+                    "category": "pumpfun",
+                    "candidate": pump_best,
+                }
+                if pump_decision["decision"] == "APPROVE":
+                    best.insert(0, pump_decision)
+                else:
+                    rejected.append({
+                        "route": "solana",
+                        "reason": pump_decision["reason"],
+                        "asset": pump_decision["asset"],
+                        "category": "pumpfun",
+                    })
 
             if meme_best:
                 meme_decision = {
@@ -166,6 +196,13 @@ class Web3OpportunityScanner:
                 "rejected_count": len(meme_state.get("rejected", []) if isinstance(meme_state, dict) else []),
                 "sources": meme_state.get("source", ["dexscreener", "jupiter"]) if isinstance(meme_state, dict) else ["dexscreener", "jupiter"],
                 "latest_update": meme_state.get("updated_at", "") if isinstance(meme_state, dict) else "",
+            },
+            "pumpfun": {
+                "updated_at": pumpfun_state.get("updated_at", "") if isinstance(pumpfun_state, dict) else "",
+                "best_candidate": pumpfun_state.get("best_candidate", {}) if isinstance(pumpfun_state, dict) else {},
+                "candidates_found": len(pumpfun_state.get("candidates", []) if isinstance(pumpfun_state, dict) else []),
+                "rejected_count": len(pumpfun_state.get("rejected", []) if isinstance(pumpfun_state, dict) else []),
+                "routes": pumpfun_state.get("routes", {}) if isinstance(pumpfun_state, dict) else {},
             },
         }
         self._save_state(state)
