@@ -440,6 +440,13 @@ class ScannerEngine:
         if self.web3_scanner and (started_at - self._last_web3_scan >= self._web3_scan_interval_s):
             self._last_web3_scan = started_at
             try:
+                try:
+                    from Core.Support.ki_config import STATE_DIR
+                    web3_state = Path(STATE_DIR) / "web3_opportunities.json"
+                    if web3_state.exists():
+                        web3_state.touch()
+                except Exception as _touch_err:
+                    logger.debug(f"[Scanner] web3 heartbeat touch skipped: {_touch_err}")
                 await self.web3_scanner.scan()
             except Exception as _web3_err:
                 logger.debug(f"[Scanner] web3 opportunity scan skipped: {_web3_err}")
