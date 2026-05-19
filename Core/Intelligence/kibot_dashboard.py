@@ -289,6 +289,10 @@ def _load_web3_positions() -> List[Dict[str, Any]]:
     positions = _read_json(STATE / "web3_positions.json", [])
     return positions if isinstance(positions, list) else []
 
+
+def _load_web3_exit_state() -> Dict[str, Any]:
+    return _read_json(STATE / "web3_exit_state.json", {})
+
 def _build_portfolio(telemetry: Dict[str, Any]) -> Dict[str, Any]:
     portfolio = telemetry.get("portfolio") if isinstance(telemetry, dict) else {}
     portfolio = portfolio if isinstance(portfolio, dict) else {}
@@ -750,6 +754,7 @@ def _build_summary() -> Dict[str, Any]:
     summary["scanner_candidates"] = _read_json(STATE / "scanner_candidates.json", {})
     summary["web3_opportunities"] = _load_web3_state()
     summary["web3_positions"] = _load_web3_positions()
+    summary["web3_exit"] = _load_web3_exit_state()
     try:
         from Core.Treasury.phantom_multichain_controller import PhantomMultichainController
 
@@ -821,6 +826,7 @@ def _build_summary() -> Dict[str, Any]:
         "routes": summary.get("phantom_multichain", {}).get("registry", {}),
         "opportunities": summary.get("web3_opportunities", {}),
         "positions": summary.get("web3_positions", []),
+        "exit": summary.get("web3_exit", {}),
     }
 
     summary["events"] = _build_events(summary)
@@ -1028,6 +1034,15 @@ def _build_control_plane_payload() -> Dict[str, Any]:
             "routes": summary_data.get("phantom_multichain", {}).get("registry", {}),
             "opportunities": summary_data.get("web3_opportunities", {}),
             "positions": summary_data.get("web3_positions", []),
+            "exit": summary_data.get("web3_exit", {}),
+        },
+        "web3_exit": {
+            "status": str(summary_data.get("web3_exit", {}).get("status", "STALE" if summary_data.get("web3_positions") else "OK")),
+            "positions_open": int(summary_data.get("web3_exit", {}).get("positions_open", 0) or 0),
+            "positions_closed": int(summary_data.get("web3_exit", {}).get("positions_closed", 0) or 0),
+            "positions_blocked": int(summary_data.get("web3_exit", {}).get("positions_blocked", 0) or 0),
+            "last_updated": str(summary_data.get("web3_exit", {}).get("updated_at", "")),
+            "latest_exit_reason": str(summary_data.get("web3_exit", {}).get("latest_exit_reason", "")),
         },
         "polymarket": {
             "venue": "Polymarket",

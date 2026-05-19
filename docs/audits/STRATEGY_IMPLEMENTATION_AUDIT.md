@@ -20,12 +20,12 @@ Generated to separate strategy files that are runtime-connected from those that 
 | Web3 safety checker | `Core/Web3/web3_safety_checker.py` | Yes | Yes | Yes | Yes | CONNECTED |
 | Web3 quote router | `Core/Web3/web3_quote_router.py` | Yes | Yes | Yes | Yes | CONNECTED |
 | Web3 executor guard | `Core/Web3/web3_executor_guard.py` | Yes | Yes | Yes | Yes | CONNECTED |
-| Web3 exit daemon | `Core/Web3/web3_exit_daemon.py` | Yes | No | No | No | IMPLEMENTED_BUT_NOT_CONNECTED |
+| Web3 exit daemon | `Core/Web3/web3_exit_daemon.py` | Yes | Yes | Yes | Yes | CONNECTED |
 | Polymarket executor | `Core/Executors/Phantom/polymarket_executor.py` | Yes | Yes | Yes | Yes | CONNECTED |
 | Dashboard control-plane | `Core/Intelligence/kibot_dashboard.py`, `Core/Intelligence/dashboard/` | Yes | Yes | Yes | Yes | CONNECTED |
 
 ## Notes
 
 - Strategy files in `Core/Intelligence/strategy/` are used both as runtime policy references and dashboard sources.
-- `web3_exit_daemon.py` exists as a safe exit loop, but it still needs a dedicated service activation and runtime integration before it is considered fully connected.
+- `web3_exit_daemon.py` is now connected through `kibot-web3-exit.service`, the dashboard control-plane, and dedicated tests.
 - This audit intentionally marks file-only or dashboard-only surfaces differently from runtime gates.

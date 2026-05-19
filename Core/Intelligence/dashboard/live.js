@@ -595,6 +595,9 @@ function render(data) {
   const rej = (web3.opportunities?.rejected || [])[0];
   setT('web3-rejected', rej ? String(rej.reason || '—').slice(0, 36) : '—');
   setT('web3-openpos', Array.isArray(web3.positions) ? String(web3.positions.length) : '0');
+  const exitState = web3.exit || {};
+  setT('web3-exit-status', exitState.status || '—');
+  setT('web3-exit-reason', exitState.latest_exit_reason || '—');
 
   // Gate stack
   function setGate(key, badgeId, scoreId) {

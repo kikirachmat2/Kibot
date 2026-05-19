@@ -4,7 +4,7 @@ from pathlib import Path
 from Core.Web3.web3_exit_daemon import Web3ExitDaemon
 
 
-def test_web3_exit_daemon_closes_stale_position(tmp_path, monkeypatch):
+def test_web3_exit_daemon_recommends_stale_position_exit(tmp_path, monkeypatch):
     state_dir = tmp_path / "state"
     state_dir.mkdir()
     positions_file = state_dir / "web3_positions.json"
@@ -29,7 +29,7 @@ def test_web3_exit_daemon_closes_stale_position(tmp_path, monkeypatch):
     daemon._refresh_quote = lambda position: {"quote_ok": False, "expected_out": 0, "reason": "stale"}  # type: ignore[attr-defined]
     state = daemon.tick()
 
-    assert state["positions_closed"] == 1
+    assert state["positions_recommended"] == 1
     saved = json.loads(positions_file.read_text())
-    assert saved[0]["status"] == "CLOSED"
-
+    assert saved[0]["status"] == "EXIT_RECOMMENDED"
+    assert saved[0]["exit_reason"] == "stale"
