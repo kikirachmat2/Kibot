@@ -23,7 +23,7 @@ from typing import Any, Dict, List, Optional
 class SignalGrade(str, Enum):
     STRONG = "STRONG"       # All five dims green — full position allowed
     ACCEPTABLE = "ACCEPTABLE"  # 3-4 dims green — reduced position allowed
-    MARGINAL = "MARGINAL"   # 2 dims green — paper-only / skip
+    MARGINAL = "MARGINAL"   # 2 dims green — live-skip / wait
     REJECT = "REJECT"       # <2 dims green — hard block
 
 

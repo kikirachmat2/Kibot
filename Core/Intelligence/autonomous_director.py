@@ -13,8 +13,7 @@ with verdicts and recommended position sizes, then hands off to the Executor.
 
 Live trading gate:
   Candidates with APPROVED verdict only reach the Executor when:
-    KIBOT_LIVE_TRADING_ENABLED=true  AND
-    KIBOT_CANARY_LIVE_ENABLED=true   (for canary pathway)
+    KIBOT_LIVE_TRADING_ENABLED=true  and the live gate is open.
 """
 
 from __future__ import annotations
@@ -56,7 +55,7 @@ class AutonomousDirector:
     ) -> Dict[str, Any]:
         """Full evaluation pipeline for one scanner cycle.
 
-        Returns a summary dict with approved, paper, rejected lists
+        Returns a summary dict with approved, shadow, rejected lists
         and a cycle_stats block.
         """
         regime = (market_regime or self.market_regime).upper()
@@ -88,7 +87,7 @@ class AutonomousDirector:
         )
 
         approved: List[Dict[str, Any]] = []
-        paper: List[Dict[str, Any]] = []
+        shadow: List[Dict[str, Any]] = []
         rejected: List[Dict[str, Any]] = []
 
         for c in candidates:
@@ -96,7 +95,7 @@ class AutonomousDirector:
             if verdict == ScorecardVerdict.APPROVED.value:
                 approved.append(c)
             elif verdict == ScorecardVerdict.PAPER_ONLY.value:
-                paper.append(c)
+                shadow.append(c)
             else:
                 rejected.append(c)
 
@@ -105,30 +104,30 @@ class AutonomousDirector:
         if _LIVE_ENABLED and _CANARY_ENABLED:
             live_forward = approved[:MAX_APPROVED_PER_CYCLE]
             log.info(
-                "[Director] LIVE+CANARY active — forwarding %d approved candidates to Executor",
+                "[Director] LIVE gate active — forwarding %d approved candidates to Executor",
                 len(live_forward),
             )
         elif approved:
             log.info(
-                "[Director] %d candidates APPROVED but live gate OFF — paper mode",
+                "[Director] %d candidates APPROVED but live gate OFF — shadow mode",
                 len(approved),
             )
 
         elapsed_ms = round((time.time() - start) * 1000, 1)
         return {
             "approved": approved,
-            "paper": paper,
+            "shadow": shadow,
             "rejected": rejected,
             "live_forward": live_forward,
             "cycle_stats": {
                 "total_evaluated": len(candidates),
                 "approved_count": len(approved),
-                "paper_count": len(paper),
+                "shadow_count": len(shadow),
                 "rejected_count": len(rejected),
                 "live_forward_count": len(live_forward),
                 "market_regime": regime,
                 "live_trading_enabled": _LIVE_ENABLED,
-                "canary_enabled": _CANARY_ENABLED,
+                "live_gate_open": bool(_LIVE_ENABLED and _CANARY_ENABLED),
                 "elapsed_ms": elapsed_ms,
                 "evaluated_at": start,
             },
@@ -142,18 +141,18 @@ class AutonomousDirector:
     def _empty_result(regime: str, start: float) -> Dict[str, Any]:
         return {
             "approved": [],
-            "paper": [],
+            "shadow": [],
             "rejected": [],
             "live_forward": [],
             "cycle_stats": {
                 "total_evaluated": 0,
                 "approved_count": 0,
-                "paper_count": 0,
+                "shadow_count": 0,
                 "rejected_count": 0,
                 "live_forward_count": 0,
                 "market_regime": regime,
                 "live_trading_enabled": _LIVE_ENABLED,
-                "canary_enabled": _CANARY_ENABLED,
+                "live_gate_open": bool(_LIVE_ENABLED and _CANARY_ENABLED),
                 "elapsed_ms": round((time.time() - start) * 1000, 1),
                 "evaluated_at": start,
             },

@@ -117,7 +117,7 @@ class IndodaxExecutor:
                     if data.get("date") == today:
                         return data
             except Exception as e:
-                logger.error(f"Failed to load canary stats: {e}")
+                logger.error(f"Failed to load legacy guard stats: {e}")
         return {"date": today, "trade_count": 0, "daily_loss_idr": 0.0}
 
     def _save_canary_stats(self, stats: dict):
@@ -127,7 +127,7 @@ class IndodaxExecutor:
             with open(stats_file, "w") as f:
                 json.dump(stats, f, indent=4)
         except Exception as e:
-            logger.error(f"Failed to save canary stats: {e}")
+            logger.error(f"Failed to save legacy guard stats: {e}")
 
 
     async def start(self):
@@ -806,7 +806,7 @@ class IndodaxExecutor:
                     if starting_equity > 0:
                         anchor = self.risk._save_equity_anchor(starting_equity)
                 except Exception as e:
-                    logger.error(f"Failed to fetch Indodax balance for canary check: {e}")
+                    logger.error(f"Failed to fetch Indodax balance for guarded live check: {e}")
                     starting_equity = starting_equity or 184000.0
 
             effective_daily_loss_cap_idr = min(
@@ -822,7 +822,7 @@ class IndodaxExecutor:
                 )
                 return
 
-        # Regular raw signal check when not under strict canary override or if RAW signals are allowed
+        # Regular raw signal check when not under strict live guard or if RAW signals are allowed
         if not KiConfig.CANARY_LIVE_ENABLED and signal.get("type") != "COUNCIL_MANDATE" and os.getenv("KIBOT_EXECUTOR_ACCEPT_RAW_SIGNALS", "0").strip().lower() not in {"1", "true", "yes", "on"}:
             logger.debug(f"🛡️ Raw scanner signal ignored; waiting for Council mandate: {symbol}")
             return

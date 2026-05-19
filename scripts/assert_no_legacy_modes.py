@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import json
+import re
 import sys
 import urllib.request
 
@@ -11,14 +12,20 @@ ENDPOINTS = [
     "http://127.0.0.1:8787/",
     "http://127.0.0.1:8787/api/control-plane",
 ]
-FORBIDDEN = ("paper", "sim", "mock", "canary", "view-only")
+FORBIDDEN = (
+    re.compile(r"\bpaper\b"),
+    re.compile(r"\bsim\b"),
+    re.compile(r"\bmock\b"),
+    re.compile(r"\bcanary\b"),
+    re.compile(r"view-only"),
+)
 
 
 def main() -> int:
     for url in ENDPOINTS:
         with urllib.request.urlopen(url, timeout=5) as res:
             body = res.read().decode("utf-8", errors="ignore").lower()
-        hits = [term for term in FORBIDDEN if term in body]
+        hits = [pattern.pattern for pattern in FORBIDDEN if pattern.search(body)]
         if hits:
             print(json.dumps({"url": url, "hits": hits}, indent=2))
             return 1

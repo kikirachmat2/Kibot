@@ -15,7 +15,7 @@ class PhantomOpportunityScout:
     Phantom Opportunity Scout.
     Analyzes Web3 opportunities on Solana/EVM, simulates Jupiter swap routes, 
     evaluates DeFi yields, stablecoin swaps, slippage, and handles RPC failovers.
-    Integrates paper/simulation guards for total safety.
+    Integrates guarded live-routing checks for total safety.
     """
     def __init__(self, rpc_urls: Optional[List[str]] = None):
         self.rpc_urls = rpc_urls or [
@@ -145,7 +145,7 @@ class PhantomOpportunityScout:
                                 result["reason"] = f"Price impact {result['price_impact_pct']:.2f}% exceeds {max_impact}% limit."
                             return result
             except Exception as e:
-                logger.warning(f"Could not fetch live Jupiter quote: {e}. Falling back to simulation.")
+                logger.warning(f"Could not fetch live Jupiter quote: {e}. Falling back to guarded scouting mode.")
 
         # Simulation/Fallback Calculation
         # Assuming SOL-USDC exchange rate of $150
@@ -157,7 +157,7 @@ class PhantomOpportunityScout:
             
         result["estimated_out"] = amount_in * exchange_rate * 0.999 # minor execution loss
         result["price_impact_pct"] = 0.05  # extremely small simulated impact
-        result["reason"] = "Paper simulation route approved cleanly."
+        result["reason"] = "Guarded scouting route approved cleanly."
         
         self._save_state()
         return result

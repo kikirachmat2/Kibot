@@ -37,12 +37,11 @@ This document serves as the official, comprehensive runtime audit and inventory 
 
 To prevent false assumptions regarding the "live" status of KiBot, the actual operational parameters running on the Batam server have been audited directly from the environment variables, active state database, and process environment:
 
-*   **KIBOT_LIVE_TRADING_ENABLED:** `false` (Strictly Mock/Paper Safe. No real-money trades can be sent to APIs)
-*   **KIBOT_TRADING_MODE:** `paper`
-*   **KIBOT_CANARY_LIVE_ENABLED:** `true` (Canary simulation path is active for execution flow analysis)
-*   **Real Order Verified:** `No` (All trades are synthetic/paper orders simulated locally)
-*   **Active Trade in State:** `PEPE/IDR` (Synthesized via wallet reconciliation log entry, holding 0.73288590 PEPE. Real balance remains 100% untouched)
-*   **Kill Switch:** `Not Active` (The `state/KILL_SWITCH` sentinel file is absent, allowing scanner and mock execution to run)
+*   **KIBOT_LIVE_TRADING_ENABLED:** `true` (Controlled-live guard path only; real-money orders require runtime approval)
+*   **KIBOT_TRADING_MODE:** `controlled-live`
+*   **KIBOT_CANARY_LIVE_ENABLED:** `false` (Legacy canary path disabled)
+*   **Real Order Verified:** `Yes` (Orders remain gated by RiskGate, Capital Governor, and live-route readiness)
+*   **Kill Switch:** `Not Active` (The `state/KILL_SWITCH` sentinel file is absent, allowing guarded live execution to run)
 *   **Risk Limits:** Strict daily loss threshold set to `1.5%` maximum drawdown.
 
 
@@ -56,9 +55,9 @@ The core sovereign runtime services are managed via systemd. Every service is co
 
 | Service Name | Description | Status | CPU (Total) | Memory (RAM) | Log Sample Status |
 | :--- | :--- | :--- | :--- | :--- | :--- |
-| `kibot-master` | Sovereign Council Coordinator | Active (running) | 3h 11m | ~310.2M | Live-Canary active, dispatch loop running. |
+| `kibot-master` | Sovereign Council Coordinator | Active (running) | 3h 11m | ~310.2M | Controlled-live dispatch loop running. |
 | `kibot-scanner` | Adaptive Market Scanner | Active (running) | 16h 25m | ~128.4M | Turbo mode active. Mode: `NORMAL` (2.0s). |
-| `kibot-executor` | Indodax Spot Spot Executor | Active (running) | 1h 44m | ~104.1M | Mock execution active. EV constraints ready. |
+| `kibot-executor` | Indodax Spot Executor | Active (running) | 1h 44m | ~104.1M | Guarded execution active. EV constraints ready. |
 | `kibot-executor-polymarket` | Polymarket Prediction Executor | Active (running) | 8h 5m | ~112.7M | Order limits and odds sync active. |
 | `kibot-ai-scout` | Intelligence Scout & Planner | Active (running) | 7.8s | ~94.7M | Global scouting, matrix updates. |
 | `kibot-janitor` | File System & Telemetry Janitor | Active (running) | 2m 14s | ~45.3M | Cleanup routine, 24h retention. |

@@ -565,7 +565,7 @@ summary.venue-row::-webkit-details-marker { display: none; }
   border-radius: 99px;
   letter-spacing: .04em;
 }
-.badge--paper  { background: var(--blue-soft);   color: var(--blue);   border: 1px solid var(--blue-border); }
+.badge--shadow { background: var(--blue-soft);   color: var(--blue);   border: 1px solid var(--blue-border); }
 .badge--green  { background: var(--green-soft);  color: var(--green);  border: 1px solid var(--green-border); }
 .badge--red    { background: var(--red-soft);    color: var(--red);    border: 1px solid var(--red-border); }
 .badge--yellow { background: var(--yellow-soft); color: var(--yellow); border: 1px solid var(--yellow-border); }

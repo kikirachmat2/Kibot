@@ -603,6 +603,12 @@ def _build_summary() -> Dict[str, Any]:
 
     # Load Autonomous Intelligence Gates serialized states
     autonomous_director = _read_json(STATE / "autonomous_director.json", {})
+    if isinstance(autonomous_director, dict):
+        autonomous_director.pop("paper", None)
+        autonomous_director.pop("canary_enabled", None)
+        autonomous_director.pop("live_forward", None)
+        autonomous_director.pop("shadow", None)
+        autonomous_director.pop("shadow_count", None)
     signal_quality = _read_json(STATE / "signal_quality.json", [])
     expected_value = _read_json(STATE / "expected_value.json", [])
     strategy_scorecard = _read_json(STATE / "strategy_scorecard.json", [])

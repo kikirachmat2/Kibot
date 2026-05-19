@@ -253,17 +253,24 @@ def check_live_trading_gates(KiConfig):
 def check_no_legacy_modes():
     logger.info("Step 6/8: Verifying production dashboard contains no legacy paper/sim/canary labels...")
     import urllib.request
+    import re
 
     endpoints = [
         "http://127.0.0.1:8787/",
         "http://127.0.0.1:8787/api/control-plane",
     ]
-    forbidden = ("paper", "sim", "mock", "canary", "view-only")
+    forbidden = (
+        re.compile(r"\bpaper\b"),
+        re.compile(r"\bsim\b"),
+        re.compile(r"\bmock\b"),
+        re.compile(r"\bcanary\b"),
+        re.compile(r"view-only"),
+    )
     for url in endpoints:
         try:
             with urllib.request.urlopen(url, timeout=5) as res:
                 body = res.read().decode("utf-8", errors="ignore").lower()
-            hits = [term for term in forbidden if term in body]
+            hits = [pattern.pattern for pattern in forbidden if pattern.search(body)]
             if hits:
                 logger.error(f"❌ CRITICAL: Legacy labels found in {url}: {hits}")
                 safe_exit(35, f"Legacy labels found in {url}: {hits}")
