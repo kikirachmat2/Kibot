@@ -4,6 +4,7 @@ import json
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict
+import asyncio
 
 STATE_DIR = Path(__file__).resolve().parent.parent.parent / "state"
 STATE_FILE = STATE_DIR / "autonomous_trading_brain.json"
@@ -108,10 +109,18 @@ def build_autonomous_trading_brain() -> Dict[str, Any]:
         "fatal_blockers": fatal_blockers,
         "advisory_signals": advisory_signals,
         "reason": reason,
-        "next_action": "ENTER" if selected_candidate else "SCAN_MORE",
+        "next_action": "ENTER" if selected_candidate and sizing.get("approved", False) else "SCAN_MORE",
         "next_check_seconds": 5,
     })
 
 
 if __name__ == "__main__":
-    print(json.dumps(build_autonomous_trading_brain(), indent=2, ensure_ascii=False))
+    async def _run() -> None:
+        while True:
+            try:
+                build_autonomous_trading_brain()
+            except Exception:
+                pass
+            await asyncio.sleep(5)
+
+    asyncio.run(_run())
