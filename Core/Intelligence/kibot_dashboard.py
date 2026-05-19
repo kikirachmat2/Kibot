@@ -280,6 +280,15 @@ def _load_phantom_state() -> Dict[str, Any]:
 def _load_mock_state() -> Dict[str, Any]:
     return _read_json(STATE / "mock_portfolio.json", {})
 
+
+def _load_web3_state() -> Dict[str, Any]:
+    return _read_json(STATE / "web3_opportunities.json", {})
+
+
+def _load_web3_positions() -> List[Dict[str, Any]]:
+    positions = _read_json(STATE / "web3_positions.json", [])
+    return positions if isinstance(positions, list) else []
+
 def _build_portfolio(telemetry: Dict[str, Any]) -> Dict[str, Any]:
     portfolio = telemetry.get("portfolio") if isinstance(telemetry, dict) else {}
     portfolio = portfolio if isinstance(portfolio, dict) else {}
@@ -739,6 +748,8 @@ def _build_summary() -> Dict[str, Any]:
     summary["market_heatmap"] = _read_json(STATE / "market_heatmap.json", {})
     summary["green_probability"] = _read_json(STATE / "green_probability.json", {})
     summary["scanner_candidates"] = _read_json(STATE / "scanner_candidates.json", {})
+    summary["web3_opportunities"] = _load_web3_state()
+    summary["web3_positions"] = _load_web3_positions()
     try:
         from Core.Treasury.phantom_multichain_controller import PhantomMultichainController
 
@@ -804,6 +815,12 @@ def _build_summary() -> Dict[str, Any]:
         "required_trade_quality": _daily_context_dict.get("required_trade_quality"),
         "market_breadth": _heatmap_dict.get("market_breadth"),
         "green_probability_pct": _green_prob_dict.get("estimated_green_probability_pct"),
+    }
+
+    summary["web3"] = {
+        "routes": summary.get("phantom_multichain", {}).get("registry", {}),
+        "opportunities": summary.get("web3_opportunities", {}),
+        "positions": summary.get("web3_positions", []),
     }
 
     summary["events"] = _build_events(summary)
@@ -1006,6 +1023,11 @@ def _build_control_plane_payload() -> Dict[str, Any]:
             "status_detail": pt.get("status"),
             "reconciliation": pt.get("reconciliation", {}),
             "chains": pt.get("chains", {}),
+        },
+        "web3": {
+            "routes": summary.get("phantom_multichain", {}).get("registry", {}),
+            "opportunities": summary.get("web3_opportunities", {}),
+            "positions": summary.get("web3_positions", []),
         },
         "polymarket": {
             "venue": "Polymarket",

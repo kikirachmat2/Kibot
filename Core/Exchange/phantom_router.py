@@ -4,6 +4,7 @@ import os
 import asyncio
 import base64
 import json
+import time
 
 import aiohttp
 from Core.Support.ki_config import KiConfig
@@ -56,6 +57,22 @@ class PhantomRouter:
     async def _close(self):
         if self.client:
             await self.client.close()
+
+    def _live_web3_gate_context(self) -> Dict[str, Any]:
+        try:
+            from Core.Treasury.phantom_treasury import PhantomTreasury
+            from Core.Treasury.phantom_multichain_controller import PhantomMultichainController
+            treasury = PhantomTreasury(self)
+            controller = PhantomMultichainController()
+            route = controller.get_route("solana")
+            return {
+                "treasury": treasury.get_summary(),
+                "route": route,
+                "controller": controller,
+            }
+        except Exception as e:
+            logger.debug("Web3 gate context unavailable: %s", e)
+            return {"treasury": {}, "route": {"status": "SCOUTING"}, "controller": None}
 
     async def get_balances(self) -> Dict[str, float]:
         """
@@ -125,6 +142,38 @@ class PhantomRouter:
             logger.warning(f"⚠️ [SIMULATION] Swap simulated successfully (Paper Mode / Real Swap OFF): {amount_in} of {token_in} -> {token_out} on {chain}")
             return True
 
+        gate_ctx = self._live_web3_gate_context()
+        from Core.Web3.web3_quote_router import Web3QuoteRouter
+        from Core.Web3.web3_safety_checker import Web3SafetyChecker
+        from Core.Web3.web3_executor_guard import Web3ExecutorGuard
+        quote_router = Web3QuoteRouter()
+        safety_checker = Web3SafetyChecker()
+        executor_guard = Web3ExecutorGuard()
+        quote = await quote_router.quote("solana", token_in, token_out, int(amount_in))
+        safety = safety_checker.evaluate({
+            "ev": scout_res.get("estimated_out", 0.0),
+            "liquidity": scout_res.get("liquidity", 0.0),
+            "volume": scout_res.get("volume", 0.0),
+            "spread_pct": scout_res.get("price_impact_pct", 0.0),
+            "slippage_pct": scout_res.get("price_impact_pct", 0.0),
+            "token_type": "solana",
+        })
+        approval = executor_guard.approve(
+            treasury=gate_ctx.get("treasury", {}),
+            route={"network": "solana", "allowed": gate_ctx.get("route", {}).get("status") == "LIVE_READY", "reason": gate_ctx.get("route", {}).get("status", "SCOUTING")},
+            safety=safety,
+            quote=quote,
+            budget_idr=float(os.getenv("WEB3_SOLANA_SWAP_BUCKET_CAP_IDR", "25000") or 25000),
+            stop_loss_pct=float(os.getenv("WEB3_DEFAULT_STOP_LOSS_PCT", "1.5") or 1.5),
+            take_profit_pct=float(os.getenv("WEB3_DEFAULT_TAKE_PROFIT_PCT", "2.0") or 2.0),
+            trailing_stop_pct=float(os.getenv("WEB3_DEFAULT_TRAILING_STOP_PCT", "0.5") or 0.5),
+            time_stop_seconds=int(float(os.getenv("WEB3_DEFAULT_TIME_STOP_SECONDS", "3600") or 3600)),
+            spend_reserve=False,
+        )
+        if not approval.get("allowed"):
+            logger.warning("🛡️ Web3 executor guard blocked Solana swap: %s", approval.get("reason"))
+            return False
+
 
         if not self.keypair:
             logger.error("❌ Cannot swap: No keypair loaded.")
@@ -175,6 +224,22 @@ class PhantomRouter:
             opts = {"skip_preflight": False, "max_retries": 3}
             result = await self.client.send_raw_transaction(bytes(tx), opts=opts)
             logger.info(f"✅ Swap Transaction Broadcasted: {result.value}")
+            try:
+                executor_guard.persist_position({
+                    "id": f"solana-{int(time.time())}",
+                    "network": "solana",
+                    "asset": token_out,
+                    "entry_value_idr": approval.get("max_trade_idr", 0),
+                    "amount": amount_in,
+                    "entry_quote": quote,
+                    "stop_loss_pct": float(os.getenv("WEB3_DEFAULT_STOP_LOSS_PCT", "1.5") or 1.5),
+                    "take_profit_pct": float(os.getenv("WEB3_DEFAULT_TAKE_PROFIT_PCT", "2.0") or 2.0),
+                    "trailing_stop_pct": float(os.getenv("WEB3_DEFAULT_TRAILING_STOP_PCT", "0.5") or 0.5),
+                    "time_stop_seconds": int(float(os.getenv("WEB3_DEFAULT_TIME_STOP_SECONDS", "3600") or 3600)),
+                    "status": "OPEN",
+                })
+            except Exception as e:
+                logger.debug("Failed to persist Web3 position: %s", e)
             return True
 
         except Exception as e:
@@ -191,6 +256,13 @@ class PhantomRouter:
             logger.warning(f"⚠️ [SIMULATION] Polymarket trade simulated (Paper Mode / Polymarket Live OFF): {amount_usdc} USDC on {outcome} in {market_id}")
             return True
 
+        gate_ctx = self._live_web3_gate_context()
+        treasury = gate_ctx.get("treasury", {})
+        poly_bucket = float(treasury.get("buckets", {}).get("polymarket_idr", 0.0) or 0.0)
+        if gate_ctx.get("route", {}).get("status") != "LIVE_READY" or poly_bucket <= 0:
+            logger.warning("🛡️ Polymarket route blocked until gate is live-ready and bucket > 0.")
+            return False
+        
         try:
             logger.info(f"🔮 Polymarket: Betting {amount_usdc} USDC on {outcome} in {market_id}")
             return True
@@ -227,6 +299,38 @@ class PhantomRouter:
         if not KiConfig.LIVE_TRADING_ENABLED or not KiConfig.ENABLE_REAL_SWAP:
             logger.warning(f"⚠️ [SIMULATION] Meme snipe simulated successfully (Paper Mode / Real Swap OFF): {token_address} with {amount_sol} SOL")
             return True
+
+        gate_ctx = self._live_web3_gate_context()
+        from Core.Web3.web3_quote_router import Web3QuoteRouter
+        from Core.Web3.web3_safety_checker import Web3SafetyChecker
+        from Core.Web3.web3_executor_guard import Web3ExecutorGuard
+        quote_router = Web3QuoteRouter()
+        safety_checker = Web3SafetyChecker()
+        executor_guard = Web3ExecutorGuard()
+        quote = await quote_router.quote("solana", "So11111111111111111111111111111111111111112", token_address, int(amount_sol * 1e9))
+        safety = safety_checker.evaluate({
+            "ev": float(quote.get("expected_out", 0) or 0),
+            "liquidity": 1,
+            "volume": 1,
+            "spread_pct": float(quote.get("slippage_pct", 0) or 0),
+            "slippage_pct": float(quote.get("slippage_pct", 0) or 0),
+            "token_type": "solana",
+        })
+        approval = executor_guard.approve(
+            treasury=gate_ctx.get("treasury", {}),
+            route={"network": "solana", "allowed": gate_ctx.get("route", {}).get("status") == "LIVE_READY", "reason": gate_ctx.get("route", {}).get("status", "SCOUTING")},
+            safety=safety,
+            quote=quote,
+            budget_idr=float(os.getenv("WEB3_SOLANA_SWAP_BUCKET_CAP_IDR", "25000") or 25000),
+            stop_loss_pct=float(os.getenv("WEB3_DEFAULT_STOP_LOSS_PCT", "1.5") or 1.5),
+            take_profit_pct=float(os.getenv("WEB3_DEFAULT_TAKE_PROFIT_PCT", "2.0") or 2.0),
+            trailing_stop_pct=float(os.getenv("WEB3_DEFAULT_TRAILING_STOP_PCT", "0.5") or 0.5),
+            time_stop_seconds=int(float(os.getenv("WEB3_DEFAULT_TIME_STOP_SECONDS", "3600") or 3600)),
+            spend_reserve=False,
+        )
+        if not approval.get("allowed"):
+            logger.warning("🛡️ Web3 executor guard blocked Solana meme snipe: %s", approval.get("reason"))
+            return False
 
         try:
             logger.info(f"🔫 Sniping: Buying {token_address} with {amount_sol} SOL (Slippage: {slippage_bps} bps).")

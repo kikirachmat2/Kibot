@@ -583,6 +583,19 @@ function render(data) {
   setT('phantom-bucket-reserve', idr(ph.buckets?.reserve_idr || 0));
   setT('phantom-bucket-future-web3', idr(ph.buckets?.future_web3_idr || 0));
 
+  const web3 = data.web3 || {};
+  const routes = web3.routes || {};
+  setT('eq-web3', `${Object.keys(routes).length || 0} routes`);
+  setT('web3-solanastatus', routes.solana?.status || '—');
+  setT('web3-basestatus', routes.base?.status || '—');
+  setT('web3-polystatus', routes.polymarket?.status || '—');
+  setT('web3-futurestatus', routes.future_web3?.status || '—');
+  const bestOpp = (web3.opportunities?.best_opportunities || [])[0];
+  setT('web3-bestopp', bestOpp ? `${bestOpp.route}:${bestOpp.asset}` : '—');
+  const rej = (web3.opportunities?.rejected || [])[0];
+  setT('web3-rejected', rej ? String(rej.reason || '—').slice(0, 36) : '—');
+  setT('web3-openpos', Array.isArray(web3.positions) ? String(web3.positions.length) : '0');
+
   // Gate stack
   function setGate(key, badgeId, scoreId) {
     const g = gates[key] || {};
