@@ -45,6 +45,15 @@ def build_phantom_live_brain() -> Dict[str, Any]:
     targets = board.get("top_targets", []) if isinstance(board, dict) else []
     best = targets[0] if targets else {}
     balances = board.get("available_balances", {}) if isinstance(board, dict) else {}
+    treasury = {}
+    try:
+        treasury_path = Path(__file__).resolve().parent.parent.parent / "state" / "phantom_treasury.json"
+        if treasury_path.exists():
+            treasury = json.loads(treasury_path.read_text(encoding="utf-8"))
+    except Exception:
+        treasury = {}
+    base_idrx_balance = float(treasury.get("base_idrx_balance") or treasury.get("chains", {}).get("base", {}).get("normalized_idrx") or 0.0)
+    sol_balance = float(treasury.get("sol_balance") or treasury.get("chains", {}).get("solana", {}).get("sol_balance") or 0.0)
     deadline = DeadlineProfitEnforcer().evaluate_enforcer(0.0, 0.0, 999)
     try:
         if GOVERNOR_FILE.exists():
@@ -59,9 +68,13 @@ def build_phantom_live_brain() -> Dict[str, Any]:
     route = str(best.get("route") or "")
     recovery_mode = str(deadline.get("stage") or "").upper() in {"RECOVERY", "PRESSURE"}
     capital_action = "TRADE_ON_CURRENT_CHAIN" if best.get("executor_status") == "EXECUTABLE" else "SCAN_NEXT"
+    if base_idrx_balance > 0 and capital_action == "SCAN_NEXT":
+        capital_action = "TRADE_ON_CURRENT_CHAIN"
     if recovery_mode and capital_action == "SCAN_NEXT":
         capital_action = "SCAN_NEXT"
     decision = "ENTER" if best.get("recommended_action") == "ENTER" else "SCAN_NEXT"
+    if base_idrx_balance > 0 and not best:
+        decision = "ENTER"
     if recovery_mode and decision == "SCAN_NEXT" and best:
         decision = "WATCH"
     notes = []
@@ -85,12 +98,12 @@ def build_phantom_live_brain() -> Dict[str, Any]:
         "selected_candidate": best,
         "capital_action": capital_action,
         "decision": decision,
-        "size": {"amount_idr": int(best.get("volume_or_liquidity") or 0)},
-        "fatal_blocker": "",
+        "size": {"amount_idr": int(best.get("volume_or_liquidity") or base_idrx_balance or sol_balance or 0)},
+        "fatal_blocker": "" if best or base_idrx_balance > 0 or sol_balance > 0 else "no_tradable_phantom_balance",
         "advisory_notes": notes,
         "recovery_mode": recovery_mode,
         "deadline_stage": deadline.get("stage"),
-        "next_action": decision,
+        "next_action": "TRADE_ON_CURRENT_CHAIN" if base_idrx_balance > 0 and not best else decision,
         "next_check_seconds": 5,
     })
 
