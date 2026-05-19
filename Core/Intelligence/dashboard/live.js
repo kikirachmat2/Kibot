@@ -593,16 +593,19 @@ function render(data) {
   }
 
   // Right panel — Portfolio
-  setT('pi-equity', idr(port.combined_equity_idr || port.equity_idr || 0));
-  setT('pi-start-equity', idr(data.capital?.starting_equity_today_idr || data.capital?.start_total_equity_idr || data.capital?.starting_equity_idr || 0));
+  const equityNow = port.combined_equity_idr || port.equity_idr || data.capital?.live_current_total_equity_idr || data.capital?.current_total_equity_idr || 0;
+  const equityStart = data.capital?.starting_equity_today_idr || data.capital?.start_total_equity_idr || data.capital?.starting_equity_idr || 0;
+  setT('pi-equity', idr(equityNow));
+  setT('pi-start-equity', idr(equityStart));
   setT('pi-cash',   idr(port.idr_cash || 0));
   setT('pi-coin',   idr(port.coin_holdings_idr || 0));
   const realizedPnL = port.realized_pnl_idr ?? port.real_pnl_idr ?? port.daily_pnl_real_idr ?? 0;
-  const realizedPct = (Array.isArray(port.open_position_pnl) && port.open_position_pnl.length)
-    ? 0
-    : (port.daily_pnl_pct || data.capital?.daily_pnl_pct || 0);
-  setPnl('pi-real-pnl',  realizedPnL);
-  setPct('pi-real-pnl-pct',  realizedPct);
+  const pnlSource = port.daily_pnl_source || data.capital?.daily_pnl_source || 'live_portfolio';
+  const dailyPnL = (pnlSource === 'governor' ? (data.capital?.daily_pnl_idr ?? port.daily_pnl_idr ?? 0) : (port.daily_pnl_idr ?? data.capital?.live_daily_pnl_idr ?? data.capital?.daily_pnl_idr ?? 0));
+  const dailyPct = (pnlSource === 'governor' ? (data.capital?.daily_pnl_pct ?? port.daily_pnl_pct ?? 0) : (port.daily_pnl_pct ?? data.capital?.live_daily_pnl_pct ?? data.capital?.daily_pnl_pct ?? 0));
+  const realizedPct = (Array.isArray(port.open_position_pnl) && port.open_position_pnl.length) ? 0 : dailyPct;
+  setPnl('pi-real-pnl',  dailyPnL);
+  setPct('pi-real-pnl-pct',  dailyPct);
   setPnl('pi-risk-remaining', data.capital?.risk_remaining_idr || 0);
   setT('pi-allow-orders', allowNew ? 'YES' : 'NO');
   setT('pi-current-entry', data.current_entry_approved ? 'YES' : 'NO');

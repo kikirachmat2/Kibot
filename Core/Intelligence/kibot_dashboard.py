@@ -477,9 +477,14 @@ def _build_portfolio(telemetry: Dict[str, Any]) -> Dict[str, Any]:
     pnl_base = max(combined_equity - daily_pnl, _safe_float(open_pnl.get("position_cost_basis_idr"), 0.0), 1.0)
     daily_pnl_pct = (daily_pnl / pnl_base) * 100.0
 
-    # Load Capital Governor Reconciled Data if available and fresh for today
+    # Load Capital Governor Reconciled Data if available and fresh for today.
+    # Do not let the governor override live MTM while positions/orders are open:
+    # the dashboard should keep showing the live portfolio view, with the
+    # governor carried separately as the risk ledger.
     gov_data = _read_json(STATE / "capital_governor.json", {})
-    if gov_data and gov_data.get("date") == datetime.now(WIB).strftime("%Y-%m-%d"):
+    has_open_positions = bool(open_pnl.get("positions")) or bool(active_positions)
+    governor_fresh_today = bool(gov_data and gov_data.get("date") == datetime.now(WIB).strftime("%Y-%m-%d"))
+    if governor_fresh_today and not has_open_positions:
         combined_equity = _safe_float(gov_data.get("current_total_equity_idr"), combined_equity)
         daily_pnl = _safe_float(gov_data.get("daily_pnl_idr"), daily_pnl)
         daily_pnl_pct = _safe_float(gov_data.get("daily_pnl_pct"), daily_pnl_pct)
@@ -508,6 +513,7 @@ def _build_portfolio(telemetry: Dict[str, Any]) -> Dict[str, Any]:
         "daily_pnl_idr": daily_pnl,
         "daily_pnl_real_idr": daily_pnl_real_idr,
         "daily_pnl_shadow_idr": daily_pnl_shadow_idr,
+        "daily_pnl_source": "governor" if governor_fresh_today and not has_open_positions else "live_portfolio",
         "live_trading_enabled": live_trading_enabled,
         "daily_pnl_pct": daily_pnl_pct,
         "daily_color": daily_color,
@@ -516,6 +522,10 @@ def _build_portfolio(telemetry: Dict[str, Any]) -> Dict[str, Any]:
         "unrealized_pnl_idr": unrealized_daily_pnl,
         "position_cost_basis_idr": _safe_float(open_pnl.get("position_cost_basis_idr"), 0.0),
         "open_position_pnl": open_pnl.get("positions", []),
+        "has_open_positions": has_open_positions,
+        "governor_daily_pnl_idr": _safe_float(gov_data.get("daily_pnl_idr"), daily_pnl) if isinstance(gov_data, dict) else daily_pnl,
+        "governor_daily_pnl_pct": _safe_float(gov_data.get("daily_pnl_pct"), daily_pnl_pct) if isinstance(gov_data, dict) else daily_pnl_pct,
+        "governor_current_total_equity_idr": _safe_float(gov_data.get("current_total_equity_idr"), combined_equity) if isinstance(gov_data, dict) else combined_equity,
         "active_positions": active_positions,
         "polymarket": {
             "usdc_balance": usdc_balance,
@@ -1095,7 +1105,7 @@ def _check_file_quality(filename: str) -> Dict[str, Any]:
 def _build_control_plane_payload() -> Dict[str, Any]:
     import time
     
-    # Calculate allow_new_live_orders based on the RiskGate system logic
+    # Calculate allow_new_live_orders based on the RiskGate system logic.
     allow_new_live_orders = False
     rejection_reason = "No governor data"
     capital_block = {
@@ -1132,6 +1142,11 @@ def _build_control_plane_payload() -> Dict[str, Any]:
                     start_equity = _safe_float(gov_data.get("start_total_equity_idr"), 0.0)
                     current_equity = _safe_float(gov_data.get("current_total_equity_idr"), 0.0)
                     daily_pct = _safe_float(gov_data.get("daily_pnl_pct"), 0.0)
+                    portfolio_live = summary_data.get("portfolio", {}) if isinstance(summary_data, dict) else {}
+                    live_open_positions = bool(portfolio_live.get("open_position_pnl")) or bool(portfolio_live.get("active_positions"))
+                    live_daily_pnl = _safe_float(portfolio_live.get("daily_pnl_idr"), gov_daily_pnl)
+                    live_daily_pct = _safe_float(portfolio_live.get("daily_pnl_pct"), daily_pct)
+                    live_equity = _safe_float(portfolio_live.get("combined_equity_idr"), current_equity)
                     risk_remaining = max(0.0, gov_loss_cap + gov_daily_pnl)
                     capital_block.update({
                         "status": str(gov_data.get("status") or "RECONCILED"),
@@ -1139,6 +1154,11 @@ def _build_control_plane_payload() -> Dict[str, Any]:
                         "current_total_equity_idr": current_equity,
                         "daily_pnl_idr": gov_daily_pnl,
                         "daily_pnl_pct": daily_pct,
+                        "live_current_total_equity_idr": live_equity,
+                        "live_daily_pnl_idr": live_daily_pnl,
+                        "live_daily_pnl_pct": live_daily_pct,
+                        "live_has_open_positions": live_open_positions,
+                        "daily_pnl_source": "live_portfolio" if live_open_positions else "governor",
                         "max_daily_loss_pct": _safe_float(gov_data.get("max_daily_loss_pct"), 1.5),
                         "risk_remaining_idr": risk_remaining,
                         "date": str(gov_data.get("date") or today),
