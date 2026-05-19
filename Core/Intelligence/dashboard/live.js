@@ -719,13 +719,14 @@ function render(data) {
       const score = t.entry_score ?? t.wave_score ?? 0;
       const exitScore = t.exit_score ?? 0;
       const action = t.recommended_action || 'WATCH';
+      const routeStatus = t.route_status || t.executor_status || '—';
       const reason = t.reason || '—';
       const label = t.symbol || t.route || 'unknown';
       const secondary = t.pair || t.chain || t.mint_or_market || '';
       const metric = t.volume_24h_idr ?? t.volume_or_liquidity ?? 0;
       const change = t.change_24h_pct ?? t.change_pct ?? 0;
       const actionCls = action === 'ENTER' ? 'badge badge--green' : (action === 'WATCH' ? 'badge badge--yellow' : (action === 'REJECT' ? 'badge badge--red' : 'badge badge--ghost'));
-      return `<div style="margin-bottom:4px"><strong>#${t.rank}</strong> ${label} ${secondary ? `· ${secondary}` : ''} <span class="${actionCls}" style="margin-left:6px">${action}</span><br/><span class="text-muted">${pct(change)} | ${idr(metric)} | entry ${Number(score).toFixed(1)} | exit ${Number(exitScore).toFixed(1)} | ${reason}</span></div>`;
+      return `<div style="margin-bottom:6px"><strong>#${t.rank}</strong> ${label} ${secondary ? `· ${secondary}` : ''} <span class="${actionCls}" style="margin-left:6px">${action}</span> <span class="badge badge--ghost" style="margin-left:4px">${esc(routeStatus)}</span><br/><span class="text-muted">${pct(change)} | ${idr(metric)} | entry ${Number(score).toFixed(1)} | exit ${Number(exitScore).toFixed(1)} | ${reason}</span></div>`;
     }).join('');
   }
   renderTopTargets('indodax-top-targets', 'indodax-top-empty', data.indodax_top_targets?.data || data.top_targets?.indodax?.data || data.indodax_top_targets || data.top_targets?.indodax || {});
