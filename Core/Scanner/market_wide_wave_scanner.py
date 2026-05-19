@@ -267,20 +267,32 @@ class MarketWideWaveScanner:
                 logger.debug(f"Error checking file preservation for {file_path}: {e}")
             return False
 
+        def merge_refresh(existing: Dict[str, Any], payload: Dict[str, Any]) -> Dict[str, Any]:
+            merged = dict(existing) if isinstance(existing, dict) else {}
+            merged.update(payload)
+            merged["updated_at"] = now
+            return merged
+
         # 1. Indodax
         indodax_file = STATE_DIR / "indodax_scanner_state.json"
-        if not should_preserve(indodax_file):
-            indodax_status = source_status.get("base") or source_status.get("indodax") or "NO_DATA"
-            if indodax_status == "OK" and not candidates_by_route["indodax"]:
-                indodax_status = "NO_DATA"
-            indodax_file.write_text(json.dumps({
+        indodax_status = source_status.get("base") or source_status.get("indodax") or "NO_DATA"
+        if indodax_status == "OK" and not candidates_by_route["indodax"]:
+            indodax_status = "NO_DATA"
+        indodax_payload = {
                 "updated_at": now,
                 "status": indodax_status,
                 "scan_mode": "REAL",
                 "candidates": candidates_by_route["indodax"],
                 "source_status": indodax_status,
                 "rejected_candidates": []
-            }, indent=2, ensure_ascii=False))
+            }
+        if should_preserve(indodax_file):
+            try:
+                existing = json.loads(indodax_file.read_text())
+            except Exception:
+                existing = {}
+            indodax_payload = merge_refresh(existing, indodax_payload)
+        indodax_file.write_text(json.dumps(indodax_payload, indent=2, ensure_ascii=False))
 
         # 2. Solana Jupiter
         sol_jup_file = STATE_DIR / "solana_jupiter_scanner_state.json"
@@ -329,23 +341,35 @@ class MarketWideWaveScanner:
 
         # 7. Base Swap
         base_file = STATE_DIR / "base_scanner_state.json"
-        if not should_preserve(base_file):
-            base_file.write_text(json.dumps({
+        base_payload = {
                 "updated_at": now,
                 "status": source_status.get("base", "OK"),
                 "scan_mode": "REAL",
                 "candidates": candidates_by_route["base"]
-            }, indent=2, ensure_ascii=False))
+            }
+        if should_preserve(base_file):
+            try:
+                existing = json.loads(base_file.read_text())
+            except Exception:
+                existing = {}
+            base_payload = merge_refresh(existing, base_payload)
+        base_file.write_text(json.dumps(base_payload, indent=2, ensure_ascii=False))
 
         # 8. Future Web3
         future_file = STATE_DIR / "future_web3_scanner_state.json"
-        if not should_preserve(future_file):
-            future_file.write_text(json.dumps({
+        future_payload = {
                 "updated_at": now,
                 "status": "OK",
                 "scan_mode": "REAL",
                 "candidates": candidates_by_route["future_web3"]
-            }, indent=2, ensure_ascii=False))
+            }
+        if should_preserve(future_file):
+            try:
+                existing = json.loads(future_file.read_text())
+            except Exception:
+                existing = {}
+            future_payload = merge_refresh(existing, future_payload)
+        future_file.write_text(json.dumps(future_payload, indent=2, ensure_ascii=False))
 
         logger.info("💾 All 8 individual route scanner state files written successfully.")
 

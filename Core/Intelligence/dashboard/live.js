@@ -516,6 +516,8 @@ function render(data) {
   setT('indodax-metric', indoBrain.decision || (mode.live_trading_enabled ? '⚠ LIVE' : 'orders blocked'));
   if (indoBrain.recovery_mode) {
     setT('indodax-metric', `${indoBrain.decision || 'SCAN_NEXT'} · RECOVERY`);
+    const indodaxStatus = el('indodax-status');
+    if (indodaxStatus) indodaxStatus.textContent = `${indoBrain.status || 'ACTIVE'} · RECOVERY`;
   }
 
   // LeadLag
@@ -539,6 +541,8 @@ function render(data) {
   setT('phantom-metric', phBrain.decision || `${ph.opportunities||0} opportunities`);
   if (phBrain.recovery_mode) {
     setT('phantom-metric', `${phBrain.decision || 'SCAN_NEXT'} · RECOVERY`);
+    const phantomStatus = el('phantom-status');
+    if (phantomStatus) phantomStatus.textContent = `${phBrain.status || 'ACTIVE'} · RECOVERY`;
   }
 
   // Polymarket
@@ -741,6 +745,10 @@ function render(data) {
       : [];
     const capHeader = `<div style="margin-top:6px;color:#64748b">Route capabilities · total:${esc(String(cap.routes_total ?? 0))} ready:${esc(String(cap.routes_ready ?? 0))} blocked:${esc(String(cap.routes_blocked ?? 0))}</div>`;
     phantomBreakdown.innerHTML = `${rows.length ? rows.join('') : `<div>${esc(phantomBoard.why_empty || '—')}</div>`}${capHeader}${capRows.length ? capRows.join('') : ''}`;
+  }
+  const phantomTopEmpty = el('phantom-top-empty');
+  if (phantomTopEmpty && phBrain.recovery_mode) {
+    phantomTopEmpty.textContent = `RECOVERY · ${phantomBoard.why_empty || phantomBoard.source_status || 'active search'}`;
   }
 
   setT('ai-objective', ai.objective || '—');

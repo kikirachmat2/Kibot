@@ -168,6 +168,8 @@ def build_phantom_target_board() -> Dict[str, Any]:
         route_exit_ready = bool(route_caps.get("can_exit"))
         candidate = dict(route)
         advisory_notes = list(candidate.get("advisory_notes") or [])
+        if candidate.get("reason") == "no_quote":
+            candidate["reason"] = ""
         if not route["source_proof_ok"]:
             reason = "source_proof_missing"
         elif not route_exit_ready:
@@ -181,14 +183,15 @@ def build_phantom_target_board() -> Dict[str, Any]:
         if reason:
             candidate["executor_status"] = "BLOCKED_WITH_REASON"
             candidate["reason"] = reason
-            candidate["recommended_action"] = "REJECT" if reason not in {"manual_transfer_required"} else "MANUAL_TRANSFER_REQUIRED"
+            if reason == "no_exit_route" and route["route"] in {"solana_jupiter", "pumpfun_jupiter", "pumpfun_native", "base_swap", "polymarket", "future_web3"}:
+                candidate["recommended_action"] = "WATCH"
+                candidate["reason"] = ""
+            else:
+                candidate["recommended_action"] = "REJECT" if reason not in {"manual_transfer_required"} else "MANUAL_TRANSFER_REQUIRED"
             blocked_routes.setdefault(route["route"], []).append(candidate)
         else:
             candidate["executor_status"] = "EXECUTABLE"
-            if route_exit_ready:
-                candidate["recommended_action"] = "ENTER" if candidate["wave_score"] >= 10 else "WATCH"
-            else:
-                candidate["recommended_action"] = "WATCH"
+            candidate["recommended_action"] = "ENTER" if candidate["wave_score"] >= 10 else "WATCH"
             executable_routes.append(candidate)
         ranked_routes.append(candidate)
 

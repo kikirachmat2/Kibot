@@ -68,10 +68,9 @@ class AutonomousSizing:
         hard_reasons = []
         if not exit_available:
             hard_reasons.append("exit_unavailable")
-        if daily_risk_remaining_idr <= 0:
-            hard_reasons.append("daily_risk_exhausted")
         if available_balance_idr <= 0:
             hard_reasons.append("no_available_balance")
+        recovery_probe = daily_risk_remaining_idr <= 0 and self.aggressive_probe_enabled and confidence >= 0.78 and momentum_score >= 0.70
 
         if hard_reasons:
             payload = {
@@ -96,7 +95,7 @@ class AutonomousSizing:
             ev_pct=ev_pct,
             liquidity_usd=liquidity_usd,
             slippage_pct=slippage_pct,
-            daily_risk_remaining_idr=daily_risk_remaining_idr,
+            daily_risk_remaining_idr=max(daily_risk_remaining_idr, 0.0),
             route_bucket_idr=route_bucket_idr,
             exposure_idr=current_open_exposure_idr,
             volatility_pct=volatility_pct,
@@ -110,7 +109,10 @@ class AutonomousSizing:
         effective_min_trade_idr = float(route_min_trade_idr or self.min_trade_idr)
         stop_loss_pct = float(stop_loss_pct or os.getenv("AUTONOMOUS_SIZE_STOP_LOSS_PCT", "3") or 3)
         stop_loss_fraction = max(0.001, stop_loss_pct / 100.0)
-        risk_notional_cap = daily_risk_remaining_idr * 0.90 / stop_loss_fraction
+        if daily_risk_remaining_idr > 0:
+            risk_notional_cap = daily_risk_remaining_idr * 0.90 / stop_loss_fraction
+        else:
+            risk_notional_cap = max(available_balance_idr * 0.15, route_bucket_idr * 0.25, self.min_trade_idr * 1.5)
 
         quality_reasons = []
         if ev_pct <= 0:
@@ -130,6 +132,8 @@ class AutonomousSizing:
             and confidence >= self.probe_min_confidence
             and (momentum_ok or exit_grade_ok)
         )
+        if recovery_probe:
+            probe_mode = True
 
         size_idr = min(
             available_balance_idr * 0.98,
@@ -155,12 +159,12 @@ class AutonomousSizing:
             if probe_cap >= effective_min_trade_idr:
                 size_idr = effective_min_trade_idr
 
-        if size_idr < effective_min_trade_idr:
+        if size_idr < effective_min_trade_idr and not recovery_probe:
             approved = False
             reason = "below_min_trade"
         else:
             approved = True
-            reason = "aggressive_probe" if probe_mode and quality_reasons else "approved"
+            reason = "recovery_probe" if recovery_probe else ("aggressive_probe" if probe_mode and quality_reasons else "approved")
 
         payload = {
             "updated_at": datetime.now(timezone.utc).isoformat(),
@@ -174,8 +178,8 @@ class AutonomousSizing:
             "risk_notional_cap_idr": round(risk_notional_cap, 2),
             "effective_min_trade_idr": round(effective_min_trade_idr, 2),
             "stop_loss_pct": round(stop_loss_pct, 3),
-            "guard_layer": "OPPORTUNITY_GATE" if quality_reasons else "HARD_SAFETY_PASS",
-            "guard_action": "PROBE_APPROVED" if reason == "aggressive_probe" else ("APPROVE_ORDER" if approved else "REJECT_CANDIDATE_KEEP_SCANNING"),
+            "guard_layer": "RECOVERY_GATE" if recovery_probe else ("OPPORTUNITY_GATE" if quality_reasons else "HARD_SAFETY_PASS"),
+            "guard_action": "PROBE_APPROVED" if reason in {"aggressive_probe", "recovery_probe"} else ("APPROVE_ORDER" if approved else "REJECT_CANDIDATE_KEEP_SCANNING"),
             "probe_mode": bool(probe_mode),
             "guard_reasons": quality_reasons,
             "scanner_should_continue": not approved,

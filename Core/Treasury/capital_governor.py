@@ -41,6 +41,8 @@ class CapitalGovernor:
         self.current_total_equity_idr = 0.0
         self.daily_pnl_idr = 0.0
         self.daily_pnl_pct = 0.0
+        self.trading_pnl_idr = 0.0
+        self.trading_pnl_pct = 0.0
         self.external_deposits_today = 0.0
         self.external_withdrawals_today = 0.0
         self.reset_deposits_offset = 0.0
@@ -64,6 +66,8 @@ class CapitalGovernor:
                         self.status = data.get("status", "UNRECONCILED")
                         self.daily_pnl_idr = float(data.get("daily_pnl_idr", 0.0))
                         self.daily_pnl_pct = float(data.get("daily_pnl_pct", 0.0))
+                        self.trading_pnl_idr = float(data.get("trading_pnl_idr", self.daily_pnl_idr))
+                        self.trading_pnl_pct = float(data.get("trading_pnl_pct", self.daily_pnl_pct))
                         self.external_deposits_today = float(data.get("external_deposits_today", 0.0))
                         self.external_withdrawals_today = float(data.get("external_withdrawals_today", 0.0))
                         self.reset_deposits_offset = float(data.get("reset_deposits_offset", 0.0))
@@ -74,6 +78,8 @@ class CapitalGovernor:
                         self.max_daily_loss_idr = 0.0
                         self.daily_pnl_idr = 0.0
                         self.daily_pnl_pct = 0.0
+                        self.trading_pnl_idr = 0.0
+                        self.trading_pnl_pct = 0.0
                         self.external_deposits_today = 0.0
                         self.external_withdrawals_today = 0.0
                         self.reset_deposits_offset = 0.0
@@ -95,6 +101,8 @@ class CapitalGovernor:
                     "current_total_equity_idr": self.current_total_equity_idr,
                     "daily_pnl_idr": self.daily_pnl_idr,
                     "daily_pnl_pct": self.daily_pnl_pct,
+                    "trading_pnl_idr": self.trading_pnl_idr,
+                    "trading_pnl_pct": self.trading_pnl_pct,
                     "external_deposits_today": self.external_deposits_today,
                     "external_withdrawals_today": self.external_withdrawals_today,
                     "reset_deposits_offset": self.reset_deposits_offset,
@@ -258,12 +266,15 @@ class CapitalGovernor:
             
             # Compute daily consolidated PnL (adjusted for capital flows and offset)
             self.daily_pnl_idr = self.current_total_equity_idr - self.start_total_equity_idr - adjusted_deposits + adjusted_withdrawals
+            self.trading_pnl_idr = self.current_total_equity_idr - self.start_total_equity_idr
             
             # Compute PnL percentage
             if self.start_total_equity_idr > 0.0:
                 self.daily_pnl_pct = (self.daily_pnl_idr / self.start_total_equity_idr) * 100.0
+                self.trading_pnl_pct = (self.trading_pnl_idr / self.start_total_equity_idr) * 100.0
             else:
                 self.daily_pnl_pct = 0.0
+                self.trading_pnl_pct = 0.0
                 
             indodax_ready = indodax_real_balance > 0
             self.status = "RECONCILED" if (phantom_ready or indodax_ready) else "DEGRADED"
@@ -298,18 +309,18 @@ class CapitalGovernor:
                     "indodax": {
                         "status": "RECONCILED" if indodax_real_balance > 0 else "BLOCKED_WITH_REASON",
                         "equity_idr": indodax_real_balance,
-                        "allow_orders": bool(indodax_real_balance > 0 and self.daily_pnl_idr > -self.max_daily_loss_idr),
+                        "allow_orders": bool(indodax_real_balance > 0 and self.trading_pnl_idr > -self.max_daily_loss_idr),
                         "reason": "" if indodax_real_balance > 0 else "indodax_balance_unavailable",
                     },
                     "phantom": {
                         "status": "RECONCILED" if phantom_ready else "BLOCKED_WITH_REASON",
                         "equity_idr": phantom_equity_idr,
-                        "allow_orders": bool(phantom_ready and self.daily_pnl_idr > -self.max_daily_loss_idr),
+                        "allow_orders": bool(phantom_ready and self.trading_pnl_idr > -self.max_daily_loss_idr),
                         "reason": "" if phantom_ready else "phantom_reconciliation_required",
                     },
                 },
-                "allow_indodax_orders": bool(indodax_real_balance > 0 and self.daily_pnl_idr > -self.max_daily_loss_idr),
-                "allow_phantom_orders": bool(phantom_ready and self.daily_pnl_idr > -self.max_daily_loss_idr),
+                "allow_indodax_orders": bool(indodax_real_balance > 0 and self.trading_pnl_idr > -self.max_daily_loss_idr),
+                "allow_phantom_orders": bool(phantom_ready and self.trading_pnl_idr > -self.max_daily_loss_idr),
                 "bridge": "ON",
                 "withdrawal": "ON",
                 "targets": targets,
