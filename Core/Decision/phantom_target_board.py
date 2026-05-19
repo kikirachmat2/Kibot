@@ -102,7 +102,8 @@ def build_phantom_target_board() -> Dict[str, Any]:
     }
 
     route_capabilities: Dict[str, Dict[str, Any]] = {}
-    for route in scanner_contract.get("routes", []) if isinstance(scanner_contract, dict) else []:
+    route_list = scanner_contract.get("routes", []) if isinstance(scanner_contract, dict) else []
+    for route in route_list:
         if not isinstance(route, dict):
             continue
         route_capabilities[str(route.get("route") or "").lower()] = {
@@ -158,8 +159,6 @@ def build_phantom_target_board() -> Dict[str, Any]:
             reason = route_caps.get("reason") or route["reason"] or "executor_blocked"
         candidate = dict(route)
         advisory_notes = list(candidate.get("advisory_notes") or [])
-        if not candidate["quote_ok"]:
-            advisory_notes.append("no_quote")
         candidate["advisory_notes"] = sorted(set(advisory_notes))
         if reason:
             candidate["executor_status"] = "BLOCKED_WITH_REASON"
@@ -168,12 +167,7 @@ def build_phantom_target_board() -> Dict[str, Any]:
             blocked_routes.setdefault(route["route"], []).append(candidate)
         else:
             candidate["executor_status"] = "EXECUTABLE"
-            if not candidate["quote_ok"]:
-                candidate["recommended_action"] = "WATCH"
-                if "no_quote" not in candidate["advisory_notes"]:
-                    candidate["advisory_notes"].append("no_quote")
-            else:
-                candidate["recommended_action"] = "ENTER" if candidate["wave_score"] >= 10 else "WATCH"
+            candidate["recommended_action"] = "ENTER" if candidate["wave_score"] >= 10 else "WATCH"
             executable_routes.append(candidate)
         ranked_routes.append(candidate)
 
@@ -218,6 +212,11 @@ def build_phantom_target_board() -> Dict[str, Any]:
         "top_targets": top_targets,
         "why_empty": why_empty,
         "route_capabilities": route_capabilities,
+        "route_capability_summary": {
+            "routes_total": len(route_list),
+            "routes_ready": len([r for r in route_capabilities.values() if r.get("can_execute") and r.get("can_exit")]),
+            "routes_blocked": len([r for r in route_capabilities.values() if not (r.get("can_execute") and r.get("can_exit"))]),
+        },
         "scanner_executor_contract": scanner_contract,
         "capital_mover": mover,
         "network_maximizer": maximizer,

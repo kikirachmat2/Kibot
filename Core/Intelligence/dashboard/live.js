@@ -703,12 +703,11 @@ function render(data) {
       const score = t.entry_score ?? t.wave_score ?? 0;
       const action = t.recommended_action || 'WATCH';
       const reason = t.reason || '—';
-      const advisory = Array.isArray(t.advisory_notes) && t.advisory_notes.length ? ` | adv: ${t.advisory_notes.join(',')}` : '';
       const label = t.symbol || t.route || 'unknown';
       const secondary = t.pair || t.chain || t.mint_or_market || '';
       const metric = t.volume_24h_idr ?? t.volume_or_liquidity ?? 0;
       const change = t.change_24h_pct ?? t.change_pct ?? 0;
-      return `<div style="margin-bottom:4px"><strong>#${t.rank}</strong> ${label} ${secondary ? `· ${secondary}` : ''}<br/><span class="text-muted">${pct(change)} | ${idr(metric)} | ${Number(score).toFixed(1)} | ${action} | ${reason}${advisory}</span></div>`;
+      return `<div style="margin-bottom:4px"><strong>#${t.rank}</strong> ${label} ${secondary ? `· ${secondary}` : ''}<br/><span class="text-muted">${pct(change)} | ${idr(metric)} | ${Number(score).toFixed(1)} | ${action} | ${reason}</span></div>`;
     }).join('');
   }
   renderTopTargets('indodax-top-targets', 'indodax-top-empty', data.indodax_top_targets?.data || data.top_targets?.indodax?.data || data.indodax_top_targets || data.top_targets?.indodax || {});
@@ -724,17 +723,12 @@ function render(data) {
       const reason = info?.reason || '';
       return `<div><strong>${esc(name)}</strong> · ${esc(String(count))} · ${esc(status)}${reason ? ` · ${esc(reason)}` : ''}</div>`;
     });
-    phantomBreakdown.innerHTML = rows.length ? rows.join('') : `<div>${esc(phantomBoard.why_empty || '—')}</div>`;
-  }
-
-  const freshnessNode = el('phantom-source-breakdown');
-  if (freshnessNode && phantomBoard.route_capabilities) {
-    const caps = phantomBoard.route_capabilities || {};
-    const rows = Object.entries(caps).map(([name, info]) => {
-      return `<div><strong>${esc(name)}</strong> · ${esc(info.status || '—')} · canQuote:${info.can_quote ? 'Y' : 'N'} · canExit:${info.can_exit ? 'Y' : 'N'} · canExec:${info.can_execute ? 'Y' : 'N'}</div>`;
-    });
-    const extra = rows.length ? `<div style="margin-top:6px;color:#64748b">Route capabilities</div>${rows.join('')}` : '';
-    if (extra) freshnessNode.insertAdjacentHTML('beforeend', extra);
+    const cap = phantomBoard.route_capability_summary || {};
+    const capRows = phantomBoard.route_capabilities
+      ? Object.entries(phantomBoard.route_capabilities).map(([name, info]) => `<div><strong>${esc(name)}</strong> · ${esc(info.status || '—')} · exec:${info.can_execute ? 'Y' : 'N'} · exit:${info.can_exit ? 'Y' : 'N'}</div>`)
+      : [];
+    const capHeader = `<div style="margin-top:6px;color:#64748b">Route capabilities · total:${esc(String(cap.routes_total ?? 0))} ready:${esc(String(cap.routes_ready ?? 0))} blocked:${esc(String(cap.routes_blocked ?? 0))}</div>`;
+    phantomBreakdown.innerHTML = `${rows.length ? rows.join('') : `<div>${esc(phantomBoard.why_empty || '—')}</div>`}${capHeader}${capRows.length ? capRows.join('') : ''}`;
   }
 
   setT('ai-objective', ai.objective || '—');
