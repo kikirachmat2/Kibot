@@ -1400,6 +1400,8 @@ def _build_control_plane_payload() -> Dict[str, Any]:
         and route_live_ready
         and gates["risk_gate"]["status"] == "PASS"
     )
+    mode["allow_new_live_orders"] = allow_new_live_orders
+    mode["allow_new_live_orders_reason"] = rejection_reason
     mode["advisory_gates"] = {
         "signal_quality": gates["signal_quality"]["status"],
         "expected_value": gates["expected_value"]["status"],
