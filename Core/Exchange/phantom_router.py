@@ -169,6 +169,11 @@ class PhantomRouter:
             reserve_locked=True,
             hard_cap_idr=float(os.getenv("WEB3_SOLANA_SWAP_HARD_CAP_IDR", "0") or 0.0),
             liquidity_safe_size_idr=float(scout_res.get("liquidity", 0.0) or 0.0) * 16000.0 * 0.015,
+            momentum_score=float(scout_res.get("momentum_score", scout_res.get("confidence", 0.0)) or 0.0),
+            exit_quality=str(scout_res.get("exit_quality", "")),
+            trade_grade=str(scout_res.get("trade_grade", "")),
+            stop_loss_pct=float(os.getenv("WEB3_DEFAULT_STOP_LOSS_PCT", "1.5") or 1.5),
+            route_min_trade_idr=float(os.getenv("WEB3_MIN_TRADE_IDR", "1000") or 1000),
         )
         if not sizing.get("approved"):
             logger.warning("🛡️ Web3 autonomous sizing rejected Solana swap: %s", sizing.get("reason"))

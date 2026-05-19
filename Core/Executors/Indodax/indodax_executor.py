@@ -917,6 +917,7 @@ class IndodaxExecutor:
                 confidence = float(signal.get("confidence") or signal.get("score") or 0.0)
                 ev_pct = float(signal.get("expected_net_pct") or signal.get("ev_pct") or signal.get("expected_value_pct") or 0.0)
                 volatility_pct = float(signal.get("volatility_pct") or abs(signal.get("change_24h_pct") or signal.get("change_pct") or 0.0))
+                stop_loss_pct = float(signal.get("stop_loss_pct") or indo_strat.get("hard_stop_pct") or indo_strat.get("stop_loss_pct") or 1.5)
                 route_bucket_idr = float(signal.get("route_bucket_idr") or signal.get("budget_idr") or 0.0)
                 if route_bucket_idr <= 0:
                     route_bucket_idr = current_balance
@@ -937,6 +938,11 @@ class IndodaxExecutor:
                     reserve_locked=True,
                     hard_cap_idr=float(signal.get("hard_cap_idr") or 0.0),
                     liquidity_safe_size_idr=float(signal.get("liquidity_safe_size_idr") or 0.0),
+                    momentum_score=float(signal.get("momentum_score") or signal.get("opportunity_score") or signal.get("pump_score") or 0.0),
+                    exit_quality=str(signal.get("exit_quality") or ""),
+                    trade_grade=str(signal.get("trade_grade") or signal.get("entry_quality") or ""),
+                    stop_loss_pct=stop_loss_pct,
+                    route_min_trade_idr=float(indo_strat.get("min_position_idr") or indo_strat.get("min_order_idr") or 10_000),
                 )
                 if not sizing.get("approved"):
                     logger.warning("🛡️ REJECTED (Sizing): %s for %s", sizing.get("reason"), symbol)
@@ -973,6 +979,11 @@ class IndodaxExecutor:
             if _ORDER_TRACKER_AVAILABLE and side.lower() == "buy":
                 try:
                     signal["max_spread_pct"] = float(indo_strat.get("max_spread_pct", 1.2) or 1.2)
+                    if sizing.get("probe_mode") and float(signal.get("confidence") or 0.0) >= float(os.getenv("KIBOT_PROBE_MIN_CONFIDENCE", "0.78") or 0.78):
+                        signal["max_spread_pct"] = max(
+                            float(signal["max_spread_pct"]),
+                            float(os.getenv("KIBOT_PROBE_MAX_SPREAD_PCT", "1.2") or 1.2),
+                        )
                     simulation = await simulate_indodax_entry(
                         self.indodax,
                         symbol=symbol,
@@ -984,7 +995,7 @@ class IndodaxExecutor:
                     log_pre_trade_simulation(simulation)
                     verdict = str(simulation.get("simulation_verdict") or "REJECT").upper()
                     if verdict == "REDUCE_SIZE":
-                        reduced_budget = max(float(simulation.get("min_base_idr", 10_000) or 10_000), budget * 0.65)
+                        reduced_budget = max(float(simulation.get("min_base_idr", 10_000) or 10_000), min(budget * 0.65, budget))
                         reduced_budget = min(reduced_budget, current_balance * 0.99)
                         retry = await simulate_indodax_entry(
                             self.indodax,

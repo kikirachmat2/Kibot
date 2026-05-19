@@ -18,6 +18,11 @@ class AutonomousSizing:
         self.capital_governor_decides = os.getenv("KIBOT_CAPITAL_GOVERNOR_DECIDES_SIZE", "true").lower() == "true"
         self.route_ceiling_idr = float(os.getenv("KIBOT_ROUTE_MAX_TRADE_IDR", "0") or 0)
         self.min_trade_idr = float(os.getenv("KIBOT_MIN_TRADE_IDR", "10000") or 10000)
+        self.adaptive_profile = os.getenv("KIBOT_ADAPTIVE_GUARD_PROFILE", "BALANCED_PROBE").upper()
+        self.aggressive_probe_enabled = os.getenv("KIBOT_AGGRESSIVE_PROBE_ENABLED", "true").lower() == "true"
+        self.probe_min_confidence = float(os.getenv("KIBOT_PROBE_MIN_CONFIDENCE", "0.78") or 0.78)
+        self.probe_min_momentum = float(os.getenv("KIBOT_PROBE_MIN_MOMENTUM", "0.70") or 0.70)
+        self.probe_risk_fraction = float(os.getenv("KIBOT_PROBE_RISK_FRACTION", "0.30") or 0.30)
 
     def _save(self, payload: Dict[str, Any]) -> None:
         STATE_DIR.mkdir(parents=True, exist_ok=True)
@@ -54,6 +59,11 @@ class AutonomousSizing:
         reserve_locked: bool = True,
         hard_cap_idr: float = 0.0,
         liquidity_safe_size_idr: float = 0.0,
+        momentum_score: float = 0.0,
+        exit_quality: str = "",
+        trade_grade: str = "",
+        stop_loss_pct: float = 0.0,
+        route_min_trade_idr: float = 0.0,
     ) -> Dict[str, Any]:
         hard_reasons = []
         if not exit_available:
@@ -73,6 +83,10 @@ class AutonomousSizing:
                 "confidence": round(float(confidence or 0), 3),
                 "reason": ";".join(hard_reasons),
                 "max_loss_if_stop_hit_idr": 0,
+                "guard_layer": "HARD_BLOCK",
+                "guard_action": "BLOCK_ORDER",
+                "probe_mode": False,
+                "guard_reasons": hard_reasons,
             }
             self._save(payload)
             return payload
@@ -93,9 +107,33 @@ class AutonomousSizing:
         else:
             route_budget = min(route_bucket_idr or available_balance_idr, available_balance_idr)
 
+        effective_min_trade_idr = float(route_min_trade_idr or self.min_trade_idr)
+        stop_loss_pct = float(stop_loss_pct or os.getenv("AUTONOMOUS_SIZE_STOP_LOSS_PCT", "3") or 3)
+        stop_loss_fraction = max(0.001, stop_loss_pct / 100.0)
+        risk_notional_cap = daily_risk_remaining_idr * 0.90 / stop_loss_fraction
+
+        quality_reasons = []
+        if ev_pct <= 0:
+            quality_reasons.append("ev_not_positive")
+        if confidence < 0.62:
+            quality_reasons.append("confidence_low")
+        if liquidity_usd > 0 and liquidity_usd < 5000:
+            quality_reasons.append("liquidity_thin")
+        if slippage_pct > float(os.getenv("KIBOT_ADAPTIVE_MAX_SLIPPAGE_PCT", "3.0") or 3.0):
+            quality_reasons.append("slippage_high")
+
+        exit_grade_ok = str(exit_quality or trade_grade or "").upper() in {"A", "B", "A+", "A-"}
+        momentum_ok = max(float(momentum_score or 0.0), min(1.0, max(0.0, volatility_pct) / 25.0)) >= self.probe_min_momentum
+        probe_mode = bool(
+            self.aggressive_probe_enabled
+            and self.adaptive_profile != "CONSERVATIVE"
+            and confidence >= self.probe_min_confidence
+            and (momentum_ok or exit_grade_ok)
+        )
+
         size_idr = min(
             available_balance_idr * 0.98,
-            daily_risk_remaining_idr * 0.50,
+            risk_notional_cap,
             total_capital_idr * fraction,
             route_budget * fraction if route_budget > 0 else available_balance_idr * fraction,
         )
@@ -107,12 +145,22 @@ class AutonomousSizing:
             size_idr = min(size_idr, self.route_ceiling_idr)
 
         size_idr = max(0.0, size_idr)
-        if size_idr < self.min_trade_idr:
+
+        if size_idr < effective_min_trade_idr and probe_mode:
+            probe_cap = min(
+                available_balance_idr * 0.98,
+                route_budget * min(0.35, max(0.05, self.probe_risk_fraction)) if route_budget > 0 else available_balance_idr * 0.10,
+                risk_notional_cap,
+            )
+            if probe_cap >= effective_min_trade_idr:
+                size_idr = effective_min_trade_idr
+
+        if size_idr < effective_min_trade_idr:
             approved = False
             reason = "below_min_trade"
         else:
             approved = True
-            reason = "approved"
+            reason = "aggressive_probe" if probe_mode and quality_reasons else "approved"
 
         payload = {
             "updated_at": datetime.now(timezone.utc).isoformat(),
@@ -122,8 +170,15 @@ class AutonomousSizing:
             "capital_fraction": round(float(size_idr / max(total_capital_idr, 1.0)), 4),
             "confidence": round(float(confidence or 0), 3),
             "reason": reason,
-            "max_loss_if_stop_hit_idr": round(size_idr * max(0.0, float(os.getenv("AUTONOMOUS_SIZE_STOP_LOSS_PCT", "3") or 3)) / 100.0, 2),
+            "max_loss_if_stop_hit_idr": round(size_idr * stop_loss_fraction, 2),
+            "risk_notional_cap_idr": round(risk_notional_cap, 2),
+            "effective_min_trade_idr": round(effective_min_trade_idr, 2),
+            "stop_loss_pct": round(stop_loss_pct, 3),
+            "guard_layer": "OPPORTUNITY_GATE" if quality_reasons else "HARD_SAFETY_PASS",
+            "guard_action": "PROBE_APPROVED" if reason == "aggressive_probe" else ("APPROVE_ORDER" if approved else "REJECT_CANDIDATE_KEEP_SCANNING"),
+            "probe_mode": bool(probe_mode),
+            "guard_reasons": quality_reasons,
+            "scanner_should_continue": not approved,
         }
         self._save(payload)
         return payload
-

@@ -623,6 +623,8 @@ function render(data) {
   setT('ai-venue', ai.venue || '—');
   setT('autonomous-size', sizing.size_idr != null ? idr(sizing.size_idr) : '—');
   setT('autonomous-size-reason', sizing.reason || '—');
+  setT('autonomous-guard-action', sizing.guard_action || '—');
+  setT('autonomous-max-loss', sizing.max_loss_if_stop_hit_idr != null ? idr(sizing.max_loss_if_stop_hit_idr) : '—');
   setT('ai-reason', ai.reason || '—');
   setT('ai-next-check', ai.next_check_seconds != null ? `${ai.next_check_seconds}s` : '—');
 
