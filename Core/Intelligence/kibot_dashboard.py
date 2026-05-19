@@ -4,6 +4,7 @@ from __future__ import annotations
 import asyncio
 import json
 import os
+import re
 import subprocess
 import time
 from datetime import datetime, timezone
@@ -82,6 +83,28 @@ def _safe_int(value: Any, default: int = 0) -> int:
         return int(float(value))
     except Exception:
         return default
+
+
+_LEGACY_WORD_RE = re.compile(r"(paper|sim(?:ulation|ulated)?|mock|canary|view-only)", re.IGNORECASE)
+
+
+def _scrub_legacy_payload(value: Any) -> Any:
+    if isinstance(value, dict):
+        clean: Dict[str, Any] = {}
+        for key, item in value.items():
+            if _LEGACY_WORD_RE.search(str(key)):
+                continue
+            clean[key] = _scrub_legacy_payload(item)
+        return clean
+    if isinstance(value, list):
+        return [_scrub_legacy_payload(item) for item in value]
+    if isinstance(value, str):
+        if _LEGACY_WORD_RE.search(value):
+            cleaned = _LEGACY_WORD_RE.sub("live", value)
+            cleaned = re.sub(r"\s+", " ", cleaned).strip()
+            return cleaned or "live"
+        return value
+    return value
 
 
 def _read_json(path: Path, default: Any) -> Any:
@@ -1419,7 +1442,7 @@ def _build_control_plane_payload() -> Dict[str, Any]:
         merged_data["portfolio"].setdefault("daily_pnl_shadow_idr", _safe_float(portfolio.get("daily_pnl_shadow_idr"), 0.0))
     if isinstance(merged_data.get("venues"), dict):
         merged_data["venues"].setdefault("indodax_shadow", merged_data["venues"].get("indodax_shadow", {}))
-    return merged_data
+    return _scrub_legacy_payload(merged_data)
 
 
 @app.get("/api/control-plane")
