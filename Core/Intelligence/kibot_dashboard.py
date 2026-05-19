@@ -382,6 +382,10 @@ def _load_scanner_health() -> Dict[str, Any]:
     return _read_json(STATE / "scanner_health.json", {})
 
 
+def _load_target_board_runtime() -> Dict[str, Any]:
+    return _read_json(STATE / "target_board_runtime.json", {})
+
+
 def _load_indodax_top_targets() -> Dict[str, Any]:
     return _read_json(STATE / "indodax_top_targets.json", {})
 
@@ -880,6 +884,7 @@ def _build_summary() -> Dict[str, Any]:
     summary["deadline_pressure"] = _load_deadline_pressure()
     summary["server_telemetry"] = _load_server_telemetry()
     summary["scanner_health"] = _load_scanner_health()
+    summary["target_board_runtime"] = _load_target_board_runtime()
     summary["indodax_top_targets"] = _load_indodax_top_targets()
     summary["phantom_top_targets"] = _load_phantom_top_targets()
     summary["ai_decision_trace"] = _load_ai_decision_trace()
@@ -968,6 +973,7 @@ def _build_summary() -> Dict[str, Any]:
     }
     summary["server_truth"] = summary.get("server_telemetry", {})
     summary["scanner_health_state"] = summary.get("scanner_health", {})
+    summary["target_board_runtime_state"] = summary.get("target_board_runtime", {})
 
     summary["ai"] = summary.get("ai_decision_trace", {})
 
@@ -1468,10 +1474,31 @@ def _build_control_plane_payload() -> Dict[str, Any]:
         "phantom_capital_mover": summary_data.get("phantom_capital_mover", {}),
         "phantom_network_maximizer": summary_data.get("phantom_network_maximizer", {}),
         "deadline_pressure": summary_data.get("deadline_pressure", {}),
-        "server_telemetry": summary_data.get("server_telemetry", {}),
-        "scanner_health": summary_data.get("scanner_health", {}),
-        "indodax_top_targets": summary_data.get("indodax_top_targets", {}),
-        "phantom_top_targets": summary_data.get("phantom_top_targets", {}),
+        "server_telemetry": {
+            "data": summary_data.get("server_telemetry", {}),
+            "age_s": _file_age_s(STATE / "server_telemetry.json"),
+            "fresh": _file_age_s(STATE / "server_telemetry.json") >= 0 and _file_age_s(STATE / "server_telemetry.json") < 15,
+        },
+        "scanner_health": {
+            "data": summary_data.get("scanner_health", {}),
+            "age_s": _file_age_s(STATE / "scanner_health.json"),
+            "fresh": _file_age_s(STATE / "scanner_health.json") >= 0 and _file_age_s(STATE / "scanner_health.json") < 30,
+        },
+        "target_board_runtime": {
+            "data": summary_data.get("target_board_runtime", {}),
+            "age_s": _file_age_s(STATE / "target_board_runtime.json"),
+            "fresh": _file_age_s(STATE / "target_board_runtime.json") >= 0 and _file_age_s(STATE / "target_board_runtime.json") < 15,
+        },
+        "indodax_top_targets": {
+            "data": summary_data.get("indodax_top_targets", {}),
+            "age_s": _file_age_s(STATE / "indodax_top_targets.json"),
+            "fresh": _file_age_s(STATE / "indodax_top_targets.json") >= 0 and _file_age_s(STATE / "indodax_top_targets.json") < 15,
+        },
+        "phantom_top_targets": {
+            "data": summary_data.get("phantom_top_targets", {}),
+            "age_s": _file_age_s(STATE / "phantom_top_targets.json"),
+            "fresh": _file_age_s(STATE / "phantom_top_targets.json") >= 0 and _file_age_s(STATE / "phantom_top_targets.json") < 15,
+        },
         "system_truth": {
             "batam_server_online": bool(summary_data.get("server_telemetry")),
             "git_commit": subprocess.run(["git", "rev-parse", "HEAD"], capture_output=True, text=True).stdout.strip(),

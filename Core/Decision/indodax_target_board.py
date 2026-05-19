@@ -92,11 +92,16 @@ def build_indodax_target_board() -> Dict[str, Any]:
 
     board = {
         "updated_at": datetime.now(timezone.utc).isoformat(),
+        "age_s": 0,
         "engine": "indodax",
         "source_status": source_status,
         "pairs_checked": int(scan.get("pairs_checked", 0) or 0),
+        "categories_checked": scan.get("categories_checked", []),
         "minimum_volume_idr_preference": 200000000,
         "top_targets": top_targets,
+        "top_gainers": scan.get("gainers_24h", [])[:5],
+        "volume_leaders": scan.get("volume_leaders", [])[:5],
+        "brutal_momentum": scan.get("brutal_momentum_candidates", [])[:5],
         "rejected_summary": {
             "count": len(scan.get("rejected_candidates", []) or []),
             "reason": scan.get("no_data_reason") or "",

@@ -704,8 +704,8 @@ function render(data) {
       return `<div style="margin-bottom:4px"><strong>#${t.rank}</strong> ${label} ${secondary ? `· ${secondary}` : ''}<br/><span class="text-muted">${pct(change)} | ${idr(metric)} | ${Number(score).toFixed(1)} | ${action} | ${reason}</span></div>`;
     }).join('');
   }
-  renderTopTargets('indodax-top-targets', 'indodax-top-empty', data.indodax_top_targets || data.top_targets?.indodax || {});
-  renderTopTargets('phantom-top-targets', 'phantom-top-empty', data.phantom_top_targets || data.top_targets?.phantom || {});
+  renderTopTargets('indodax-top-targets', 'indodax-top-empty', data.indodax_top_targets?.data || data.top_targets?.indodax?.data || data.indodax_top_targets || data.top_targets?.indodax || {});
+  renderTopTargets('phantom-top-targets', 'phantom-top-empty', data.phantom_top_targets?.data || data.top_targets?.phantom?.data || data.phantom_top_targets || data.top_targets?.phantom || {});
 
   const ai = data.ai || {};
   const sizing = data.autonomous_sizing || {};
@@ -735,12 +735,19 @@ function render(data) {
   setGate('punishment',        'gbadge-punishment',      'gscore-punishment');
 
   // Runtime section
-  const cpu = data.system?.cpu_pct;
-  const ram = data.system?.ram_pct;
-  setT('sys-cpu', cpu!=null ? `${cpu.toFixed(1)}%` : '—');
-  setT('sys-ram', ram!=null ? `${ram.toFixed(1)}%` : '—');
+  const telemetry = data.server_telemetry?.data || data.server_truth || {};
+  const cpu = telemetry.cpu?.percent ?? telemetry.cpu_pct ?? data.system?.cpu_pct;
+  const ram = telemetry.ram?.percent ?? telemetry.ram_pct ?? data.system?.ram_pct;
+  const disk = telemetry.disk?.percent ?? data.system?.disk_pct;
+  const uptime = telemetry.uptime_seconds;
+  setT('sys-cpu', cpu!=null ? `${Number(cpu).toFixed(1)}%` : 'MISSING_WITH_REASON');
+  setT('sys-ram', ram!=null ? `${Number(ram).toFixed(1)}%` : 'MISSING_WITH_REASON');
+  const diskEl = el('sys-disk');
+  if (diskEl) diskEl.textContent = disk!=null ? `${Number(disk).toFixed(1)}%` : 'MISSING_WITH_REASON';
+  const upEl = el('sys-uptime');
+  if (upEl) upEl.textContent = uptime!=null ? `${Math.floor(Number(uptime))}s` : 'MISSING_WITH_REASON';
   setT('sys-ollama', rt.ollama?.status || '—');
-  setT('sys-tel-age', freshnessLabel(fresh.telemetry_age_s));
+  setT('sys-tel-age', data.server_telemetry?.age_s != null ? freshnessLabel(data.server_telemetry.age_s) : '—');
 
   // Last updated
   const ts = new Date(data.timestamp||Date.now());

@@ -39,6 +39,19 @@ def _normalize_route(item: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 
+def _extract_candidates(payload: Any, keys: List[str]) -> List[Dict[str, Any]]:
+    results: List[Dict[str, Any]] = []
+    if not isinstance(payload, dict):
+        return results
+    for key in keys:
+        val = payload.get(key, [])
+        if isinstance(val, dict):
+            val = list(val.values())
+        if isinstance(val, list):
+            results.extend([item for item in val if isinstance(item, dict)])
+    return results
+
+
 def build_phantom_target_board() -> Dict[str, Any]:
     treasury = _read(STATE_DIR / "phantom_treasury.json", {})
     mover = _read(STATE_DIR / "phantom_capital_mover.json", {})
@@ -46,17 +59,53 @@ def build_phantom_target_board() -> Dict[str, Any]:
     scanner_contract = _read(STATE_DIR / "scanner_executor_contract.json", {})
     web3 = _read(STATE_DIR / "web3_opportunities.json", {})
     pumpfun = _read(STATE_DIR / "pumpfun_candidates.json", {})
+    pumpfun_wave = _read(STATE_DIR / "pumpfun_wave_candidates.json", {})
     market = _read(STATE_DIR / "market_wide_wave_candidates.json", {})
     base = _read(STATE_DIR / "base_scanner_state.json", {})
     future = _read(STATE_DIR / "future_web3_scanner_state.json", {})
     poly = _read(STATE_DIR / "polymarket_scanner_state.json", {})
+    sol_jup = _read(STATE_DIR / "solana_jupiter_scanner_state.json", {})
+    sol_meme = _read(STATE_DIR / "solana_meme_scanner_state.json", {})
+
+    source_map = {
+        "market_wide_real_candidates": (market, ["real_candidates", "approved_candidates", "hot_waves", "best_candidates"]),
+        "pumpfun_wave": (pumpfun_wave, ["new_launches", "early_pumps", "migrated_candidates", "jupiter_routable_candidates", "approved_candidates", "best_wave"]),
+        "pumpfun_candidates": (pumpfun, ["candidates", "approved_candidates", "best_candidate"]),
+        "solana_jupiter": (sol_jup, ["candidates", "approved_candidates", "best_candidate"]),
+        "solana_meme": (sol_meme, ["candidates", "approved_candidates", "best_candidate"]),
+        "base_swap": (base, ["candidates", "approved_candidates", "best_candidate"]),
+        "future_web3": (future, ["candidates", "approved_candidates", "best_candidate"]),
+        "polymarket": (poly, ["candidates", "approved_candidates", "best_candidate"]),
+        "web3": (web3, ["best_opportunities", "meme_hunter", "opportunities"]),
+    }
 
     routes: List[Dict[str, Any]] = []
-    for src in [web3.get("best_opportunities", []), pumpfun.get("candidates", []), market.get("candidates", []), base.get("candidates", []), future.get("candidates", []), poly.get("candidates", [])]:
-        if isinstance(src, list):
-            for item in src:
-                if isinstance(item, dict):
-                    routes.append(_normalize_route(item))
+    source_breakdown: Dict[str, Dict[str, Any]] = {}
+    for source_name, (payload, keys) in source_map.items():
+        raw_items = _extract_candidates(payload, keys)
+        normalized: List[Dict[str, Any]] = []
+        for item in raw_items:
+            candidate = _normalize_route(item)
+            candidate["source_file"] = source_name
+            if source_name == "market_wide_real_candidates":
+                candidate["route"] = str(item.get("route") or item.get("sector") or candidate["route"])
+            if item.get("sector") == "pumpfun_bonding_curve":
+                candidate["route"] = "pumpfun_native"
+            elif item.get("sector") == "pumpfun_migrated":
+                candidate["route"] = "pumpfun_jupiter"
+            elif item.get("sector") == "jupiter_routable":
+                candidate["route"] = "solana_jupiter"
+            elif item.get("sector") == "solana_meme":
+                candidate["route"] = "solana_meme"
+            elif str(candidate.get("chain", "")).lower() == "base":
+                candidate["route"] = "base_swap"
+            elif item.get("sector") == "polymarket":
+                candidate["route"] = "polymarket"
+            else:
+                candidate["route"] = candidate["route"] if candidate["route"] != "unknown" else "future_web3"
+            normalized.append(candidate)
+        routes.extend(normalized)
+        source_breakdown[source_name] = {"count": len(normalized), "status": "OK" if normalized else "NO_DATA", "reason": "" if normalized else f"no_candidates_in_{source_name}"}
 
     ranked_routes = []
     executable_routes = []
@@ -93,6 +142,9 @@ def build_phantom_target_board() -> Dict[str, Any]:
 
     source_status = "OK" if top_targets else ("NO_DATA" if not routes else "BLOCKED_WITH_REASON")
     why_empty = "" if top_targets else "no_phantom_candidates_after_source_proof_checks"
+    if not any(v["count"] for v in source_breakdown.values()):
+        source_status = "NO_DATA"
+        why_empty = "all phantom source feeds empty or stale"
 
     sol_idr = float(treasury.get("buckets", {}).get("swap_idr", treasury.get("sol_balance_idr", 0.0)) or 0.0)
     base_idrx = float(treasury.get("buckets", {}).get("base_idrx_idr", treasury.get("base_idrx_balance_idr", 0.0)) or 0.0)
@@ -100,6 +152,7 @@ def build_phantom_target_board() -> Dict[str, Any]:
         "updated_at": datetime.now(timezone.utc).isoformat(),
         "engine": "phantom",
         "source_status": source_status,
+        "source_breakdown": source_breakdown,
         "available_balances": {"solana_sol_idr": sol_idr, "base_idrx_idr": base_idrx},
         "executable_routes": [r["route"] for r in executable_routes],
         "blocked_routes": blocked_routes,

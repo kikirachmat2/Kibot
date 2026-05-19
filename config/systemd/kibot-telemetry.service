@@ -1,0 +1,14 @@
+[Unit]
+Description=KiBot Server Telemetry Writer
+After=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/home/ubuntu/KiBot
+EnvironmentFile=/home/ubuntu/KiBot/.env
+ExecStart=/home/ubuntu/KiBot/.venv/bin/python3 -m Core.Support.server_telemetry_runner
+Restart=always
+RestartSec=1
+
+[Install]
+WantedBy=multi-user.target

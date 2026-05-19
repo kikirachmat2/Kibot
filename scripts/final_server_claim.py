@@ -11,7 +11,7 @@ from Core.Decision.indodax_target_board import build_indodax_target_board
 from Core.Decision.phantom_target_board import build_phantom_target_board
 from Core.Scanner.scanner_health import write_scanner_health
 from Core.Scanner.scanner_executor_contract import ScannerExecutorContract
-from Core.Runtime.server_telemetry import write_server_telemetry
+from Core.Support.server_telemetry import write_server_telemetry
 
 STATE = Path(__file__).resolve().parent.parent / "state"
 CLAIM_FILE = STATE / "final_server_claim.json"
