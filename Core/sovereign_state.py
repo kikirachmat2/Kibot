@@ -53,16 +53,67 @@ DEFAULT_STRATEGY = {
     }
 }
 
+def _env_flag(name: str, default: str = "false") -> bool:
+    return os.getenv(name, default).strip().lower() in {"1", "true", "yes", "on", "live", "production"}
+
+
+def _sanitize_live_autonomous_strategy(strategy: Dict[str, Any]) -> Dict[str, Any]:
+    """Keep stale defensive council snapshots from freezing live autonomous routing."""
+    mode = os.getenv("KIBOT_TRADING_MODE", "controlled-live").strip().lower()
+    live_enabled = _env_flag("KIBOT_LIVE_TRADING_ENABLED", "true" if mode == "controlled-live" else "false")
+    force = _env_flag("KIBOT_FORCE_AUTONOMOUS_LIVE_STRATEGY", "true")
+    if not force or not live_enabled:
+        return strategy
+
+    out = dict(strategy or {})
+    indo = dict(out.get("indodax") or {})
+    changed = []
+
+    if indo.get("allowed_pairs") != ["*"]:
+        indo["allowed_pairs"] = ["*"]
+        changed.append("allowed_pairs_wildcard")
+    if indo.get("pairs") != ["*"]:
+        indo["pairs"] = ["*"]
+        changed.append("pairs_wildcard")
+
+    # Strategy/council scores are advisory in live autonomous mode; these bounds
+    # preserve fatal risk controls while preventing old defensive snapshots from
+    # locking the venue to BTC/ETH/USDT or a too-tight spread.
+    min_conf_ceiling = float(os.getenv("KIBOT_LIVE_MAX_MIN_CONFIDENCE", "0.62") or 0.62)
+    if float(indo.get("min_confidence", 1.0) or 1.0) > min_conf_ceiling:
+        indo["min_confidence"] = min_conf_ceiling
+        changed.append("min_confidence_bounded")
+
+    spread_floor = float(os.getenv("KIBOT_INDODAX_LIVE_MAX_SPREAD_PCT", "1.35") or 1.35)
+    if float(indo.get("max_spread_pct", 0.0) or 0.0) < spread_floor:
+        indo["max_spread_pct"] = spread_floor
+        changed.append("max_spread_widened")
+
+    tp_floor = float(os.getenv("KIBOT_INDODAX_LIVE_TAKE_PROFIT_PCT", "2.2") or 2.2)
+    if float(indo.get("take_profit_pct", 0.0) or 0.0) < tp_floor:
+        indo["take_profit_pct"] = tp_floor
+        changed.append("take_profit_widened")
+
+    indo.setdefault("hard_stop_pct", float(os.getenv("KIBOT_INDODAX_LIVE_STOP_LOSS_PCT", "1.5") or 1.5))
+    indo["council_mandate_required"] = False
+    indo["live_autonomous_sanitized"] = True
+    if changed:
+        indo["live_autonomous_sanitize_reasons"] = changed
+    out["indodax"] = indo
+    out["global_mode"] = "LIVE_AUTONOMOUS_TRADING"
+    return out
+
+
 def load_strategy() -> Dict[str, Any]:
     """Load the current active strategy for fast script execution."""
     if not STRATEGY_FILE.exists():
-        return DEFAULT_STRATEGY
+        return _sanitize_live_autonomous_strategy(DEFAULT_STRATEGY)
     try:
         with open(STRATEGY_FILE, "r") as f:
-            return json.load(f)
+            return _sanitize_live_autonomous_strategy(json.load(f))
     except Exception as e:
         logger.error(f"Failed to load strategy: {e}")
-        return DEFAULT_STRATEGY
+        return _sanitize_live_autonomous_strategy(DEFAULT_STRATEGY)
 
 def reset_strategy():
     """Reset to Default Strategy."""

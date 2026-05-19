@@ -1,0 +1,17 @@
+[Unit]
+Description=KiBot Live Order Dispatcher
+After=network-online.target redis-server.service kibot-executor.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/home/ubuntu/KiBot
+EnvironmentFile=/home/ubuntu/KiBot/.env
+Environment=PYTHONUNBUFFERED=1
+Environment=PYTHONPATH=.
+ExecStart=/home/ubuntu/KiBot/.venv/bin/python3 -m Core.Decision.live_order_dispatcher
+Restart=always
+RestartSec=1
+
+[Install]
+WantedBy=multi-user.target

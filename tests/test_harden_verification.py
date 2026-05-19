@@ -64,13 +64,13 @@ async def test_phantom_live_trading_gate():
         print("Testing swap_assets (live_trading_enabled = False)...")
         swap_res = await router.swap_assets("SOL", "USDC", 1.0, chain="solana")
         print(f"swap_assets result: {swap_res}")
-        assert swap_res is True, "swap_assets should return True (simulated success) when live trading is disabled"
+        assert swap_res is False, "swap_assets must not fake success when live trading is disabled"
         
         # Test snipe_meme_coin
         print("Testing snipe_meme_coin (live_trading_enabled = False)...")
         snipe_res = await router.snipe_meme_coin("PumpCoin", 0.5)
         print(f"snipe_meme_coin result: {snipe_res}")
-        assert snipe_res is True, "snipe_meme_coin should return True (simulated success) when live trading is disabled"
+        assert snipe_res is False, "snipe_meme_coin must not fake success when live trading is disabled"
         
         # Test execute_mev_arbitrage
         print("Testing execute_mev_arbitrage (live_trading_enabled = False)...")
@@ -78,7 +78,7 @@ async def test_phantom_live_trading_gate():
         print(f"execute_mev_arbitrage result: {mev_res}")
         assert mev_res is True, "execute_mev_arbitrage should return True (simulated success) when live trading is disabled"
         
-    print("SUCCESS: PhantomRouter on-chain operations correctly gated and simulated.")
+    print("SUCCESS: PhantomRouter on-chain operations correctly refuse fake success while gated.")
 
 
 @pytest.mark.anyio
@@ -166,8 +166,8 @@ async def test_bridge_router_hardening():
     # Expected yield: 10,000,000 * 30% APY / 12 = 250,000 IDR
     # Best route fee: 16,000 IDR
     # Expected yield (250000) > fee (16000), profitability check passes!
-    # But since KIBOT_ENABLE_REAL_BRIDGE & KIBOT_ENABLE_REAL_WITHDRAWAL are false, it should run simulation!
-    print("Testing simulation mode enforcement...")
+    # Since bridge/withdrawal are false, this must not pretend success.
+    print("Testing disabled bridge/withdrawal enforcement...")
     with patch.dict(os.environ, {"KIBOT_ENABLE_REAL_BRIDGE": "false", "KIBOT_ENABLE_REAL_WITHDRAWAL": "false"}):
         res2 = await router.auto_bridge_to_phantom(
             amount_idr=10000000.0,
@@ -175,11 +175,11 @@ async def test_bridge_router_hardening():
             target_network="polygon",
             target_apy=30.0
         )
-        print(f"Bridge result (expected simulation): {res2}, state resolved: {router.state}")
-        assert res2 is True, "BridgeRouter should simulate success in simulation mode"
-        assert router.state == "executed", "BridgeRouter state must transition to 'executed'"
+        print(f"Bridge result (expected blocked/failed): {res2}, state resolved: {router.state}")
+        assert res2 is False, "BridgeRouter must not fake success when bridge/withdrawal are disabled"
+        assert router.state in {"blocked", "failed"}, "BridgeRouter state must not transition to fake executed"
         
-    print("SUCCESS: BridgeRouter correctly blocked unprofitable trades and enforced simulation mode.")
+    print("SUCCESS: BridgeRouter correctly blocked unprofitable/disabled transfers without fake success.")
 
 
 @pytest.mark.anyio

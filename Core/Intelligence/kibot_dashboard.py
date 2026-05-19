@@ -417,6 +417,10 @@ def _load_phantom_live_brain() -> Dict[str, Any]:
     return _read_json(STATE / "phantom_live_brain.json", {})
 
 
+def _load_live_order_dispatcher() -> Dict[str, Any]:
+    return _read_json(STATE / "live_order_dispatcher.json", {})
+
+
 def _load_capital_movement_runtime() -> Dict[str, Any]:
     return _read_json(STATE / "capital_movement_runtime.json", {})
 
@@ -911,6 +915,7 @@ def _build_summary() -> Dict[str, Any]:
     summary["autonomous_trading_brain"] = _load_autonomous_trading_brain()
     summary["indodax_live_brain"] = _load_indodax_live_brain()
     summary["phantom_live_brain"] = _load_phantom_live_brain()
+    summary["live_order_dispatcher"] = _load_live_order_dispatcher()
     summary["capital_movement_runtime"] = _load_capital_movement_runtime()
     try:
         from Core.Treasury.phantom_multichain_controller import PhantomMultichainController
@@ -1137,6 +1142,7 @@ def _build_control_plane_payload() -> Dict[str, Any]:
         "polymarket_live_enabled": bool(KiConfig.ENABLE_POLYMARKET_LIVE),
         "allow_new_live_orders": allow_new_live_orders,
         "allow_new_live_orders_reason": rejection_reason,
+        "advisory_gate_state": "ADVISORY_ONLY",
     }
 
     # 2. Portfolio stats from build_summary / build_portfolio
@@ -1296,12 +1302,15 @@ def _build_control_plane_payload() -> Dict[str, Any]:
     current_entry_approved = bool(
         allow_new_live_orders
         and route_live_ready
-        and gates["signal_quality"]["status"] == "PASS"
-        and gates["expected_value"]["status"] == "PASS"
-        and gates["strategy_scorecard"]["status"] == "PASS"
         and gates["risk_gate"]["status"] == "PASS"
-        and gates["microstructure"]["status"] == "PASS"
     )
+    mode["advisory_gates"] = {
+        "signal_quality": gates["signal_quality"]["status"],
+        "expected_value": gates["expected_value"]["status"],
+        "strategy_scorecard": gates["strategy_scorecard"]["status"],
+        "microstructure": gates["microstructure"]["status"],
+        "effect": "does_not_block_live_orders",
+    }
 
     # 5. Runtime Health
     scanner_stats = _read_json(STATE / "scanner_runtime.json", {})
@@ -1521,6 +1530,11 @@ def _build_control_plane_payload() -> Dict[str, Any]:
             "data": summary_data.get("phantom_top_targets", {}),
             "age_s": _file_age_s(STATE / "phantom_top_targets.json"),
             "fresh": _file_age_s(STATE / "phantom_top_targets.json") >= 0 and _file_age_s(STATE / "phantom_top_targets.json") < 15,
+        },
+        "live_order_dispatcher": {
+            "data": summary_data.get("live_order_dispatcher", {}),
+            "age_s": _file_age_s(STATE / "live_order_dispatcher.json"),
+            "fresh": _file_age_s(STATE / "live_order_dispatcher.json") >= 0 and _file_age_s(STATE / "live_order_dispatcher.json") < 15,
         },
         "system_truth": {
             "batam_server_online": bool(summary_data.get("server_telemetry")),

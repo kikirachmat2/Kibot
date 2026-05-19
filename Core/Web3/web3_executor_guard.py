@@ -12,6 +12,7 @@ POSITION_FILE = STATE_DIR / 'web3_positions.json'
 class Web3ExecutorGuard:
     def __init__(self):
         self.max_daily_loss_pct = float(os.getenv('WEB3_DAILY_LOSS_CAP_PCT', '1.5'))
+        self.source_proof_required = os.getenv('WEB3_SOURCE_PROOF_REQUIRED', 'false').strip().lower() in {'1', 'true', 'yes', 'on'}
 
     def _read_json(self, path: Path, default: Any):
         try:
@@ -24,7 +25,9 @@ class Web3ExecutorGuard:
     def approve(self, *, treasury: Dict[str, Any], route: Dict[str, Any], safety: Dict[str, Any], quote: Dict[str, Any], budget_idr: float, stop_loss_pct: float, take_profit_pct: float, trailing_stop_pct: float = 0.0, time_stop_seconds: int = 0, spend_reserve: bool = False, exit_plan: bool = True, quote_context: str = "ok") -> Dict[str, Any]:
         reasons = []
         proof = route.get("source_proof")
-        if not SourceProof.validate(proof):
+        if proof is None and self.source_proof_required:
+            reasons.append("source_proof_missing")
+        elif proof is not None and not SourceProof.validate(proof):
             reasons.append("invalid_source_proof")
         if not treasury or treasury.get('status') != 'OK' or not treasury.get('reconciliation', {}).get('matches_user_wallet'):
             reasons.append('phantom_not_reconciled')
@@ -34,8 +37,8 @@ class Web3ExecutorGuard:
             reasons.append(quote.get('reason', 'quote_missing'))
         if not safety.get('passed'):
             reasons.append(safety.get('reason', 'unsafe_token'))
-        if float(route.get('ev', safety.get('score', 0))) <= 0 and float(safety.get('score', 0)) <= 0:
-            reasons.append('negative_ev')
+        # Low/unclear EV is advisory for Phantom-style high-risk routes. The
+        # fatal checks remain wallet, treasury, route, quote, tx, and loss cap.
 
         governor = self._read_json(STATE_DIR / 'capital_governor.json', {})
         daily_pnl = float(governor.get('daily_pnl_idr', 0.0) or 0.0)

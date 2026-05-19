@@ -54,6 +54,7 @@ def build_autonomous_trading_brain() -> Dict[str, Any]:
     trading_pnl_pct = float(capital_governor.get("trading_pnl_pct", capital_governor.get("daily_pnl_pct", 0.0)) or 0.0)
     trading_pnl_idr = float(capital_governor.get("trading_pnl_idr", capital_governor.get("daily_pnl_idr", 0.0)) or 0.0)
     max_daily_loss_idr = float(capital_governor.get("max_daily_loss_idr", 0.0) or 0.0)
+    governor_total_equity = float(capital_governor.get("current_total_equity_idr") or capital_governor.get("current_equity_idr") or 0.0)
     deadline = DeadlineProfitEnforcer().evaluate_enforcer(
         trading_pnl_pct,
         trading_pnl_idr,
@@ -133,8 +134,8 @@ def build_autonomous_trading_brain() -> Dict[str, Any]:
         sizing_liquidity = float(selected_candidate.get("volume_24h_idr") or 0.0)
         sizing_confidence = float(selected_candidate.get("momentum_score") or selected_candidate.get("change_24h_pct") or 0.0) / 100.0
         sizing_ev = float(selected_candidate.get("entry_score") or 0.0)
-        sizing_balance = float(indo.get("capital_idr") or capital_governor.get("current_total_equity_idr") or capital_governor.get("current_equity_idr") or 0.0)
-        sizing_bucket = float(indo.get("capital_idr") or capital_governor.get("current_total_equity_idr") or 0.0)
+        sizing_balance = float(indo.get("capital_idr") or governor_total_equity or 0.0)
+        sizing_bucket = float(indo.get("capital_idr") or governor_total_equity or 0.0)
         sizing_exit_available = True
     else:
         sizing_route = str(selected_candidate.get("route") or "indodax")
@@ -145,8 +146,15 @@ def build_autonomous_trading_brain() -> Dict[str, Any]:
         sizing_bucket = float(phantom.get("available_balances", {}).get("solana_sol_idr") or 0.0)
         sizing_exit_available = bool(selected_candidate.get("exit_route_ok", True))
 
+    sizing_total_capital = max(
+        governor_total_equity,
+        sizing_balance,
+        float(indo.get("capital_idr") or 0.0),
+        float(phantom.get("available_balances", {}).get("solana_sol_idr") or 0.0),
+        1.0,
+    )
     sizing = AutonomousSizing().size(
-        total_capital_idr=float((indo.get("capital_idr") or phantom.get("available_balances", {}).get("solana_sol_idr") or 0.0)),
+        total_capital_idr=sizing_total_capital,
         venue_capital_idr=sizing_balance,
         route_bucket_idr=sizing_bucket,
         available_balance_idr=sizing_balance,

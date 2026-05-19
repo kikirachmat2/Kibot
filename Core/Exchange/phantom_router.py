@@ -142,7 +142,7 @@ class PhantomRouter:
 
         if not KiConfig.LIVE_TRADING_ENABLED or not KiConfig.ENABLE_REAL_SWAP:
             logger.warning(f"⚠️ [GUARDED] Swap blocked (Real Swap OFF): {amount_in} of {token_in} -> {token_out} on {chain}")
-            return True
+            return False
 
         gate_ctx = self._live_web3_gate_context()
         from Core.Web3.web3_quote_router import Web3QuoteRouter
@@ -283,7 +283,7 @@ class PhantomRouter:
         """ 1. Prediction Markets: Execute trade on Polymarket (Polygon). """
         if not KiConfig.LIVE_TRADING_ENABLED or not KiConfig.ENABLE_POLYMARKET_LIVE:
             logger.warning(f"⚠️ [GUARDED] Polymarket trade blocked (Live OFF): {amount_usdc} USDC on {outcome} in {market_id}")
-            return True
+            return False
 
         gate_ctx = self._live_web3_gate_context()
         treasury = gate_ctx.get("treasury", {})
@@ -327,7 +327,7 @@ class PhantomRouter:
         """ 4. Meme Sniping: Fast swap via Jupiter with high slippage (Solana). """
         if not KiConfig.LIVE_TRADING_ENABLED or not KiConfig.ENABLE_REAL_SWAP:
             logger.warning(f"⚠️ [GUARDED] Meme snipe blocked: {token_address} with {amount_sol} SOL")
-            return True
+            return False
 
         gate_ctx = self._live_web3_gate_context()
         if gate_ctx.get("controller"):
