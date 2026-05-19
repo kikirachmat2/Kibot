@@ -465,6 +465,11 @@ function render(data) {
   const fresh = data.freshness || {};
   const rt    = data.runtime || {};
   const dir   = data.autonomous_director || {};
+  const ai = data.ai || {};
+  const sizing = data.autonomous_sizing || {};
+  const brain = data.autonomous_trading_brain || {};
+  const indoBrain = data.indodax_live_brain || {};
+  const phBrain = data.phantom_live_brain || {};
 
   // Top bar badges
   const modeBadge = el('mode-badge');
@@ -708,11 +713,6 @@ function render(data) {
   renderTopTargets('indodax-top-targets', 'indodax-top-empty', data.indodax_top_targets?.data || data.top_targets?.indodax?.data || data.indodax_top_targets || data.top_targets?.indodax || {});
   renderTopTargets('phantom-top-targets', 'phantom-top-empty', data.phantom_top_targets?.data || data.top_targets?.phantom?.data || data.phantom_top_targets || data.top_targets?.phantom || {});
 
-  const ai = data.ai || {};
-  const sizing = data.autonomous_sizing || {};
-  const brain = data.autonomous_trading_brain || {};
-  const indoBrain = data.indodax_live_brain || {};
-  const phBrain = data.phantom_live_brain || {};
   setT('ai-objective', ai.objective || '—');
   setT('ai-best-action', brain.current_best_action || ai.best_action || '—');
   setT('ai-confidence', ai.confidence != null ? Number(ai.confidence).toFixed(2) : '—');
