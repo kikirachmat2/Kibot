@@ -724,7 +724,8 @@ function render(data) {
       const secondary = t.pair || t.chain || t.mint_or_market || '';
       const metric = t.volume_24h_idr ?? t.volume_or_liquidity ?? 0;
       const change = t.change_24h_pct ?? t.change_pct ?? 0;
-      return `<div style="margin-bottom:4px"><strong>#${t.rank}</strong> ${label} ${secondary ? `· ${secondary}` : ''}<br/><span class="text-muted">${pct(change)} | ${idr(metric)} | entry ${Number(score).toFixed(1)} | exit ${Number(exitScore).toFixed(1)} | ${action} | ${reason}</span></div>`;
+      const actionCls = action === 'ENTER' ? 'badge badge--green' : (action === 'WATCH' ? 'badge badge--yellow' : (action === 'REJECT' ? 'badge badge--red' : 'badge badge--ghost'));
+      return `<div style="margin-bottom:4px"><strong>#${t.rank}</strong> ${label} ${secondary ? `· ${secondary}` : ''} <span class="${actionCls}" style="margin-left:6px">${action}</span><br/><span class="text-muted">${pct(change)} | ${idr(metric)} | entry ${Number(score).toFixed(1)} | exit ${Number(exitScore).toFixed(1)} | ${reason}</span></div>`;
     }).join('');
   }
   renderTopTargets('indodax-top-targets', 'indodax-top-empty', data.indodax_top_targets?.data || data.top_targets?.indodax?.data || data.indodax_top_targets || data.top_targets?.indodax || {});

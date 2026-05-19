@@ -212,10 +212,17 @@ def build_phantom_target_board() -> Dict[str, Any]:
     executable_routes.sort(key=lambda x: (route_priority(x["route"]), x["wave_score"], x["volume_or_liquidity"], x["change_pct"]), reverse=True)
     ranked_routes.sort(key=lambda x: (route_priority(x["route"]), x["wave_score"], x["volume_or_liquidity"], x["change_pct"]), reverse=True)
     top_targets: List[Dict[str, Any]] = []
-    for idx, item in enumerate(ranked_routes[:5], start=1):
+    seen_routes = set()
+    for item in ranked_routes:
+        route_name = str(item.get("route") or "")
+        if route_name in seen_routes and len(top_targets) < 5:
+            continue
+        seen_routes.add(route_name)
         item = dict(item)
-        item["rank"] = idx
+        item["rank"] = len(top_targets) + 1
         top_targets.append(item)
+        if len(top_targets) >= 5:
+            break
 
     source_status = "OK" if top_targets else ("NO_DATA" if not routes else "BLOCKED_WITH_REASON")
     why_empty = "" if top_targets else "no_phantom_candidates_after_source_proof_checks"
