@@ -2,6 +2,7 @@
 Description=KiBot Pumpfun UltraFast Live Runner
 After=network-online.target
 Wants=network-online.target
+StartLimitIntervalSec=0
 
 [Service]
 Type=simple
@@ -10,9 +11,7 @@ EnvironmentFile=/home/ubuntu/KiBot/.env
 ExecStart=/home/ubuntu/KiBot/.venv/bin/python3 -m Core.Web3.pumpfun_live_runner
 Restart=always
 RestartSec=2
-StartLimitIntervalSec=0
 User=ubuntu
 
 [Install]
 WantedBy=multi-user.target
-
