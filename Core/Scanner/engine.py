@@ -27,6 +27,11 @@ try:
 except ImportError:
     MarketRotationEngine = None
 
+try:
+    from Core.Web3.web3_opportunity_scanner import Web3OpportunityScanner
+except ImportError:
+    Web3OpportunityScanner = None
+
 
 class ScannerEngine:
     def __init__(self, scanners: Sequence[Any] | None = None, interval_s: int | None = None):
@@ -47,6 +52,8 @@ class ScannerEngine:
         self._last_poly_scan = 0.0
         self._last_heatmap_refresh = 0.0
         self._heatmap_interval_s = float(os.getenv("KIBOT_HEATMAP_REFRESH_SEC", "60") or 60)
+        self._last_web3_scan = 0.0
+        self._web3_scan_interval_s = float(os.getenv("KIBOT_WEB3_SCAN_INTERVAL_SEC", "30") or 30)
 
         # LeadLag alpha engine setup
         self.leadlag_enabled = os.getenv("KIBOT_LEADLAG_ENABLED", "true").strip().lower() in {"1", "true", "yes", "on"}
@@ -62,6 +69,12 @@ class ScannerEngine:
             logger.info("✅ Market Rotation Engine initialized in HFT Scanner.")
         else:
             self.rotation_engine = None
+
+        if Web3OpportunityScanner is not None:
+            self.web3_scanner = Web3OpportunityScanner()
+            logger.info("✅ Web3 Opportunity Scanner initialized in HFT Scanner.")
+        else:
+            self.web3_scanner = None
 
         # Turbo Adaptive Mode setup
         self.scanner_turbo = os.getenv("KIBOT_SCANNER_TURBO", "true").strip().lower() in {"1", "true", "yes", "on", "auto"}
@@ -421,6 +434,13 @@ class ScannerEngine:
                 fetch_indodax_heatmap(persist=True, timeout=6.0)
             except Exception as _heatmap_err:
                 logger.debug(f"[Scanner] heatmap refresh skipped: {_heatmap_err}")
+
+        if self.web3_scanner and (started_at - self._last_web3_scan >= self._web3_scan_interval_s):
+            self._last_web3_scan = started_at
+            try:
+                await self.web3_scanner.scan()
+            except Exception as _web3_err:
+                logger.debug(f"[Scanner] web3 opportunity scan skipped: {_web3_err}")
 
         # ── §17.2 Persist best Indodax signal for dashboard Signal Intel panel ──
         if indo_signals:
