@@ -9,6 +9,11 @@ const NOISE_RE   = /vault|decrypt|cipher|CEREBRAS_API_KEY|MISTRAL_API_KEY|os\.en
 const idr = v => `Rp ${(+v||0).toLocaleString('id-ID')}`;
 const pct = v => `${v>=0?'+':''}${(+v||0).toFixed(2)}%`;
 const esc = s => String(s ?? '').replace(/[<>&"]/g, c => ({'<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;'}[c]));
+const shortAddr = addr => {
+  const s = String(addr ?? '').trim();
+  if (!s) return '—';
+  return s.length > 12 ? `${s.slice(0, 6)}…${s.slice(-4)}` : s;
+};
 const el  = id => document.getElementById(id);
 const setT = (id, v) => { const e = el(id); if (e) e.textContent = v; };
 const getCount = (val) => Array.isArray(val) ? val.length : (typeof val === 'object' && val !== null ? Object.keys(val).length : (val ?? 0));
@@ -569,9 +574,14 @@ function render(data) {
   setT('phantom-sol', (ph.sol_balance || 0).toFixed(4) + ' SOL');
   setT('phantom-usdc', (ph.usdc_balance || 0).toFixed(2) + ' USDC');
   setT('phantom-base-idrx', idr(ph.base_idrx_balance || 0));
+  setT('phantom-base-address', shortAddr(ph.chains?.base?.evm_address || ph.evm_address || ''));
+  setT('phantom-base-block', ph.chains?.base?.latest_block ? `#${ph.chains.base.latest_block}` : '—');
+  setT('phantom-base-status', ph.status || '—');
+  setT('phantom-recon', ph.reconciliation?.matches_user_wallet ? 'MATCH' : 'MISMATCH');
   setT('phantom-bucket-swap', idr(ph.buckets?.swap_idr || 0));
   setT('phantom-bucket-polymarket', idr(ph.buckets?.polymarket_idr || 0));
   setT('phantom-bucket-reserve', idr(ph.buckets?.reserve_idr || 0));
+  setT('phantom-bucket-future-web3', idr(ph.buckets?.future_web3_idr || 0));
 
   // Gate stack
   function setGate(key, badgeId, scoreId) {

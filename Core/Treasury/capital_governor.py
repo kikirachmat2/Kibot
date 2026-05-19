@@ -233,6 +233,11 @@ class CapitalGovernor:
             # 3. Calculate Total Consolidated Equity
             # Real-canary / Real Mode takes actual Indodax, otherwise paper
             primary_indodax_balance = indodax_real_balance if KiConfig.LIVE_TRADING_ENABLED else indodax_paper_balance
+            phantom_reconciliation = phantom_summary.get("reconciliation", {}) if isinstance(phantom_summary, dict) else {}
+            phantom_ready = (
+                phantom_summary.get("status") in {"OK", "SCOUTING"}
+                and bool(phantom_reconciliation.get("matches_user_wallet"))
+            )
             
             # Read in-flight internal transfers destined for Phantom
             in_flight_idr = self._read_in_flight_transfers(self.last_reset_date, phantom_equity_idr)
@@ -260,8 +265,10 @@ class CapitalGovernor:
             else:
                 self.daily_pnl_pct = 0.0
                 
-            self.status = "RECONCILED"
+            self.status = "RECONCILED" if phantom_ready else "BLOCKED"
             self.save()
+            if not phantom_ready:
+                logger.warning("⚠️ Phantom treasury not yet reconciled; live Phantom routes remain blocked.")
             
             # 4. Compute target allocation split
             targets = self.policy.compute_targets(phantom_equity_idr)

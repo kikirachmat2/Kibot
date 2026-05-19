@@ -165,6 +165,21 @@ class RiskGate:
                     return False, f"MANIFESTO CAP: Global daily loss cap reached ({gov_daily_pnl:.2f} < -{gov_loss_cap:.2f})"
             else:
                 return False, "FAIL-CLOSED: Capital Governor state date is from a different day"
+
+            phantom_file = STATE_DIR / "phantom_treasury.json"
+            if phantom_file.exists():
+                try:
+                    with open(phantom_file, "r") as f:
+                        phantom_state = json.load(f)
+                    recon = phantom_state.get("reconciliation", {}) if isinstance(phantom_state, dict) else {}
+                    if phantom_state.get("status") not in {"OK", "SCOUTING"} or not recon.get("matches_user_wallet"):
+                        return False, (
+                            "FAIL-CLOSED: Phantom treasury not reconciled "
+                            f"(status={phantom_state.get('status')}, match={recon.get('matches_user_wallet')})"
+                        )
+                except Exception as e:
+                    logger.error(f"❌ Failed to validate Phantom treasury state inside RiskGate: {e}")
+                    return False, f"FAIL-CLOSED: Error validating Phantom treasury state: {e}"
         except Exception as e:
             logger.error(f"❌ Failed to validate Capital Governor state inside RiskGate: {e}")
             return False, f"FAIL-CLOSED: Error validating Capital Governor state: {e}"

@@ -739,6 +739,12 @@ def _build_summary() -> Dict[str, Any]:
     summary["market_heatmap"] = _read_json(STATE / "market_heatmap.json", {})
     summary["green_probability"] = _read_json(STATE / "green_probability.json", {})
     summary["scanner_candidates"] = _read_json(STATE / "scanner_candidates.json", {})
+    try:
+        from Core.Treasury.phantom_multichain_controller import PhantomMultichainController
+
+        summary["phantom_multichain"] = PhantomMultichainController().get_summary()
+    except Exception:
+        summary["phantom_multichain"] = {}
 
     _daily_context = summary.get("daily_context")
     _daily_context_dict = _daily_context if isinstance(_daily_context, dict) else {}
@@ -988,15 +994,18 @@ def _build_control_plane_payload() -> Dict[str, Any]:
         "phantom": {
             "venue": "Phantom Scouting",
             "mode": "SIMULATION",
-            "status": "ACTIVE",
+            "status": "BLOCKED" if summary_data.get("phantom_multichain", {}).get("reconciliation_blocked") else "ACTIVE",
             "opportunities": len(portfolio.get("phantom", {}).get("active_opportunities", []) if isinstance(portfolio.get("phantom"), dict) else []),
-            "reason": "Scanning Solana microstructure",
+            "reason": "Phantom not reconciled" if summary_data.get("phantom_multichain", {}).get("reconciliation_blocked") else "Scanning Solana microstructure",
             "sol_balance": _safe_float(pt.get("sol_balance"), 0.0),
             "usdc_balance": _safe_float(pt.get("usdc_balance"), 0.0),
             "base_idrx_balance": _safe_float(pt.get("base_idrx_balance"), 0.0),
             "total_value_idr": _safe_float(pt.get("total_value_idr"), 0.0),
             "buckets": pt.get("buckets", {}),
             "bucket_percentages": pt.get("bucket_percentages", {}),
+            "status_detail": pt.get("status"),
+            "reconciliation": pt.get("reconciliation", {}),
+            "chains": pt.get("chains", {}),
         },
         "polymarket": {
             "venue": "Polymarket",
