@@ -57,6 +57,7 @@ def _normalize_route(item: Dict[str, Any]) -> Dict[str, Any]:
         "executor_status": str(item.get("executor_status") or item.get("status") or "BLOCKED_WITH_REASON"),
         "recommended_action": str(item.get("recommended_action") or "WATCH"),
         "reason": str(item.get("reason") or ""),
+        "advisory_notes": list(item.get("advisory_notes") or []),
     }
 
 
@@ -156,6 +157,10 @@ def build_phantom_target_board() -> Dict[str, Any]:
         elif route_caps.get("status", "").upper().startswith("BLOCKED") and not route_exec_ready:
             reason = route_caps.get("reason") or route["reason"] or "executor_blocked"
         candidate = dict(route)
+        advisory_notes = list(candidate.get("advisory_notes") or [])
+        if not candidate["quote_ok"]:
+            advisory_notes.append("no_quote")
+        candidate["advisory_notes"] = sorted(set(advisory_notes))
         if reason:
             candidate["executor_status"] = "BLOCKED_WITH_REASON"
             candidate["reason"] = reason
@@ -163,7 +168,12 @@ def build_phantom_target_board() -> Dict[str, Any]:
             blocked_routes.setdefault(route["route"], []).append(candidate)
         else:
             candidate["executor_status"] = "EXECUTABLE"
-            candidate["recommended_action"] = "ENTER" if candidate["wave_score"] >= 10 else "WATCH"
+            if not candidate["quote_ok"]:
+                candidate["recommended_action"] = "WATCH"
+                if "no_quote" not in candidate["advisory_notes"]:
+                    candidate["advisory_notes"].append("no_quote")
+            else:
+                candidate["recommended_action"] = "ENTER" if candidate["wave_score"] >= 10 else "WATCH"
             executable_routes.append(candidate)
         ranked_routes.append(candidate)
 
