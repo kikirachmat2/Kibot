@@ -43,12 +43,12 @@ Source of truth untuk keadaan server yang sebenarnya:
 - [`SERVER_INVENTORY.md`](./SERVER_INVENTORY.md)
 - [`TRADING_STRATEGY.md`](./strategy/TRADING_STRATEGY.md)
 - [`SYSTEM_STRATEGY.md`](./strategy/SYSTEM_STRATEGY.md)
-- [`AUTONOMY_GAP_REGISTER.md`](./strategy/AUTONOMY_GAP_REGISTER.md)
-- [`IMPLEMENTATION_ROADMAP.md`](./strategy/IMPLEMENTATION_ROADMAP.md)
-- [`INVENTORY_UTILIZATION.md`](./strategy/INVENTORY_UTILIZATION.md)
-- [`SYSTEM_COMMANDER_SPEC.md`](./strategy/SYSTEM_COMMANDER_SPEC.md)
-- [`POLYMARKET_RUNTIME_ROADMAP.md`](./strategy/POLYMARKET_RUNTIME_ROADMAP.md)
-- [`OBSERVABILITY_DASHBOARD_SPEC.md`](./strategy/OBSERVABILITY_DASHBOARD_SPEC.md)
+- [`AUTONOMY_GAP_REGISTER.md`](./strategy/specs/AUTONOMY_GAP_REGISTER.md)
+- [`IMPLEMENTATION_ROADMAP.md`](./strategy/roadmaps/IMPLEMENTATION_ROADMAP.md)
+- [`INVENTORY_UTILIZATION.md`](./strategy/specs/INVENTORY_UTILIZATION.md)
+- [`SYSTEM_COMMANDER_SPEC.md`](./strategy/specs/SYSTEM_COMMANDER_SPEC.md)
+- [`POLYMARKET_RUNTIME_ROADMAP.md`](./strategy/roadmaps/POLYMARKET_RUNTIME_ROADMAP.md)
+- [`OBSERVABILITY_DASHBOARD_SPEC.md`](./strategy/specs/OBSERVABILITY_DASHBOARD_SPEC.md)
 
 Snapshot singkat yang paling penting:
 - Server: `BrainSystem` di Batam.
