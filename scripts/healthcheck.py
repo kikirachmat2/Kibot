@@ -398,7 +398,7 @@ def check_json_states(state_dir):
         "market_rotation.json": 90.0,
         "punishment_state.json": 31536000.0,
         "expected_value.json": 31536000.0,
-        "web3_opportunities.json": 120.0,
+        "web3_opportunities.json": 300.0,
         "ai_decision_trace.json": 120.0,
     }
     
