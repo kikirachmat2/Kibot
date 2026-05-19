@@ -12,6 +12,12 @@ logger = logging.getLogger('Web3OpportunityScanner')
 STATE_DIR = Path(__file__).resolve().parent.parent.parent / 'state'
 OPPS_FILE = STATE_DIR / 'web3_opportunities.json'
 
+def _env_bool(name: str, default: bool = False) -> bool:
+    raw = os.getenv(name)
+    if raw is None:
+        return default
+    return str(raw).strip().lower() in {"1", "true", "yes", "on", "enabled"}
+
 class Web3OpportunityScanner:
     def __init__(self):
         self.solana_rpc = os.getenv('SOLANA_RPC_URL', 'https://api.mainnet-beta.solana.com')
@@ -36,7 +42,7 @@ class Web3OpportunityScanner:
             "rejected": [],
             "routes": {"solana": {}, "base": {}, "polymarket": {}, "future_web3": {}},
             "meme_hunter": {
-                "enabled": bool(int(os.getenv("WEB3_MEME_HUNTER_ENABLED", "1") or 1)),
+                "enabled": _env_bool("WEB3_MEME_HUNTER_ENABLED", True),
                 "best_candidate": {},
                 "candidates_found": 0,
                 "rejected_count": 0,
