@@ -88,8 +88,8 @@ class SolanaTrendingScanner:
             "scam",
             "rocky",
         ]
-        # Dynamically append user watchlist symbols from state/user_watchlist.json
-        watchlist_file = Path(__file__).resolve().parent.parent.parent / "state" / "user_watchlist.json"
+        # Dynamically append operator hints symbols from state/operator_hints.json
+        watchlist_file = Path(__file__).resolve().parent.parent.parent / "state" / "operator_hints.json"
         if watchlist_file.exists():
             try:
                 wl = json.loads(watchlist_file.read_text(encoding="utf-8"))
@@ -98,7 +98,7 @@ class SolanaTrendingScanner:
                     if sym_clean and sym_clean not in search_terms:
                         search_terms.append(sym_clean)
             except Exception as e:
-                logger.debug(f"Failed to load user watchlist in scanner: {e}")
+                logger.debug(f"Failed to load operator hints in scanner: {e}")
 
         raw: List[Dict[str, Any]] = []
         for term in search_terms:

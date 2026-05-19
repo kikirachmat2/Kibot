@@ -78,8 +78,8 @@ class PumpfunScanner:
             "buttcoin",
             "no",
         ]
-        # Dynamically append user watchlist symbols from state/user_watchlist.json
-        watchlist_file = Path(__file__).resolve().parent.parent.parent / "state" / "user_watchlist.json"
+        # Dynamically append operator hints symbols from state/operator_hints.json
+        watchlist_file = Path(__file__).resolve().parent.parent.parent / "state" / "operator_hints.json"
         if watchlist_file.exists():
             try:
                 wl = json.loads(watchlist_file.read_text(encoding="utf-8"))
@@ -88,7 +88,7 @@ class PumpfunScanner:
                     if sym_clean and sym_clean not in search_terms:
                         search_terms.append(sym_clean)
             except Exception as e:
-                logger.debug(f"Failed to load user watchlist in pumpfun scanner: {e}")
+                logger.debug(f"Failed to load operator hints in pumpfun scanner: {e}")
 
         out: List[Dict[str, Any]] = []
         for term in search_terms:
