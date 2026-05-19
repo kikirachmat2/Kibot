@@ -713,6 +713,19 @@ function render(data) {
   renderTopTargets('indodax-top-targets', 'indodax-top-empty', data.indodax_top_targets?.data || data.top_targets?.indodax?.data || data.indodax_top_targets || data.top_targets?.indodax || {});
   renderTopTargets('phantom-top-targets', 'phantom-top-empty', data.phantom_top_targets?.data || data.top_targets?.phantom?.data || data.phantom_top_targets || data.top_targets?.phantom || {});
 
+  const phantomBoard = data.phantom_top_targets?.data || data.top_targets?.phantom?.data || data.phantom_top_targets || data.top_targets?.phantom || {};
+  const phantomBreakdown = el('phantom-source-breakdown');
+  if (phantomBreakdown) {
+    const breakdown = phantomBoard.source_breakdown || {};
+    const rows = Object.entries(breakdown).map(([name, info]) => {
+      const count = info?.count ?? 0;
+      const status = info?.status || '—';
+      const reason = info?.reason || '';
+      return `<div><strong>${esc(name)}</strong> · ${esc(String(count))} · ${esc(status)}${reason ? ` · ${esc(reason)}` : ''}</div>`;
+    });
+    phantomBreakdown.innerHTML = rows.length ? rows.join('') : `<div>${esc(phantomBoard.why_empty || '—')}</div>`;
+  }
+
   setT('ai-objective', ai.objective || '—');
   setT('ai-best-action', brain.current_best_action || ai.best_action || '—');
   setT('ai-confidence', ai.confidence != null ? Number(ai.confidence).toFixed(2) : '—');

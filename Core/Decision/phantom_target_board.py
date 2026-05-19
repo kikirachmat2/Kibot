@@ -19,9 +19,30 @@ def _read(path: Path, default: Any) -> Any:
 
 
 def _normalize_route(item: Dict[str, Any]) -> Dict[str, Any]:
+    route = str(item.get("route") or item.get("route_type") or item.get("network") or "").lower() or "unknown"
+    sector = str(item.get("sector") or "").lower()
+    if sector == "pumpfun_bonding_curve":
+        route = "pumpfun_native"
+    elif sector == "pumpfun_migrated":
+        route = "pumpfun_jupiter"
+    elif sector == "jupiter_routable":
+        route = "solana_jupiter"
+    elif sector == "solana_meme":
+        route = "solana_meme"
+    elif str(item.get("chain") or item.get("network") or item.get("venue") or "").lower() == "base":
+        route = "base_swap"
+    elif sector == "polymarket":
+        route = "polymarket"
+    elif route == "unknown" and str(item.get("chain") or "").lower() in {"solana", "base", "polygon"}:
+        route = {
+            "solana": "solana_jupiter",
+            "base": "base_swap",
+            "polygon": "polymarket",
+        }.get(str(item.get("chain") or "").lower(), "future_web3")
+
     return {
         "rank": 0,
-        "route": str(item.get("route") or item.get("route_type") or item.get("network") or "").lower() or "unknown",
+        "route": route,
         "symbol": str(item.get("symbol") or item.get("asset") or item.get("market") or item.get("name") or "").upper(),
         "mint_or_market": str(item.get("mint") or item.get("market_id") or item.get("market") or "").strip(),
         "chain": str(item.get("chain") or item.get("network") or item.get("venue") or "").lower(),
@@ -79,6 +100,19 @@ def build_phantom_target_board() -> Dict[str, Any]:
         "web3": (web3, ["best_opportunities", "meme_hunter", "opportunities"]),
     }
 
+    route_capabilities: Dict[str, Dict[str, Any]] = {}
+    for route in scanner_contract.get("routes", []) if isinstance(scanner_contract, dict) else []:
+        if not isinstance(route, dict):
+            continue
+        route_capabilities[str(route.get("route") or "").lower()] = {
+            "can_scan": bool(route.get("can_scan", False)),
+            "can_quote": bool(route.get("can_quote", False)),
+            "can_execute": bool(route.get("can_execute", False)),
+            "can_exit": bool(route.get("can_exit", False)),
+            "status": str(route.get("status") or "UNKNOWN"),
+            "reason": str(route.get("reason") or ""),
+        }
+
     routes: List[Dict[str, Any]] = []
     source_breakdown: Dict[str, Dict[str, Any]] = {}
     for source_name, (payload, keys) in source_map.items():
@@ -112,14 +146,15 @@ def build_phantom_target_board() -> Dict[str, Any]:
     blocked_routes = {}
     for route in routes:
         reason = ""
+        route_caps = route_capabilities.get(route["route"], {})
+        route_exec_ready = bool(route_caps.get("can_execute"))
+        route_exit_ready = bool(route_caps.get("can_exit"))
         if not route["source_proof_ok"]:
             reason = "source_proof_missing"
-        elif not route["quote_ok"]:
-            reason = "no_quote"
-        elif not route["exit_route_ok"]:
+        elif not route_exit_ready:
             reason = "no_exit_route"
-        elif route["executor_status"].upper().startswith("BLOCKED"):
-            reason = route["reason"] or "executor_blocked"
+        elif route_caps.get("status", "").upper().startswith("BLOCKED") and not route_exec_ready:
+            reason = route_caps.get("reason") or route["reason"] or "executor_blocked"
         candidate = dict(route)
         if reason:
             candidate["executor_status"] = "BLOCKED_WITH_REASON"
@@ -132,8 +167,22 @@ def build_phantom_target_board() -> Dict[str, Any]:
             executable_routes.append(candidate)
         ranked_routes.append(candidate)
 
-    executable_routes.sort(key=lambda x: (x["wave_score"], x["volume_or_liquidity"], x["change_pct"]), reverse=True)
-    ranked_routes.sort(key=lambda x: (x["wave_score"], x["volume_or_liquidity"], x["change_pct"]), reverse=True)
+    def route_priority(route: str) -> int:
+        route = str(route or "").lower()
+        if route in {"solana_jupiter", "pumpfun_jupiter"}:
+            return 5
+        if route in {"pumpfun_native"}:
+            return 4
+        if route in {"base_swap"}:
+            return 4
+        if route in {"solana_meme"}:
+            return 3
+        if route in {"polymarket"}:
+            return 2
+        return 1
+
+    executable_routes.sort(key=lambda x: (route_priority(x["route"]), x["wave_score"], x["volume_or_liquidity"], x["change_pct"]), reverse=True)
+    ranked_routes.sort(key=lambda x: (route_priority(x["route"]), x["wave_score"], x["volume_or_liquidity"], x["change_pct"]), reverse=True)
     top_targets: List[Dict[str, Any]] = []
     for idx, item in enumerate(ranked_routes[:5], start=1):
         item = dict(item)
@@ -158,6 +207,7 @@ def build_phantom_target_board() -> Dict[str, Any]:
         "blocked_routes": blocked_routes,
         "top_targets": top_targets,
         "why_empty": why_empty,
+        "route_capabilities": route_capabilities,
         "scanner_executor_contract": scanner_contract,
         "capital_mover": mover,
         "network_maximizer": maximizer,
