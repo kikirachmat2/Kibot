@@ -18,6 +18,21 @@ def _read(path: Path, default: Any) -> Any:
     return default
 
 
+def _as_float(value: Any, default: float = 0.0) -> float:
+    if isinstance(value, dict):
+        for key in ("usd", "value", "amount", "liquidity", "volume", "price", "score"):
+            if key in value:
+                try:
+                    return float(value.get(key) or default)
+                except Exception:
+                    continue
+        return default
+    try:
+        return float(value if value is not None else default)
+    except Exception:
+        return default
+
+
 def _normalize_route(item: Dict[str, Any]) -> Dict[str, Any]:
     route = str(item.get("route") or item.get("route_type") or item.get("network") or "").lower() or "unknown"
     sector = str(item.get("sector") or "").lower()
@@ -46,11 +61,11 @@ def _normalize_route(item: Dict[str, Any]) -> Dict[str, Any]:
         "symbol": str(item.get("symbol") or item.get("asset") or item.get("market") or item.get("name") or "").upper(),
         "mint_or_market": str(item.get("mint") or item.get("market_id") or item.get("market") or "").strip(),
         "chain": str(item.get("chain") or item.get("network") or item.get("venue") or "").lower(),
-        "price": float(item.get("price") or item.get("last_price") or 0.0),
-        "change_pct": float(item.get("change_pct") or item.get("change_24h_pct") or item.get("change_5m_pct") or 0.0),
-        "volume_or_liquidity": float(item.get("liquidity_usd") or item.get("volume_24h_usd") or item.get("volume_1h_usd") or item.get("volume") or 0.0),
+        "price": _as_float(item.get("price") or item.get("last_price") or 0.0),
+        "change_pct": _as_float(item.get("change_pct") or item.get("change_24h_pct") or item.get("change_5m_pct") or 0.0),
+        "volume_or_liquidity": _as_float(item.get("liquidity_usd") or item.get("volume_24h_usd") or item.get("volume_1h_usd") or item.get("volume") or 0.0),
         "wave_phase": str(item.get("wave_phase") or item.get("phase") or "WATCH"),
-        "wave_score": float(item.get("wave_score") or item.get("momentum_score") or 0.0),
+        "wave_score": _as_float(item.get("wave_score") or item.get("momentum_score") or 0.0),
         "quote_ok": bool(item.get("quote_ok", item.get("route_available", False))),
         "exit_route_ok": bool(item.get("exit_route_ok", item.get("sell_route_available", False))),
         "source_proof_ok": bool(item.get("source_proof_ok", item.get("source_proof", {}).get("proof_ok", False))),
