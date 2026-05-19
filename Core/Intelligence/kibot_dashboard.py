@@ -1104,6 +1104,8 @@ def _check_file_quality(filename: str) -> Dict[str, Any]:
 
 def _build_control_plane_payload() -> Dict[str, Any]:
     import time
+    summary_data = _build_summary()
+    portfolio_live = summary_data.get("portfolio", {}) if isinstance(summary_data, dict) else {}
     
     # Calculate allow_new_live_orders based on the RiskGate system logic.
     allow_new_live_orders = False
@@ -1171,6 +1173,34 @@ def _build_control_plane_payload() -> Dict[str, Any]:
         except Exception as e:
             rejection_reason = f"FAIL-CLOSED: Error validating Capital Governor: {e}"
 
+    # Always carry a live portfolio snapshot so the dashboard remains truthful
+    # when the governor is stale/unreconciled. Risk gating still follows the
+    # governor branch above, but the display should not zero out the portfolio.
+    live_has_open_positions = bool(portfolio_live.get("open_position_pnl")) or bool(portfolio_live.get("active_positions"))
+    live_current_equity = _safe_float(
+        portfolio_live.get("combined_equity_idr"),
+        _safe_float(portfolio_live.get("equity_idr"), 0.0),
+    )
+    live_daily_pnl = _safe_float(portfolio_live.get("daily_pnl_idr"), 0.0)
+    live_daily_pct = _safe_float(portfolio_live.get("daily_pnl_pct"), 0.0)
+    live_start_equity = _safe_float(
+        portfolio_live.get("governor_current_total_equity_idr"),
+        _safe_float(portfolio_live.get("combined_equity_idr"), 0.0) - live_daily_pnl,
+    )
+    if not capital_block["current_total_equity_idr"] and live_current_equity:
+        capital_block.update({
+            "starting_equity_today_idr": live_start_equity,
+            "current_total_equity_idr": live_current_equity,
+            "daily_pnl_idr": live_daily_pnl,
+            "daily_pnl_pct": live_daily_pct,
+            "live_current_total_equity_idr": live_current_equity,
+            "live_daily_pnl_idr": live_daily_pnl,
+            "live_daily_pnl_pct": live_daily_pct,
+            "live_has_open_positions": live_has_open_positions,
+            "daily_pnl_source": "live_portfolio_fallback",
+            "risk_remaining_idr": max(0.0, _safe_float(portfolio_live.get("combined_equity_idr"), 0.0) * (KiConfig.MAX_DAILY_LOSS_PERCENT / 100.0) - abs(live_daily_pnl)),
+        })
+
     # 1. Mode config
     mode = {
         "trading_mode": str(KiConfig.TRADING_MODE),
@@ -1186,8 +1216,7 @@ def _build_control_plane_payload() -> Dict[str, Any]:
     }
 
     # 2. Portfolio stats from build_summary / build_portfolio
-    summary_data = _build_summary()
-    portfolio = summary_data.get("portfolio", {})
+    portfolio = portfolio_live
     
     # 3. Read State Gates
     sq_raw = _read_json(STATE / "signal_quality.json", [])
