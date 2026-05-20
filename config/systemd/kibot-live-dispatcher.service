@@ -9,6 +9,10 @@ WorkingDirectory=/home/ubuntu/KiBot
 EnvironmentFile=/home/ubuntu/KiBot/.env
 Environment=PYTHONUNBUFFERED=1
 Environment=PYTHONPATH=.
+Environment=KIBOT_INDO_BINANCE_LEADLAG_AGGRESSIVE_DISPATCH=true
+Environment=KIBOT_INDO_BINANCE_LEADLAG_DISPATCH_MIN_GAP_PCT=0.15
+Environment=KIBOT_INDO_BINANCE_LEADLAG_DISPATCH_MIN_LAG_SEC=0.5
+Environment=KIBOT_INDO_BINANCE_LEADLAG_DISPATCH_MIN_ENTRY_SCORE=12.0
 ExecStart=/home/ubuntu/KiBot/.venv/bin/python3 -m Core.Decision.live_order_dispatcher
 Restart=always
 RestartSec=1

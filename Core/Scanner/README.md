@@ -5,7 +5,7 @@ Scanner layer untuk membaca peluang pasar dan mengirim sinyal HMAC-signed ke Cou
 ## Alur
 - `engine.py`: orchestrator scanner, delta filter, dispatch UDP.
 - `ki_indodax_smallcap_scanner.py`: deteksi pump small-cap di Indodax dengan `price_idr`, plus 24h run-up, near-high continuation, dan volume persistence.
-- `indodax_binance_leadlag_scanner.py`: pasangan Binance→Indodax yang memantau window beberapa detik untuk menangkap local lag setelah leader bergerak lebih dulu.
+- `indodax_binance_leadlag_scanner.py`: pasangan Binance→Indodax yang memantau window beberapa detik untuk menangkap local lag setelah leader bergerak lebih dulu. Scanner ini punya aggressive/bootstrap mode lewat env `KIBOT_INDO_BINANCE_LEADLAG_AGGRESSIVE_MODE` dan `KIBOT_INDO_BINANCE_LEADLAG_BOOTSTRAP_MODE` untuk memaksa candidate masuk lebih cepat saat leadership Binance jelas.
 - `ki_polymarket_full_scanner.py`: scanner peluang Polymarket.
 - `ki_universal_leadlag_scanner.py`: lead-lag scanner lintas sumber global.
 

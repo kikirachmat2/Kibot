@@ -77,6 +77,38 @@ def test_live_dispatcher_treats_open_order_tracker_symbol_as_active(monkeypatch,
     assert LiveOrderDispatcher()._indodax_candidates() == []
 
 
+def test_live_dispatcher_allows_aggressive_leadlag_watch_candidate(monkeypatch, tmp_path):
+    monkeypatch.setattr(dispatcher, "STATE_DIR", tmp_path)
+    monkeypatch.setattr(dispatcher, "STATE_FILE", tmp_path / "live_order_dispatcher.json")
+    monkeypatch.setattr(dispatcher.KiConfig, "LIVE_TRADING_ENABLED", True)
+    monkeypatch.setenv("KIBOT_SECRET", "unit-test-secret")
+    monkeypatch.setenv("KIBOT_INDO_BINANCE_LEADLAG_AGGRESSIVE_DISPATCH", "true")
+    (tmp_path / "capital_governor.json").write_text(json.dumps({
+        "allow_new_orders": True,
+        "status": "RECONCILED",
+        "allow_new_orders_reason": "",
+        "daily_pnl_idr": 0.0,
+        "max_daily_loss_idr": 5000.0,
+        "current_total_equity_idr": 188290,
+    }))
+    (tmp_path / "indodax_top_targets.json").write_text(json.dumps({
+        "top_targets": [{
+            "symbol": "BTC/IDR",
+            "recommended_action": "WATCH",
+            "route_status": "EXECUTABLE",
+            "source_pool": "leadlag_candidates",
+            "leadlag_gap_pct": 0.22,
+            "leadlag_lag_seconds": 1.2,
+            "entry_score": 20.0,
+            "source_proof_ok": True,
+        }]
+    }))
+    dispatcher_instance = LiveOrderDispatcher()
+    candidates = dispatcher_instance._indodax_candidates()
+    assert candidates
+    assert candidates[0]["symbol"] == "BTC/IDR"
+
+
 def test_live_dispatcher_prunes_ghost_filled_tracker_orders(monkeypatch, tmp_path):
     monkeypatch.setattr(dispatcher, "STATE_DIR", tmp_path)
     monkeypatch.setattr(dispatcher, "STATE_FILE", tmp_path / "live_order_dispatcher.json")

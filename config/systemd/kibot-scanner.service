@@ -11,6 +11,8 @@ EnvironmentFile=-/home/ubuntu/KiBot/.env
 EnvironmentFile=-/home/ubuntu/KiBot/.env.kiv
 Environment=PYTHONUNBUFFERED=1
 Environment=PYTHONPATH=.
+Environment=KIBOT_INDO_BINANCE_LEADLAG_AGGRESSIVE_MODE=true
+Environment=KIBOT_INDO_BINANCE_LEADLAG_BOOTSTRAP_MODE=true
 ExecStart=/home/ubuntu/KiBot/.venv/bin/python3 -u Core/Scanner/engine.py
 NoNewPrivileges=true
 PrivateTmp=true

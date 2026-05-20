@@ -76,6 +76,49 @@ def test_indodax_binance_leadlag_scanner_builds_enter_candidate(tmp_path, monkey
     assert persisted["leadlag_candidates"]
 
 
+def test_indodax_binance_leadlag_aggressive_bootstrap_enters_on_first_scan(tmp_path, monkeypatch):
+    monkeypatch.setattr(leadlag_module, "STATE_DIR", tmp_path)
+    monkeypatch.setattr(leadlag_module, "STATE_FILE", tmp_path / "indodax_binance_leadlag_scanner.json")
+    monkeypatch.setenv("KIBOT_INDO_BINANCE_LEADLAG_AGGRESSIVE_MODE", "true")
+    monkeypatch.setenv("KIBOT_INDO_BINANCE_LEADLAG_BOOTSTRAP_MODE", "true")
+
+    scanner = IndodaxBinanceLeadLagScanner()
+    scanner.aggressive_mode = True
+    scanner.bootstrap_mode = True
+
+    indodax_tickers = {
+        "btc_idr": {
+            "pair": "btc_idr",
+            "symbol": "BTC/IDR",
+            "last": 960_000_000.0,
+            "buy": 959_900_000.0,
+            "sell": 960_100_000.0,
+            "vol_idr": 220_000_000.0,
+            "high": 963_000_000.0,
+            "low": 948_000_000.0,
+        }
+    }
+    binance_tickers = {
+        "BTCUSDT": {
+            "symbol": "BTCUSDT",
+            "lastPrice": 61_200.0,
+            "quoteVolume": 12_000_000.0,
+            "priceChangePercent": 2.0,
+            "highPrice": 61_200.0,
+            "lowPrice": 59_500.0,
+        }
+    }
+
+    state = asyncio.run(scanner.scan(indodax_tickers=indodax_tickers, binance_tickers=binance_tickers))
+    assert state["leadlag_candidates"]
+    top = state["top_candidate"]
+    assert top["symbol"] == "BTC/IDR"
+    assert top["route_status"] == "EXECUTABLE"
+    assert top["recommended_action"] == "ENTER"
+    assert top["leadlag_stage"] == "SNAPSHOT_BOOTSTRAP"
+    assert top["leadlag_pass"] is True
+
+
 def test_indodax_binance_leadlag_collect_signals_only_enter(monkeypatch, tmp_path):
     monkeypatch.setattr(leadlag_module, "STATE_DIR", tmp_path)
     monkeypatch.setattr(leadlag_module, "STATE_FILE", tmp_path / "indodax_binance_leadlag_scanner.json")

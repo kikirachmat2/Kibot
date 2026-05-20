@@ -107,6 +107,10 @@ class LiveOrderDispatcher:
         self.interval_seconds = float(os.getenv("KIBOT_LIVE_DISPATCH_INTERVAL_SEC", "3") or 3)
         self.symbol_cooldown_seconds = float(os.getenv("KIBOT_DISPATCH_SYMBOL_COOLDOWN_SEC", "180") or 180)
         self.phantom_cooldown_seconds = float(os.getenv("KIBOT_PHANTOM_DISPATCH_ROUTE_COOLDOWN_SEC", "240") or 240)
+        self.leadlag_aggressive_mode = os.getenv("KIBOT_INDO_BINANCE_LEADLAG_AGGRESSIVE_DISPATCH", "true").strip().lower() in {"1", "true", "yes", "on"}
+        self.leadlag_min_gap_pct = float(os.getenv("KIBOT_INDO_BINANCE_LEADLAG_DISPATCH_MIN_GAP_PCT", "0.15") or 0.15)
+        self.leadlag_min_lag_sec = float(os.getenv("KIBOT_INDO_BINANCE_LEADLAG_DISPATCH_MIN_LAG_SEC", "0.5") or 0.5)
+        self.leadlag_min_entry_score = float(os.getenv("KIBOT_INDO_BINANCE_LEADLAG_DISPATCH_MIN_ENTRY_SCORE", "12.0") or 12.0)
         self.host = os.getenv("KIBOT_INDODAX_EXECUTOR_HOST", "127.0.0.1")
         self.port = int(os.getenv("KIBOT_INDODAX_EXECUTOR_PORT", str(KiConfig.INDO_SIGNAL_PORT)) or KiConfig.INDO_SIGNAL_PORT)
         self.secret = os.getenv("KIBOT_SECRET", "")
@@ -141,12 +145,21 @@ class LiveOrderDispatcher:
             symbol = str(item.get("symbol") or "").upper()
             if not symbol or symbol in active:
                 continue
-            if str(item.get("recommended_action") or "").upper() != "ENTER":
-                continue
             if str(item.get("route_status") or "").upper() != "EXECUTABLE":
                 continue
             if not bool(item.get("source_proof_ok", True)):
                 continue
+            action = str(item.get("recommended_action") or "").upper()
+            is_leadlag = str(item.get("source_pool") or "").lower() in {"leadlag_candidates", "leadlag_watchlist"}
+            if action != "ENTER":
+                if not (
+                    self.leadlag_aggressive_mode
+                    and is_leadlag
+                    and float(item.get("leadlag_gap_pct") or 0.0) >= self.leadlag_min_gap_pct
+                    and float(item.get("leadlag_lag_seconds") or 0.0) >= self.leadlag_min_lag_sec
+                    and float(item.get("entry_score") or 0.0) >= self.leadlag_min_entry_score
+                ):
+                    continue
             if self._in_cooldown("indodax_cooldowns", symbol, self.symbol_cooldown_seconds):
                 continue
             out.append(item)

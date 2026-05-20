@@ -91,16 +91,21 @@ def _build_candidate(item: Dict[str, Any], source_pool: str) -> Dict[str, Any]:
         "follower_change_pct": float(item.get("follower_change_pct") or 0.0),
         "source_pools": [source_pool],
     }
+    is_leadlag_pool = source_pool in {"leadlag_candidates", "leadlag_watchlist"}
     if c["entry_score"] <= 0.0:
         c["entry_score"] = _score_candidate(c)
     if source_pool in {"candidates", "approved_candidates"}:
         c["entry_score"] += 4.0
     elif source_pool in {"brutal_momentum_candidates", "pullback_candidates"}:
         c["entry_score"] += 2.0
-    elif source_pool in {"leadlag_candidates", "leadlag_watchlist"}:
-        c["entry_score"] += 6.0
+    elif is_leadlag_pool:
+        c["entry_score"] += 12.0
         if str(item.get("recommended_action") or "").upper() == "ENTER":
-            c["entry_score"] += 8.0
+            c["entry_score"] += 12.0
+        if c["leadlag_gap_pct"] >= 0.15:
+            c["entry_score"] += 4.0
+        if c["leadlag_lag_seconds"] >= 0.5:
+            c["entry_score"] += 3.0
     elif source_pool == "volume_leaders":
         c["entry_score"] += 1.0
     if c["range_position_pct"] >= 60.0:
@@ -113,6 +118,19 @@ def _build_candidate(item: Dict[str, Any], source_pool: str) -> Dict[str, Any]:
         c["entry_score"] += min(2.5, c["leadlag_lag_seconds"] * 0.3)
     c["entry_score"] = round(c["entry_score"], 2)
     c["exit_score"] = round(max(0.0, c["liquidity_score"] - c["spread_pct"]), 2)
+    c["priority_boost"] = 0.0
+    if is_leadlag_pool:
+        c["priority_boost"] += 20.0
+        if c["recommended_action"] == "ENTER":
+            c["priority_boost"] += 10.0
+        if c["leadlag_gap_pct"] >= 0.15:
+            c["priority_boost"] += 4.0
+        if c["leadlag_lag_seconds"] >= 0.5:
+            c["priority_boost"] += 3.0
+    elif source_pool in {"candidates", "approved_candidates"}:
+        c["priority_boost"] += 6.0
+    elif source_pool in {"brutal_momentum_candidates", "pullback_candidates"}:
+        c["priority_boost"] += 4.0
     return c
 
 
@@ -154,36 +172,52 @@ def build_indodax_target_board() -> Dict[str, Any]:
             c["route_status"] = "BLOCKED_WITH_REASON"
             c["recommended_action"] = "REJECT"
             c["reason"] = "no_real_volume"
-        elif c["exit_score"] < 0.5:
+        elif c["exit_score"] < (0.25 if c.get("source_pool") in {"leadlag_candidates", "leadlag_watchlist"} else 0.5):
             c["route_status"] = "BLOCKED_WITH_REASON"
             c["recommended_action"] = "REJECT"
             c["reason"] = "exit_liquidity_too_thin"
 
-    candidates.sort(key=lambda x: (x["entry_score"], x["volume_24h_idr"], x["change_24h_pct"]), reverse=True)
+    candidates.sort(
+        key=lambda x: (
+            x.get("priority_boost", 0.0),
+            x["entry_score"],
+            x["leadlag_gap_pct"],
+            x["volume_24h_idr"],
+            x["change_24h_pct"],
+        ),
+        reverse=True,
+    )
     top_targets: List[Dict[str, Any]] = []
     for idx, item in enumerate(candidates[:5], start=1):
         item = dict(item)
         item["rank"] = idx
         if item["route_status"] == "EXECUTABLE":
-            item["recommended_action"] = "ENTER" if item["entry_score"] >= 15 and item["exit_score"] >= 0.5 else "WATCH"
-            if item.get("leadlag_gap_pct", 0.0) >= 0.35 and item.get("leadlag_lag_seconds", 0.0) >= 1.0:
-                item["recommended_action"] = "ENTER"
-            if item["volume_24h_idr"] < 200_000_000 and item.get("source_pool") not in {"leadlag_candidates", "leadlag_watchlist"}:
-                item["recommended_action"] = "WATCH"
-                item["reason"] = item["reason"] or "below_volume_preference"
-            if item["exit_score"] < 1.0:
-                item["recommended_action"] = "WATCH"
-                item["reason"] = item["reason"] or "thin_exit_liquidity"
-            if item.get("range_position_pct", 0.0) >= 60.0 and item["change_24h_pct"] >= 5.0:
-                item["recommended_action"] = "ENTER"
-            elif item.get("runup_from_low_pct", 0.0) >= 6.0 and item["change_24h_pct"] >= 4.0:
-                item["recommended_action"] = "ENTER"
-            elif (
-                item.get("leadlag_gap_pct", 0.0) > 0
-                and item.get("leadlag_lag_seconds", 0.0) > 0
-                and item.get("source_pool") not in {"leadlag_candidates", "leadlag_watchlist"}
-            ):
-                item["recommended_action"] = "WATCH"
+            is_leadlag_pool = item.get("source_pool") in {"leadlag_candidates", "leadlag_watchlist"}
+            if is_leadlag_pool:
+                if item.get("leadlag_gap_pct", 0.0) >= 0.15 and item.get("leadlag_lag_seconds", 0.0) >= 0.5 and item["exit_score"] >= 0.25:
+                    item["recommended_action"] = "ENTER"
+                elif item["entry_score"] >= 10 and item["exit_score"] >= 0.25:
+                    item["recommended_action"] = "ENTER"
+                else:
+                    item["recommended_action"] = "WATCH"
+            else:
+                item["recommended_action"] = "ENTER" if item["entry_score"] >= 15 and item["exit_score"] >= 0.5 else "WATCH"
+                if item["volume_24h_idr"] < 200_000_000:
+                    item["recommended_action"] = "WATCH"
+                    item["reason"] = item["reason"] or "below_volume_preference"
+                if item["exit_score"] < 1.0:
+                    item["recommended_action"] = "WATCH"
+                    item["reason"] = item["reason"] or "thin_exit_liquidity"
+                if item.get("range_position_pct", 0.0) >= 60.0 and item["change_24h_pct"] >= 5.0:
+                    item["recommended_action"] = "ENTER"
+                elif item.get("runup_from_low_pct", 0.0) >= 6.0 and item["change_24h_pct"] >= 4.0:
+                    item["recommended_action"] = "ENTER"
+                elif (
+                    item.get("leadlag_gap_pct", 0.0) > 0
+                    and item.get("leadlag_lag_seconds", 0.0) > 0
+                    and item.get("source_pool") not in {"leadlag_candidates", "leadlag_watchlist"}
+                ):
+                    item["recommended_action"] = "WATCH"
         top_targets.append(item)
 
     why_empty = ""
