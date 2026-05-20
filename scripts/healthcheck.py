@@ -347,7 +347,11 @@ def check_network_bindings():
                 connections = []
                 for p in psutil.process_iter():
                     try:
-                        conns = p.connections(kind='all')
+                        net_connections = getattr(p, "net_connections", None)
+                        if callable(net_connections):
+                            conns = net_connections(kind='all')
+                        else:
+                            conns = p.connections(kind='all')
                         if conns:
                             connections.extend(conns)
                     except (psutil.NoSuchProcess, psutil.AccessDenied):

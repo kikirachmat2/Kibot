@@ -409,6 +409,15 @@ def _load_autonomous_trading_brain() -> Dict[str, Any]:
     return _read_json(STATE / "autonomous_trading_brain.json", {})
 
 
+def _load_trade_history() -> Dict[str, Any]:
+    try:
+        from Core.Intelligence.trade_history import summarize_today
+
+        return summarize_today()
+    except Exception:
+        return {}
+
+
 def _load_indodax_live_brain() -> Dict[str, Any]:
     return _read_json(STATE / "indodax_live_brain.json", {})
 
@@ -680,6 +689,7 @@ def _build_events(summary: Dict[str, Any], limit: int = 30) -> List[Dict[str, st
     dispatcher = summary.get("live_order_dispatcher", {})
     capital = summary.get("capital", {})
     order_tracker = summary.get("order_tracker", {})
+    trade_history = summary.get("trade_history", {})
     events: List[Dict[str, str]] = []
 
     def add_event(tag: str, message: str, agent: str = "System") -> None:
@@ -687,35 +697,16 @@ def _build_events(summary: Dict[str, Any], limit: int = 30) -> List[Dict[str, st
             return
         events.append({"time": now, "agent": agent, "message": message, "tag": tag, "offset": str(len(events))})
 
-    active_trades = summary.get("active_trades", {})
-    open_trade_items = list(active_trades.items()) if isinstance(active_trades, dict) else []
-    for pair, trade in open_trade_items[:3]:
-        if not isinstance(trade, dict):
-            continue
-        entry_price = float(trade.get("price") or trade.get("entry_price") or trade.get("price_idr") or 0.0)
-        amount = float(trade.get("amount") or trade.get("filled_size") or 0.0)
-        cost = float(trade.get("cost") or trade.get("budget_idr") or 0.0)
-        if entry_price > 0 and amount > 0:
-            add_event("BUY", f"{str(pair).upper()} @ Rp {int(entry_price):,} x {amount:g}".replace(",", "."), "Indodax")
-        elif cost > 0:
-            add_event("BUY", f"{str(pair).upper()} Rp {int(cost):,}".replace(",", "."), "Indodax")
-
-    if dispatcher.get("status") == "ACTIVE":
-        ind = dispatcher.get("indodax", {}) if isinstance(dispatcher, dict) else {}
-        if ind.get("status") == "DISPATCHED":
-            cand = ind.get("candidate") or {}
-            symbol = cand.get("symbol") or ind.get("symbol") or "INDODAX"
-            price = float(cand.get("last_price") or cand.get("price") or 0.0)
-            add_event("BUY", f"{symbol} @ Rp {int(price):,}".replace(",", ".") if price > 0 else f"{symbol} dispatched", "Dispatcher")
-
-    tracker_today = order_tracker.get("today_summary", {}) if isinstance(order_tracker, dict) else {}
-    closed_pnl = float(tracker_today.get("realized_pnl_idr", tracker_today.get("daily_realized_pnl_idr", 0.0)) or 0.0)
-    if closed_pnl > 0:
-        closed_pct = float(tracker_today.get("realized_pnl_pct", 0.0) or 0.0)
-        add_event("SELL PROFIT", f"+Rp {int(closed_pnl):,} ({closed_pct:+.2f}%)".replace(",", "."), "Portfolio")
-    elif closed_pnl < 0:
-        closed_pct = float(tracker_today.get("realized_pnl_pct", 0.0) or 0.0)
-        add_event("SELL LOSS", f"-Rp {int(abs(closed_pnl)):,} ({closed_pct:+.2f}%)".replace(",", "."), "Portfolio")
+    recent_activity = trade_history.get("recent_activity", []) if isinstance(trade_history, dict) else []
+    if isinstance(recent_activity, list):
+        for row in recent_activity[:8]:
+            if not isinstance(row, dict):
+                continue
+            tag = str(row.get("tag") or "").upper()
+            message = str(row.get("message") or "").strip()
+            agent = str(row.get("agent") or "Trade")
+            if tag in {"BUY", "SELL PROFIT", "SELL LOSS", "SWAP"} and message:
+                add_event(tag, message, agent)
 
     council_state = council.get("decision_state") or council.get("last_decision") or brain.get("reason") or "WAIT"
     council_conf = council.get("confidence", 0.0)
@@ -889,6 +880,8 @@ def _build_summary() -> Dict[str, Any]:
         }
     except Exception:
         summary["order_tracker"] = {"today_summary": {}, "open_orders": []}
+
+    summary["trade_history"] = _load_trade_history()
 
     # ── §17.2 Last Signal (scanner output) ─────────
     try:

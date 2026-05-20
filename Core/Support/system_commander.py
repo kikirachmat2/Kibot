@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import hashlib
 import logging
 import shutil
 import subprocess
@@ -258,6 +259,57 @@ class SystemCommander:
                 "version": version,
             })
         return rows
+
+    def _emit_snapshot_event(
+        self,
+        state_dict: Dict[str, Any],
+        matrix: Dict[str, Any],
+        resources: Dict[str, float],
+    ) -> None:
+        try:
+            toolchain = {
+                row["name"]: {
+                    "status": row.get("status", "missing"),
+                    "active": bool(row.get("active")),
+                    "version": row.get("version", ""),
+                }
+                for row in matrix.get("tools", [])
+                if isinstance(row, dict) and row.get("name") in {"kibotctl", "gh", "aider", "copilot"}
+            }
+            snapshot = {
+                "system_state": state_dict.get("system_state", "UNKNOWN"),
+                "inventory_utilization_score": state_dict.get("inventory_utilization_score", 0.0),
+                "drift": state_dict.get("drift", "UNKNOWN"),
+                "trading_allowed_by_system": bool(state_dict.get("trading_allowed_by_system", False)),
+                "operator_required": bool(state_dict.get("operator_required", False)),
+                "services": {
+                    key: value
+                    for key, value in (state_dict.get("services") or {}).items()
+                    if key in CANONICAL_SERVICES
+                },
+                "providers": list((state_dict.get("providers") or {}).keys())[:12],
+                "sources": list((state_dict.get("sources") or {}).keys())[:12],
+                "toolchain": toolchain,
+                "resources": {
+                    "cpu": round(float(resources.get("cpu", 0.0) or 0.0), 2),
+                    "ram": round(float(resources.get("ram", 0.0) or 0.0), 2),
+                    "disk": round(float(resources.get("disk", 0.0) or 0.0), 2),
+                },
+            }
+            digest = hashlib.sha256(json.dumps(snapshot, sort_keys=True, default=str).encode("utf-8")).hexdigest()
+            marker_path = self.state_dir / "system_commander_snapshot.json"
+            marker = self._read_json(marker_path, {})
+            now = time.time()
+            if isinstance(marker, dict):
+                if marker.get("digest") == digest and now - float(marker.get("ts", 0.0) or 0.0) < 300:
+                    return
+
+            from Core.Intelligence.decision_journal import log_event
+
+            log_event("SYSTEM_COMMANDER", snapshot)
+            marker_path.write_text(json.dumps({"ts": now, "digest": digest}, indent=2), encoding="utf-8")
+        except Exception as exc:
+            logger.debug("Failed to emit system commander snapshot: %s", exc)
 
     def _state_matrix(self) -> List[Dict[str, Any]]:
         important = (
@@ -519,5 +571,7 @@ class SystemCommander:
             )
         except Exception as exc:
             logger.error("Failed to save system commander state: %s", exc)
+
+        self._emit_snapshot_event(state_dict, matrix, resources)
 
         return state_dict

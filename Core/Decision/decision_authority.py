@@ -117,6 +117,19 @@ class DecisionAuthority:
         min_score = adaptive_cfg.get("min_score", cfg.get("min_score", 0.58))
         max_spread = adaptive_cfg.get("max_spread_pct", cfg.get("max_spread_pct", 1.20))
         max_risk = adaptive_cfg.get("max_risk_penalty", cfg.get("max_risk_penalty", 0.60))
+        daily_color = str(daily_context.get("daily_color", "FLAT")).upper()
+        urgency = str(daily_context.get("urgency_level", "LOW")).upper()
+
+        if daily_color == "RECOVERY":
+            # Recovery should stay active, not frozen. We allow slightly
+            # lighter confidence/score floors so the system can keep hunting
+            # with smaller risk while the sizing engine remains cautious.
+            confidence_floor = max(0.58, confidence_floor - 0.10)
+            min_score = max(0.50, min_score - 0.08)
+            max_risk = min(0.75, max_risk + 0.08)
+        elif daily_color == "GREEN" and urgency in {"HIGH", "CRITICAL"}:
+            confidence_floor = min(0.92, confidence_floor + 0.05)
+            min_score = min(0.72, min_score + 0.03)
 
         # 4. Check Deadline Profit Enforcer (LOCK_GREEN or MIDNIGHT protocol)
         enforcer_path = self.state_dir / "deadline_profit_enforcer.json"
@@ -234,9 +247,22 @@ class DecisionAuthority:
                     "logic": f"Deterministic execution: Candidate cleared score ({best_score:.2f} >= {min_score:.2f}) and confidence ({best_conf:.2f} >= {confidence_floor:.2f})",
                     "source": "DECISION_AUTHORITY",
                     "source_signal": best_sig,
-                    "ranked_candidates": ranked[:5]
+                    "ranked_candidates": ranked[:5],
+                    "trade_profile": "RECOVERY" if daily_color == "RECOVERY" else "STANDARD",
                 }
             else:
+                if daily_color == "RECOVERY" and best_score >= max(0.45, min_score - 0.05) and best_conf >= max(0.55, confidence_floor - 0.05):
+                    return {
+                        "status": "EXECUTING",
+                        "action": "BUY",
+                        "ticker": best["ticker"],
+                        "confidence": round(max(best_conf, min(0.95, best_score)), 4),
+                        "logic": f"Recovery-mode execution: candidate kept active with lighter floors (score={best_score:.2f}, conf={best_conf:.2f})",
+                        "source": "DECISION_AUTHORITY",
+                        "source_signal": best_sig,
+                        "ranked_candidates": ranked[:5],
+                        "trade_profile": "RECOVERY",
+                    }
                 return {
                     "status": "WAIT",
                     "action": "NONE",

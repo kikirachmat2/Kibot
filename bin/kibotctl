@@ -10,11 +10,22 @@ CORE_SERVICES=(
   kibot-capital-governor
   kibot-master
   kibot-scanner
+  kibot-scanner-health
   kibot-executor
   kibot-executor-polymarket
+  kibot-autonomous-brain
+  kibot-indodax-director
+  kibot-phantom-brain
+  kibot-target-board
+  kibot-telemetry
+  kibot-pumpfun
+  kibot-base
+  kibot-future-web3
+  kibot-web3-exit
   kibot-ai-scout
   kibot-janitor
   kibot-dashboard
+  kibot-cloudflared
 )
 
 CANONICAL_MODELS=(

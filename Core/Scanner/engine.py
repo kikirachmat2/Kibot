@@ -10,6 +10,7 @@ import time
 import socket
 import logging
 import asyncio
+import inspect
 from datetime import datetime, timezone
 from typing import List, Dict, Any, Sequence
 from pathlib import Path
@@ -166,7 +167,7 @@ class ScannerEngine:
             if collect is None:
                 return {"signals": []}
 
-            if asyncio.iscoroutinefunction(collect):
+            if inspect.iscoroutinefunction(collect):
                 res = asyncio.run(collect())
             else:
                 res = collect()

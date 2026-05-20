@@ -98,8 +98,10 @@ def _required_trade_quality(daily_color: str, urgency: str) -> str:
         return "HIGH"
     if daily_color == "RECOVERY" and urgency == "CRITICAL":
         return "EXCEPTIONAL"
-    if daily_color == "RECOVERY":
+    if daily_color == "RECOVERY" and urgency == "HIGH":
         return "HIGH"
+    if daily_color == "RECOVERY":
+        return "NORMAL"
     return "NORMAL"
 
 

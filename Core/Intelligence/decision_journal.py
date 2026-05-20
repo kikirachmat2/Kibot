@@ -162,6 +162,9 @@ def summarize_today() -> Dict[str, Any]:
         "event_count": len(rows),
         "scanner_batches": 0,
         "council_decisions": 0,
+        "trade_events": 0,
+        "trade_opens": 0,
+        "trade_closes": 0,
         "entries": 0,
         "waits": 0,
         "exits": 0,
@@ -173,6 +176,8 @@ def summarize_today() -> Dict[str, Any]:
         "ai_accuracy_events": 0,
         "top_candidates": [],
         "latest_decision": None,
+        "latest_trade_event": None,
+        "realized_trade_pnl_idr": 0.0,
     }
     top_candidates: List[Dict[str, Any]] = []
     for row in rows:
@@ -203,6 +208,18 @@ def summarize_today() -> Dict[str, Any]:
             summary["ai_accuracy_events"] += 1
         elif et == "REJECTED_CANDIDATE":
             summary["rejected_candidates"] += 1
+        elif et == "TRADE_EVENT" or str(row.get("trade_event_type") or "").strip():
+            summary["trade_events"] += 1
+            summary["latest_trade_event"] = row
+            trade_kind = str(row.get("trade_event_type") or row.get("kind") or "").upper()
+            if not trade_kind:
+                trade_kind = str(row.get("event_type") or "").upper()
+            if trade_kind in {"ORDER_FILLED", "POSITION_OPENED", "BUY_FILLED"}:
+                summary["trade_opens"] += 1
+            elif trade_kind in {"ORDER_RECONCILED", "POSITION_CLOSED", "SELL_FILLED"}:
+                summary["trade_closes"] += 1
+                summary["realized_trade_pnl_idr"] += float(row.get("realized_pnl_idr") or 0.0)
     top_candidates.sort(key=lambda item: float(item.get("opportunity_score") or item.get("confidence") or 0), reverse=True)
     summary["top_candidates"] = top_candidates[:5]
+    summary["realized_trade_pnl_idr"] = round(float(summary["realized_trade_pnl_idr"]), 2)
     return summary

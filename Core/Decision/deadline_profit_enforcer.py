@@ -86,6 +86,12 @@ class DeadlineProfitEnforcer:
         elif stage == "AGGRESSIVE_SEARCH" and not locked:
             reason = f"AGGRESSIVE_SEARCH: {minutes_to_midnight}m left; continue hunting with tighter execution"
 
+        required_action = "SCAN_NEXT"
+        if stage == "RECOVERY" and not locked:
+            required_action = "ENTER_CAUTIOUSLY"
+        elif stage == "AGGRESSIVE_SEARCH" and not locked:
+            required_action = "SCAN_AND_ENTER"
+
         enforcer_state = {
             "locked_for_day": locked,
             "lock_reason": reason,
@@ -97,7 +103,7 @@ class DeadlineProfitEnforcer:
             "stage": stage,
             "indodax_pressure": "MAX" if stage in {"RECOVERY", "AGGRESSIVE_SEARCH", "CLOSING_WINDOW"} else "NORMAL",
             "phantom_pressure": "MAX" if stage in {"RECOVERY", "AGGRESSIVE_SEARCH", "CLOSING_WINDOW"} else "NORMAL",
-            "required_action": "SCAN_NEXT" if not locked else "CLOSE_WINDOW",
+            "required_action": required_action if not locked else "CLOSE_WINDOW",
             "reason": reason,
         }
 

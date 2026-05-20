@@ -9,6 +9,7 @@ Provides unified access to Tavily, Serper, DuckDuckGo, Finnhub, and GDELT.
 import os
 import json
 import time
+import inspect
 import httpx
 import asyncio
 from pathlib import Path
@@ -82,7 +83,7 @@ class AISearchService:
         error = ""
         success = False
         try:
-            if asyncio.iscoroutinefunction(loader):
+            if inspect.iscoroutinefunction(loader):
                 data = await loader()
             elif callable(loader):
                 data = loader()

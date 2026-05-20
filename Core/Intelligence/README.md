@@ -28,14 +28,15 @@ AI Orchestration, Learning, and Market Intelligence models.
 - Council trading deliberation sekarang bounded: `COUNCIL_ANTAGONIST`, `COUNCIL_SPEAKER`, dan evidence web search punya timeout. Jika AI/provider lambat, deterministic fallback memilih `ENTER/WAIT` dari local evidence (confidence, spread, tick trap, OHLC quality, what-if), bukan menggantung.
 - RiskGate dan aggregator memakai business day WIB, sehingga daily PnL/report tidak salah tanggal ketika server masih UTC.
 - `TRADING_STRATEGY.md` adalah kontrak strategi utama untuk Indodax pump riding, green-builder fallback, Polymarket event trading, cross-exchange capital commander, deadline intelligence, role-agent debate, Telegram report, dan dashboard alignment.
-- `decision_journal.py` mencatat scanner slate, council vote, pre-trade simulation, dan execution event ke `state/decision_journal/YYYY-MM-DD.jsonl` supaya semua keputusan bisa diaudit.
+- `decision_journal.py` mencatat scanner slate, council vote, pre-trade simulation, executor events, dan trade mirror events ke `state/decision_journal/YYYY-MM-DD.jsonl` supaya semua keputusan bisa diaudit.
+- `trade_history.py` menulis riwayat perdagangan yang ringkas dan manusiawi ke `state/trade_history/YYYY-MM-DD.jsonl`, lalu memirror event itu ke decision journal supaya buy/exit/PnL bisa ditelusuri dari entry sampai close.
 - `pre_trade_simulator.py` menolak entry yang tidak masuk akal sebelum order: spread terlalu lebar, slippage buruk, min sellable tidak tercapai, partial TP tidak feasible, atau depth kosong.
 - `market_heatmap.py` membangun snapshot breadth Indodax dari ticker live sehingga council tahu apakah pasar sedang pump-friendly, mixed, risk-off, atau thin.
 - `probability_engine.py` menghitung estimasi probabilitas harian untuk tetap/menjadi GREEN berdasarkan PnL, deadline, heatmap, kandidat scanner, order quality, health server, dan health sumber data.
 - `daily_report.py` membuat template Telegram midnight report yang singkat: state, PnL, cash/holdings, scanner/council/executor summary, risk flags, dan next posture.
 - Executor Indodax sekarang memakai `exit_plan` per posisi: hard stop, trailing stop, partial TP, max hold, distribution exit, dan fallback legacy jika plan belum ada.
 - Dashboard membaca `daily_context`, `green_probability`, `market_heatmap`, `scanner_candidates`, dan `decision_journal`, sehingga control plane menampilkan kecerdasan strategi yang sama dengan runtime.
-- `SystemCommander` sekarang menjadi otak non-trading yang menilai service canonical, model Ollama, provider/source health, inventory utilization, GitHub/server drift, state files, dan resource server lalu menulis `state/system_commander.json` + `state/inventory_matrix.json`.
+- `SystemCommander` sekarang menjadi otak non-trading yang menilai service canonical, model Ollama, provider/source health, inventory utilization, GitHub/server drift, state files, dan resource server lalu menulis `state/system_commander.json` + `state/inventory_matrix.json`; snapshot itu juga dipersist ke decision journal agar toolchain, service, dan inventory history terbaca.
 - Dashboard System Brain membaca kontrak `system_brain` yang sama dari backend, sehingga inventory utilization, source health, dan drift status tidak lagi panel dekoratif.
 
 ## Live Server Atlas
@@ -67,7 +68,7 @@ Server-only artifacts yang tidak kelihatan dari code tree biasa:
 - `config/systemd/` untuk unit file service.
 - `~/.cache`, `~/.local`, `~/.copilot`, `~/.npm`, `~/.ssh`, `~/.oci`, `~/.aider` di akun `ubuntu`.
 - `SERVER_INVENTORY.md` sebagai snapshot runtime yang disimpan di repo.
-- `bin/kibotctl` sebagai wrapper operasional satu pintu untuk status, doctor, restart, dan sync model.
+- `bin/kibotctl` sebagai wrapper operasional satu pintu untuk status, doctor, restart, sync model, dan service inventory runtime yang lebih lengkap.
 - `gh`, `copilot`, dan `aider` tersedia di server Batam; gunakan `bin/kibotctl tools` untuk cek apakah toolchain ini benar-benar siap dipakai.
 - Council tidak lagi buta skenario: hasil `whatif_results.json` ikut dibaca saat deliberasi strategis dan trading.
 - Council juga tidak buta web: evidence bundle menghitung coverage, catalyst hit, risk flags, dan track-record proxy sebelum action `EXECUTING`.

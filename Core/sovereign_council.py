@@ -451,6 +451,8 @@ class SovereignCouncil:
     ) -> Dict[str, Any]:
         """Make a bounded local decision when online AI deliberation cannot finish."""
         signals = [sig for sig in list(signals_context.get("signals") or []) if isinstance(sig, dict)]
+        daily_context = signals_context.get("daily_context") if isinstance(signals_context.get("daily_context"), dict) else {}
+        daily_color = str(daily_context.get("daily_color") or "FLAT").upper()
         ranked = []
         for signal in signals:
             score, reason = self._signal_quality_score(signal, whatif_snapshot)
@@ -469,11 +471,19 @@ class SovereignCouncil:
         adaptive_floor = confidence_floor
         if not has_trade_today and minutes_to_midnight <= 720:
             adaptive_floor = max(0.70, adaptive_floor - min(0.035, deadline_pressure * 0.04))
+        if daily_color == "RECOVERY":
+            adaptive_floor = max(0.56, adaptive_floor - 0.10)
+
+        score_floor = 0.58
+        conf_floor = max(0.70, adaptive_floor - 0.03)
+        if daily_color == "RECOVERY":
+            score_floor = 0.50
+            conf_floor = max(0.60, adaptive_floor - 0.06)
 
         if (
             best_signal
-            and best_score >= 0.58
-            and best_conf >= max(0.70, adaptive_floor - 0.03)
+            and best_score >= score_floor
+            and best_conf >= conf_floor
             and float(evidence_bundle.get("risk_penalty", 0.0) or 0.0) <= 0.60
         ):
             symbol = str(best_signal.get("symbol") or best_signal.get("ticker") or "").upper()
@@ -1344,12 +1354,15 @@ class SovereignCouncil:
             best_alt_action = str(antagonist_view.get("best_alternative_action") or "NONE").upper()
             best_alt_ticker = str(antagonist_view.get("best_alternative_ticker") or "").upper()
             best_alt_conf = float(antagonist_view.get("best_alternative_confidence", 0.0) or 0.0)
+            alt_threshold = max(confidence_floor, 0.74)
+            if str(daily_context.get("daily_color") or "").upper() == "RECOVERY":
+                alt_threshold = max(0.62, confidence_floor - 0.08)
             if (
                 decision.get("decision_state") == "WAIT"
                 and not (isinstance(decision.get("two_phase_council"), dict) and decision["two_phase_council"].get("veto_by"))
                 and best_alt_action in {"BUY", "SELL"}
                 and best_alt_ticker
-                and best_alt_conf >= max(confidence_floor, 0.74)
+                and best_alt_conf >= alt_threshold
                 and minutes_to_midnight > 30
             ):
                 decision["decision_state"] = "ENTER"
@@ -1877,4 +1890,3 @@ class SovereignCouncil:
 
         except Exception as e:
             logger.error(f"❌ Error in asynchronous AI Strategy Review: {e}")
-

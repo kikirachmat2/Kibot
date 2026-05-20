@@ -36,6 +36,11 @@ from typing import Dict, List, Optional, Any
 
 logger = logging.getLogger("OrderTracker")
 
+try:
+    from Core.Intelligence.trade_history import record_trade_event as _record_trade_event
+except Exception:
+    _record_trade_event = None
+
 # ─────────────────────────────────────────────────────────
 # Constants
 # ─────────────────────────────────────────────────────────
@@ -74,6 +79,15 @@ ALLOWED_TRANSITIONS: Dict[str, set] = {
 }
 
 TERMINAL_STATES = {"RECONCILED", "CANCELLED", "FAILED"}
+
+
+def _emit_trade_history(event_type: str, payload: Dict[str, Any]) -> None:
+    if _record_trade_event is None:
+        return
+    try:
+        _record_trade_event(event_type, payload)
+    except Exception as exc:
+        logger.debug("Trade history emission failed for %s: %s", event_type, exc)
 
 
 # ─────────────────────────────────────────────────────────
@@ -231,6 +245,18 @@ class OrderTracker:
         record = _build_order_record(order_id, pair, side, budget_idr, price, mandate, exit_plan, signal)
         _atomic_write(_order_path(order_id), record)
         _update_index(order_id, pair, "CREATED", side)
+        _emit_trade_history("ORDER_CREATED", {
+            "order_id": order_id,
+            "pair": pair,
+            "side": side,
+            "budget_idr": budget_idr,
+            "price_idr": price,
+            "lifecycle": record.get("lifecycle"),
+            "trade_grade": record.get("trade_grade"),
+            "deadline_mode": record.get("deadline_mode"),
+            "source": "order_tracker",
+            "status": "CREATED",
+        })
         logger.info(f"[OrderTracker] CREATED {order_id} | {pair} {side} {budget_idr:.0f} IDR @ {price}")
         return order_id
 
@@ -285,6 +311,22 @@ class OrderTracker:
 
         _atomic_write(_order_path(order_id), record)
         _update_index(order_id, record["pair"], new_state, record["side"])
+        event_type = f"ORDER_{new_state}".upper()
+        _emit_trade_history(event_type, {
+            "order_id": order_id,
+            "pair": record.get("pair"),
+            "side": record.get("side"),
+            "state": new_state,
+            "status": new_state,
+            "note": note,
+            "exchange_order_id": record.get("exchange_order_id") or exchange_order_id or "",
+            "price_idr": record.get("fill_price") if record.get("fill_price") is not None else record.get("price_at_mandate"),
+            "amount_coin": record.get("coin_amount") or coin_amount or 0.0,
+            "amount_idr": record.get("budget_idr"),
+            "trade_grade": record.get("trade_grade"),
+            "lifecycle": record.get("lifecycle"),
+            "source": "order_tracker",
+        })
         logger.info(f"[OrderTracker] {order_id} → {new_state}" + (f" | {note}" if note else ""))
         return record
 
@@ -315,6 +357,24 @@ class OrderTracker:
 
         record["pnl_idr"] = round(pnl_idr, 2)
         record["pnl_pct"] = pnl_pct
+        exit_price = round(sell_value_idr / max(coins, 1e-9), 8) if sell_value_idr is not None and coins > 0 else None
+        _emit_trade_history("ORDER_RECONCILED", {
+            "order_id": order_id,
+            "pair": record.get("pair"),
+            "side": record.get("side"),
+            "state": "RECONCILED",
+            "status": "CLOSED",
+            "entry_price_idr": fill_px,
+            "exit_price_idr": exit_price or 0.0,
+            "amount_coin": coins,
+            "amount_idr": budget,
+            "realized_pnl_idr": pnl_idr,
+            "realized_pnl_pct": pnl_pct,
+            "trade_grade": record.get("trade_grade"),
+            "lifecycle": record.get("lifecycle"),
+            "source": "order_tracker",
+            "reason": "sell_value_reconciled",
+        })
 
         # Feed to learning engine
         try:
@@ -341,6 +401,20 @@ class OrderTracker:
             return record
         if stale_ts > 0 and _now_ts() > stale_ts:
             logger.warning(f"[OrderTracker] {order_id} is STALE (max hold exceeded)")
+            _emit_trade_history("ORDER_STALE", {
+                "order_id": order_id,
+                "pair": record.get("pair"),
+                "side": record.get("side"),
+                "state": "STALE",
+                "status": "STALE",
+                "price_idr": record.get("fill_price") if record.get("fill_price") is not None else record.get("price_at_mandate"),
+                "amount_coin": record.get("coin_amount") or 0.0,
+                "amount_idr": record.get("budget_idr"),
+                "trade_grade": record.get("trade_grade"),
+                "lifecycle": record.get("lifecycle"),
+                "source": "order_tracker",
+                "reason": "max_hold_minutes exceeded",
+            })
             return self.transition(order_id, "STALE", note="max_hold_minutes exceeded")
         return record
 

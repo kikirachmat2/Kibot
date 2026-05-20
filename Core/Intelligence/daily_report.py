@@ -56,6 +56,11 @@ def build_daily_report(telemetry: Dict[str, Any] | None = None) -> str:
         order_summary = get_tracker().get_today_summary()
     except Exception:
         order_summary = {}
+    try:
+        from Core.Intelligence.trade_history import summarize_today as summarize_trade_history
+        trade_summary = summarize_trade_history()
+    except Exception:
+        trade_summary = {}
 
     daily_color = str(portfolio.get("daily_color") or (portfolio.get("daily_state") or {}).get("color") or "FLAT").upper()
     combined = portfolio.get("combined_equity_idr", portfolio.get("equity_idr", 0))
@@ -123,6 +128,7 @@ Polymarket: ${float(poly.get('usdc_balance') or 0):.2f} / {_rp(poly.get('equity_
 
 TRADING SUMMARY
 Orders Today: {order_summary.get('total', 0)} total, {order_summary.get('reconciled', 0)} reconciled, {order_summary.get('stale', 0)} stale
+Trade History: {trade_summary.get('buy_fills', 0)} buy fills, {trade_summary.get('sell_fills', 0)} sell fills, realized {_rp(trade_summary.get('realized_pnl_idr', 0))}
 Council: {journal_summary.get('entries', 0)} enter, {journal_summary.get('waits', 0)} wait, {journal_summary.get('exits', 0)} exit
 Open Positions: {len(portfolio.get('active_positions') or [])}
 

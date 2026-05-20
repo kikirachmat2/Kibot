@@ -2183,7 +2183,7 @@ class BrainManager:
             if (now - float(cached.get("ts") or 0.0)) < ttl_sec:
                 return cached.get("data")
         try:
-            if asyncio.iscoroutinefunction(loader):
+            if inspect.iscoroutinefunction(loader):
                 data = await loader()
             else:
                 data = loader()

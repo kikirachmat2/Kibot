@@ -37,9 +37,11 @@ try:
     )
     from Core.Intelligence.pre_trade_simulator import simulate_indodax_entry
     from Core.Intelligence.decision_journal import log_execution_event, log_pre_trade_simulation
+    from Core.Intelligence.trade_history import record_trade_event as _record_trade_event
     _ORDER_TRACKER_AVAILABLE = True
 except ImportError:
     _ORDER_TRACKER_AVAILABLE = False
+    _record_trade_event = None
     logger_pre = __import__("logging").getLogger("IndodaxExecutor")
     logger_pre.warning("[Executor] order_tracker / exit_plan not available — upgrade to Phase 5")
 
@@ -55,6 +57,15 @@ logging.basicConfig(
     format='[%(asctime)s] 🇮🇩 INDO-EXEC - %(levelname)s - %(message)s'
 )
 logger = logging.getLogger("IndodaxExecutor")
+
+
+def _emit_trade_history(event_type: str, payload: Dict[str, Any]) -> None:
+    if _record_trade_event is None:
+        return
+    try:
+        _record_trade_event(event_type, payload)
+    except Exception as exc:
+        logger.debug("Trade history emission failed for %s: %s", event_type, exc)
 
 from Core.Support.ki_config import KiConfig
 from Core.Trading.autonomous_sizing import AutonomousSizing
@@ -667,6 +678,21 @@ class IndodaxExecutor:
                     "exit_blocked_reason": f"EXIT_ORDER_OPEN:{order_id}",
                 })
                 self._save_active_trades()
+                _emit_trade_history("EXIT_PENDING", {
+                    "source": "indodax_executor",
+                    "venue": "indodax",
+                    "symbol": symbol,
+                    "pair": pair,
+                    "side": "SELL",
+                    "status": "PENDING",
+                    "order_id": order_id,
+                    "price_idr": price,
+                    "amount_coin": amount,
+                    "amount_idr": price * amount,
+                    "reason": reason,
+                    "trade_profile": trade.get("trade_profile", "STANDARD"),
+                    "lifecycle": trade.get("lifecycle"),
+                })
                 self.report_to_batam(symbol, "EXIT_PENDING", f"Sell order open @ {price}")
                 return
 
@@ -681,6 +707,21 @@ class IndodaxExecutor:
                     "exit_blocked_reason": "EXIT_ACCEPTED_NO_WALLET_DELTA",
                 })
                 self._save_active_trades()
+                _emit_trade_history("EXIT_PENDING", {
+                    "source": "indodax_executor",
+                    "venue": "indodax",
+                    "symbol": symbol,
+                    "pair": pair,
+                    "side": "SELL",
+                    "status": "PENDING",
+                    "order_id": order_id,
+                    "price_idr": price,
+                    "amount_coin": amount,
+                    "amount_idr": price * amount,
+                    "reason": "EXIT_ACCEPTED_NO_WALLET_DELTA",
+                    "trade_profile": trade.get("trade_profile", "STANDARD"),
+                    "lifecycle": trade.get("lifecycle"),
+                })
                 return
 
             exit_amount = filled_amount if filled_amount > 0 else amount
@@ -718,9 +759,8 @@ class IndodaxExecutor:
             self._save_active_trades()
             if _ORDER_TRACKER_AVAILABLE:
                 try:
-                    log_execution_event({
+                    log_execution_event("EXIT_FILLED", {
                         "symbol": symbol,
-                        "status": "EXIT_FILLED",
                         "reason": reason,
                         "price": price,
                         "amount": exit_amount,
@@ -731,6 +771,20 @@ class IndodaxExecutor:
             self.report_to_batam(symbol, reason, f"Exit filled @ {price}")
         else:
             logger.error(f"❌ EXIT FAILED: {symbol} - {res.get('error')}")
+            _emit_trade_history("EXIT_REJECTED", {
+                "source": "indodax_executor",
+                "venue": "indodax",
+                "symbol": symbol,
+                "pair": pair,
+                "side": "SELL",
+                "status": "REJECTED",
+                "reason": str(res.get("error") or "exit_failed"),
+                "price_idr": price,
+                "amount_coin": amount,
+                "amount_idr": price * amount,
+                "trade_profile": trade.get("trade_profile", "STANDARD"),
+                "lifecycle": trade.get("lifecycle"),
+            })
 
     async def process_signal(self, signal):
         """Script-based signal processing using Council-defined parameters."""
@@ -1171,6 +1225,20 @@ class IndodaxExecutor:
                         f"⏳ ENTRY PENDING: {symbol} order accepted but no filled coin yet. "
                         f"order_id={order_id or 'unknown'}"
                     )
+                    _emit_trade_history("ENTRY_PENDING", {
+                        "source": "indodax_executor",
+                        "venue": "indodax",
+                        "symbol": symbol,
+                        "pair": pair,
+                        "side": "BUY",
+                        "status": "PENDING",
+                        "order_id": order_id,
+                        "price_idr": actual_price,
+                        "amount_idr": filled_rp or budget,
+                        "trade_profile": "LEARNING_PROBE" if learning_probe else "STANDARD",
+                        "lifecycle": signal.get("lifecycle") or signal.get("pump_stage"),
+                        "reason": "no_filled_coin_yet",
+                    })
                     self.report_to_batam(symbol, "ENTRY_PENDING", f"Buy order pending @ {actual_price}")
                     return
                 filled_coin = acquired_coin
@@ -1269,9 +1337,8 @@ class IndodaxExecutor:
                 self._save_active_trades()
                 if _ORDER_TRACKER_AVAILABLE:
                     try:
-                        log_execution_event({
+                        log_execution_event("OPEN", {
                             "symbol": symbol,
-                            "status": "OPEN",
                             "price": actual_price,
                             "amount": filled_coin,
                             "notional_idr": filled_rp,
@@ -1282,6 +1349,23 @@ class IndodaxExecutor:
                         })
                     except Exception:
                         pass
+                _emit_trade_history("ORDER_FILLED", {
+                    "source": "indodax_executor",
+                    "venue": "indodax",
+                    "symbol": symbol,
+                    "pair": pair,
+                    "side": "BUY",
+                    "status": "FILLED",
+                    "order_id": trade_data.get("order_id") or trade_data.get("orderId") or "",
+                    "sovereign_order_id": sovereign_order_id or "",
+                    "exchange_order_id": trade_data.get("order_id") or trade_data.get("orderId") or "",
+                    "price_idr": actual_price,
+                    "amount_coin": filled_coin,
+                    "amount_idr": filled_rp,
+                    "trade_profile": "LEARNING_PROBE" if learning_probe else "STANDARD",
+                    "lifecycle": signal.get("lifecycle") or signal.get("pump_stage"),
+                    "reason": "wallet delta confirmed",
+                })
                 self.report_to_batam(
                     symbol,
                     "OPEN",
@@ -1289,6 +1373,19 @@ class IndodaxExecutor:
                 )
             else:
                 logger.error(f"❌ EXECUTION FAILED: {symbol} - {res.get('error')}")
+                _emit_trade_history("ENTRY_REJECTED", {
+                    "source": "indodax_executor",
+                    "venue": "indodax",
+                    "symbol": symbol,
+                    "pair": pair,
+                    "side": "BUY",
+                    "status": "REJECTED",
+                    "reason": str(res.get("error") or "entry_failed"),
+                    "price_idr": price,
+                    "amount_idr": budget,
+                    "trade_profile": "LEARNING_PROBE" if learning_probe else "STANDARD",
+                    "lifecycle": signal.get("lifecycle") or signal.get("pump_stage"),
+                })
 
         finally:
             async with self.lock:
