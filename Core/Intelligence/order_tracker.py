@@ -113,6 +113,34 @@ def _load_json(path: Path) -> dict:
     return {}
 
 
+def _load_active_trade_symbols() -> set[str]:
+    """
+    Return the currently tracked live position symbols.
+
+    The order tracker is a lifecycle store, but the dispatcher and reset logic
+    need a quicker way to detect whether a FILLED order still has live backing
+    in active_trades.json. If it does not, the FILLED record is a ghost and
+    should stop blocking open-order calculations.
+    """
+    active = _load_json(Path("state/active_trades.json"))
+    symbols: set[str] = set()
+    if isinstance(active, dict):
+        for symbol, trade in active.items():
+            if not isinstance(trade, dict):
+                continue
+            try:
+                amount = 0.0
+                for key in ("amount", "coin_amount", "size", "quantity"):
+                    amount = float(trade.get(key) or 0.0)
+                    if amount > 0:
+                        break
+            except Exception:
+                amount = 0.0
+            if amount > 0:
+                symbols.add(str(symbol).upper().strip())
+    return symbols
+
+
 def _now_wib() -> datetime:
     return datetime.now(WIB_TZ)
 
@@ -445,11 +473,33 @@ class OrderTracker:
         """Return all non-terminal orders."""
         idx = _load_index()
         open_ids = idx.get("open", [])
+        active_symbols = _load_active_trade_symbols()
         records = []
+        kept_open_ids: List[str] = []
+        pruned = False
         for oid in open_ids:
             r = self.load(oid)
             if r:
+                state = str(r.get("state") or "").upper().strip()
+                pair = str(r.get("pair") or r.get("symbol") or "").upper().strip()
+                if state == "FILLED" and pair and pair not in active_symbols:
+                    # Filled lifecycle records without active_trades backing are
+                    # ghosts from a previous session; keep the order file as
+                    # historical evidence, but stop treating them as live.
+                    pruned = True
+                    logger.info(
+                        "[OrderTracker] pruning ghost FILLED order %s (%s) from open index",
+                        oid,
+                        pair,
+                    )
+                    continue
                 records.append(r)
+                kept_open_ids.append(oid)
+            else:
+                pruned = True
+        if pruned:
+            idx["open"] = kept_open_ids
+            _atomic_write(INDEX_FILE, idx)
         return records
 
     def scan_stale(self) -> List[str]:

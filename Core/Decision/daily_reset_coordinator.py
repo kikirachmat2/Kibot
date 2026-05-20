@@ -52,6 +52,8 @@ def _write_state(payload: Dict[str, Any]) -> Dict[str, Any]:
         "forced_exit_all": False,
         "inventory_open_count": 0,
         "inventory_open_symbols": [],
+        "residual_inventory_count": 0,
+        "residual_inventory_symbols": [],
         "governor_date": "",
         "governor_anchor_date": "",
         "daily_anchor_status": "",
@@ -99,6 +101,8 @@ async def evaluate_daily_reset() -> Dict[str, Any]:
     has_open_inventory = bool(inventory.get("has_open_inventory"))
     inventory_count = int(inventory.get("open_count", 0) or 0)
     inventory_symbols = list(inventory.get("open_symbols", []) or [])
+    residual_count = int(inventory.get("residual_count", 0) or 0)
+    residual_symbols = list(inventory.get("residual_symbols", []) or [])
     day_changed = bool(governor_date and governor_date != today)
     rollover_active = pre_close_window or governor_pending or day_changed or has_open_inventory
     daily_exit_owned = bool(state.get("forced_exit_all", False) or state.get("previous_strategy"))
@@ -161,6 +165,8 @@ async def evaluate_daily_reset() -> Dict[str, Any]:
             "forced_exit_all": False,
             "inventory_open_count": 0,
             "inventory_open_symbols": [],
+            "residual_inventory_count": residual_count,
+            "residual_inventory_symbols": residual_symbols,
             "governor_date": governor_date,
             "governor_anchor_date": governor_date,
             "daily_anchor_status": "RESET_DONE",
@@ -183,6 +189,8 @@ async def evaluate_daily_reset() -> Dict[str, Any]:
             "forced_exit_all": bool(state.get("forced_exit_all", False)),
             "inventory_open_count": inventory_count,
             "inventory_open_symbols": inventory_symbols,
+            "residual_inventory_count": residual_count,
+            "residual_inventory_symbols": residual_symbols,
             "governor_date": governor_date,
             "governor_anchor_date": governor_date,
             "daily_anchor_status": "ACTIVE",
@@ -213,6 +221,8 @@ async def evaluate_daily_reset() -> Dict[str, Any]:
         "forced_exit_all": bool(rollover_active or governor_pending or day_changed),
         "inventory_open_count": inventory_count,
         "inventory_open_symbols": inventory_symbols,
+        "residual_inventory_count": residual_count,
+        "residual_inventory_symbols": residual_symbols,
         "governor_date": governor_date,
         "governor_anchor_date": governor_date,
         "daily_anchor_status": str(refreshed_governor.get("daily_reset_pending") and "PENDING" or "ACTIVE"),

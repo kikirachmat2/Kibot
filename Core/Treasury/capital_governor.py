@@ -41,6 +41,8 @@ def _count_live_inventory_entries(payload: Any) -> int:
         total = 0
         for item in payload:
             if isinstance(item, dict):
+                if _is_residual_inventory_entry(item):
+                    continue
                 state = str(item.get("status") or item.get("state") or "").upper()
                 amount = 0.0
                 for key in ("amount", "size", "quantity", "coin_amount", "position_size"):
@@ -74,10 +76,66 @@ def _count_live_inventory_entries(payload: Any) -> int:
                 amount = 0.0
             if amount > 0:
                 break
+        if _is_residual_inventory_entry(payload):
+            return 0
         if state and state not in terminal_states and (amount > 0 or payload.get("pair") or payload.get("symbol") or payload.get("market")):
             return 1
         return 0
     return 0
+
+
+def _inventory_notional_idr(payload: Any) -> float:
+    """Best-effort estimate of position notional in IDR."""
+    if not isinstance(payload, dict):
+        return 0.0
+    amount = 0.0
+    for key in ("amount", "coin_amount", "size", "quantity", "position_size"):
+        try:
+            amount = float(payload.get(key) or 0.0)
+        except Exception:
+            amount = 0.0
+        if amount > 0:
+            break
+    price = 0.0
+    for key in ("price", "fill_price", "entry_price_idr", "last_price", "mark_price", "current_price"):
+        try:
+            price = float(payload.get(key) or 0.0)
+        except Exception:
+            price = 0.0
+        if price > 0:
+            break
+    if amount > 0 and price > 0:
+        return amount * price
+    for key in ("cost", "budget_idr", "notional_idr", "value_idr", "exit_value_idr"):
+        try:
+            value = float(payload.get(key) or 0.0)
+        except Exception:
+            value = 0.0
+        if value > 0:
+            return value
+    return 0.0
+
+
+def _is_residual_inventory_entry(payload: Any, *, min_notional_idr: float = 10_000.0) -> bool:
+    """
+    Identify tiny unsellable residuals that should not block the daily reset.
+
+    These are usually dust balances or legacy wallet leftovers that sit below
+    the exchange minimum exit notional. They still belong in the audit trail,
+    but they should not keep the system pinned in EXIT_ALL forever.
+    """
+    if not isinstance(payload, dict):
+        return False
+    reason_blob = " ".join(
+        str(payload.get(key) or "")
+        for key in ("exit_blocked_reason", "partial_tp_blocked_reason", "reason", "status", "state")
+    ).upper()
+    if "EXIT_MINIMUM_NOT_MET" in reason_blob or "PARTIAL_EXIT_MINIMUM_NOT_MET" in reason_blob:
+        return True
+    if "DUST" in reason_blob or "RESIDUAL" in reason_blob or "UNSELLABLE" in reason_blob:
+        return True
+    notional = _inventory_notional_idr(payload)
+    return 0.0 < notional < float(min_notional_idr)
 
 
 def load_daily_inventory_snapshot(state_dir: Optional[Path] = None) -> Dict[str, Any]:
@@ -88,6 +146,8 @@ def load_daily_inventory_snapshot(state_dir: Optional[Path] = None) -> Dict[str,
         "has_open_inventory": False,
         "open_count": 0,
         "open_symbols": [],
+        "residual_count": 0,
+        "residual_symbols": [],
         "open_sources": {},
         "errors": [],
     }
@@ -112,8 +172,14 @@ def load_daily_inventory_snapshot(state_dir: Optional[Path] = None) -> Dict[str,
             if isinstance(active_trades, dict):
                 symbols: list[str] = []
                 count = 0
+                residual_symbols: list[str] = []
+                residual_count = 0
                 for symbol, trade in active_trades.items():
                     if not isinstance(trade, dict):
+                        continue
+                    if _is_residual_inventory_entry(trade):
+                        residual_count += 1
+                        residual_symbols.append(str(symbol).upper())
                         continue
                     pending = any(
                         bool(trade.get(key))
@@ -136,6 +202,9 @@ def load_daily_inventory_snapshot(state_dir: Optional[Path] = None) -> Dict[str,
                         count += 1
                         symbols.append(str(symbol).upper())
                 _mark_open("active_trades", count, symbols)
+                if residual_count:
+                    snapshot["residual_count"] += residual_count
+                    snapshot["residual_symbols"].extend(residual_symbols)
             elif active_trades not in ({}, []):
                 snapshot["has_open_inventory"] = True
                 snapshot["errors"].append("active_trades.json:unexpected_format")
@@ -177,6 +246,12 @@ def load_daily_inventory_snapshot(state_dir: Optional[Path] = None) -> Dict[str,
             if isinstance(payload, list):
                 for item in payload:
                     if isinstance(item, dict):
+                        if _is_residual_inventory_entry(item):
+                            residual_symbol = str(item.get("pair") or item.get("symbol") or item.get("market") or "").upper().strip()
+                            if residual_symbol:
+                                snapshot["residual_symbols"].append(residual_symbol)
+                            snapshot["residual_count"] += 1
+                            continue
                         pair = str(item.get("pair") or item.get("symbol") or item.get("market") or "").upper().strip()
                         if pair:
                             symbols.append(pair)
@@ -186,13 +261,21 @@ def load_daily_inventory_snapshot(state_dir: Optional[Path] = None) -> Dict[str,
                     if isinstance(value, list):
                         for item in value:
                             if isinstance(item, dict):
+                                if _is_residual_inventory_entry(item):
+                                    residual_symbol = str(item.get("pair") or item.get("symbol") or item.get("market") or "").upper().strip()
+                                    if residual_symbol:
+                                        snapshot["residual_symbols"].append(residual_symbol)
+                                    snapshot["residual_count"] += 1
+                                    continue
                                 pair = str(item.get("pair") or item.get("symbol") or item.get("market") or "").upper().strip()
                                 if pair:
                                     symbols.append(pair)
             _mark_open(position_file.name, count, symbols)
 
     snapshot["open_symbols"] = sorted({symbol for symbol in snapshot["open_symbols"] if symbol})
+    snapshot["residual_symbols"] = sorted({symbol for symbol in snapshot["residual_symbols"] if symbol})
     snapshot["open_count"] = int(snapshot["open_count"])
+    snapshot["residual_count"] = int(snapshot["residual_count"])
     return snapshot
 
 

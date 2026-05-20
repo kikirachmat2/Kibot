@@ -110,3 +110,20 @@ async def test_daily_reset_waits_for_flat_inventory_then_resets(monkeypatch, tmp
     assert data["date"] == str(today)
     assert data["start_total_equity_idr"] == pytest.approx(123_456.0)
 
+
+def test_load_daily_inventory_snapshot_ignores_dust_residuals(monkeypatch, tmp_path):
+    _isolate_runtime_state(monkeypatch, tmp_path)
+    _write_json(tmp_path / "active_trades.json", {
+        "PEPE/IDR": {
+            "amount": 0.7328859,
+            "price": 0.066344,
+            "exit_blocked_reason": "EXIT_MINIMUM_NOT_MET: live 0.73288590 PEPE worth Rp0; min coin 152546, min base Rp10,000",
+        }
+    })
+
+    snapshot = capital_module.load_daily_inventory_snapshot(tmp_path)
+
+    assert snapshot["has_open_inventory"] is False
+    assert snapshot["open_count"] == 0
+    assert snapshot["residual_count"] == 1
+    assert snapshot["residual_symbols"] == ["PEPE/IDR"]
