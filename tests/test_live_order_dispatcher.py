@@ -41,3 +41,21 @@ def test_live_dispatcher_skips_active_symbol(monkeypatch, tmp_path):
         }]
     }))
     assert LiveOrderDispatcher()._indodax_candidates() == []
+
+
+def test_live_dispatcher_blocks_on_global_hard_stop(monkeypatch, tmp_path):
+    monkeypatch.setattr(dispatcher, "STATE_DIR", tmp_path)
+    monkeypatch.setattr(dispatcher, "STATE_FILE", tmp_path / "live_order_dispatcher.json")
+    monkeypatch.setattr(dispatcher.KiConfig, "LIVE_TRADING_ENABLED", True)
+    monkeypatch.setenv("KIBOT_SECRET", "unit-test-secret")
+    (tmp_path / "capital_governor.json").write_text(json.dumps({
+        "allow_new_orders": False,
+        "status": "BLOCKED_WITH_REASON",
+        "allow_new_orders_reason": "global_daily_loss_cap_breached (-6000.00 <= -5000.00)",
+        "daily_pnl_idr": -6000.0,
+        "max_daily_loss_idr": 5000.0,
+    }))
+    dispatcher_instance = LiveOrderDispatcher()
+    result = dispatcher_instance.dispatch_indodax_once()
+    assert result["status"] == "BLOCKED_WITH_REASON"
+    assert "global_daily_loss_cap_breached" in result["reason"]

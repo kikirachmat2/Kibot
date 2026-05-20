@@ -37,6 +37,9 @@ class BaseSwapExecutor:
             return self._write("BLOCKED_WITH_REASON", "base_config_missing")
         if not self.private_key:
             return self._write("BLOCKED_WITH_REASON", "evm_signer_missing")
+        approval = self.allowance.readiness()
+        if not approval.get("allowed", False):
+            return self._write("BLOCKED_WITH_REASON", str(approval.get("reason") or "capital_governor_orders_blocked"))
         return self._write("BASE_LIVE_READY_WAITING_FOR_CANDIDATE", "")
 
     def _write(self, status: str, reason: str, **extra: Any) -> Dict[str, Any]:
@@ -44,8 +47,8 @@ class BaseSwapExecutor:
         write_base_state(payload)
         return payload
 
-    async def quote(self, token_in: str, token_out: str, amount_raw: int) -> Dict[str, Any]:
-        return await self.quote_router.quote(token_in, token_out, amount_raw)
+    async def quote(self, token_in: str, token_out: str, amount_raw: int, *, trade_size_idr: float | None = None, balance_snapshot: Dict[str, Any] | None = None) -> Dict[str, Any]:
+        return await self.quote_router.quote(token_in, token_out, amount_raw, trade_size_idr=trade_size_idr, balance_snapshot=balance_snapshot)
 
     async def execute_swap(self, token_in: str, token_out: str, amount_raw: int, quote: Dict[str, Any]) -> Dict[str, Any]:
         status = self.readiness()
@@ -56,6 +59,9 @@ class BaseSwapExecutor:
             return self._write("BLOCKED_WITH_REASON", approval["reason"])
         if not quote.get("quote_ok"):
             return self._write("BLOCKED_WITH_REASON", quote.get("reason", "no_quote"))
+        fee_intelligence = quote.get("fee_intelligence") if isinstance(quote.get("fee_intelligence"), dict) else {}
+        if fee_intelligence and not bool(fee_intelligence.get("gas_affordable", True)):
+            return self._write("BLOCKED_WITH_REASON", str(fee_intelligence.get("gas_reason") or "base_gas_unaffordable"))
         proof = quote.get("source_proof")
         if proof is not None and not SourceProof.validate(proof):
             return self._write("BLOCKED_WITH_REASON", "invalid_source_proof")

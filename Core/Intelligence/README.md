@@ -10,7 +10,7 @@ AI Orchestration, Learning, and Market Intelligence models.
 - `kibot_ai_scout.py` menjaga scouting intel pasar dan berita global tetap hidup.
 - `kibot_whatif_engine.py` menjaga simulasi skenario selalu terbarui untuk council.
 - `SovereignCouncil` membaca `whatif_results.json` dan evidence web sebelum memberi mandat trading.
-- `SovereignCouncil` sekarang juga memberi posture eksplisit `ENTER / WAIT / EXIT`, plus recovery mode terkontrol saat equity harian merah dan masih ada waktu sebelum midnight.
+- `SovereignCouncil` sekarang juga memberi posture eksplisit `ENTER / WAIT / EXIT`, plus recovery mode terkontrol saat equity harian merah dan masih ada waktu sebelum midnight. Jika governor harian sudah melewati hard loss cap, runtime masuk `BLOCKED_WITH_REASON` / `EXIT_ONLY` dan entry baru tidak lagi boleh lewat dispatcher atau RiskGate.
 - `SovereignCouncil` juga menjalankan `COUNCIL_ANTAGONIST` dan `POSSIBILITY_MINING` supaya council tidak berpikir satu arah saja.
 - Target harian sekarang dipahami sebagai state `GREEN` bukan angka persen statis, jadi council dan executor bisa menahan winner lebih lama kalau edge masih kuat.
 - `kibot_ai_scout.py` membawa `daily_state` yang sama ke `POSSIBILITY_MINING` dan validasi targeted scouting, sehingga scouting global dan council memakai posture yang konsisten.
@@ -36,6 +36,7 @@ AI Orchestration, Learning, and Market Intelligence models.
 - `daily_report.py` membuat template Telegram midnight report yang singkat: state, PnL, cash/holdings, scanner/council/executor summary, risk flags, dan next posture.
 - Executor Indodax sekarang memakai `exit_plan` per posisi: hard stop, trailing stop, partial TP, max hold, distribution exit, dan fallback legacy jika plan belum ada.
 - Exit plan dan executor kini fee-aware: partial TP / trailing / take-profit tidak boleh jatuh di bawah round-trip fee floor, dan close reconciliation menghitung net realized PnL setelah fee agar profit tidak terlihat palsu karena biaya trading.
+- Web3 route selection sekarang membawa `fee_intelligence` yang eksplisit: Solana routes menghitung base fee + priority fee + gasless cap, Base routes menghitung L2 execution + L1 security fee, dan bridge routes menghitung source + destination chain cost sebelum executor/guard mengizinkan entry.
 - Dashboard membaca `daily_context`, `green_probability`, `market_heatmap`, `scanner_candidates`, dan `decision_journal`, sehingga control plane menampilkan kecerdasan strategi yang sama dengan runtime.
 - `SystemCommander` sekarang menjadi otak non-trading yang menilai service canonical, model Ollama, provider/source health, inventory utilization, GitHub/server drift, state files, dan resource server lalu menulis `state/system_commander.json` + `state/inventory_matrix.json`; snapshot itu juga dipersist ke decision journal agar toolchain, service, dan inventory history terbaca.
 - Dashboard System Brain membaca kontrak `system_brain` yang sama dari backend, sehingga inventory utilization, source health, dan drift status tidak lagi panel dekoratif.

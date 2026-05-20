@@ -168,14 +168,20 @@ class RiskGate:
             with open(GOVERNOR_FILE, "r") as f:
                 gov_data = json.load(f)
                 
+            if gov_data.get("date") == today:
+                global_pnl = float(gov_data.get("daily_pnl_idr", 0.0) or 0.0)
+                global_cap = float(gov_data.get("max_daily_loss_idr", effective_daily_loss_cap_idr) or effective_daily_loss_cap_idr)
+                global_reason = str(gov_data.get("allow_new_orders_reason") or "").strip()
+                if global_cap and global_pnl <= -global_cap:
+                    return False, f"MANIFESTO CAP: Global daily loss cap reached ({global_pnl:.2f} <= -{global_cap:.2f})"
+                if not bool(gov_data.get("allow_new_orders", True)) and global_reason:
+                    return False, f"FAIL-CLOSED: {global_reason}"
             if gov_data.get("status") != "RECONCILED":
                 return False, f"FAIL-CLOSED: Capital Governor status is '{gov_data.get('status')}' (expected 'RECONCILED')"
-                
+
             if gov_data.get("date") == today:
                 venues = gov_data.get("venues", {}) if isinstance(gov_data.get("venues"), dict) else {}
                 if not explicit_venue_source:
-                    global_pnl = float(gov_data.get("daily_pnl_idr", 0.0) or 0.0)
-                    global_cap = float(gov_data.get("max_daily_loss_idr", effective_daily_loss_cap_idr) or effective_daily_loss_cap_idr)
                     if global_cap and global_pnl < -global_cap:
                         return False, f"MANIFESTO CAP: Global daily loss cap reached ({global_pnl:.2f} < -{global_cap:.2f})"
                 else:

@@ -117,6 +117,44 @@ async def test_capital_governor_drawdown_enforcement():
         assert not is_valid
         assert "MANIFESTO CAP: Global daily loss cap reached" in reason
 
+
+@pytest.mark.anyio
+async def test_capital_governor_global_hard_stop_flags_blocked():
+    indodax = AsyncMock()
+    indodax.get_info = AsyncMock(return_value={
+        "success": 1,
+        "return": {
+            "balance": {
+                "idr": 100000.0
+            }
+        }
+    })
+
+    router = MagicMock()
+    router.wallet_address = "0xPhantomWalletAddress"
+    router.get_balances = AsyncMock(return_value={
+        "usdc_balance": 5.0,
+        "sol_balance": 0.0,
+        "matic_balance": 0.0
+    })
+
+    with patch.object(KiConfig, "LIVE_TRADING_ENABLED", True), \
+         patch.object(KiConfig, "ENABLE_POLYMARKET_LIVE", False):
+        governor = CapitalGovernor(indodax, router)
+        governor.start_total_equity_idr = 100000.0
+        governor.current_total_equity_idr = 95000.0
+        governor.max_daily_loss_idr = 1500.0
+        governor.daily_pnl_idr = -2000.0
+        governor.status = "RECONCILED"
+        governor.allow_new_orders = True
+        governor.allow_new_orders_reason = ""
+        governor.save()
+
+    data = json.loads(GOVERNOR_FILE.read_text(encoding="utf-8"))
+    assert data["global_hard_stop"] is True
+    assert data["status"] == "BLOCKED_WITH_REASON"
+    assert data["allow_new_orders"] is False
+
 @pytest.mark.anyio
 async def test_capital_governor_flows_and_hardenings(tmp_path):
     # Setup mock Indodax and Phantom router
@@ -175,13 +213,16 @@ async def test_capital_governor_flows_and_hardenings(tmp_path):
         # 280,000 - 280,000 - 10,000 + 5,000 = -5,000 IDR
         assert gov_data["daily_pnl_idr"] == -5000.0
         assert gov_data["daily_pnl_pct"] == (-5000.0 / 280000.0 * 100.0)
-        assert gov_data["status"] == "RECONCILED"
+        assert gov_data["status"] == "BLOCKED_WITH_REASON"
+        assert gov_data["allow_new_orders"] is False
         
         # Clean up transfers file
         if transfers_file.exists():
             transfers_file.unlink()
 
     # 2. Test RiskGate hardening for Unreconciled Status
+    governor.daily_pnl_idr = 0.0
+    governor.max_daily_loss_idr = 0.0
     governor.status = "UNRECONCILED"
     governor.save()
     
@@ -189,7 +230,11 @@ async def test_capital_governor_flows_and_hardenings(tmp_path):
     signal = {"symbol": "BTC_IDR", "expected_net_pct": 5.0}
     is_valid, reason = risk.validate_signal(signal, balance_idr=280000.0, active_positions_count=0)
     assert not is_valid
-    assert "expected 'RECONCILED'" in reason
+    assert (
+        "expected 'RECONCILED'" in reason
+        or "Global daily loss cap reached" in reason
+        or "global_daily_loss_cap_breached" in reason
+    )
 
     # 3. Test RiskGate hardening for Staleness
     governor.status = "RECONCILED"

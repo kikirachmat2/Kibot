@@ -43,14 +43,16 @@ class IndodaxNoIdleLoop:
         indodax_state = ((governor.get("venues", {}) or {}).get("indodax", {}) if isinstance(governor, dict) else {})
         indodax_allow = bool(indodax_state.get("allow_orders", scan.get("source_status") == "OK"))
         indodax_reason = str(indodax_state.get("reason") or scan.get("no_data_reason") or "")
-        posture = "ACTIVE_SEARCHING" if candidates else "ACTIVE_SEARCHING"
-        reason = best.get("reason") if isinstance(best, dict) else ""
+        global_hard_stop = not bool(governor.get("allow_new_orders", False)) if isinstance(governor, dict) else False
+        global_reason = str(governor.get("allow_new_orders_reason") or "").strip() if isinstance(governor, dict) else ""
+        posture = "FATAL_BLOCKED" if global_hard_stop else "ACTIVE_SEARCHING"
+        reason = global_reason or (best.get("reason") if isinstance(best, dict) else "")
         state = {
             "updated_at": datetime.now(timezone.utc).isoformat(),
             "posture": posture,
             "best_candidate": best,
             "why_not_trading": reason or scan.get("no_data_reason") or "no_candidate_passed_source_proof_or_momentum",
-            "next_action": "SCAN_NEXT",
+            "next_action": "EXIT_ONLY" if global_hard_stop else "SCAN_NEXT",
             "next_check_seconds": self.poll_seconds,
             "pairs_checked": int(scan.get("pairs_checked", 0) or 0),
             "approved_candidates": int(len(scan.get("approved_candidates", []) or [])),

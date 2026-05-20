@@ -9,6 +9,7 @@ import time
 import aiohttp
 from Core.Support.ki_config import KiConfig
 from Core.Trading.autonomous_sizing import AutonomousSizing
+from Core.Web3.web3_fee_intelligence import build_fee_intelligence
 from solana.rpc.async_api import AsyncClient
 from solana.rpc.commitment import Confirmed
 from solders.keypair import Keypair
@@ -118,6 +119,21 @@ class PhantomRouter:
         if not KiConfig.LIVE_TRADING_ENABLED or not KiConfig.ENABLE_REAL_BRIDGE or not KiConfig.ENABLE_REAL_WITHDRAWAL:
             logger.warning(f"⚠️ [OFF] Cross-chain bridge disabled by runtime contract: {amount} {token} from {from_chain} to {to_chain}")
             return False
+        gate_ctx = self._live_web3_gate_context()
+        treasury = gate_ctx.get("treasury", {}) if isinstance(gate_ctx, dict) else {}
+        capital_governor = {}
+        try:
+            gov_path = Path(__file__).resolve().parent.parent.parent / "state" / "capital_governor.json"
+            if gov_path.exists():
+                capital_governor = json.loads(gov_path.read_text(encoding="utf-8"))
+        except Exception:
+            capital_governor = {}
+        if not bool(capital_governor.get("allow_new_orders", False)) or str(capital_governor.get("status") or "").upper() == "BLOCKED_WITH_REASON":
+            logger.warning(
+                "⚠️ [OFF] Cross-chain bridge blocked by capital governor: %s",
+                str(capital_governor.get("allow_new_orders_reason") or "capital_governor_global_block"),
+            )
+            return False
         logger.info(f"✅ Live bridge enabled: {amount} {token} from {from_chain} to {to_chain}")
         return True
 
@@ -151,7 +167,18 @@ class PhantomRouter:
         quote_router = Web3QuoteRouter()
         safety_checker = Web3SafetyChecker()
         executor_guard = Web3ExecutorGuard()
-        quote = await quote_router.quote("solana", token_in, token_out, int(amount_in))
+        treasury = gate_ctx.get("treasury", {}) if isinstance(gate_ctx, dict) else {}
+        route_bucket_idr = float(treasury.get("buckets", {}).get("swap_idr", 0.0) or 0.0)
+        trade_size_idr = route_bucket_idr
+        quote = await quote_router.quote(
+            "solana",
+            token_in,
+            token_out,
+            int(amount_in),
+            trade_size_idr=trade_size_idr,
+            balance_snapshot=treasury,
+            route_context={"source": "phantom_router.swap_assets", "token_in": token_in, "token_out": token_out},
+        )
         sizing = self.sizing.size(
             total_capital_idr=float(gate_ctx.get("treasury", {}).get("total_value_idr", 0.0) or 0.0),
             venue_capital_idr=float(gate_ctx.get("treasury", {}).get("total_value_idr", 0.0) or 0.0),
@@ -178,6 +205,17 @@ class PhantomRouter:
         if not sizing.get("approved"):
             logger.warning("🛡️ Web3 autonomous sizing rejected Solana swap: %s", sizing.get("reason"))
             return False
+        trade_size_idr = float(sizing.get("size_idr") or trade_size_idr or 0.0)
+        fee_state = quote.get("fee_intelligence") or build_fee_intelligence(
+            "solana",
+            trade_size_idr=trade_size_idr,
+            balance_snapshot=treasury,
+            quote=quote,
+            route_context={"source": "phantom_router.swap_assets", "token_in": token_in, "token_out": token_out},
+        )
+        if not fee_state.get("gas_affordable", True):
+            logger.warning("🛡️ Solana swap blocked by fee intelligence: %s", fee_state.get("gas_reason"))
+            return False
         safety = safety_checker.evaluate({
             "ev": float(scout_res.get("estimated_out", 0.0) or 0.0),
             "liquidity": scout_res.get("liquidity", 0.0),
@@ -185,6 +223,12 @@ class PhantomRouter:
             "spread_pct": scout_res.get("price_impact_pct", 0.0),
             "slippage_pct": scout_res.get("price_impact_pct", 0.0),
             "token_type": "solana",
+            "trade_size_idr": trade_size_idr,
+            "gas_fee_idr": fee_state.get("gas_fee_idr", 0.0),
+            "gas_floor_idr": fee_state.get("gas_floor_idr", 0.0),
+            "gas_mode": fee_state.get("gas_mode", ""),
+            "gas_affordable": fee_state.get("gas_affordable", True),
+            "gas_reason": fee_state.get("gas_reason", ""),
         })
         approval = executor_guard.approve(
             treasury=gate_ctx.get("treasury", {}),
@@ -197,6 +241,9 @@ class PhantomRouter:
             trailing_stop_pct=float(os.getenv("WEB3_DEFAULT_TRAILING_STOP_PCT", "0.5") or 0.5),
             time_stop_seconds=int(float(os.getenv("WEB3_DEFAULT_TIME_STOP_SECONDS", "3600") or 3600)),
             spend_reserve=False,
+            trade_size_idr=trade_size_idr,
+            fee_intelligence=fee_state,
+            route_min_trade_idr=float(os.getenv("WEB3_MIN_TRADE_IDR", "1000") or 1000),
         )
         if not approval.get("allowed"):
             logger.warning("🛡️ Web3 executor guard blocked Solana swap: %s", approval.get("reason"))
@@ -341,9 +388,15 @@ class PhantomRouter:
         quote_router = Web3QuoteRouter()
         safety_checker = Web3SafetyChecker()
         executor_guard = Web3ExecutorGuard()
-        quote = await quote_router.quote("solana", "So11111111111111111111111111111111111111112", token_address, int(amount_sol * 1e9))
+        treasury = gate_ctx.get("treasury", {}) if isinstance(gate_ctx, dict) else {}
+        trade_size_idr = float(amount_sol) * float(os.getenv("SOL_USD_RATE", "170") or 170) * float(os.getenv("USD_IDR_RATE", "16000") or 16000)
+        quote = await quote_router.quote("solana", "So11111111111111111111111111111111111111112", token_address, int(amount_sol * 1e9), trade_size_idr=trade_size_idr, balance_snapshot=treasury, route_context={"source": "phantom_router.snipe_meme_coin", "token_address": token_address})
         if not quote.get("quote_ok"):
             logger.warning("🛡️ Web3 quote missing for Solana meme snipe: %s", quote.get("reason"))
+            return False
+        fee_state = quote.get("fee_intelligence") or build_fee_intelligence("solana", trade_size_idr=trade_size_idr, balance_snapshot=treasury, quote=quote, route_context={"source": "phantom_router.snipe_meme_coin", "token_address": token_address})
+        if not fee_state.get("gas_affordable", True):
+            logger.warning("🛡️ Solana meme snipe blocked by fee intelligence: %s", fee_state.get("gas_reason"))
             return False
         safety = safety_checker.evaluate({
             "ev": float(quote.get("expected_out", 0) or 0),
@@ -352,6 +405,12 @@ class PhantomRouter:
             "spread_pct": float(quote.get("slippage_pct", 0) or 0),
             "slippage_pct": float(quote.get("slippage_pct", 0) or 0),
             "token_type": "solana",
+            "trade_size_idr": trade_size_idr,
+            "gas_fee_idr": fee_state.get("gas_fee_idr", 0.0),
+            "gas_floor_idr": fee_state.get("gas_floor_idr", 0.0),
+            "gas_mode": fee_state.get("gas_mode", ""),
+            "gas_affordable": fee_state.get("gas_affordable", True),
+            "gas_reason": fee_state.get("gas_reason", ""),
         })
         approval = executor_guard.approve(
             treasury=gate_ctx.get("treasury", {}),
@@ -366,6 +425,9 @@ class PhantomRouter:
             spend_reserve=False,
             exit_plan=True,
             quote_context="ok" if quote.get("quote_ok") else "quote_context_missing",
+            trade_size_idr=trade_size_idr,
+            fee_intelligence=fee_state,
+            route_min_trade_idr=float(os.getenv("WEB3_MIN_TRADE_IDR", "1000") or 1000),
         )
         if not approval.get("allowed"):
             logger.warning("🛡️ Web3 executor guard blocked Solana meme snipe: %s", approval.get("reason"))

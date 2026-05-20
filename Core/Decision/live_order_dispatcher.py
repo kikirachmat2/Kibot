@@ -11,6 +11,7 @@ from typing import Any, Dict, List, Optional
 
 from Core.Support.ki_config import KiConfig
 from Core.Support.ki_utils import sign_payload
+from Core.Web3.web3_fee_intelligence import build_fee_intelligence
 
 ROOT = Path(__file__).resolve().parent.parent.parent
 STATE_DIR = ROOT / "state"
@@ -58,6 +59,25 @@ def _venue_state(venue: str) -> Dict[str, Any]:
     venues = gov.get("venues", {}) if isinstance(gov, dict) else {}
     state = venues.get(venue, {}) if isinstance(venues, dict) else {}
     return state if isinstance(state, dict) else {}
+
+
+def _capital_governor_block() -> Dict[str, Any]:
+    gov = _read_json(STATE_DIR / "capital_governor.json", {})
+    if not isinstance(gov, dict):
+        return {"blocked": True, "reason": "capital_governor_missing"}
+    allow = bool(gov.get("allow_new_orders", False))
+    status = str(gov.get("status") or "").upper()
+    reason = str(gov.get("allow_new_orders_reason") or "").strip()
+    if allow and status in {"RECONCILED", "RECONCILING"}:
+        return {"blocked": False, "reason": "", "state": gov}
+    if not reason:
+        if status == "BLOCKED_WITH_REASON":
+            reason = "capital_governor_global_hard_stop"
+        elif status:
+            reason = f"capital_governor_status_{status.lower()}"
+        else:
+            reason = "capital_governor_orders_blocked"
+    return {"blocked": True, "reason": reason, "state": gov}
 
 
 class LiveOrderDispatcher:
@@ -175,6 +195,13 @@ class LiveOrderDispatcher:
             return {"status": "BLOCKED_WITH_REASON", "reason": "kibot_secret_missing"}
         if (STATE_DIR / "KILL_SWITCH").exists():
             return {"status": "BLOCKED_WITH_REASON", "reason": "kill_switch"}
+        governor_block = _capital_governor_block()
+        if governor_block.get("blocked"):
+            return {
+                "status": "BLOCKED_WITH_REASON",
+                "reason": str(governor_block.get("reason") or "capital_governor_orders_blocked"),
+                "capital_governor": governor_block.get("state", {}),
+            }
         venue = _venue_state("indodax")
         if venue and not bool(venue.get("allow_orders", True)):
             return {
@@ -206,6 +233,13 @@ class LiveOrderDispatcher:
             return {"status": "BLOCKED_WITH_REASON", "reason": "live_trading_disabled"}
         if not KiConfig.ENABLE_REAL_SWAP:
             return {"status": "BLOCKED_WITH_REASON", "reason": "real_swap_disabled"}
+        governor_block = _capital_governor_block()
+        if governor_block.get("blocked"):
+            return {
+                "status": "BLOCKED_WITH_REASON",
+                "reason": str(governor_block.get("reason") or "capital_governor_orders_blocked"),
+                "capital_governor": governor_block.get("state", {}),
+            }
         board = _read_json(STATE_DIR / "phantom_top_targets.json", {})
         targets = board.get("top_targets", []) if isinstance(board, dict) else []
         if not isinstance(targets, list):
@@ -237,6 +271,18 @@ class LiveOrderDispatcher:
             router = PhantomRouter()
             if not router.private_key:
                 return {"status": "BLOCKED_WITH_REASON", "reason": "phantom_signer_missing"}
+            fee_state = build_fee_intelligence(
+                route,
+                trade_size_idr=float(amount_sol) * float(os.getenv("SOL_USD_RATE", "170") or 170) * float(os.getenv("USD_IDR_RATE", "16000") or 16000),
+                balance_snapshot=treasury,
+                route_context={"source": "live_order_dispatcher", "route": route},
+            )
+            if not fee_state.get("gas_affordable", True):
+                return {
+                    "status": "BLOCKED_WITH_REASON",
+                    "reason": str(fee_state.get("gas_reason") or "gas_fee_unaffordable"),
+                    "fee_intelligence": fee_state,
+                }
             slippage_bps = int(float(os.getenv("WEB3_MEME_SLIPPAGE_BPS", "1500") or 1500))
             ok = await router.snipe_meme_coin(mint, amount_sol, slippage_bps=slippage_bps)
             self._mark_sent("phantom_cooldowns", key)
@@ -247,6 +293,7 @@ class LiveOrderDispatcher:
                 "amount_sol": amount_sol,
                 "candidate": candidate,
                 "reason": "submitted_to_phantom_router" if ok else "phantom_router_rejected",
+                "fee_intelligence": fee_state,
             }
         return {"status": "SCAN_NEXT", "reason": "no_same_chain_phantom_enter_candidate"}
 

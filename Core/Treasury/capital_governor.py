@@ -111,6 +111,14 @@ class CapitalGovernor:
     def save(self):
         try:
             STATE_DIR.mkdir(parents=True, exist_ok=True)
+            global_hard_stop = bool(self.max_daily_loss_idr > 0.0 and self.daily_pnl_idr <= -self.max_daily_loss_idr)
+            status = "BLOCKED_WITH_REASON" if global_hard_stop else self.status
+            allow_new_orders = bool(getattr(self, "allow_new_orders", False)) and not global_hard_stop
+            allow_reason = str(getattr(self, "allow_new_orders_reason", ""))
+            if global_hard_stop and not allow_reason:
+                allow_reason = (
+                    f"global_daily_loss_cap_breached ({self.daily_pnl_idr:.2f} <= -{self.max_daily_loss_idr:.2f})"
+                )
             with open(GOVERNOR_FILE, "w") as f:
                 json.dump({
                     "date": self.last_reset_date,
@@ -132,10 +140,11 @@ class CapitalGovernor:
                     "external_withdrawals_today": self.external_withdrawals_today,
                     "reset_deposits_offset": self.reset_deposits_offset,
                     "reset_withdrawals_offset": self.reset_withdrawals_offset,
-                    "status": self.status
+                    "status": status
                     ,
-                    "allow_new_orders": bool(getattr(self, "allow_new_orders", False)),
-                    "allow_new_orders_reason": str(getattr(self, "allow_new_orders_reason", "")),
+                    "global_hard_stop": global_hard_stop,
+                    "allow_new_orders": allow_new_orders,
+                    "allow_new_orders_reason": allow_reason,
                     "venues": getattr(self, "venue_states", {}),
                     "targets": getattr(self, "targets_snapshot", {}),
                     "phantom_details": getattr(self, "phantom_details_snapshot", {}),
@@ -425,12 +434,23 @@ class CapitalGovernor:
             self.ledger.update_venue("phantom", equity_idr=phantom_equity_idr)
             self.ledger.update_venue("cash_wait", equity_idr=self.current_total_equity_idr * targets.get("reserve", 0.20))
 
-            indodax_allow_orders = bool(indodax_ready and self.indodax_daily_pnl_idr > -indodax_daily_loss_cap_idr)
-            phantom_allow_orders = bool(phantom_ready and self.phantom_daily_pnl_idr > -phantom_daily_loss_cap_idr)
+            global_hard_stop = bool(
+                self.max_daily_loss_idr > 0.0 and self.daily_pnl_idr <= -self.max_daily_loss_idr
+            )
+
+            indodax_local_allow = bool(indodax_ready and self.indodax_daily_pnl_idr > -indodax_daily_loss_cap_idr)
+            phantom_local_allow = bool(phantom_ready and self.phantom_daily_pnl_idr > -phantom_daily_loss_cap_idr)
+            indodax_allow_orders = bool(indodax_local_allow and not global_hard_stop)
+            phantom_allow_orders = bool(phantom_local_allow and not global_hard_stop)
 
             indodax_reason = ""
             if not indodax_ready:
                 indodax_reason = "indodax_balance_unavailable"
+            elif global_hard_stop:
+                indodax_reason = (
+                    "global_daily_loss_cap_breached "
+                    f"({self.daily_pnl_idr:.2f} <= -{self.max_daily_loss_idr:.2f})"
+                )
             elif not indodax_allow_orders:
                 indodax_reason = (
                     "indodax_daily_loss_cap_breached "
@@ -440,6 +460,11 @@ class CapitalGovernor:
             phantom_reason = ""
             if not phantom_ready:
                 phantom_reason = "phantom_reconciliation_required"
+            elif global_hard_stop:
+                phantom_reason = (
+                    "global_daily_loss_cap_breached "
+                    f"({self.daily_pnl_idr:.2f} <= -{self.max_daily_loss_idr:.2f})"
+                )
             elif not phantom_allow_orders:
                 phantom_reason = (
                     "phantom_daily_loss_cap_breached "
@@ -447,7 +472,13 @@ class CapitalGovernor:
                 )
 
             allow_new_orders = bool(indodax_allow_orders or phantom_allow_orders)
-            if allow_new_orders:
+            if global_hard_stop:
+                allow_new_orders = False
+                allow_reason = (
+                    "global_daily_loss_cap_breached "
+                    f"({self.daily_pnl_idr:.2f} <= -{self.max_daily_loss_idr:.2f})"
+                )
+            elif allow_new_orders:
                 ready_bits = []
                 if indodax_allow_orders:
                     ready_bits.append("indodax")
@@ -461,7 +492,7 @@ class CapitalGovernor:
                 if phantom_reason:
                     blocked_bits.append(f"phantom={phantom_reason}")
                 allow_reason = "; ".join(blocked_bits) or "no venue ready for orders"
-            self.status = "RECONCILED" if allow_new_orders else "DEGRADED"
+            self.status = "BLOCKED_WITH_REASON" if global_hard_stop else ("RECONCILED" if allow_new_orders else "DEGRADED")
             
             payload = {
                 "date": self.last_reset_date,
@@ -477,6 +508,8 @@ class CapitalGovernor:
                 "reset_withdrawals_offset": self.reset_withdrawals_offset,
                 "in_flight_idr": in_flight_idr,
                 "status": self.status,
+                "global_hard_stop": global_hard_stop,
+                "global_hard_stop_reason": allow_reason if global_hard_stop else "",
                 "allow_new_orders": allow_new_orders,
                 "allow_new_orders_reason": allow_reason,
                 "venues": {

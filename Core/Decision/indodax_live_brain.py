@@ -42,30 +42,52 @@ def build_indodax_live_brain() -> Dict[str, Any]:
     board = build_indodax_target_board()
     targets = board.get("top_targets", []) if isinstance(board, dict) else []
     best = targets[0] if targets else {}
-    deadline = DeadlineProfitEnforcer().evaluate_enforcer(0.0, 0.0, 999)
+    governor = {}
+    global_block = False
+    global_reason = ""
     try:
         if GOVERNOR_FILE.exists():
-            gov = json.loads(GOVERNOR_FILE.read_text(encoding="utf-8"))
+            governor = json.loads(GOVERNOR_FILE.read_text(encoding="utf-8"))
+            global_block = not bool(governor.get("allow_new_orders", False)) or str(governor.get("status") or "").upper() == "BLOCKED_WITH_REASON"
+            global_reason = str(governor.get("allow_new_orders_reason") or "").strip()
+    except Exception:
+        governor = {}
+    if not global_reason and global_block:
+        global_pnl = float(governor.get("daily_pnl_idr", 0.0) or 0.0)
+        global_cap = float(governor.get("max_daily_loss_idr", 0.0) or 0.0)
+        if global_cap > 0:
+            global_reason = f"global_daily_loss_cap_breached ({global_pnl:.2f} <= -{global_cap:.2f})"
+        else:
+            global_reason = "capital_governor_global_block"
+    deadline = DeadlineProfitEnforcer().evaluate_enforcer(0.0, 0.0, 999)
+    try:
+        if governor:
             deadline = DeadlineProfitEnforcer().evaluate_enforcer(
-                float(gov.get("daily_pnl_pct", 0.0) or 0.0),
-                float(gov.get("daily_pnl_idr", 0.0) or 0.0),
+                float(governor.get("daily_pnl_pct", 0.0) or 0.0),
+                float(governor.get("daily_pnl_idr", 0.0) or 0.0),
                 int(board.get("minutes_to_midnight", 999) if isinstance(board, dict) else 999),
             )
     except Exception:
         pass
     recovery_mode = str(deadline.get("stage") or "").upper() in {"RECOVERY", "PRESSURE"}
-    status = "ENTERING" if best and best.get("route_status") == "EXECUTABLE" else ("RECOVERY" if recovery_mode else "ACTIVE")
-    decision = "ENTER" if best and best.get("recommended_action") == "ENTER" else ("SCAN_NEXT" if not recovery_mode else "ROTATE")
-    size_idr = int(best.get("size_idr") or best.get("entry_score") or 0)
+    if global_block:
+        status = "BLOCKED_WITH_REASON"
+        decision = "EXIT_ONLY"
+    else:
+        status = "ENTERING" if best and best.get("route_status") == "EXECUTABLE" else ("RECOVERY" if recovery_mode else "ACTIVE")
+        decision = "ENTER" if best and best.get("recommended_action") == "ENTER" else ("SCAN_NEXT" if not recovery_mode else "ROTATE")
+    size_idr = 0 if global_block else int(best.get("size_idr") or best.get("entry_score") or 0)
     notes = []
     if best and best.get("reason"):
         notes.append(str(best.get("reason")))
+    if global_reason:
+        notes.append(global_reason)
     if not best:
         notes.append(str(board.get("why_empty") or "scan_next"))
     write_no_idle_state({
         "updated_at": datetime.now(timezone.utc).isoformat(),
         "objective": "maximize_risk_adjusted_profit_for_boss",
-        "system_posture": "ENTERING" if decision == "ENTER" else "ACTIVE_SEARCHING",
+        "system_posture": "FATAL_BLOCKED" if global_block else ("ENTERING" if decision == "ENTER" else "ACTIVE_SEARCHING"),
         "best_route_now": "indodax",
         "best_candidate_now": best,
         "why_not_trading": notes[0] if notes else "",
@@ -83,7 +105,7 @@ def build_indodax_live_brain() -> Dict[str, Any]:
         "selected_candidate": best,
         "decision": decision,
         "size_idr": size_idr,
-        "fatal_blocker": "",
+        "fatal_blocker": global_reason if global_block else "",
         "advisory_notes": notes,
         "recovery_mode": recovery_mode,
         "deadline_stage": deadline.get("stage"),

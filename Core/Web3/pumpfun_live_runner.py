@@ -24,6 +24,35 @@ logger = logging.getLogger("PumpfunLiveRunner")
 
 ROOT = Path(__file__).resolve().parent.parent.parent
 STATE_DIR = ROOT / "state"
+TREASURY_FILE = STATE_DIR / "phantom_treasury.json"
+
+
+def _read_json(path: Path, default: Any) -> Any:
+    try:
+        if path.exists():
+            return json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        pass
+    return default
+
+
+def _capital_governor_block() -> Dict[str, Any]:
+    gov = _read_json(STATE_DIR / "capital_governor.json", {})
+    if not isinstance(gov, dict):
+        return {"blocked": True, "reason": "capital_governor_missing"}
+    allow = bool(gov.get("allow_new_orders", False))
+    status = str(gov.get("status") or "").upper()
+    reason = str(gov.get("allow_new_orders_reason") or "").strip()
+    if allow and status in {"RECONCILED", "RECONCILING"}:
+        return {"blocked": False, "reason": "", "state": gov}
+    if not reason:
+        if status == "BLOCKED_WITH_REASON":
+            reason = "capital_governor_global_hard_stop"
+        elif status:
+            reason = f"capital_governor_status_{status.lower()}"
+        else:
+            reason = "capital_governor_orders_blocked"
+    return {"blocked": True, "reason": reason, "state": gov}
 
 
 class PumpfunLiveRunner:
@@ -40,6 +69,10 @@ class PumpfunLiveRunner:
         self.poll_seconds = float(os.getenv("PUMPFUN_POLL_SECONDS", "5") or 5)
         self.decision_engine = os.getenv("PUMPFUN_DECISION_ENGINE", "SCRIPT_ONLY")
         self.state_file = STATE_DIR / "pumpfun_candidates.json"
+
+    def _load_treasury(self) -> Dict[str, Any]:
+        treasury = _read_json(TREASURY_FILE, {})
+        return treasury if isinstance(treasury, dict) else {}
 
     def _write_ai_heartbeat(self, *, best_action: str, venue: str, reason: str, confidence: float, risk_status: str, next_check_seconds: int, market_summary: str) -> None:
         payload = {
@@ -59,9 +92,16 @@ class PumpfunLiveRunner:
         (STATE_DIR / "ai_decision_trace.json").write_text(json.dumps(payload, indent=2), encoding="utf-8")
 
     async def _maybe_trade(self, candidate: Dict[str, Any]) -> Dict[str, Any]:
+        governor_block = _capital_governor_block()
+        if governor_block.get("blocked"):
+            return {"status": "BLOCKED_WITH_REASON", "reason": str(governor_block.get("reason") or "capital_governor_orders_blocked")}
         route_type = str(candidate.get("route_type") or "UNSUPPORTED")
         if route_type == "UNSUPPORTED":
             return {"status": "BLOCKED_WITH_REASON", "reason": "unsupported_route"}
+        treasury = self._load_treasury()
+        trade_size_idr = float(candidate.get("max_trade_idr", 0) or 0.0)
+        if trade_size_idr <= 0:
+            trade_size_idr = float(candidate.get("sizing", {}).get("size_idr", 0) or 0.0)
 
         sizing = self.sizing.size(
             total_capital_idr=0.0,
@@ -103,9 +143,19 @@ class PumpfunLiveRunner:
                     input_asset="So11111111111111111111111111111111111111112",
                     output_asset=str(candidate.get("mint") or ""),
                     amount_raw=int(candidate.get("max_trade_idr", 0) or 0),
+                    trade_size_idr=trade_size_idr,
+                    balance_snapshot=treasury,
+                    route_context={"source": "pumpfun_live_runner", "mint": candidate.get("mint"), "route_type": route_type},
                 )
             if not quote.get("quote_ok"):
                 return {"status": "BLOCKED_WITH_REASON", "reason": "no_buy_route"}
+            fee_state = quote.get("fee_intelligence") or candidate.get("fee_intelligence") or {}
+            if isinstance(fee_state, dict) and not bool(fee_state.get("gas_affordable", True)):
+                return {
+                    "status": "BLOCKED_WITH_REASON",
+                    "reason": str(fee_state.get("gas_reason") or "gas_fee_unaffordable"),
+                    "fee_intelligence": fee_state,
+                }
             return {"status": "READY", "reason": "jupiter_routable"}
 
         return {"status": "BLOCKED_WITH_REASON", "reason": "native_executor_not_ready"}
@@ -128,7 +178,13 @@ class PumpfunLiveRunner:
         if best:
             action = "SCAN"
             route_start = time.perf_counter()
-            route_state = await self.detector.detect_best_effort(best.get("mint", ""), pair_hint=best.get("pair") if isinstance(best.get("pair"), dict) else {})
+            treasury = self._load_treasury()
+            route_state = await self.detector.detect_best_effort(
+                best.get("mint", ""),
+                pair_hint=best.get("pair") if isinstance(best.get("pair"), dict) else {},
+                trade_size_idr=float(best.get("max_trade_idr", 0) or 0.0),
+                balance_snapshot=treasury,
+            )
             route_ms = int((time.perf_counter() - route_start) * 1000)
             best["route_state"] = route_state
             best["route_type"] = route_state.get("route_type")
@@ -142,9 +198,9 @@ class PumpfunLiveRunner:
                 route="pumpfun",
                 total_capital_idr=0.0,
                 venue_capital_idr=0.0,
-                route_bucket_idr=0.0,
-                available_balance_idr=0.0,
-                daily_risk_remaining_idr=0.0,
+                route_bucket_idr=float(best.get("max_trade_idr", 0) or 0.0),
+                available_balance_idr=float(best.get("max_trade_idr", 0) or 0.0),
+                daily_risk_remaining_idr=float(best.get("max_trade_idr", 0) or 0.0),
                 liquidity_usd=float(best.get("liquidity_usd", 0) or 0),
                 slippage_pct=float(best.get("slippage_pct", 0) or 0),
                 confidence=float(best.get("safety_score", 0) or 0) / 100.0,

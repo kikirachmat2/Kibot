@@ -48,6 +48,14 @@ class DeadlineProfitEnforcer:
         
         # Load profit targets from Decision Authority config
         target_pct = 1.5
+        global_loss_cap_idr = 0.0
+        capital_governor_path = self.state_dir / "capital_governor.json"
+        if capital_governor_path.exists():
+            try:
+                gov = json.loads(capital_governor_path.read_text(encoding="utf-8"))
+                global_loss_cap_idr = float(gov.get("max_daily_loss_idr", 0.0) or 0.0)
+            except Exception:
+                global_loss_cap_idr = 0.0
         if self.authority_path.exists():
             try:
                 auth_cfg = json.loads(self.authority_path.read_text(encoding="utf-8"))
@@ -67,18 +75,27 @@ class DeadlineProfitEnforcer:
         if daily_pnl_pct <= 0.0:
             stage = "RECOVERY"
 
+        if global_loss_cap_idr > 0.0 and daily_pnl_idr <= -global_loss_cap_idr:
+            locked = True
+            reason = (
+                f"LOSS_CUTOFF: Daily loss cap breached ({daily_pnl_idr:.2f} <= -{global_loss_cap_idr:.2f})"
+            )
+            stage = "FATAL_BLOCKED"
+
         # Rule 1: Lock Green Target reached
-        if daily_pnl_pct >= target_pct:
+        if not locked and daily_pnl_pct >= target_pct:
             locked = True
             reason = f"LOCK_GREEN: Daily profit target reached ({daily_pnl_pct:.2f}% >= {target_pct:.2f}%)"
             stage = "CLOSING_WINDOW"
         
         # Rule 2: Midnight deadline approaching protection
-        elif minutes_to_midnight <= 30 and daily_pnl_pct > 0.0:
+        elif not locked and minutes_to_midnight <= 30 and daily_pnl_pct > 0.0:
             locked = True
             reason = f"LOCK_GREEN: Midnight approaching ({minutes_to_midnight}m left) and green profit protected (+{daily_pnl_pct:.2f}%)"
             stage = "CLOSING_WINDOW"
 
+        if stage == "FATAL_BLOCKED" and not locked:
+            locked = True
         if stage == "RECOVERY" and not locked:
             reason = "RECOVERY: day is red; widen scan, lower nonfatal thresholds, keep searching"
         elif stage == "GREEN" and not locked:
@@ -87,7 +104,9 @@ class DeadlineProfitEnforcer:
             reason = f"AGGRESSIVE_SEARCH: {minutes_to_midnight}m left; continue hunting with tighter execution"
 
         required_action = "SCAN_NEXT"
-        if stage == "RECOVERY" and not locked:
+        if stage == "FATAL_BLOCKED":
+            required_action = "EXIT_ONLY"
+        elif stage == "RECOVERY" and not locked:
             required_action = "ENTER_CAUTIOUSLY"
         elif stage == "AGGRESSIVE_SEARCH" and not locked:
             required_action = "SCAN_AND_ENTER"
@@ -101,9 +120,9 @@ class DeadlineProfitEnforcer:
             "wib_date": datetime.now(timezone.utc).date().isoformat(),
             "minutes_to_midnight": int(minutes_to_midnight),
             "stage": stage,
-            "indodax_pressure": "MAX" if stage in {"RECOVERY", "AGGRESSIVE_SEARCH", "CLOSING_WINDOW"} else "NORMAL",
-            "phantom_pressure": "MAX" if stage in {"RECOVERY", "AGGRESSIVE_SEARCH", "CLOSING_WINDOW"} else "NORMAL",
-            "required_action": required_action if not locked else "CLOSE_WINDOW",
+            "indodax_pressure": "MAX" if stage in {"RECOVERY", "AGGRESSIVE_SEARCH", "CLOSING_WINDOW", "FATAL_BLOCKED"} else "NORMAL",
+            "phantom_pressure": "MAX" if stage in {"RECOVERY", "AGGRESSIVE_SEARCH", "CLOSING_WINDOW", "FATAL_BLOCKED"} else "NORMAL",
+            "required_action": required_action if not locked else ("EXIT_ONLY" if stage == "FATAL_BLOCKED" else "CLOSE_WINDOW"),
             "reason": reason,
         }
 

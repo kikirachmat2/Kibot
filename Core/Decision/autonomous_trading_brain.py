@@ -45,17 +45,36 @@ def build_autonomous_trading_brain() -> Dict[str, Any]:
     indo = build_indodax_target_board()
     phantom = build_phantom_target_board()
     capital_governor = {}
+    fee_state = {}
     try:
         gov_path = Path(__file__).resolve().parent.parent.parent / "state" / "capital_governor.json"
         if gov_path.exists():
             capital_governor = json.loads(gov_path.read_text(encoding="utf-8"))
     except Exception:
         capital_governor = {}
+    try:
+        fee_path = Path(__file__).resolve().parent.parent.parent / "state" / "web3_fee_state.json"
+        if fee_path.exists():
+            fee_state = json.loads(fee_path.read_text(encoding="utf-8"))
+    except Exception:
+        fee_state = {}
     trading_pnl_pct = float(capital_governor.get("trading_pnl_pct", capital_governor.get("daily_pnl_pct", 0.0)) or 0.0)
     trading_pnl_idr = float(capital_governor.get("trading_pnl_idr", capital_governor.get("daily_pnl_idr", 0.0)) or 0.0)
     max_daily_loss_idr = float(capital_governor.get("max_daily_loss_idr", 0.0) or 0.0)
     governor_total_equity = float(capital_governor.get("current_total_equity_idr") or capital_governor.get("current_equity_idr") or 0.0)
     venue_states = capital_governor.get("venues", {}) if isinstance(capital_governor.get("venues"), dict) else {}
+    global_hard_stop = (
+        not bool(capital_governor.get("allow_new_orders", False))
+        or str(capital_governor.get("status") or "").upper() == "BLOCKED_WITH_REASON"
+        or (max_daily_loss_idr > 0 and trading_pnl_idr <= -max_daily_loss_idr)
+    )
+    global_hard_stop_reason = str(capital_governor.get("allow_new_orders_reason") or "").strip()
+    if not global_hard_stop_reason and global_hard_stop:
+        global_hard_stop_reason = (
+            f"global_daily_loss_cap_breached ({trading_pnl_idr:.2f} <= -{max_daily_loss_idr:.2f})"
+            if max_daily_loss_idr > 0
+            else "capital_governor_global_block"
+        )
 
     def _venue_state(engine: str) -> Dict[str, Any]:
         key = "indodax" if engine == "indodax" else "phantom"
@@ -80,6 +99,25 @@ def build_autonomous_trading_brain() -> Dict[str, Any]:
         int((indo.get("minutes_to_midnight") or 60)),
     )
     write_phantom_network_maximizer({})
+
+    if global_hard_stop:
+        reason = global_hard_stop_reason or str(deadline.get("reason") or "global_hard_stop")
+        return write_autonomous_trading_brain({
+            "posture": "FATAL_BLOCKED",
+            "current_best_action": "EXIT_ONLY",
+            "selected_engine": "",
+            "selected_route": "",
+            "selected_candidate": {},
+            "sizing": {
+                "approved": False,
+                "reason": reason,
+            },
+            "fatal_blockers": [reason],
+            "advisory_signals": ["exit_only"],
+            "reason": reason,
+            "next_action": "EXIT_ONLY",
+            "next_check_seconds": 5,
+        })
 
     def _candidate_is_enter(c: Dict[str, Any]) -> bool:
         if not isinstance(c, dict):
@@ -141,6 +179,7 @@ def build_autonomous_trading_brain() -> Dict[str, Any]:
             s for s in [
                 "low_confidence" if float(selected_candidate.get("wave_score") or selected_candidate.get("entry_score") or 0) < 5 else "",
                 "deadline_pressure" if str(deadline.get("stage") or "") in {"PRESSURE", "AGGRESSIVE_SEARCH", "CLOSING_WINDOW"} else "",
+                "gas_fee_unaffordable" if isinstance(fee_state, dict) and str(fee_state.get("route") or "") == str(selected_candidate.get("route") or "") and not bool(fee_state.get("gas_affordable", True)) else "",
             ] if s
         ]
     else:
@@ -221,6 +260,7 @@ def build_autonomous_trading_brain() -> Dict[str, Any]:
         "sizing": sizing,
         "fatal_blockers": fatal_blockers,
         "advisory_signals": advisory_signals,
+        "fee_intelligence": fee_state,
         "reason": reason,
         "next_action": "ENTER" if selected_candidate and sizing.get("approved", False) else "SCAN_MORE",
         "next_check_seconds": 5,
