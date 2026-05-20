@@ -35,45 +35,108 @@ def _score_candidate(item: Dict[str, Any]) -> float:
     return score
 
 
+def _iter_source_pools(scan: Dict[str, Any]) -> List[tuple[str, List[Dict[str, Any]]]]:
+    pools = [
+        ("candidates", scan.get("candidates", []) or []),
+        ("approved_candidates", scan.get("approved_candidates", []) or []),
+        ("brutal_momentum_candidates", scan.get("brutal_momentum_candidates", []) or []),
+        ("pullback_candidates", scan.get("pullback_candidates", []) or []),
+        ("volume_leaders", scan.get("volume_leaders", []) or []),
+        ("gainers_24h", scan.get("gainers_24h", []) or []),
+    ]
+    normalized: List[tuple[str, List[Dict[str, Any]]]] = []
+    for pool_name, items in pools:
+        if isinstance(items, list):
+            normalized.append((pool_name, [item for item in items if isinstance(item, dict)]))
+    return normalized
+
+
+def _build_candidate(item: Dict[str, Any], source_pool: str) -> Dict[str, Any]:
+    pair = str(item.get("pair") or item.get("symbol") or "").lower()
+    symbol = str(item.get("symbol") or pair).upper()
+    c = {
+        "rank": 0,
+        "symbol": symbol,
+        "pair": pair.upper(),
+        "last_price": float(item.get("last_price") or item.get("price") or 0.0),
+        "change_24h_pct": float(item.get("change_24h_pct") or item.get("change_pct") or 0.0),
+        "volume_24h_idr": float(item.get("volume_idr") or item.get("volume_24h_idr") or 0.0),
+        "spread_pct": float(item.get("spread_pct") or 0.0),
+        "momentum_score": float(item.get("change_24h_pct") or item.get("change_pct") or item.get("momentum_score") or 0.0),
+        "liquidity_score": float(item.get("liquidity_score") or item.get("volume_idr") or 0.0) / 100_000_000.0,
+        "entry_score": float(item.get("entry_score") or 0.0),
+        "exit_score": 0.0,
+        "source_proof_ok": bool(SourceProof.validate(item.get("source_proof", {}))) if isinstance(item, dict) else False,
+        "route_status": str(item.get("route_status") or "EXECUTABLE"),
+        "recommended_action": str(item.get("recommended_action") or "WATCH"),
+        "reason": str(item.get("reason") or ""),
+        "source_pool": source_pool,
+        "high_24h": float(item.get("high_24h") or 0.0),
+        "low_24h": float(item.get("low_24h") or 0.0),
+        "range_position_pct": float(item.get("range_position_pct") or 0.0),
+        "distance_to_high_pct": float(item.get("distance_to_high_pct") or 0.0),
+        "runup_from_low_pct": float(item.get("runup_from_low_pct") or 0.0),
+        "source_pools": [source_pool],
+    }
+    if c["entry_score"] <= 0.0:
+        c["entry_score"] = _score_candidate(c)
+    if source_pool in {"candidates", "approved_candidates"}:
+        c["entry_score"] += 4.0
+    elif source_pool in {"brutal_momentum_candidates", "pullback_candidates"}:
+        c["entry_score"] += 2.0
+    elif source_pool == "volume_leaders":
+        c["entry_score"] += 1.0
+    if c["range_position_pct"] >= 60.0:
+        c["entry_score"] += 2.0
+    elif c["range_position_pct"] <= 30.0 and c["runup_from_low_pct"] >= 6.0:
+        c["entry_score"] += 1.5
+    c["entry_score"] = round(c["entry_score"], 2)
+    c["exit_score"] = round(max(0.0, c["liquidity_score"] - c["spread_pct"]), 2)
+    return c
+
+
 def build_indodax_target_board() -> Dict[str, Any]:
     scan = _read(STATE_DIR / "indodax_scanner_state.json", {})
-    candidates = []
+    candidates_map: Dict[str, Dict[str, Any]] = {}
+    source_breakdown: Dict[str, Dict[str, Any]] = {}
+    for pool_name, items in _iter_source_pools(scan):
+        source_breakdown[pool_name] = {
+            "count": len(items),
+            "status": "OK" if items else "NO_DATA",
+            "reason": "" if items else f"no_candidates_in_{pool_name}",
+        }
+        for item in items:
+            c = _build_candidate(item, pool_name)
+            key = c["pair"] or c["symbol"]
+            existing = candidates_map.get(key)
+            if existing:
+                source_pools = list(dict.fromkeys((existing.get("source_pools") or []) + c.get("source_pools", [])))
+                if c["entry_score"] > float(existing.get("entry_score", 0.0) or 0.0) or (
+                    c["route_status"] == "EXECUTABLE" and existing.get("route_status") != "EXECUTABLE"
+                ):
+                    c["source_pools"] = source_pools
+                    candidates_map[key] = c
+                else:
+                    existing["source_pools"] = source_pools
+                    candidates_map[key] = existing
+            else:
+                candidates_map[key] = c
+
+    candidates = list(candidates_map.values())
     rejected = {}
-    for item in scan.get("gainers_24h", []) or []:
-        if isinstance(item, dict):
-            pair = str(item.get("pair") or item.get("symbol") or "").lower()
-            c = {
-                "rank": 0,
-                "symbol": str(item.get("symbol") or pair).upper(),
-                "pair": pair.upper(),
-                "last_price": float(item.get("last_price") or item.get("price") or 0.0),
-                "change_24h_pct": float(item.get("change_24h_pct") or 0.0),
-                "volume_24h_idr": float(item.get("volume_idr") or item.get("volume_24h_idr") or 0.0),
-                "spread_pct": float(item.get("spread_pct") or 0.0),
-                "momentum_score": float(item.get("change_24h_pct") or 0.0),
-                "liquidity_score": float(item.get("volume_idr") or 0.0) / 100_000_000.0,
-                "entry_score": 0.0,
-                "exit_score": 0.0,
-                "source_proof_ok": bool(SourceProof.validate(item.get("source_proof", {}))) if isinstance(item, dict) else False,
-                "route_status": "EXECUTABLE",
-                "recommended_action": "WATCH",
-                "reason": "",
-            }
-            c["entry_score"] = round(_score_candidate(c), 2)
-            c["exit_score"] = round(c["liquidity_score"] - c["spread_pct"], 2)
-            if not c["source_proof_ok"]:
-                c["route_status"] = "BLOCKED_WITH_REASON"
-                c["recommended_action"] = "REJECT"
-                c["reason"] = "source_proof_missing_or_invalid"
-            elif c["volume_24h_idr"] <= 0:
-                c["route_status"] = "BLOCKED_WITH_REASON"
-                c["recommended_action"] = "REJECT"
-                c["reason"] = "no_real_volume"
-            elif c["exit_score"] < 0.5:
-                c["route_status"] = "BLOCKED_WITH_REASON"
-                c["recommended_action"] = "REJECT"
-                c["reason"] = "exit_liquidity_too_thin"
-            candidates.append(c)
+    for c in candidates:
+        if not c["source_proof_ok"]:
+            c["route_status"] = "BLOCKED_WITH_REASON"
+            c["recommended_action"] = "REJECT"
+            c["reason"] = "source_proof_missing_or_invalid"
+        elif c["volume_24h_idr"] <= 0:
+            c["route_status"] = "BLOCKED_WITH_REASON"
+            c["recommended_action"] = "REJECT"
+            c["reason"] = "no_real_volume"
+        elif c["exit_score"] < 0.5:
+            c["route_status"] = "BLOCKED_WITH_REASON"
+            c["recommended_action"] = "REJECT"
+            c["reason"] = "exit_liquidity_too_thin"
 
     candidates.sort(key=lambda x: (x["entry_score"], x["volume_24h_idr"], x["change_24h_pct"]), reverse=True)
     top_targets: List[Dict[str, Any]] = []
@@ -88,12 +151,20 @@ def build_indodax_target_board() -> Dict[str, Any]:
             if item["exit_score"] < 1.0:
                 item["recommended_action"] = "WATCH"
                 item["reason"] = item["reason"] or "thin_exit_liquidity"
+            if item.get("range_position_pct", 0.0) >= 60.0 and item["change_24h_pct"] >= 5.0:
+                item["recommended_action"] = "ENTER"
+            elif item.get("runup_from_low_pct", 0.0) >= 6.0 and item["change_24h_pct"] >= 4.0:
+                item["recommended_action"] = "ENTER"
         top_targets.append(item)
 
     why_empty = ""
-    source_status = "OK" if scan.get("source_status") == "OK" and top_targets else scan.get("source_status") or "NO_DATA"
+    any_source_data = any(info.get("count", 0) for info in source_breakdown.values())
+    source_status = "OK" if (top_targets or any_source_data) else (scan.get("source_status") or "NO_DATA")
     if not top_targets:
-        why_empty = scan.get("no_data_reason") or "no_indodax_candidates_after_source_proof_and_liquidity_filters"
+        if any_source_data:
+            why_empty = "real_indodax_market_data_available_but_no_candidate_met_entry_filters"
+        else:
+            why_empty = scan.get("no_data_reason") or "no_indodax_candidates_after_source_proof_and_liquidity_filters"
         if scan.get("source_status") not in {"OK", "NO_DATA", "SOURCE_FAILED"}:
             source_status = "BLOCKED_WITH_REASON"
 
@@ -104,6 +175,7 @@ def build_indodax_target_board() -> Dict[str, Any]:
         "source_status": source_status,
         "pairs_checked": int(scan.get("pairs_checked", 0) or 0),
         "categories_checked": scan.get("categories_checked", []),
+        "source_breakdown": source_breakdown,
         "minimum_volume_idr_preference": 200000000,
         "top_targets": top_targets,
         "top_gainers": scan.get("gainers_24h", [])[:5],

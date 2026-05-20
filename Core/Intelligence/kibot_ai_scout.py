@@ -22,6 +22,7 @@ import asyncio
 from Core.circuit_breaker import CircuitBreaker
 
 from Core.Support.ki_config import STATE_DIR
+from Core.Decision.script_adaptation_engine import ScriptAdaptationEngine
 from Core.Intelligence.defi_metrics_fetcher import DeFiMetricsFetcher
 
 WORLD_MODEL_FILE = STATE_DIR / "world_model.json"
@@ -51,6 +52,7 @@ class WorldScout:
         self.search_service = get_ai_search()
         self.coordinator = get_ai_coordinator()
         self.defi_fetcher = DeFiMetricsFetcher()
+        self.adaptation_engine = ScriptAdaptationEngine()
         self.breaker = CircuitBreaker("WORLD_SCOUT", max_failures=3, reset_after_sec=600)
 
     def _log(self, msg: str):
@@ -154,6 +156,10 @@ class WorldScout:
                     next_check_seconds=int((analysis or {}).get("next_check_seconds") or 60),
                     market_summary=summary_text,
                 )
+                try:
+                    self.adaptation_engine.run_adaptation_cycle()
+                except Exception as adapt_exc:
+                    self._log(f"[WARN] Script adaptation cycle failed: {adapt_exc}")
                 self.breaker.record_success()
             except Exception as e:
                 self._log(f"Failed to save World Model: {e}")

@@ -596,12 +596,13 @@ function render(data) {
   }
 
   // Right panel — Portfolio
-  const equityNow = data.capital?.current_total_equity_idr || data.capital?.live_current_total_equity_idr || port.combined_equity_idr || port.equity_idr || 0;
+  const equityNow = data.capital?.total_balance_idr || data.capital?.current_total_equity_idr || data.capital?.live_current_total_equity_idr || port.total_balance_idr || port.combined_equity_idr || port.equity_idr || 0;
   const equityStart = data.capital?.starting_equity_today_idr || data.capital?.start_total_equity_idr || data.capital?.starting_equity_idr || 0;
   setT('pi-equity', idr(equityNow));
   setT('pi-start-equity', idr(equityStart));
   setT('pi-cash',   idr(port.idr_cash || 0));
   setT('pi-coin',   idr(port.coin_holdings_idr || 0));
+  setT('pi-open-reserve', idr(data.capital?.open_buy_order_reserve_idr || port.open_buy_order_reserve_idr || 0));
   const realizedPnL = port.realized_pnl_idr ?? port.real_pnl_idr ?? port.daily_pnl_real_idr ?? 0;
   const pnlSource = port.daily_pnl_source || data.capital?.daily_pnl_source || 'live_portfolio';
   const dailyPnL = data.capital?.daily_pnl_idr ?? data.capital?.live_daily_pnl_idr ?? port.daily_pnl_idr ?? 0;

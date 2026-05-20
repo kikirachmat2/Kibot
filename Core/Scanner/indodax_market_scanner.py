@@ -60,12 +60,21 @@ class IndodaxMarketScanner:
                 low = float(ticker.get("low", last_price) or last_price)
                 vol_idr = float(ticker.get("vol_idr", ticker.get("volume_idr", 0.0)) or 0.0)
                 change_24h = ((last_price - low) / low * 100.0) if low > 0 else 0.0
+                range_span = max(high - low, 1e-9)
+                range_position_pct = ((last_price - low) / range_span * 100.0) if high > low else 0.0
+                distance_to_high_pct = ((high - last_price) / high * 100.0) if high > 0 else 0.0
+                runup_from_low_pct = ((last_price - low) / low * 100.0) if low > 0 else 0.0
                 gainers_24h.append({
                     "symbol": pair.upper().replace("_", "/"),
                     "pair": pair,
                     "change_24h_pct": change_24h,
                     "volume_idr": vol_idr,
                     "last_price": last_price,
+                    "high_24h": high,
+                    "low_24h": low,
+                    "range_position_pct": range_position_pct,
+                    "distance_to_high_pct": distance_to_high_pct,
+                    "runup_from_low_pct": runup_from_low_pct,
                     "source_proof": SourceProof.create(
                         source_type="REAL_EXCHANGE",
                         source_name="Indodax",
@@ -83,6 +92,11 @@ class IndodaxMarketScanner:
                     "change_24h_pct": change_24h,
                     "volume_idr": vol_idr,
                     "last_price": last_price,
+                    "high_24h": high,
+                    "low_24h": low,
+                    "range_position_pct": range_position_pct,
+                    "distance_to_high_pct": distance_to_high_pct,
+                    "runup_from_low_pct": runup_from_low_pct,
                     "source_proof": SourceProof.create(
                         source_type="REAL_EXCHANGE",
                         source_name="Indodax",
@@ -125,6 +139,11 @@ class IndodaxMarketScanner:
                                 "price_acceleration": float(sig.get("change_pct", 0.0)),
                                 "volume_acceleration": float(sig.get("vol_ratio", 0.0)),
                                 "confidence": float(sig.get("confidence", 0.5)),
+                                "high_24h": high,
+                                "low_24h": low,
+                                "range_position_pct": range_position_pct,
+                                "distance_to_high_pct": distance_to_high_pct,
+                                "runup_from_low_pct": runup_from_low_pct,
                                 "source_proof": proof
                             }
                             candidates.append(candidate)
@@ -148,6 +167,82 @@ class IndodaxMarketScanner:
                                 "reason": "invalid_source_proof",
                                 "proof": proof
                             })
+                elif vol_idr >= 100_000_000 or change_24h >= 5.0:
+                    # Fallback continuation/pullback watcher so the runtime does
+                    # not collapse to a single narrow pump detector. This stays
+                    # data-driven and still requires real exchange proof.
+                    symbol = pair.upper().replace("_", "/")
+                    fallback_stage = (
+                        "CONTINUATION"
+                        if distance_to_high_pct <= 12.0
+                        else "PULLBACK_RECLAIM"
+                        if runup_from_low_pct >= 6.0
+                        else "MOMENTUM"
+                    )
+                    proof = SourceProof.create(
+                        source_type="REAL_EXCHANGE",
+                        source_name="Indodax",
+                        source_url_or_endpoint="https://indodax.com/api/summaries",
+                        raw_id=pair,
+                        symbol=symbol,
+                        address_or_mint=pair,
+                        chain="rupiah",
+                        proof_ok=True
+                    )
+                    if SourceProof.validate(proof):
+                        candidate = {
+                            "symbol": symbol,
+                            "mint": pair,
+                            "chain": "rupiah",
+                            "sector": "indodax",
+                            "price": last_price,
+                            "change_pct": change_24h,
+                            "price_acceleration": change_24h,
+                            "volume_acceleration": min(5.0, max(1.0, vol_idr / 100_000_000.0)),
+                            "confidence": min(0.85, 0.45 + min(change_24h / 25.0, 0.20) + min(vol_idr / 500_000_000.0, 0.20)),
+                            "pump_stage": fallback_stage,
+                            "trend_continuation": fallback_stage == "CONTINUATION",
+                            "pullback_reclaim": fallback_stage == "PULLBACK_RECLAIM",
+                            "late_reclaim": fallback_stage == "PULLBACK_RECLAIM" and runup_from_low_pct >= 12.0,
+                            "range_break_reclaim": range_position_pct >= 60.0,
+                            "support_bounce_reclaim": range_position_pct <= 40.0,
+                            "pivot_reclaim": range_position_pct <= 25.0,
+                            "mature_pump": change_24h >= 20.0 or vol_idr >= 500_000_000.0,
+                            "high_24h": high,
+                            "low_24h": low,
+                            "range_position_pct": range_position_pct,
+                            "distance_to_high_pct": distance_to_high_pct,
+                            "runup_from_low_pct": runup_from_low_pct,
+                            "source_proof": proof,
+                            "fallback_reason": "momentum_fallback_from_real_exchange_snapshot",
+                        }
+                        candidates.append(candidate)
+                        gainers_24h.append({
+                            "symbol": symbol,
+                            "pair": pair,
+                            "change_24h_pct": change_24h,
+                            "volume_idr": vol_idr,
+                            "last_price": last_price,
+                            "high_24h": high,
+                            "low_24h": low,
+                            "range_position_pct": range_position_pct,
+                            "distance_to_high_pct": distance_to_high_pct,
+                            "runup_from_low_pct": runup_from_low_pct,
+                            "source_proof": proof,
+                        })
+                        volume_leaders.append({
+                            "symbol": symbol,
+                            "pair": pair,
+                            "change_24h_pct": change_24h,
+                            "volume_idr": vol_idr,
+                            "last_price": last_price,
+                            "high_24h": high,
+                            "low_24h": low,
+                            "range_position_pct": range_position_pct,
+                            "distance_to_high_pct": distance_to_high_pct,
+                            "runup_from_low_pct": runup_from_low_pct,
+                            "source_proof": proof,
+                        })
 
             gainers_24h.sort(key=lambda x: x.get("change_24h_pct", 0.0), reverse=True)
             volume_leaders.sort(key=lambda x: x.get("volume_idr", 0.0), reverse=True)
@@ -158,9 +253,10 @@ class IndodaxMarketScanner:
             candidates.sort(key=lambda x: x.get("price_acceleration", 0.0), reverse=True)
             best_candidate = candidates[0] if candidates else {}
 
+            scan_source_ok = bool(tickers)
             state = {
                 "updated_at": now_str,
-                "source_status": "OK" if candidates else "NO_DATA",
+                "source_status": "OK" if scan_source_ok else "NO_DATA",
                 "scan_mode": "REAL_EXCHANGE_MARKET_WIDE",
                 "pairs_checked": pairs_checked,
                 "categories_checked": categories_checked,
@@ -172,7 +268,7 @@ class IndodaxMarketScanner:
                 "candidates": candidates,
                 "rejected_candidates": rejected_candidates,
                 "best_candidate": best_candidate,
-                "no_data_reason": "" if candidates else "No candidates satisfied the pump detection thresholds."
+                "no_data_reason": "" if scan_source_ok else "No tickers fetched from Indodax exchange API"
             }
 
             STATE_FILE.write_text(json.dumps(state, indent=2, ensure_ascii=False))

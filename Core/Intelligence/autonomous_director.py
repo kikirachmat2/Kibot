@@ -32,7 +32,6 @@ from .no_idle_director import NoIdleDirector
 log = logging.getLogger(__name__)
 
 _LIVE_ENABLED = os.getenv("KIBOT_LIVE_TRADING_ENABLED", "false").lower() == "true"
-_CANARY_ENABLED = os.getenv("KIBOT_CANARY_LIVE_ENABLED", "false").lower() == "true"
 
 # Maximum candidates forwarded to executor per cycle
 MAX_APPROVED_PER_CYCLE = 3
@@ -103,7 +102,7 @@ class AutonomousDirector:
 
         # Step 6 — Apply live gate
         live_forward: List[Dict[str, Any]] = []
-        if _LIVE_ENABLED and _CANARY_ENABLED:
+        if _LIVE_ENABLED:
             live_forward = approved[:MAX_APPROVED_PER_CYCLE]
             log.info(
                 "[Director] LIVE gate active — forwarding %d approved candidates to Executor",
@@ -141,7 +140,7 @@ class AutonomousDirector:
                 "live_forward_count": len(live_forward),
                 "market_regime": regime,
                 "live_trading_enabled": _LIVE_ENABLED,
-                "live_gate_open": bool(_LIVE_ENABLED and _CANARY_ENABLED),
+                "live_gate_open": bool(_LIVE_ENABLED),
                 "elapsed_ms": elapsed_ms,
                 "evaluated_at": start,
             },
@@ -166,7 +165,7 @@ class AutonomousDirector:
                 "live_forward_count": 0,
                 "market_regime": regime,
                 "live_trading_enabled": _LIVE_ENABLED,
-                "live_gate_open": bool(_LIVE_ENABLED and _CANARY_ENABLED),
+                "live_gate_open": bool(_LIVE_ENABLED),
                 "elapsed_ms": round((time.time() - start) * 1000, 1),
                 "evaluated_at": start,
             },

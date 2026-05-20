@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any, Dict
 
 from Core.Scanner.indodax_market_scanner import IndodaxMarketScanner
+from Core.Decision.indodax_target_board import build_indodax_target_board
 from Core.Decision.deadline_profit_enforcer import DeadlineProfitEnforcer
 from Core.Decision.engine_independence import write_engine_independence
 
@@ -28,8 +29,12 @@ class IndodaxNoIdleLoop:
 
     async def tick(self) -> Dict[str, Any]:
         scan = await self.scanner.scan()
+        board = build_indodax_target_board()
         candidates = scan.get("candidates", []) if isinstance(scan, dict) else []
-        best = scan.get("best_candidate", {}) if isinstance(scan, dict) else {}
+        board_targets = board.get("top_targets", []) if isinstance(board, dict) else []
+        best = scan.get("best_candidate", {}) if isinstance(scan, dict) and isinstance(scan.get("best_candidate", {}), dict) else {}
+        if not best and board_targets:
+            best = board_targets[0]
         pnl_pct = float(scan.get("daily_pnl_pct", 0.0) or 0.0) if isinstance(scan, dict) else 0.0
         pnl_idr = float(scan.get("daily_pnl_idr", 0.0) or 0.0) if isinstance(scan, dict) else 0.0
         deadline = self.enforcer.evaluate_enforcer(pnl_pct, pnl_idr, 1416) if hasattr(self.enforcer, "evaluate_enforcer") else {}
@@ -42,11 +47,11 @@ class IndodaxNoIdleLoop:
                 governor = {}
         indodax_state = ((governor.get("venues", {}) or {}).get("indodax", {}) if isinstance(governor, dict) else {})
         indodax_allow = bool(indodax_state.get("allow_orders", scan.get("source_status") == "OK"))
-        indodax_reason = str(indodax_state.get("reason") or scan.get("no_data_reason") or "")
+        indodax_reason = str(indodax_state.get("reason") or board.get("why_empty") or scan.get("no_data_reason") or "")
         global_hard_stop = not bool(governor.get("allow_new_orders", False)) if isinstance(governor, dict) else False
         global_reason = str(governor.get("allow_new_orders_reason") or "").strip() if isinstance(governor, dict) else ""
         posture = "FATAL_BLOCKED" if global_hard_stop else "ACTIVE_SEARCHING"
-        reason = global_reason or (best.get("reason") if isinstance(best, dict) else "")
+        reason = global_reason or (best.get("reason") if isinstance(best, dict) else "") or indodax_reason
         state = {
             "updated_at": datetime.now(timezone.utc).isoformat(),
             "posture": posture,
@@ -55,8 +60,10 @@ class IndodaxNoIdleLoop:
             "next_action": "EXIT_ONLY" if global_hard_stop else "SCAN_NEXT",
             "next_check_seconds": self.poll_seconds,
             "pairs_checked": int(scan.get("pairs_checked", 0) or 0),
-            "approved_candidates": int(len(scan.get("approved_candidates", []) or [])),
+            "approved_candidates": int(len(scan.get("approved_candidates", []) or [])) or int(len(board_targets or [])),
             "rejected_candidates": int(len(scan.get("rejected_candidates", []) or [])),
+            "top_5_targets": board_targets[:5],
+            "source_breakdown": board.get("source_breakdown", {}),
             "deadline": deadline,
         }
         self._write_state(state)
