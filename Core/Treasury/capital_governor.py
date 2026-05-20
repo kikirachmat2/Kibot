@@ -83,6 +83,7 @@ def _count_live_inventory_entries(payload: Any) -> int:
 def load_daily_inventory_snapshot(state_dir: Optional[Path] = None) -> Dict[str, Any]:
     """Return a conservative snapshot of live inventory that still needs flattening."""
     base_dir = state_dir or STATE_DIR
+    repo_state_dir = (Path.cwd() / "state").resolve()
     snapshot: Dict[str, Any] = {
         "has_open_inventory": False,
         "open_count": 0,
@@ -139,19 +140,24 @@ def load_daily_inventory_snapshot(state_dir: Optional[Path] = None) -> Dict[str,
                 snapshot["has_open_inventory"] = True
                 snapshot["errors"].append("active_trades.json:unexpected_format")
 
+    # Only consult the live order tracker when we are looking at the canonical
+    # repo state directory. Tests and isolated maintenance flows may point the
+    # governor at a temp state dir, and in that case we must not leak live Batam
+    # inventory into the isolated snapshot.
     try:
-        from Core.Intelligence.order_tracker import get_tracker
+        if base_dir.resolve().is_relative_to(repo_state_dir):
+            from Core.Intelligence.order_tracker import get_tracker
 
-        tracker = get_tracker()
-        open_orders = tracker.get_open_orders()
-        order_symbols: list[str] = []
-        for order in open_orders:
-            if not isinstance(order, dict):
-                continue
-            pair = str(order.get("pair") or order.get("symbol") or "").upper().strip()
-            if pair:
-                order_symbols.append(pair)
-        _mark_open("order_tracker", len(order_symbols), order_symbols)
+            tracker = get_tracker()
+            open_orders = tracker.get_open_orders()
+            order_symbols: list[str] = []
+            for order in open_orders:
+                if not isinstance(order, dict):
+                    continue
+                pair = str(order.get("pair") or order.get("symbol") or "").upper().strip()
+                if pair:
+                    order_symbols.append(pair)
+            _mark_open("order_tracker", len(order_symbols), order_symbols)
     except Exception as exc:
         # Missing tracker information should keep the reset in pending mode so
         # we never reset the day while inventory might still be live.
