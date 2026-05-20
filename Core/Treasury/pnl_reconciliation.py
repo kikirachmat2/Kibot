@@ -70,14 +70,17 @@ def reconcile_pnl_state(write: bool = True) -> Dict[str, Any]:
     external_withdrawals = _safe_float(gov.get("external_withdrawals_today"), 0.0)
     reset_deposits_offset = _safe_float(gov.get("reset_deposits_offset"), 0.0)
     reset_withdrawals_offset = _safe_float(gov.get("reset_withdrawals_offset"), 0.0)
-    net_external_deposits = external_deposits - reset_deposits_offset
-    net_external_withdrawals = external_withdrawals - reset_withdrawals_offset
+    # CapitalGovernor persists external_deposits_today/external_withdrawals_today
+    # after reset offsets are already applied. Re-applying offsets here creates a
+    # phantom PnL drift that can make the dashboard disagree with the hard stop.
+    adjusted_external_deposits = external_deposits
+    adjusted_external_withdrawals = external_withdrawals
 
     anchor_start = _safe_float(anchor.get("start_equity_idr"), 0.0)
     anchor_cap = _safe_float(anchor.get("max_daily_loss_idr"), 0.0)
     canonical_start = anchor_start or gov_start
     canonical_cap = anchor_cap or gov_cap or canonical_start * 0.015
-    canonical_daily = gov_current - canonical_start - net_external_deposits + net_external_withdrawals
+    canonical_daily = gov_current - canonical_start - adjusted_external_deposits + adjusted_external_withdrawals
     risk_remaining = max(0.0, canonical_cap + canonical_daily)
     hard_stop = bool(canonical_cap > 0.0 and canonical_daily <= -canonical_cap)
 
@@ -161,8 +164,8 @@ def reconcile_pnl_state(write: bool = True) -> Dict[str, Any]:
             "external_withdrawals_today": external_withdrawals,
             "reset_deposits_offset": reset_deposits_offset,
             "reset_withdrawals_offset": reset_withdrawals_offset,
-            "net_external_deposits_idr": net_external_deposits,
-            "net_external_withdrawals_idr": net_external_withdrawals,
+            "adjusted_external_deposits_idr": adjusted_external_deposits,
+            "adjusted_external_withdrawals_idr": adjusted_external_withdrawals,
             "max_daily_loss_idr": canonical_cap,
             "risk_remaining_idr": risk_remaining,
             "hard_stop": hard_stop,

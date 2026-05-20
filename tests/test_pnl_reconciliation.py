@@ -84,6 +84,6 @@ def test_pnl_reconciliation_adjusts_external_flows(monkeypatch, tmp_path):
     from Core.Treasury.pnl_reconciliation import reconcile_pnl_state
 
     state = reconcile_pnl_state(write=True)
-    assert state["canonical"]["net_external_deposits_idr"] == 10000.0
-    assert state["canonical"]["net_external_withdrawals_idr"] == 5000.0
-    assert state["canonical"]["daily_pnl_idr"] == 15000.0
+    assert state["canonical"]["adjusted_external_deposits_idr"] == 15000.0
+    assert state["canonical"]["adjusted_external_withdrawals_idr"] == 5000.0
+    assert state["canonical"]["daily_pnl_idr"] == 10000.0
