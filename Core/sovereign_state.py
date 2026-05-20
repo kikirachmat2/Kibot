@@ -66,6 +66,7 @@ def _sanitize_live_autonomous_strategy(strategy: Dict[str, Any]) -> Dict[str, An
         return strategy
 
     out = dict(strategy or {})
+    raw_mode = str(out.get("global_mode") or "").upper().strip()
     indo = dict(out.get("indodax") or {})
     changed = []
 
@@ -100,7 +101,11 @@ def _sanitize_live_autonomous_strategy(strategy: Dict[str, Any]) -> Dict[str, An
     if changed:
         indo["live_autonomous_sanitize_reasons"] = changed
     out["indodax"] = indo
-    out["global_mode"] = "LIVE_AUTONOMOUS_TRADING"
+    # Preserve explicit runtime exit states so midnight rollover can actually
+    # shut the executors down. We only normalize stale defensive snapshots into
+    # the live autonomous posture.
+    if raw_mode not in {"EXIT_ALL", "FULL_ATTACK"}:
+        out["global_mode"] = "LIVE_AUTONOMOUS_TRADING"
     return out
 
 

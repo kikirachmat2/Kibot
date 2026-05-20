@@ -18,6 +18,7 @@
 - [`Core/Intelligence/delegation_workflows.md`](./Core/Intelligence/delegation_workflows.md): playbook workflow delegasi formal untuk seluruh sistem.
 - [`Core/Intelligence/delegation_workflows.json`](./Core/Intelligence/delegation_workflows.json): manifest machine-readable untuk workflow delegasi.
 - [`Core/Intelligence/kibot_dashboard.py`](./Core/Intelligence/kibot_dashboard.py): control-plane web dashboard untuk memantau delegation flow secara visual, saldo, strategy, dan event stream.
+- [`Core/Decision/daily_reset_coordinator.py`](./Core/Decision/daily_reset_coordinator.py): runner rollover harian WIB yang memaksa `EXIT_ALL` sebelum midnight, menunggu inventory flat, lalu me-reset baseline PnL tanpa menghapus trading history.
 - [`Core/Intelligence/dashboard/`](./Core/Intelligence/dashboard): HTML/CSS/JS Dashboard V3.1 dengan delegation graph sederhana, activity log dedupe, agent inspector, workflow board, dan live ledger.
 - [`Core/Security/README.md`](./Core/Security/README.md): HMAC, vault, dan audit security.
 - [`Core/Support/README.md`](./Core/Support/README.md): config, utilities, dan tooling.
@@ -25,6 +26,7 @@
 - [`bin/kibotctl`](./bin/kibotctl): one-command wrapper untuk status, doctor, tools, start/stop, sync model server, dan dashboard service.
 - [`bin/kibot-dashboard`](./bin/kibot-dashboard): launcher dashboard visual berbasis FastAPI/Uvicorn.
 - [`config/systemd/kibot-dashboard.service`](./config/systemd/kibot-dashboard.service): systemd unit untuk dashboard visual port `8787`.
+- [`config/systemd/kibot-daily-reset.service`](./config/systemd/kibot-daily-reset.service): systemd unit untuk rollover harian WIB yang menjaga exit-all dan reset baseline tetap sinkron.
 - [`AGENTS.md`](./AGENTS.md): guardrail kerja untuk Codex, Aider, Copilot, dan operator automation.
 - [`state/`](./state): runtime JSON snapshot yang dipakai engine saat berjalan.
 

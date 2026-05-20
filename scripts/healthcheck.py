@@ -239,8 +239,46 @@ def check_live_trading_gates(KiConfig):
         logger.info(f"Daily anchor date: {anchor_date}, max_daily_loss_pct: {max_loss_pct}%")
         
         if anchor_date != today_wib:
-            logger.error(f"❌ CRITICAL: daily_equity_anchor.json date ({anchor_date}) is stale! Expected current WIB date ({today_wib}).")
-            safe_exit(33, f"daily_equity_anchor.json is stale (date: {anchor_date}, expected: {today_wib})!")
+            rollover_file = PROJECT_ROOT / "state" / "daily_reset_state.json"
+            governor_file = PROJECT_ROOT / "state" / "capital_governor.json"
+            strategy_file = PROJECT_ROOT / "state" / "active_strategy.json"
+            rollover_state = {}
+            governor_state = {}
+            strategy_state = {}
+            try:
+                if rollover_file.exists():
+                    rollover_state = json.loads(rollover_file.read_text(encoding="utf-8"))
+            except Exception:
+                rollover_state = {}
+            try:
+                if governor_file.exists():
+                    governor_state = json.loads(governor_file.read_text(encoding="utf-8"))
+            except Exception:
+                governor_state = {}
+            try:
+                if strategy_file.exists():
+                    strategy_state = json.loads(strategy_file.read_text(encoding="utf-8"))
+            except Exception:
+                strategy_state = {}
+
+            rollover_status = str(rollover_state.get("status") or "").upper()
+            forced_exit_all = bool(rollover_state.get("forced_exit_all", False))
+            current_mode = str(rollover_state.get("current_global_mode") or strategy_state.get("global_mode") or "").upper()
+            governor_pending = bool(governor_state.get("daily_reset_pending", False))
+            governor_reason = str(governor_state.get("allow_new_orders_reason") or "").strip()
+            rollover_ok = (
+                governor_pending
+                or "daily_rollover_exit_pending" in governor_reason
+                or forced_exit_all
+                or rollover_status in {"PRE_CLOSE", "EXITING", "PENDING_RESET", "RESET_DONE"}
+            )
+            if not rollover_ok or current_mode != "EXIT_ALL":
+                logger.error(f"❌ CRITICAL: daily_equity_anchor.json date ({anchor_date}) is stale! Expected current WIB date ({today_wib}).")
+                safe_exit(33, f"daily_equity_anchor.json is stale (date: {anchor_date}, expected: {today_wib})!")
+            logger.warning(
+                "⚠️ daily_equity_anchor.json is still on the previous WIB day, but daily rollover is active (%s); allowing exit-only transition.",
+                rollover_status or "pending",
+            )
             
         if max_loss_pct != 1.5:
             logger.error(f"❌ CRITICAL: daily_equity_anchor.json max_daily_loss_pct is {max_loss_pct}%, must be exactly 1.5%!")

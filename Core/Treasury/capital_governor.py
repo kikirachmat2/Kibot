@@ -21,6 +21,174 @@ def _today_wib() -> str:
     """Business day boundary follows WIB."""
     return str(datetime.now(WIB).date())
 
+
+def _safe_json_load(path: Path) -> Dict[str, Any]:
+    try:
+        if path.exists():
+            data = json.loads(path.read_text(encoding="utf-8"))
+            return data if isinstance(data, dict) else {}
+    except Exception as exc:
+        logger.debug("Failed to load %s: %s", path, exc)
+    return {}
+
+
+def _count_live_inventory_entries(payload: Any) -> int:
+    """Best-effort count of open inventory entries in generic position payloads."""
+    terminal_states = {"CLOSED", "FILLED", "RECONCILED", "CANCELLED", "FAILED", "DONE"}
+    if payload is None:
+        return 0
+    if isinstance(payload, list):
+        total = 0
+        for item in payload:
+            if isinstance(item, dict):
+                state = str(item.get("status") or item.get("state") or "").upper()
+                amount = 0.0
+                for key in ("amount", "size", "quantity", "coin_amount", "position_size"):
+                    try:
+                        amount = float(item.get(key) or 0.0)
+                    except Exception:
+                        amount = 0.0
+                    if amount > 0:
+                        break
+                if state in terminal_states:
+                    continue
+                if amount > 0 or state or item.get("pair") or item.get("symbol") or item.get("market"):
+                    total += 1
+            elif item not in (None, "", 0, 0.0, False):
+                total += 1
+        return total
+    if isinstance(payload, dict):
+        total = 0
+        for key in ("open_positions", "positions", "active_positions", "active_trades", "open_orders"):
+            value = payload.get(key)
+            if isinstance(value, (list, dict)):
+                total += _count_live_inventory_entries(value)
+        if total > 0:
+            return total
+        state = str(payload.get("status") or payload.get("state") or "").upper()
+        amount = 0.0
+        for key in ("amount", "size", "quantity", "coin_amount", "position_size"):
+            try:
+                amount = float(payload.get(key) or 0.0)
+            except Exception:
+                amount = 0.0
+            if amount > 0:
+                break
+        if state and state not in terminal_states and (amount > 0 or payload.get("pair") or payload.get("symbol") or payload.get("market")):
+            return 1
+        return 0
+    return 0
+
+
+def load_daily_inventory_snapshot(state_dir: Optional[Path] = None) -> Dict[str, Any]:
+    """Return a conservative snapshot of live inventory that still needs flattening."""
+    base_dir = state_dir or STATE_DIR
+    snapshot: Dict[str, Any] = {
+        "has_open_inventory": False,
+        "open_count": 0,
+        "open_symbols": [],
+        "open_sources": {},
+        "errors": [],
+    }
+
+    def _mark_open(source: str, count: int, symbols: Optional[list[str]] = None) -> None:
+        if count <= 0:
+            return
+        snapshot["has_open_inventory"] = True
+        snapshot["open_count"] += int(count)
+        snapshot["open_sources"][source] = int(count)
+        if symbols:
+            snapshot["open_symbols"].extend(symbols)
+
+    active_trades_file = base_dir / "active_trades.json"
+    if active_trades_file.exists():
+        try:
+            active_trades = json.loads(active_trades_file.read_text(encoding="utf-8"))
+        except Exception as exc:
+            snapshot["errors"].append(f"active_trades.json:{exc}")
+            snapshot["has_open_inventory"] = True
+        else:
+            if isinstance(active_trades, dict):
+                symbols: list[str] = []
+                count = 0
+                for symbol, trade in active_trades.items():
+                    if not isinstance(trade, dict):
+                        continue
+                    pending = any(
+                        bool(trade.get(key))
+                        for key in (
+                            "entry_pending_order_id",
+                            "entry_pending_exchange_order_id",
+                            "exit_pending_order_id",
+                            "exit_pending_exchange_order_id",
+                        )
+                    )
+                    amount = 0.0
+                    for key in ("amount", "coin_amount", "size", "quantity"):
+                        try:
+                            amount = float(trade.get(key) or 0.0)
+                        except Exception:
+                            amount = 0.0
+                        if amount > 0:
+                            break
+                    if amount > 0 or pending:
+                        count += 1
+                        symbols.append(str(symbol).upper())
+                _mark_open("active_trades", count, symbols)
+            elif active_trades not in ({}, []):
+                snapshot["has_open_inventory"] = True
+                snapshot["errors"].append("active_trades.json:unexpected_format")
+
+    try:
+        from Core.Intelligence.order_tracker import get_tracker
+
+        tracker = get_tracker()
+        open_orders = tracker.get_open_orders()
+        order_symbols: list[str] = []
+        for order in open_orders:
+            if not isinstance(order, dict):
+                continue
+            pair = str(order.get("pair") or order.get("symbol") or "").upper().strip()
+            if pair:
+                order_symbols.append(pair)
+        _mark_open("order_tracker", len(order_symbols), order_symbols)
+    except Exception as exc:
+        # Missing tracker information should keep the reset in pending mode so
+        # we never reset the day while inventory might still be live.
+        snapshot["errors"].append(f"order_tracker:{exc}")
+        snapshot["has_open_inventory"] = True
+
+    for position_file in sorted(base_dir.glob("*positions*.json")):
+        try:
+            payload = json.loads(position_file.read_text(encoding="utf-8"))
+        except Exception as exc:
+            snapshot["errors"].append(f"{position_file.name}:{exc}")
+            snapshot["has_open_inventory"] = True
+            continue
+        count = _count_live_inventory_entries(payload)
+        if count > 0:
+            symbols: list[str] = []
+            if isinstance(payload, list):
+                for item in payload:
+                    if isinstance(item, dict):
+                        pair = str(item.get("pair") or item.get("symbol") or item.get("market") or "").upper().strip()
+                        if pair:
+                            symbols.append(pair)
+            elif isinstance(payload, dict):
+                for key in ("open_positions", "positions", "active_positions"):
+                    value = payload.get(key)
+                    if isinstance(value, list):
+                        for item in value:
+                            if isinstance(item, dict):
+                                pair = str(item.get("pair") or item.get("symbol") or item.get("market") or "").upper().strip()
+                                if pair:
+                                    symbols.append(pair)
+            _mark_open(position_file.name, count, symbols)
+
+    snapshot["open_symbols"] = sorted({symbol for symbol in snapshot["open_symbols"] if symbol})
+    snapshot["open_count"] = int(snapshot["open_count"])
+    return snapshot
+
 class CapitalGovernor:
     """
     Sovereign Capital Governor
@@ -57,6 +225,8 @@ class CapitalGovernor:
         self.reset_withdrawals_offset = 0.0
         self.status = "UNRECONCILED"
         self.last_reset_date = _today_wib()
+        self.pending_daily_reset = False
+        self.daily_reset_reason = ""
         
         self._load_governor_state()
 
@@ -96,43 +266,34 @@ class CapitalGovernor:
                 with open(GOVERNOR_FILE, "r") as f:
                     data = json.load(f)
                     today = _today_wib()
-                    if data.get("date") == today:
-                        self.start_total_equity_idr = float(data.get("start_total_equity_idr", 0.0))
-                        self.max_daily_loss_idr = float(data.get("max_daily_loss_idr", 0.0))
-                        self.last_reset_date = today
-                        self.status = data.get("status", "UNRECONCILED")
-                        self.daily_pnl_idr = float(data.get("daily_pnl_idr", 0.0))
-                        self.daily_pnl_pct = float(data.get("daily_pnl_pct", 0.0))
-                        self.trading_pnl_idr = float(data.get("trading_pnl_idr", self.daily_pnl_idr))
-                        self.trading_pnl_pct = float(data.get("trading_pnl_pct", self.daily_pnl_pct))
-                        self.start_indodax_equity_idr = float(data.get("start_indodax_equity_idr", 0.0))
-                        self.start_phantom_equity_idr = float(data.get("start_phantom_equity_idr", 0.0))
-                        self.indodax_daily_pnl_idr = float(data.get("indodax_daily_pnl_idr", 0.0))
-                        self.indodax_daily_pnl_pct = float(data.get("indodax_daily_pnl_pct", 0.0))
-                        self.phantom_daily_pnl_idr = float(data.get("phantom_daily_pnl_idr", 0.0))
-                        self.phantom_daily_pnl_pct = float(data.get("phantom_daily_pnl_pct", 0.0))
-                        self.external_deposits_today = float(data.get("external_deposits_today", 0.0))
-                        self.external_withdrawals_today = float(data.get("external_withdrawals_today", 0.0))
-                        self.reset_deposits_offset = float(data.get("reset_deposits_offset", 0.0))
-                        self.reset_withdrawals_offset = float(data.get("reset_withdrawals_offset", 0.0))
-                    else:
-                        self.last_reset_date = today
-                        self.start_total_equity_idr = 0.0
-                        self.max_daily_loss_idr = 0.0
-                        self.daily_pnl_idr = 0.0
-                        self.daily_pnl_pct = 0.0
-                        self.trading_pnl_idr = 0.0
-                        self.trading_pnl_pct = 0.0
-                        self.start_indodax_equity_idr = 0.0
-                        self.start_phantom_equity_idr = 0.0
-                        self.indodax_daily_pnl_idr = 0.0
-                        self.indodax_daily_pnl_pct = 0.0
-                        self.phantom_daily_pnl_idr = 0.0
-                        self.phantom_daily_pnl_pct = 0.0
-                        self.external_deposits_today = 0.0
-                        self.external_withdrawals_today = 0.0
-                        self.reset_deposits_offset = 0.0
-                        self.reset_withdrawals_offset = 0.0
+                    stored_date = str(data.get("date") or "").strip()
+                    self.last_reset_date = stored_date or today
+                    self.start_total_equity_idr = float(data.get("start_total_equity_idr", 0.0))
+                    self.max_daily_loss_idr = float(data.get("max_daily_loss_idr", 0.0))
+                    self.status = data.get("status", "UNRECONCILED")
+                    self.daily_pnl_idr = float(data.get("daily_pnl_idr", 0.0))
+                    self.daily_pnl_pct = float(data.get("daily_pnl_pct", 0.0))
+                    self.trading_pnl_idr = float(data.get("trading_pnl_idr", self.daily_pnl_idr))
+                    self.trading_pnl_pct = float(data.get("trading_pnl_pct", self.daily_pnl_pct))
+                    self.start_indodax_equity_idr = float(data.get("start_indodax_equity_idr", 0.0))
+                    self.start_phantom_equity_idr = float(data.get("start_phantom_equity_idr", 0.0))
+                    self.indodax_daily_pnl_idr = float(data.get("indodax_daily_pnl_idr", 0.0))
+                    self.indodax_daily_pnl_pct = float(data.get("indodax_daily_pnl_pct", 0.0))
+                    self.phantom_daily_pnl_idr = float(data.get("phantom_daily_pnl_idr", 0.0))
+                    self.phantom_daily_pnl_pct = float(data.get("phantom_daily_pnl_pct", 0.0))
+                    self.external_deposits_today = float(data.get("external_deposits_today", 0.0))
+                    self.external_withdrawals_today = float(data.get("external_withdrawals_today", 0.0))
+                    self.reset_deposits_offset = float(data.get("reset_deposits_offset", 0.0))
+                    self.reset_withdrawals_offset = float(data.get("reset_withdrawals_offset", 0.0))
+                    self.pending_daily_reset = bool(data.get("daily_reset_pending", False)) or (stored_date not in {"", today})
+                    self.daily_reset_reason = str(
+                        data.get("daily_reset_reason")
+                        or (
+                            f"daily_rollover_exit_pending ({stored_date or 'unknown'} -> {today})"
+                            if self.pending_daily_reset
+                            else ""
+                        )
+                    ).strip()
             except Exception as e:
                 logger.error(f"❌ Failed to load Capital Governor state: {e}")
         else:
@@ -153,13 +314,19 @@ class CapitalGovernor:
         try:
             STATE_DIR.mkdir(parents=True, exist_ok=True)
             global_hard_stop = bool(self.max_daily_loss_idr > 0.0 and self.daily_pnl_idr <= -self.max_daily_loss_idr)
-            status = "BLOCKED_WITH_REASON" if global_hard_stop else self.status
-            allow_new_orders = bool(getattr(self, "allow_new_orders", False)) and not global_hard_stop
-            allow_reason = str(getattr(self, "allow_new_orders_reason", ""))
-            if global_hard_stop and not allow_reason:
-                allow_reason = (
+            daily_reset_block = bool(getattr(self, "pending_daily_reset", False))
+            allow_new_orders = bool(getattr(self, "allow_new_orders", False)) and not global_hard_stop and not daily_reset_block
+            base_reason = str(getattr(self, "allow_new_orders_reason", ""))
+            reasons = [reason for reason in [
+                base_reason,
+                (
                     f"global_daily_loss_cap_breached ({self.daily_pnl_idr:.2f} <= -{self.max_daily_loss_idr:.2f})"
-                )
+                    if global_hard_stop else ""
+                ),
+                (self.daily_reset_reason or "daily_rollover_exit_pending") if daily_reset_block else "",
+            ] if reason]
+            allow_reason = "; ".join(dict.fromkeys(reasons))
+            status = "BLOCKED_WITH_REASON" if (global_hard_stop or daily_reset_block) else self.status
             with open(GOVERNOR_FILE, "w") as f:
                 json.dump({
                     "date": self.last_reset_date,
@@ -181,8 +348,9 @@ class CapitalGovernor:
                     "external_withdrawals_today": self.external_withdrawals_today,
                     "reset_deposits_offset": self.reset_deposits_offset,
                     "reset_withdrawals_offset": self.reset_withdrawals_offset,
-                    "status": status
-                    ,
+                    "daily_reset_pending": daily_reset_block,
+                    "daily_reset_reason": self.daily_reset_reason if daily_reset_block else "",
+                    "status": status,
                     "global_hard_stop": global_hard_stop,
                     "allow_new_orders": allow_new_orders,
                     "allow_new_orders_reason": allow_reason,
@@ -306,22 +474,41 @@ class CapitalGovernor:
     async def check_daily_reset(self, total_equity_idr: float):
         """Reset starting total equity anchor if a new WIB day has begun."""
         today = _today_wib()
-        anchor = self._load_daily_anchor()
-        anchor_equity = float(anchor.get("start_equity_idr", 0.0) or 0.0)
-        if anchor_equity > 0.0 and self.start_total_equity_idr > 0.0:
-            self.last_reset_date = today
-            self.start_total_equity_idr = anchor_equity
-            self.max_daily_loss_idr = float(
-                anchor.get("max_daily_loss_idr", anchor_equity * (KiConfig.MAX_DAILY_LOSS_PERCENT / 100.0)) or 0.0
-            )
-            return
-        if self.last_reset_date != today or self.start_total_equity_idr <= 0.0:
+        inventory = load_daily_inventory_snapshot()
+        day_changed = self.last_reset_date != today
+        pending_reset = bool(getattr(self, "pending_daily_reset", False))
+
+        if day_changed or pending_reset or self.start_total_equity_idr <= 0.0:
+            if inventory.get("has_open_inventory"):
+                self.pending_daily_reset = True
+                open_count = int(inventory.get("open_count", 0) or 0)
+                symbols = ", ".join(inventory.get("open_symbols", [])[:10]) or "unknown"
+                sources = ", ".join(sorted(inventory.get("open_sources", {}).keys())) or "unknown"
+                self.daily_reset_reason = (
+                    f"daily_rollover_exit_pending ({open_count} open; symbols={symbols}; sources={sources})"
+                )
+                self.status = "BLOCKED_WITH_REASON"
+                self.allow_new_orders = False
+                self.allow_new_orders_reason = self.daily_reset_reason
+                self.save()
+                logger.warning(
+                    "⏳ Daily reset deferred until inventory is flat: %s",
+                    self.daily_reset_reason,
+                )
+                return
+
             self.last_reset_date = today
             self.start_total_equity_idr = total_equity_idr
             self.max_daily_loss_idr = total_equity_idr * (KiConfig.MAX_DAILY_LOSS_PERCENT / 100.0)
             self.reset_deposits_offset = 0.0
             self.reset_withdrawals_offset = 0.0
+            self.pending_daily_reset = False
+            self.daily_reset_reason = ""
+            self.status = "RECONCILED"
+            self.allow_new_orders = True
+            self.allow_new_orders_reason = ""
             self._write_daily_anchor()
+            self.save()
             logger.info(f"⚓ Daily Total Equity Anchor Reset: Rp{self.start_total_equity_idr:,.2f} (Cap: Rp{self.max_daily_loss_idr:,.2f})")
 
     def manual_pnl_reset(self):
@@ -349,6 +536,8 @@ class CapitalGovernor:
         self.phantom_daily_pnl_pct = 0.0
         self.external_deposits_today = 0.0
         self.external_withdrawals_today = 0.0
+        self.pending_daily_reset = False
+        self.daily_reset_reason = ""
         self.save()
         self._write_daily_anchor()
         logger.info(f"⚓ PnL Anchor reset to current reconciled equity. Starting Equity: Rp{self.start_total_equity_idr:,.2f}. Offsets registered: Dep Rp{self.reset_deposits_offset:,.2f}, Wd Rp{self.reset_withdrawals_offset:,.2f}")
@@ -500,15 +689,18 @@ class CapitalGovernor:
             global_hard_stop = bool(
                 self.max_daily_loss_idr > 0.0 and self.daily_pnl_idr <= -self.max_daily_loss_idr
             )
+            daily_reset_block = bool(getattr(self, "pending_daily_reset", False))
 
             indodax_local_allow = bool(indodax_ready and self.indodax_daily_pnl_idr > -indodax_daily_loss_cap_idr)
             phantom_local_allow = bool(phantom_ready and self.phantom_daily_pnl_idr > -phantom_daily_loss_cap_idr)
-            indodax_allow_orders = bool(indodax_local_allow and not global_hard_stop)
-            phantom_allow_orders = bool(phantom_local_allow and not global_hard_stop)
+            indodax_allow_orders = bool(indodax_local_allow and not global_hard_stop and not daily_reset_block)
+            phantom_allow_orders = bool(phantom_local_allow and not global_hard_stop and not daily_reset_block)
 
             indodax_reason = ""
             if not indodax_ready:
                 indodax_reason = "indodax_balance_unavailable"
+            elif daily_reset_block:
+                indodax_reason = self.daily_reset_reason or "daily_rollover_exit_pending"
             elif global_hard_stop:
                 indodax_reason = (
                     "global_daily_loss_cap_breached "
@@ -523,6 +715,8 @@ class CapitalGovernor:
             phantom_reason = ""
             if not phantom_ready:
                 phantom_reason = "phantom_reconciliation_required"
+            elif daily_reset_block:
+                phantom_reason = self.daily_reset_reason or "daily_rollover_exit_pending"
             elif global_hard_stop:
                 phantom_reason = (
                     "global_daily_loss_cap_breached "
@@ -535,12 +729,15 @@ class CapitalGovernor:
                 )
 
             allow_new_orders = bool(indodax_allow_orders or phantom_allow_orders)
-            if global_hard_stop:
+            if global_hard_stop or daily_reset_block:
                 allow_new_orders = False
-                allow_reason = (
-                    "global_daily_loss_cap_breached "
-                    f"({self.daily_pnl_idr:.2f} <= -{self.max_daily_loss_idr:.2f})"
-                )
+                if daily_reset_block:
+                    allow_reason = self.daily_reset_reason or "daily_rollover_exit_pending"
+                else:
+                    allow_reason = (
+                        "global_daily_loss_cap_breached "
+                        f"({self.daily_pnl_idr:.2f} <= -{self.max_daily_loss_idr:.2f})"
+                    )
             elif allow_new_orders:
                 ready_bits = []
                 if indodax_allow_orders:
@@ -555,7 +752,7 @@ class CapitalGovernor:
                 if phantom_reason:
                     blocked_bits.append(f"phantom={phantom_reason}")
                 allow_reason = "; ".join(blocked_bits) or "no venue ready for orders"
-            self.status = "BLOCKED_WITH_REASON" if global_hard_stop else ("RECONCILED" if allow_new_orders else "DEGRADED")
+            self.status = "BLOCKED_WITH_REASON" if (global_hard_stop or daily_reset_block) else ("RECONCILED" if allow_new_orders else "DEGRADED")
             
             payload = {
                 "date": self.last_reset_date,
@@ -570,6 +767,8 @@ class CapitalGovernor:
                 "reset_deposits_offset": self.reset_deposits_offset,
                 "reset_withdrawals_offset": self.reset_withdrawals_offset,
                 "in_flight_idr": in_flight_idr,
+                "daily_reset_pending": daily_reset_block,
+                "daily_reset_reason": self.daily_reset_reason,
                 "status": self.status,
                 "global_hard_stop": global_hard_stop,
                 "global_hard_stop_reason": allow_reason if global_hard_stop else "",

@@ -82,6 +82,7 @@ def test_control_plane_payload_structure():
     assert isinstance(data["warnings"], list)
     assert "recent_decisions" in data
     assert isinstance(data["recent_decisions"], list)
+    assert "daily_reset" in data
 
 
 def test_zero_secret_leak(monkeypatch):
@@ -245,6 +246,8 @@ def test_html_contains_delegation_ids():
         "project-info",
         "agent-modal",
         "modal-backdrop",
+        "daily-reset-status",
+        "daily-reset-reason",
     ]
     # Check either id= or class= presence of each key string
     for token in required_ids:
@@ -290,6 +293,7 @@ def test_live_js_uses_control_plane():
     assert "pointerdown" in js or "mousedown" in js, "canvas drag handler missing"
     assert "wheel" in js, "wheel zoom handler missing"
     assert "openModal" in js, "modal open function missing"
+    assert "daily-reset-status" in js, "daily reset renderer missing in live.js"
     # Ensure old legacy endpoint is not the primary source
     legacy_count = js.count("/api/summary")
     assert legacy_count == 0, f"/api/summary should not appear in live.js (found {legacy_count} times)"

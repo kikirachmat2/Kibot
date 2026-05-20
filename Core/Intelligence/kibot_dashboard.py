@@ -925,6 +925,7 @@ def _build_summary() -> Dict[str, Any]:
     summary["server_telemetry"] = _load_server_telemetry()
     summary["scanner_health"] = _load_scanner_health()
     summary["target_board_runtime"] = _load_target_board_runtime()
+    summary["daily_reset"] = _read_json(STATE / "daily_reset_state.json", {})
     summary["indodax_top_targets"] = _load_indodax_top_targets()
     summary["phantom_top_targets"] = _load_phantom_top_targets()
     summary["ai_decision_trace"] = _load_ai_decision_trace()
@@ -1641,6 +1642,11 @@ def _build_control_plane_payload() -> Dict[str, Any]:
             "age_s": _file_age_s(STATE / "target_board_runtime.json"),
             "fresh": _file_age_s(STATE / "target_board_runtime.json") >= 0 and _file_age_s(STATE / "target_board_runtime.json") < 15,
         },
+        "daily_reset": {
+            "data": summary_data.get("daily_reset", {}),
+            "age_s": _file_age_s(STATE / "daily_reset_state.json"),
+            "fresh": _file_age_s(STATE / "daily_reset_state.json") >= 0 and _file_age_s(STATE / "daily_reset_state.json") < 15,
+        },
         "indodax_top_targets": {
             "data": summary_data.get("indodax_top_targets", {}),
             "age_s": _file_age_s(STATE / "indodax_top_targets.json"),
@@ -1661,6 +1667,7 @@ def _build_control_plane_payload() -> Dict[str, Any]:
             "git_commit": subprocess.run(["git", "rev-parse", "HEAD"], capture_output=True, text=True).stdout.strip(),
             "service_health": summary_data.get("services", {}),
             "state_freshness": summary_data.get("freshness", {}),
+            "daily_reset": summary_data.get("daily_reset", {}),
         },
         "gates": gates,
         "runtime": runtime,

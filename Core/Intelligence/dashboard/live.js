@@ -742,6 +742,19 @@ function render(data) {
   if (deadlinePh) deadlinePh.textContent = deadline.phantom_pressure || deadline.pressure_level || '—';
   setT('deadline-required-action', deadline.required_action || deadline.reason || '—');
 
+  const dailyReset = data.daily_reset?.data || data.daily_reset || {};
+  const dailyResetStatus = el('daily-reset-status');
+  if (dailyResetStatus) {
+    const status = String(dailyReset.status || '—').toUpperCase();
+    dailyResetStatus.textContent = status;
+    dailyResetStatus.className = 'badge ' + (status === 'RESET_DONE' ? 'badge--green' : (status === 'PENDING_RESET' || status === 'EXITING' || status === 'PRE_CLOSE' ? 'badge--yellow' : (status === 'BLOCKED_WITH_REASON' ? 'badge--red' : 'badge--ghost')));
+  }
+  setT('daily-reset-minutes', dailyReset.minutes_to_midnight != null ? `${dailyReset.minutes_to_midnight}m` : '—');
+  setT('daily-reset-inventory', dailyReset.inventory_open_count != null ? String(dailyReset.inventory_open_count) : '—');
+  setT('daily-reset-governor-date', dailyReset.governor_date || dailyReset.wib_date || '—');
+  setT('daily-reset-next-action', dailyReset.next_action || '—');
+  setT('daily-reset-reason', dailyReset.reason || '—');
+
   const systemTruth = data.system_truth || {};
   setT('sys-batam-online', systemTruth.batam_server_online ? 'ONLINE' : 'OFFLINE');
   setT('sys-git-commit', systemTruth.git_commit || '—');

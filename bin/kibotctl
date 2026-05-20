@@ -18,6 +18,7 @@ CORE_SERVICES=(
   kibot-phantom-brain
   kibot-target-board
   kibot-telemetry
+  kibot-daily-reset
   kibot-pumpfun
   kibot-base
   kibot-future-web3
