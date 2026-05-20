@@ -5,6 +5,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from Core.Scanner.source_proof import SourceProof
 from Core.Scanner.ki_indodax_smallcap_scanner import IndodaxSmallCapScanner
+from Core.Scanner.indodax_binance_leadlag_scanner import IndodaxBinanceLeadLagScanner
 
 logger = logging.getLogger("IndodaxMarketScanner")
 
@@ -19,6 +20,7 @@ class IndodaxMarketScanner:
 
     def __init__(self) -> None:
         self.scanner = IndodaxSmallCapScanner()
+        self.leadlag_scanner = IndodaxBinanceLeadLagScanner()
         self.state_dir = STATE_DIR
 
     async def scan(self) -> dict:
@@ -44,12 +46,47 @@ class IndodaxMarketScanner:
                 STATE_FILE.write_text(json.dumps(state, indent=2, ensure_ascii=False))
                 return state
 
+            try:
+                leadlag_state = await self.leadlag_scanner.scan(indodax_tickers=tickers)
+            except Exception as exc:
+                logger.debug("Lead-lag scanner failed: %s", exc)
+                leadlag_state = {
+                    "updated_at": now_str,
+                    "scan_mode": "BINANCE_TO_INDODAX_LEADLAG",
+                    "source_status": "SOURCE_FAILED",
+                    "pairs_checked": 0,
+                    "binance_pairs_checked": 0,
+                    "candidate_universe": 0,
+                    "leadlag_candidates": [],
+                    "leadlag_watchlist": [],
+                    "rejected_candidates": [],
+                    "top_candidate": {},
+                    "why_empty": f"leadlag_scanner_error:{exc}",
+                }
+
             pairs_checked = 0
             categories_checked = ["ALL", "IDR_MARKETS", "NEW_COIN", "MEME", "AI_BIG_DATA", "RWA", "DEFI", "L1_L2", "NFT", "TOKENIZED_STOCKS", "OTHER"]
             candidates = []
             rejected_candidates = []
             gainers_24h = []
             volume_leaders = []
+            leadlag_candidates = []
+            for c in (leadlag_state.get("leadlag_candidates", []) or []):
+                if not isinstance(c, dict):
+                    continue
+                normalized = dict(c)
+                normalized.setdefault("source_pool", "leadlag_candidates")
+                normalized.setdefault("source_class", "leadlag_binance")
+                leadlag_candidates.append(normalized)
+
+            leadlag_watchlist = []
+            for c in (leadlag_state.get("leadlag_watchlist", []) or []):
+                if not isinstance(c, dict):
+                    continue
+                normalized = dict(c)
+                normalized.setdefault("source_pool", "leadlag_watchlist")
+                normalized.setdefault("source_class", "leadlag_binance")
+                leadlag_watchlist.append(normalized)
 
             for pair, ticker in tickers.items():
                 if not pair.endswith("_idr"):
@@ -129,6 +166,18 @@ class IndodaxMarketScanner:
 
                         # Enforce SourceProof check
                         if SourceProof.validate(proof):
+                            entry_score = round(
+                                min(
+                                    100.0,
+                                    max(
+                                        0.0,
+                                        float(sig.get("confidence", 0.5)) * 100.0
+                                        + float(sig.get("change_pct", 0.0)) * 2.0
+                                        + float(sig.get("vol_ratio", 0.0)) * 6.0,
+                                    ),
+                                ),
+                                2,
+                            )
                             candidate = {
                                 "symbol": symbol,
                                 "mint": pair,
@@ -139,6 +188,7 @@ class IndodaxMarketScanner:
                                 "price_acceleration": float(sig.get("change_pct", 0.0)),
                                 "volume_acceleration": float(sig.get("vol_ratio", 0.0)),
                                 "confidence": float(sig.get("confidence", 0.5)),
+                                "entry_score": entry_score,
                                 "high_24h": high,
                                 "low_24h": low,
                                 "range_position_pct": range_position_pct,
@@ -159,8 +209,8 @@ class IndodaxMarketScanner:
                                 "pair": pair,
                                 "change_24h_pct": float(sig.get("change_pct", 0.0)),
                                 "volume_idr": float(sig.get("volume_idr", sig.get("vol_idr", 0.0)) or 0.0),
-                                "source_proof": proof,
-                            })
+                                    "source_proof": proof,
+                                })
                         else:
                             rejected_candidates.append({
                                 "symbol": symbol,
@@ -215,6 +265,20 @@ class IndodaxMarketScanner:
                             "runup_from_low_pct": runup_from_low_pct,
                             "source_proof": proof,
                             "fallback_reason": "momentum_fallback_from_real_exchange_snapshot",
+                            "entry_score": round(
+                                min(
+                                    100.0,
+                                    max(
+                                        0.0,
+                                        change_24h * 2.0
+                                        + min(vol_idr / 5_000_000.0, 20.0)
+                                        + (10.0 if fallback_stage == "CONTINUATION" else 0.0)
+                                        + (8.0 if fallback_stage == "PULLBACK_RECLAIM" else 0.0)
+                                        + (6.0 if fallback_stage == "RANGE_BREAK_RECLAIM" else 0.0)
+                                    ),
+                                ),
+                                2,
+                            ),
                         }
                         candidates.append(candidate)
                         gainers_24h.append({
@@ -244,13 +308,26 @@ class IndodaxMarketScanner:
                             "source_proof": proof,
                         })
 
+            candidates.extend(leadlag_candidates)
+            for c in (leadlag_state.get("rejected_candidates", []) or []):
+                if isinstance(c, dict):
+                    normalized = dict(c)
+                    normalized.setdefault("source_pool", "leadlag_rejected")
+                    rejected_candidates.append(normalized)
+            candidates.sort(
+                key=lambda x: (
+                    float(x.get("entry_score", 0.0) or 0.0),
+                    float(x.get("confidence", 0.0) or 0.0),
+                    float(x.get("price_acceleration", x.get("leadlag_gap_pct", 0.0)) or 0.0),
+                    float(x.get("volume_acceleration", x.get("leadlag_score", 0.0)) or 0.0),
+                ),
+                reverse=True,
+            )
             gainers_24h.sort(key=lambda x: x.get("change_24h_pct", 0.0), reverse=True)
             volume_leaders.sort(key=lambda x: x.get("volume_idr", 0.0), reverse=True)
             brutal_momentum_candidates = gainers_24h[:15]
             pullback_candidates = [c for c in candidates if float(c.get("change_pct", 0.0)) > 0 and float(c.get("confidence", 0.0)) < 0.8]
 
-            # Sort by price acceleration descending
-            candidates.sort(key=lambda x: x.get("price_acceleration", 0.0), reverse=True)
             best_candidate = candidates[0] if candidates else {}
 
             scan_source_ok = bool(tickers)
@@ -264,6 +341,13 @@ class IndodaxMarketScanner:
                 "volume_leaders": volume_leaders[:20],
                 "brutal_momentum_candidates": brutal_momentum_candidates,
                 "pullback_candidates": pullback_candidates[:20],
+                "leadlag_scan_mode": leadlag_state.get("scan_mode", "BINANCE_TO_INDODAX_LEADLAG"),
+                "leadlag_source_status": leadlag_state.get("source_status", "NO_DATA"),
+                "leadlag_pairs_checked": leadlag_state.get("pairs_checked", 0),
+                "leadlag_candidates": leadlag_candidates[:20],
+                "leadlag_watchlist": leadlag_watchlist[:20],
+                "leadlag_top_candidate": leadlag_state.get("top_candidate", {}),
+                "leadlag_why_empty": leadlag_state.get("why_empty", ""),
                 "candidates_found": len(candidates),
                 "candidates": candidates,
                 "rejected_candidates": rejected_candidates,

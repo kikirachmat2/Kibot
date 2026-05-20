@@ -41,6 +41,8 @@ def _iter_source_pools(scan: Dict[str, Any]) -> List[tuple[str, List[Dict[str, A
         ("approved_candidates", scan.get("approved_candidates", []) or []),
         ("brutal_momentum_candidates", scan.get("brutal_momentum_candidates", []) or []),
         ("pullback_candidates", scan.get("pullback_candidates", []) or []),
+        ("leadlag_candidates", scan.get("leadlag_candidates", []) or []),
+        ("leadlag_watchlist", scan.get("leadlag_watchlist", []) or []),
         ("volume_leaders", scan.get("volume_leaders", []) or []),
         ("gainers_24h", scan.get("gainers_24h", []) or []),
     ]
@@ -63,7 +65,12 @@ def _build_candidate(item: Dict[str, Any], source_pool: str) -> Dict[str, Any]:
         "volume_24h_idr": float(item.get("volume_idr") or item.get("volume_24h_idr") or 0.0),
         "spread_pct": float(item.get("spread_pct") or 0.0),
         "momentum_score": float(item.get("change_24h_pct") or item.get("change_pct") or item.get("momentum_score") or 0.0),
-        "liquidity_score": float(item.get("liquidity_score") or item.get("volume_idr") or 0.0) / 100_000_000.0,
+        "liquidity_score": float(
+            item.get("liquidity_score")
+            or item.get("volume_idr")
+            or item.get("volume_24h_idr")
+            or 0.0
+        ) / 100_000_000.0,
         "entry_score": float(item.get("entry_score") or 0.0),
         "exit_score": 0.0,
         "source_proof_ok": bool(SourceProof.validate(item.get("source_proof", {}))) if isinstance(item, dict) else False,
@@ -76,6 +83,12 @@ def _build_candidate(item: Dict[str, Any], source_pool: str) -> Dict[str, Any]:
         "range_position_pct": float(item.get("range_position_pct") or 0.0),
         "distance_to_high_pct": float(item.get("distance_to_high_pct") or 0.0),
         "runup_from_low_pct": float(item.get("runup_from_low_pct") or 0.0),
+        "leadlag_gap_pct": float(item.get("leadlag_gap_pct") or 0.0),
+        "leadlag_lag_seconds": float(item.get("leadlag_lag_seconds") or 0.0),
+        "leadlag_score": float(item.get("leadlag_score") or 0.0),
+        "expected_net_pct": float(item.get("expected_net_pct") or 0.0),
+        "leader_change_pct": float(item.get("leader_change_pct") or 0.0),
+        "follower_change_pct": float(item.get("follower_change_pct") or 0.0),
         "source_pools": [source_pool],
     }
     if c["entry_score"] <= 0.0:
@@ -84,12 +97,20 @@ def _build_candidate(item: Dict[str, Any], source_pool: str) -> Dict[str, Any]:
         c["entry_score"] += 4.0
     elif source_pool in {"brutal_momentum_candidates", "pullback_candidates"}:
         c["entry_score"] += 2.0
+    elif source_pool in {"leadlag_candidates", "leadlag_watchlist"}:
+        c["entry_score"] += 6.0
+        if str(item.get("recommended_action") or "").upper() == "ENTER":
+            c["entry_score"] += 8.0
     elif source_pool == "volume_leaders":
         c["entry_score"] += 1.0
     if c["range_position_pct"] >= 60.0:
         c["entry_score"] += 2.0
     elif c["range_position_pct"] <= 30.0 and c["runup_from_low_pct"] >= 6.0:
         c["entry_score"] += 1.5
+    if c["leadlag_gap_pct"] > 0:
+        c["entry_score"] += min(3.0, c["leadlag_gap_pct"] * 1.5)
+    if c["leadlag_lag_seconds"] > 0:
+        c["entry_score"] += min(2.5, c["leadlag_lag_seconds"] * 0.3)
     c["entry_score"] = round(c["entry_score"], 2)
     c["exit_score"] = round(max(0.0, c["liquidity_score"] - c["spread_pct"]), 2)
     return c
@@ -145,7 +166,9 @@ def build_indodax_target_board() -> Dict[str, Any]:
         item["rank"] = idx
         if item["route_status"] == "EXECUTABLE":
             item["recommended_action"] = "ENTER" if item["entry_score"] >= 15 and item["exit_score"] >= 0.5 else "WATCH"
-            if item["volume_24h_idr"] < 200_000_000:
+            if item.get("leadlag_gap_pct", 0.0) >= 0.35 and item.get("leadlag_lag_seconds", 0.0) >= 1.0:
+                item["recommended_action"] = "ENTER"
+            if item["volume_24h_idr"] < 200_000_000 and item.get("source_pool") not in {"leadlag_candidates", "leadlag_watchlist"}:
                 item["recommended_action"] = "WATCH"
                 item["reason"] = item["reason"] or "below_volume_preference"
             if item["exit_score"] < 1.0:
@@ -155,6 +178,12 @@ def build_indodax_target_board() -> Dict[str, Any]:
                 item["recommended_action"] = "ENTER"
             elif item.get("runup_from_low_pct", 0.0) >= 6.0 and item["change_24h_pct"] >= 4.0:
                 item["recommended_action"] = "ENTER"
+            elif (
+                item.get("leadlag_gap_pct", 0.0) > 0
+                and item.get("leadlag_lag_seconds", 0.0) > 0
+                and item.get("source_pool") not in {"leadlag_candidates", "leadlag_watchlist"}
+            ):
+                item["recommended_action"] = "WATCH"
         top_targets.append(item)
 
     why_empty = ""
