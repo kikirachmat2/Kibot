@@ -718,33 +718,12 @@ def _build_events(summary: Dict[str, Any], limit: int = 30) -> List[Dict[str, st
             tag = str(row.get("tag") or "").upper()
             message = str(row.get("message") or "").strip()
             agent = str(row.get("agent") or "Trade")
-            if tag in {"BUY", "SELL PROFIT", "SELL LOSS", "SWAP"} and message:
+            if tag in {"BUY", "BUY PENDING", "SELL PENDING", "BUY REJECTED", "SELL REJECTED", "SELL PROFIT", "SELL LOSS", "SWAP", "STALE"} and message:
                 add_event(tag, message, agent)
 
     council_state = council.get("decision_state") or council.get("last_decision") or brain.get("reason") or "WAIT"
     council_conf = council.get("confidence", 0.0)
     add_event("COUNCIL REPORT", f"{council_state} conf {council_conf:.2f}", "Council")
-
-    add_event(
-        "SYSTEM EVENT",
-        f"live={'ON' if summary.get('mode', {}).get('live_trading_enabled') else 'OFF'} bridge={'ON' if summary.get('mode', {}).get('real_bridge_enabled') else 'OFF'} swap={'ON' if summary.get('mode', {}).get('real_swap_enabled') else 'OFF'}",
-        "System",
-    )
-    add_event(
-        "SYSTEM EVENT",
-        f"equity Rp {int(portfolio.get('combined_equity_idr', 0) or 0):,} | realized Rp {int(portfolio.get('realized_pnl_idr', 0) or 0):,} | unrealized Rp {int(portfolio.get('unrealized_pnl_idr', 0) or 0):,}".replace(",", "."),
-        "Portfolio",
-    )
-    add_event(
-        "SYSTEM EVENT",
-        f"{system.get('cpu', 0):.1f}% CPU / {system.get('ram', 0):.1f}% RAM / {system.get('disk', 0):.1f}% Disk",
-        "Janitor",
-    )
-    add_event(
-        "SYSTEM EVENT",
-        f"{services.get('kibot-scanner', '—')} scanner · {services.get('kibot-executor', '—')} executor",
-        "Services",
-    )
     return events[:limit]
 
 
@@ -1377,6 +1356,7 @@ def _build_control_plane_payload() -> Dict[str, Any]:
 
     if gov_state_data:
         gov_venues = gov_state_data.get("venues", {}) if isinstance(gov_state_data.get("venues"), dict) else {}
+        explicit_allow_reason = str(gov_state_data.get("allow_new_orders_reason") or rejection_reason).strip()
         venue_permissions = {
             "indodax_real": bool((gov_venues.get("indodax") or {}).get("allow_orders", False)),
             "phantom": bool((gov_venues.get("phantom") or {}).get("allow_orders", False)),
@@ -1384,7 +1364,7 @@ def _build_control_plane_payload() -> Dict[str, Any]:
             "cash_wait": True,
         }
         allow_new_live_orders = bool(gov_state_data.get("allow_new_orders", False))
-        rejection_reason = str(gov_state_data.get("allow_new_orders_reason") or rejection_reason)
+        rejection_reason = explicit_allow_reason or rejection_reason
     else:
         venue_permissions = {
             name: bool(
@@ -1410,11 +1390,15 @@ def _build_control_plane_payload() -> Dict[str, Any]:
             status = str(venue.get("status") or "BLOCKED_WITH_REASON").upper()
             reason = str(venue.get("reason") or "blocked").strip()
             blocked_venues.append(f"{name}={status}:{reason}")
-        rejection_reason = "; ".join(blocked_venues) if blocked_venues else rejection_reason
+        if not rejection_reason or rejection_reason.startswith("blocked venues:"):
+            rejection_reason = "; ".join(blocked_venues) if blocked_venues else rejection_reason
         capital_block["risk_remaining_idr"] = max(
             0.0,
             _safe_float(capital_block.get("global_risk_remaining_idr"), 0.0),
         )
+    capital_block["allow_new_orders_reason"] = rejection_reason
+    capital_block["blocked_venues"] = blocked_venues if not allow_new_live_orders else []
+    capital_block["pending_orders_count"] = len(summary_data.get("order_tracker", {}).get("open_orders", []) if isinstance(summary_data.get("order_tracker"), dict) else [])
     route_live_ready = any(
         str((venues.get(name) or {}).get("status") or "").upper() in {"ACTIVE", "LIVE_READY", "RECONCILED"}
         for name in ("indodax_real", "phantom", "polymarket", "cash_wait")

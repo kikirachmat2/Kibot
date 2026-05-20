@@ -256,6 +256,12 @@ class IndodaxExecutor:
                     logger.warning(f"🚨 EMERGENCY PAUSE DETECTED: {urgency.get('reason')}")
                 else:
                     for symbol, data in list(self.active_trades.items()):
+                        pending_entry_order = str(data.get("entry_pending_order_id") or "")
+                        pending_entry_amount = float(data.get("amount") or 0.0)
+                        if pending_entry_order and pending_entry_amount <= 1e-8:
+                            # A buy has been accepted but has not yet appeared in the wallet.
+                            # Keep it as pending capital, not as an exit-managed position.
+                            continue
                         if await self._handle_pending_exit(symbol, data, fee_roundtrip_pct):
                             continue
 
@@ -637,6 +643,61 @@ class IndodaxExecutor:
                         pair = f"{pair}_idr"
                     coin = pair.split("_")[0]
                     live_amount = float(balances.get(coin, 0.0) or 0.0)
+                    pending_entry_order_id = str(data.get("entry_pending_order_id") or "")
+                    if pending_entry_order_id:
+                        open_orders = self._extract_orders(await self.indodax.get_open_orders(pair))
+                        pending_price = float(data.get("entry_pending_price") or data.get("price") or 0.0)
+                        pending_budget = float(data.get("entry_pending_budget_idr") or data.get("cost") or 0.0)
+                        if live_amount <= 1e-8:
+                            if open_orders:
+                                data["entry_pending_status"] = "OPEN"
+                                data["entry_pending_last_seen"] = time.time()
+                                changed = True
+                                continue
+                            logger.warning(f"🧹 RECONCILE: removing stale pending {symbol}; no live balance/open orders.")
+                            self.active_trades.pop(symbol, None)
+                            changed = True
+                            continue
+
+                        desired_state = "PARTIAL_FILL" if open_orders else "FILLED"
+                        trade = self.active_trades.setdefault(symbol, {})
+                        trade.update({
+                            "amount": live_amount,
+                            "cost": pending_budget if pending_budget > 0 else live_amount * max(pending_price, 1e-9),
+                            "price": pending_price or float(trade.get("price") or 0.0),
+                            "high_price": max(float(trade.get("high_price", pending_price or live_amount) or 0.0), pending_price or live_amount),
+                            "entry_pending_status": desired_state,
+                            "entry_pending_last_seen": time.time(),
+                        })
+                        if desired_state == "FILLED" and not open_orders:
+                            trade["entry_pending_resolved_at"] = time.time()
+                            for key in [
+                                "entry_pending_order_id",
+                                "entry_pending_budget_idr",
+                                "entry_pending_price",
+                                "entry_pending_reason",
+                                "entry_pending_since",
+                                "entry_pending_status",
+                                "entry_pending_last_seen",
+                            ]:
+                                trade.pop(key, None)
+                        if _ORDER_TRACKER_AVAILABLE and data.get("sovereign_order_id"):
+                            try:
+                                tracker = _get_tracker()
+                                current_record = tracker.load(str(data.get("sovereign_order_id"))) or {}
+                                current_state = str(current_record.get("state") or "").upper()
+                                if current_state in {"CREATED", "SUBMITTED", "ACCEPTED", "PARTIAL_FILL"} and current_state != desired_state:
+                                    tracker.transition(
+                                        str(data.get("sovereign_order_id")),
+                                        desired_state,
+                                        fill_price=pending_price or float(trade.get("price") or 0.0),
+                                        coin_amount=live_amount,
+                                        note="wallet delta confirmed during reconcile",
+                                    )
+                            except Exception as ot_err:
+                                logger.warning(f"[Executor] Pending entry tracker reconcile failed for {symbol}: {ot_err}")
+                        changed = True
+                        continue
                     if live_amount <= 1e-8:
                         orders = self._extract_orders(await self.indodax.get_open_orders(pair))
                         if orders:
@@ -1370,9 +1431,66 @@ class IndodaxExecutor:
                 acquired_coin = max(filled_coin, max(0.0, coin_after - coin_before))
                 if acquired_coin <= 1e-8:
                     order_id = str(trade_data.get("order_id") or trade_data.get("orderId") or "")
+                    pending_budget = filled_rp or budget
+                    sovereign_order_id = None
+                    if _ORDER_TRACKER_AVAILABLE:
+                        try:
+                            daily_ctx = signal.get("daily_context") if isinstance(signal.get("daily_context"), dict) else {}
+                            try:
+                                from Core.Intelligence.daily_context import get_daily_context
+                                if not daily_ctx:
+                                    daily_ctx = get_daily_context()
+                            except Exception:
+                                pass
+
+                            capital_state_info = self.risk.get_capital_state(
+                                current_balance, 0, len(self.active_trades)
+                            )
+                            if not ep:
+                                ep = build_exit_plan(
+                                    signal,
+                                    daily_ctx,
+                                    str(signal.get("capital_state") or capital_state_info.get("capital_state", "NORMAL")),
+                                    signal.get("historian_profile") if isinstance(signal.get("historian_profile"), dict) else {},
+                                )
+                            pre_sim = signal.get("pre_trade_simulation") if isinstance(signal.get("pre_trade_simulation"), dict) else {}
+                            if pre_sim and not pre_sim.get("partial_tp_feasible", True):
+                                ep["partial_take_profit_fraction"] = 0.0
+                                ep["partial_take_profit_disabled_reason"] = "minimum order would make partial TP unsellable"
+                            mandate = {
+                                "source": str(signal.get("type", "SIGNAL")),
+                                "deadline_mode": daily_ctx.get("deadline_mode", signal.get("deadline_mode", "PATIENT")),
+                                "budget_fraction": round(budget / max(current_balance, 1), 3),
+                                "capital_state": signal.get("capital_state") or capital_state_info.get("capital_state", "NORMAL"),
+                                "trade_grade": signal.get("trade_grade"),
+                            }
+                            tracker = _get_tracker()
+                            sovereign_order_id = tracker.create(
+                                symbol, "BUY", pending_budget, actual_price,
+                                mandate, ep, signal
+                            )
+                            tracker.transition(
+                                sovereign_order_id, "SUBMITTED",
+                                exchange_order_id=order_id or None,
+                                note="exchange accepted; wallet delta pending"
+                            )
+                            log_execution_event("ENTRY_PENDING", {
+                                "symbol": symbol,
+                                "price": actual_price,
+                                "amount": 0.0,
+                                "notional_idr": pending_budget,
+                                "sovereign_order_id": sovereign_order_id,
+                                "trade_grade": signal.get("trade_grade"),
+                                "lifecycle": signal.get("lifecycle") or signal.get("pump_stage"),
+                                "fallback_category": signal.get("fallback_category"),
+                                "reason": "wallet delta pending",
+                            })
+                        except Exception as ot_err:
+                            logger.warning(f"[Executor] OrderTracker pending create failed: {ot_err}")
+                    pending_order_ref = order_id or str(sovereign_order_id or f"pending:{symbol}:{int(time.time())}")
                     logger.warning(
                         f"⏳ ENTRY PENDING: {symbol} order accepted but no filled coin yet. "
-                        f"order_id={order_id or 'unknown'}"
+                        f"order_id={pending_order_ref or 'unknown'}"
                     )
                     _emit_trade_history("ENTRY_PENDING", {
                         "source": "indodax_executor",
@@ -1381,13 +1499,43 @@ class IndodaxExecutor:
                         "pair": pair,
                         "side": "BUY",
                         "status": "PENDING",
-                        "order_id": order_id,
+                        "order_id": pending_order_ref,
                         "price_idr": actual_price,
-                        "amount_idr": filled_rp or budget,
+                        "amount_idr": pending_budget,
                         "trade_profile": "LEARNING_PROBE" if learning_probe else "STANDARD",
                         "lifecycle": signal.get("lifecycle") or signal.get("pump_stage"),
                         "reason": "no_filled_coin_yet",
                     })
+                    self.active_trades[symbol] = {
+                        "price": actual_price,
+                        "amount": 0.0,
+                        "high_price": actual_price,
+                        "time": time.time(),
+                        "cost": 0.0,
+                        "trade_profile": "LEARNING_PROBE" if learning_probe else "STANDARD",
+                        "learning_probe": learning_probe,
+                        "sovereign_order_id": sovereign_order_id,
+                        "entry_pending_order_id": pending_order_ref,
+                        "entry_pending_budget_idr": pending_budget,
+                        "entry_pending_price": actual_price,
+                        "entry_pending_status": "OPEN",
+                        "entry_pending_since": time.time(),
+                        "entry_pending_reason": "wallet delta not yet visible",
+                        "exit_plan": ep,
+                        "pre_trade_simulation": signal.get("pre_trade_simulation", {}),
+                        "trade_grade": signal.get("trade_grade"),
+                        "lifecycle": signal.get("lifecycle") or signal.get("pump_stage"),
+                        "fallback_category": signal.get("fallback_category"),
+                        "category_policy": signal.get("category_policy", {}),
+                        "unit_price_rule": {
+                            "must_be_below_total_equity": True,
+                            "price_idr": actual_price,
+                            "total_equity_idr": signal.get("total_equity_idr"),
+                        },
+                        "deadline_mode": signal.get("deadline_mode"),
+                        "capital_state": signal.get("capital_state"),
+                    }
+                    self._save_active_trades()
                     self.report_to_batam(symbol, "ENTRY_PENDING", f"Buy order pending @ {actual_price}")
                     return
                 filled_coin = acquired_coin

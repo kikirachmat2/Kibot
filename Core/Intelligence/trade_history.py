@@ -161,6 +161,40 @@ def _activity_from_event(row: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         msg = f"{route} {_rp(amount)}"
         return {"time": ts, "agent": agent, "tag": "SWAP", "message": msg, "offset": "0"}
 
+    if kind in {"ENTRY_PENDING", "ORDER_CREATED", "ORDER_SUBMITTED", "ORDER_ACCEPTED", "ENTRY_PARTIAL"}:
+        budget = _safe_float(row.get("amount_idr"), 0.0)
+        price = _safe_float(row.get("price_idr") or row.get("fill_price"), 0.0)
+        amount = _safe_float(row.get("amount_coin"), 0.0)
+        if amount <= 0 and price > 0 and budget > 0:
+            amount = budget / max(price, 1e-9)
+        msg = f"{pair} pending buy {_rp(budget)} @ {_rp(price)}"
+        if amount > 0:
+            msg += f" x {amount:.6f}".rstrip("0").rstrip(".")
+        return {"time": ts, "agent": agent, "tag": "BUY PENDING", "message": msg, "offset": "0"}
+
+    if kind in {"EXIT_PENDING", "ORDER_CANCEL_REQUESTED", "ORDER_PARTIAL_EXIT"}:
+        amount = _safe_float(row.get("amount_coin"), 0.0)
+        price = _safe_float(row.get("price_idr") or row.get("fill_price"), 0.0)
+        msg = f"{pair} pending sell {_rp(price)}"
+        if amount > 0:
+            msg += f" x {amount:.6f}".rstrip("0").rstrip(".")
+        return {"time": ts, "agent": agent, "tag": "SELL PENDING", "message": msg, "offset": "0"}
+
+    if kind in {"ENTRY_REJECTED", "ORDER_FAILED"}:
+        reason = str(row.get("reason") or "rejected").strip()
+        msg = f"{pair} buy rejected: {reason}"
+        return {"time": ts, "agent": agent, "tag": "BUY REJECTED", "message": msg, "offset": "0"}
+
+    if kind in {"EXIT_REJECTED"}:
+        reason = str(row.get("reason") or "rejected").strip()
+        msg = f"{pair} sell rejected: {reason}"
+        return {"time": ts, "agent": agent, "tag": "SELL REJECTED", "message": msg, "offset": "0"}
+
+    if kind in {"ORDER_STALE"}:
+        reason = str(row.get("reason") or "stale").strip()
+        msg = f"{pair} stale: {reason}"
+        return {"time": ts, "agent": agent, "tag": "STALE", "message": msg, "offset": "0"}
+
     return None
 
 

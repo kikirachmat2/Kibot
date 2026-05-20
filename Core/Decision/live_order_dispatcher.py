@@ -49,9 +49,24 @@ def _now_ms() -> int:
 
 def _active_symbols() -> set[str]:
     active = _read_json(STATE_DIR / "active_trades.json", {})
-    if not isinstance(active, dict):
-        return set()
-    return {str(symbol).upper() for symbol in active.keys()}
+    symbols: set[str] = set()
+    if isinstance(active, dict):
+        symbols.update(str(symbol).upper() for symbol in active.keys())
+
+    try:
+        from Core.Intelligence.order_tracker import get_tracker
+
+        tracker = get_tracker()
+        for record in tracker.get_open_orders():
+            if not isinstance(record, dict):
+                continue
+            pair = str(record.get("pair") or record.get("symbol") or "").upper().strip()
+            if pair:
+                symbols.add(pair)
+    except Exception:
+        pass
+
+    return symbols
 
 
 def _venue_state(venue: str) -> Dict[str, Any]:

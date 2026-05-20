@@ -116,6 +116,47 @@ def test_missing_files_graceful(tmp_path, monkeypatch):
     assert data["gates"]["strategy_scorecard"]["status"] == "WAIT"
 
 
+def test_control_plane_preserves_explicit_hard_stop_reason(tmp_path, monkeypatch):
+    monkeypatch.setattr("Core.Intelligence.kibot_dashboard.STATE", tmp_path)
+    monkeypatch.setattr("Core.Intelligence.kibot_dashboard._build_summary", lambda: {
+        "portfolio": {
+            "combined_equity_idr": 100_000,
+            "realized_pnl_idr": 0,
+            "unrealized_pnl_idr": 0,
+            "daily_pnl_idr": 0,
+            "daily_pnl_pct": 0,
+        },
+        "pnl_reconciliation": {},
+        "order_tracker": {"today_summary": {}, "open_orders": []},
+        "services": {},
+        "trade_history": {"recent_activity": []},
+        "council": {"decision_state": "WAIT", "confidence": 0.0},
+        "brain": {"reason": "WAIT"},
+    })
+
+    (tmp_path / "capital_governor.json").write_text(json.dumps({
+        "date": "2026-05-20",
+        "status": "BLOCKED_WITH_REASON",
+        "allow_new_orders": False,
+        "allow_new_orders_reason": "global_daily_loss_cap_breached (-10000.00 <= -4200.00)",
+        "start_total_equity_idr": 100_000,
+        "current_total_equity_idr": 90_000,
+        "daily_pnl_idr": -10_000,
+        "daily_pnl_pct": -10.0,
+        "max_daily_loss_idr": 4200.0,
+        "venues": {
+            "indodax": {"allow_orders": False, "status": "BLOCKED_WITH_REASON", "reason": "global_daily_loss_cap_breached"},
+            "phantom": {"allow_orders": False, "status": "BLOCKED_WITH_REASON", "reason": "global_daily_loss_cap_breached"},
+        },
+    }))
+
+    payload = _build_control_plane_payload()
+
+    assert payload["mode"]["allow_new_live_orders_reason"].startswith("global_daily_loss_cap_breached")
+    assert payload["capital"]["allow_new_orders_reason"].startswith("global_daily_loss_cap_breached")
+    assert payload["capital"]["pending_orders_count"] == 0
+
+
 def test_simulated_vs_real_pnl_isolation(tmp_path, monkeypatch):
     """Verify absolute isolation of real and mock PnL values."""
     monkeypatch.setattr("Core.Intelligence.kibot_dashboard.STATE", tmp_path)

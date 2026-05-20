@@ -6,6 +6,7 @@ def test_dashboard_activity_feed_prefers_trade_history_events():
         "trade_history": {
             "recent_activity": [
                 {"tag": "BUY", "message": "EDEN/IDR @ Rp 123 x 10", "agent": "Trade"},
+                {"tag": "BUY PENDING", "message": "EDEN/IDR pending buy Rp 10.000 @ Rp 123", "agent": "Trade"},
                 {"tag": "SELL LOSS", "message": "EDEN/IDR Rp 250 (-2.00%)", "agent": "Trade"},
             ]
         },
@@ -34,5 +35,8 @@ def test_dashboard_activity_feed_prefers_trade_history_events():
     tags = [event["tag"] for event in events]
 
     assert tags.count("BUY") == 1
+    assert tags.count("BUY PENDING") == 1
     assert tags.count("SELL LOSS") == 1
     assert tags.count("SELL PROFIT") == 0
+    assert "SYSTEM EVENT" not in tags
+    assert tags.count("COUNCIL REPORT") == 1

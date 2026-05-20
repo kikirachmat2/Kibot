@@ -83,3 +83,41 @@ def test_order_tracker_emits_trade_history(tmp_path, monkeypatch):
     assert "ORDER_SUBMITTED" in event_types
     assert "ORDER_FILLED" in event_types
     assert "ORDER_RECONCILED" in event_types
+
+
+def test_trade_history_formats_pending_entries(tmp_path, monkeypatch):
+    monkeypatch.setattr(trade_history, "HISTORY_DIR", tmp_path / "trade_history")
+    monkeypatch.setattr(decision_journal, "JOURNAL_DIR", tmp_path / "decision_journal")
+
+    trade_history.record_trade_event(
+        "ENTRY_PENDING",
+        {
+            "order_id": "eden_pending_001",
+            "pair": "EDEN/IDR",
+            "side": "BUY",
+            "source": "executor",
+            "status": "PENDING",
+            "price_idr": 123.45,
+            "amount_coin": 0.0,
+            "amount_idr": 12345.0,
+        },
+    )
+    trade_history.record_trade_event(
+        "EXIT_PENDING",
+        {
+            "order_id": "eden_pending_001",
+            "pair": "EDEN/IDR",
+            "side": "SELL",
+            "source": "executor",
+            "status": "PENDING",
+            "price_idr": 125.0,
+            "amount_coin": 10.0,
+            "amount_idr": 1250.0,
+        },
+    )
+
+    summary = trade_history.summarize_today()
+    tags = [item["tag"] for item in summary["recent_activity"]]
+
+    assert "BUY PENDING" in tags
+    assert "SELL PENDING" in tags

@@ -385,6 +385,9 @@ function pushLog(arr, domId, entry) {
   const tagCl = {
     INFO:'info', WARN:'warn', ERROR:'error', SUCCESS:'success',
     BUY:'buy', SWAP:'swap', 'SELL PROFIT':'sell-profit', 'SELL LOSS':'sell-loss',
+    'BUY PENDING':'warn', 'SELL PENDING':'warn',
+    'BUY REJECTED':'error', 'SELL REJECTED':'error',
+    STALE:'warn',
     'COUNCIL REPORT':'council', 'SYSTEM EVENT':'system'
   }[tag] || 'info';
   const div   = document.createElement('div');
@@ -609,14 +612,30 @@ function render(data) {
   setPnl('pi-risk-remaining', data.capital?.risk_remaining_idr || 0);
   setT('pi-allow-orders', allowNew ? 'YES' : 'NO');
   setT('pi-current-entry', data.current_entry_approved ? 'YES' : 'NO');
+  const openOrders = Array.isArray(data.order_tracker?.open_orders) ? data.order_tracker.open_orders : [];
+  const openOrderCount = data.capital?.pending_orders_count != null ? Number(data.capital.pending_orders_count) : openOrders.length;
+  const openOrderPairs = openOrders.map(o => String(o?.pair || o?.symbol || '').trim()).filter(Boolean);
+  const pendingOrdersBadge = el('pi-pending-orders');
+  if (pendingOrdersBadge) {
+    pendingOrdersBadge.textContent = openOrderCount ? `${openOrderCount} OPEN` : '0';
+    pendingOrdersBadge.className = 'badge ' + (openOrderCount ? 'badge--yellow' : 'badge--ghost');
+    pendingOrdersBadge.title = openOrderPairs.length ? openOrderPairs.join(', ') : '';
+  }
   const openPnLCount = Array.isArray(port.open_position_pnl) ? port.open_position_pnl.length : 0;
   const venueAllowances = mode.venue_allowances || {};
   const readyVenues = Object.entries(venueAllowances).filter(([, allowed]) => allowed).map(([name]) => name);
   const blockedVenues = Object.entries(venueAllowances).filter(([, allowed]) => !allowed).map(([name]) => name);
+  const explicitBlockReason = String(data.capital?.allow_new_orders_reason || mode.allow_new_live_orders_reason || '').trim();
+  const genericBlockedVenues = /^blocked venues?:/i.test(explicitBlockReason);
   if (allowNew) {
     setT('pi-blocked-reason', readyVenues.length ? `venue-scoped ready: ${readyVenues.join(', ')}` : 'venue-scoped allowance active');
   } else {
-    setT('pi-blocked-reason', blockedVenues.length ? `blocked venues: ${blockedVenues.join(', ')}` : (openPnLCount ? `${openPnLCount} open position(s)` : (mode.allow_new_live_orders_reason || '—')));
+    setT(
+      'pi-blocked-reason',
+      (!genericBlockedVenues && explicitBlockReason)
+        ? explicitBlockReason
+        : (openOrderCount ? `${openOrderCount} pending order(s)` : (openPnLCount ? `${openPnLCount} open position(s)` : (explicitBlockReason || '—')))
+    );
   }
 
   // Venue equities
@@ -829,15 +848,10 @@ function render(data) {
 
   // Logs — activity
   const events = (data.events || []).filter(e => !NOISE_RE.test(e.message||''));
-  const allowTags = new Set(['BUY','SWAP','SELL PROFIT','SELL LOSS','COUNCIL REPORT','SYSTEM EVENT']);
+  const allowTags = new Set(['BUY','BUY PENDING','SELL PENDING','BUY REJECTED','SELL REJECTED','SWAP','SELL PROFIT','SELL LOSS','STALE','COUNCIL REPORT']);
   const activityEvents = events.filter(e => allowTags.has(String(e.tag || '').toUpperCase()));
   if (activityEvents.length) {
     activityEvents.slice(0,5).reverse().forEach(e => pushLog(_actLog,'activity-log',{message:e.message,tag:String(e.tag || 'SYSTEM EVENT').toUpperCase()}));
-  } else {
-    pushLog(_actLog,'activity-log',{
-      message: mode.live_trading_enabled ? 'LIVE TRADING ON' : 'LIVE TRADING OFF',
-      tag: 'SYSTEM EVENT'
-    });
   }
 
   // Logs — technical
