@@ -150,11 +150,17 @@ class ScannerEngine:
         """Builds default scanners if none provided."""
         scanners = []
         try:
-            from Core.Scanner.ki_indodax_smallcap_scanner import IndodaxSmallCapScanner
-            scanners.append(IndodaxSmallCapScanner())
-            logger.info("✅ Indodax SmallCap Scanner integrated.")
+            from Core.Scanner.indodax_market_scanner import IndodaxMarketScanner
+            scanners.append(IndodaxMarketScanner())
+            logger.info("✅ Indodax Market Scanner integrated (market-wide + Binance lead-lag).")
         except Exception as e:
-            logger.error(f"⚠️ Failed to build Indodax scanner: {e}")
+            logger.error(f"⚠️ Failed to build Indodax Market scanner: {e}")
+            try:
+                from Core.Scanner.ki_indodax_smallcap_scanner import IndodaxSmallCapScanner
+                scanners.append(IndodaxSmallCapScanner())
+                logger.info("✅ Fallback Indodax SmallCap Scanner integrated.")
+            except Exception as fallback_exc:
+                logger.error(f"⚠️ Failed to build fallback Indodax scanner: {fallback_exc}")
             
         try:
             from Core.Scanner.ki_polymarket_full_scanner import PolymarketFullScanner
