@@ -8,6 +8,13 @@ const NOISE_RE   = /vault|decrypt|cipher|CEREBRAS_API_KEY|MISTRAL_API_KEY|os\.en
 
 const idr = v => `Rp ${(+v||0).toLocaleString('id-ID')}`;
 const pct = v => `${v>=0?'+':''}${(+v||0).toFixed(2)}%`;
+const pickFinite = (...vals) => {
+  for (const v of vals) {
+    const n = Number(v);
+    if (Number.isFinite(n)) return n;
+  }
+  return 0;
+};
 const esc = s => String(s ?? '').replace(/[<>&"]/g, c => ({'<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;'}[c]));
 const shortAddr = addr => {
   const s = String(addr ?? '').trim();
@@ -596,14 +603,15 @@ function render(data) {
   }
 
   // Right panel — Portfolio
-  const equityNow = data.capital?.total_balance_idr || data.capital?.current_total_equity_idr || data.capital?.live_current_total_equity_idr || port.total_balance_idr || port.combined_equity_idr || port.equity_idr || 0;
-  const equityStart = data.capital?.reset_total_balance_idr || data.capital?.start_total_equity_idr || data.capital?.starting_equity_today_idr || data.capital?.starting_equity_idr || 0;
+  const truth = data.accounting_truth || port.accounting_truth || data.capital?.accounting_truth || {};
+  const equityNow = pickFinite(truth.current_total_equity_idr, truth.total_balance_idr, data.capital?.total_balance_idr, data.capital?.current_total_equity_idr, data.capital?.live_current_total_equity_idr, port.total_balance_idr, port.combined_equity_idr, port.equity_idr);
+  const equityStart = pickFinite(truth.reset_total_balance_idr, truth.start_total_equity_idr, data.capital?.reset_total_balance_idr, data.capital?.start_total_equity_idr, data.capital?.starting_equity_today_idr, data.capital?.starting_equity_idr);
   setT('pi-equity', idr(equityNow));
   setT('pi-start-equity', idr(equityStart));
   const realizedPnL = port.realized_pnl_idr ?? port.real_pnl_idr ?? port.daily_pnl_real_idr ?? 0;
   const pnlSource = port.daily_pnl_source || data.capital?.daily_pnl_source || 'live_portfolio';
-  const dailyPnL = data.capital?.daily_return_idr ?? data.capital?.combined_pnl_idr ?? data.capital?.daily_pnl_idr ?? data.capital?.live_daily_pnl_idr ?? port.daily_return_idr ?? port.combined_pnl_idr ?? port.daily_pnl_idr ?? 0;
-  const dailyPct = data.capital?.daily_return_pct ?? data.capital?.daily_pnl_pct ?? data.capital?.live_daily_pnl_pct ?? port.daily_return_pct ?? port.daily_pnl_pct ?? 0;
+  const dailyPnL = pickFinite(truth.daily_pnl_idr, truth.combined_pnl_idr, data.capital?.daily_return_idr, data.capital?.combined_pnl_idr, data.capital?.daily_pnl_idr, data.capital?.live_daily_pnl_idr, port.daily_return_idr, port.combined_pnl_idr, port.daily_pnl_idr);
+  const dailyPct = pickFinite(truth.daily_pnl_pct, truth.daily_return_pct, data.capital?.daily_return_pct, data.capital?.daily_pnl_pct, data.capital?.live_daily_pnl_pct, port.daily_return_pct, port.daily_pnl_pct);
   const realizedPct = (Array.isArray(port.open_position_pnl) && port.open_position_pnl.length) ? 0 : dailyPct;
   setPnl('pi-real-pnl',  dailyPnL);
   setPct('pi-real-pnl-pct',  dailyPct);

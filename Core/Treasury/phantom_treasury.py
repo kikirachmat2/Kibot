@@ -254,10 +254,21 @@ class PhantomTreasury:
             "tolerance_pct": tolerance_pct,
             "reason": reason,
         }
-        self.status = "OK" if matches and self.base_rpc_ok else "MISMATCH" if actual_value_idr > 0 else "MISSING_CONFIG"
-        if not self.base_rpc_ok:
+        if matches and self.base_rpc_ok:
+            self.status = "OK"
+            self.base_status = "OK"
+        elif actual_value_idr > 0.0:
+            # Balance is real, but our wallet reconciliation is degraded.
+            # This should not behave like a missing wallet because the trading
+            # engine still needs a truthful mark-to-market snapshot.
+            self.status = "DEGRADED"
+            self.base_status = "DEGRADED"
+        elif not self.base_rpc_ok:
             self.status = "MISSING_CONFIG"
-        self.base_status = "OK" if matches and self.base_rpc_ok else "MISMATCH"
+            self.base_status = "MISSING_CONFIG"
+        else:
+            self.status = "SCOUTING"
+            self.base_status = "SCOUTING"
 
     def _write_reconciliation_flag(self) -> None:
         try:
@@ -292,11 +303,11 @@ class PhantomTreasury:
                     "address": getattr(self.router, "wallet_address", "") or "",
                     "sol_balance": self.sol_balance,
                     "usdc_balance": self.usdc_balance,
-                    "status": "OK" if self.sol_balance >= 0 and self.usdc_balance >= 0 else "MISMATCH",
+                    "status": "OK" if self.sol_balance >= 0 and self.usdc_balance >= 0 else "DEGRADED",
                 })
             except Exception as e:
                 logger.error(f"❌ Failed to query balances from PhantomRouter: {e}")
-                self.chains["solana"]["status"] = "MISMATCH"
+                self.chains["solana"]["status"] = "DEGRADED"
         
         # Fetch Base chain IDRX balance
         if self.force_live_base_reconciliation and self._is_live_router():

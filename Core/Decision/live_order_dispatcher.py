@@ -280,9 +280,11 @@ class LiveOrderDispatcher:
         treasury = _read_json(STATE_DIR / "phantom_treasury.json", {})
         sol_balance = float(treasury.get("sol_balance") or treasury.get("balances", {}).get("sol") or 0.0)
         amount_sol = max(0.0, min(sol_balance * 0.35, sol_balance - float(os.getenv("WEB3_SOL_RESERVE", "0.003") or 0.003)))
-        min_sol = float(os.getenv("WEB3_MIN_SOL_TRADE", "0.0005") or 0.0005)
-        if amount_sol < min_sol:
-            return {"status": "BLOCKED_WITH_REASON", "reason": "sol_balance_below_trade_min", "sol_balance": sol_balance}
+        min_sol = float(os.getenv("WEB3_MIN_SOL_TRADE", "0.0") or 0.0)
+        if sol_balance <= 0:
+            return {"status": "BLOCKED_WITH_REASON", "reason": "no_solana_balance", "sol_balance": sol_balance}
+        if amount_sol <= 0:
+            amount_sol = max(0.0, sol_balance * 0.10)
 
         for candidate in targets:
             if not isinstance(candidate, dict):
@@ -290,12 +292,12 @@ class LiveOrderDispatcher:
             route = str(candidate.get("route") or "").lower()
             mint = str(candidate.get("mint_or_market") or "").strip()
             key = f"{route}:{mint}"
-            if route not in {"solana_jupiter", "pumpfun_jupiter", "pumpfun_native", "solana_meme"}:
-                continue
             if not mint or len(mint) < 32:
-                continue
+                if route not in {"polymarket", "base_swap", "future_web3"}:
+                    continue
             if str(candidate.get("recommended_action") or "").upper() != "ENTER":
-                continue
+                if route not in {"polymarket", "base_swap", "future_web3"}:
+                    continue
             if self._in_cooldown("phantom_cooldowns", key, self.phantom_cooldown_seconds):
                 continue
 
@@ -316,18 +318,47 @@ class LiveOrderDispatcher:
                     "reason": str(fee_state.get("gas_reason") or "gas_fee_unaffordable"),
                     "fee_intelligence": fee_state,
                 }
-            slippage_bps = int(float(os.getenv("WEB3_MEME_SLIPPAGE_BPS", "1500") or 1500))
-            ok = await router.snipe_meme_coin(mint, amount_sol, slippage_bps=slippage_bps)
-            self._mark_sent("phantom_cooldowns", key)
-            return {
-                "status": "DISPATCHED" if ok else "BLOCKED_WITH_REASON",
-                "route": route,
-                "mint": mint,
-                "amount_sol": amount_sol,
-                "candidate": candidate,
-                "reason": "submitted_to_phantom_router" if ok else "phantom_router_rejected",
-                "fee_intelligence": fee_state,
-            }
+            if route in {"solana_jupiter", "pumpfun_jupiter", "pumpfun_native", "solana_meme"}:
+                slippage_bps = int(float(os.getenv("WEB3_MEME_SLIPPAGE_BPS", "1500") or 1500))
+                ok = await router.snipe_meme_coin(mint, amount_sol, slippage_bps=slippage_bps)
+                if ok:
+                    self._mark_sent("phantom_cooldowns", key)
+                return {
+                    "status": "DISPATCHED" if ok else "BLOCKED_WITH_REASON",
+                    "route": route,
+                    "mint": mint,
+                    "amount_sol": amount_sol,
+                    "candidate": candidate,
+                    "reason": "submitted_to_phantom_router" if ok else "phantom_router_rejected",
+                    "fee_intelligence": fee_state,
+                }
+            if route == "polymarket":
+                market_id = str(candidate.get("market_id") or candidate.get("mint_or_market") or candidate.get("market") or mint or "").strip()
+                outcome = str(candidate.get("outcome") or candidate.get("direction") or candidate.get("side") or "YES").strip().upper()
+                amount_usdc = float(candidate.get("amount_usdc") or candidate.get("size_usdc") or candidate.get("size") or 0.0)
+                if amount_usdc <= 0:
+                    amount_usdc = max(0.0, amount_sol * float(os.getenv("SOL_USD_RATE", "170") or 170.0))
+                ok = await router.execute_polymarket_trade(market_id, outcome, amount_usdc)
+                if ok:
+                    self._mark_sent("phantom_cooldowns", key)
+                return {
+                    "status": "DISPATCHED" if ok else "BLOCKED_WITH_REASON",
+                    "route": route,
+                    "market_id": market_id,
+                    "outcome": outcome,
+                    "amount_usdc": amount_usdc,
+                    "candidate": candidate,
+                    "reason": "submitted_to_polymarket_router" if ok else "polymarket_router_rejected",
+                    "fee_intelligence": fee_state,
+                }
+            if route in {"base_swap", "future_web3"}:
+                return {
+                    "status": "SCAN_NEXT",
+                    "route": route,
+                    "candidate": candidate,
+                    "reason": f"{route}_route_visible_but_no_low_latency_dispatch_path",
+                    "fee_intelligence": fee_state,
+                }
         return {"status": "SCAN_NEXT", "reason": "no_same_chain_phantom_enter_candidate"}
 
     async def tick(self) -> Dict[str, Any]:

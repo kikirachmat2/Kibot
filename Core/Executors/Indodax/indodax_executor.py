@@ -187,6 +187,61 @@ class IndodaxExecutor:
             "net_pnl_idr": net_pnl_idr,
         }
 
+    async def _resolve_live_entry_price(self, symbol: str, fallback_price: float = 0.0) -> tuple[float, Dict[str, Any]]:
+        pair = symbol.lower().replace("/", "_")
+        if "_" not in pair:
+            pair = f"{pair}_idr"
+
+        resolved_price = float(fallback_price or 0.0)
+        metadata: Dict[str, Any] = {
+            "source": "signal",
+            "fallback_price": resolved_price,
+            "pair": pair,
+        }
+
+        try:
+            orderbook = await self.indodax.get_orderbook(symbol)
+            bids = orderbook.get("bids", []) if isinstance(orderbook, dict) else []
+            asks = orderbook.get("asks", []) if isinstance(orderbook, dict) else []
+            best_bid = float(bids[0][0]) if bids else 0.0
+            best_ask = float(asks[0][0]) if asks else 0.0
+            if best_ask > 0:
+                resolved_price = best_ask
+                metadata.update({
+                    "source": "orderbook_best_ask",
+                    "best_bid": best_bid,
+                    "best_ask": best_ask,
+                    "spread_pct": ((best_ask - best_bid) / best_bid * 100.0) if best_bid > 0 else 0.0,
+                })
+                return resolved_price, metadata
+            if best_bid > 0:
+                resolved_price = best_bid
+                metadata.update({
+                    "source": "orderbook_best_bid",
+                    "best_bid": best_bid,
+                    "best_ask": best_ask,
+                })
+                return resolved_price, metadata
+        except Exception as exc:
+            metadata["orderbook_error"] = str(exc)
+
+        try:
+            ticker = await self.indodax.get_ticker(pair)
+            last_price = float(ticker.get("last", 0.0) or 0.0)
+            if last_price > 0:
+                resolved_price = last_price
+                metadata.update({
+                    "source": "ticker_last",
+                    "ticker_last": last_price,
+                })
+                return resolved_price, metadata
+        except Exception as exc:
+            metadata["ticker_error"] = str(exc)
+
+        if resolved_price > 0:
+            metadata["source"] = "signal_fallback"
+        return resolved_price, metadata
+
 
     async def start(self):
         print(f"🚀 {self.__class__.__name__} Starting...")
@@ -999,6 +1054,29 @@ class IndodaxExecutor:
         pair_info = await self.indodax.get_pair_info(pair)
         min_coin = float(pair_info.get("trade_min_traded_currency", 0) or 0)
         min_base = float(pair_info.get("trade_min_base_currency", 10_000) or 10_000)
+        strategy = load_strategy()
+        indo_strat = strategy.get("indodax", {}) if isinstance(strategy, dict) else {}
+        fee_roundtrip_pct = float(indo_strat.get("fee_roundtrip_pct", 1.02) or 1.02)
+        entry_price = float(trade.get("price", price) or price or 0.0)
+        profitable_floor_price = minimum_profitable_exit_price(
+            entry_price,
+            fee_roundtrip_pct,
+            float(indo_strat.get("exit_profit_buffer_pct", 0.3) or 0.3),
+        )
+        reason_upper = str(reason or "").upper()
+        if profitable_floor_price > 0 and reason_upper not in {"HARD_STOP", "TRAILING_STOP", "MIDNIGHT_DEADLINE", "DISTRIBUTION_SPREAD_EXIT", "DISTRIBUTION_OBI_EXIT", "EXIT_ALL"}:
+            if price < profitable_floor_price:
+                logger.info(
+                    f"🧠 EXIT DEFERRED: {symbol} reason={reason} price Rp{price:,.0f} < profitable floor Rp{profitable_floor_price:,.0f}"
+                )
+                self.active_trades.setdefault(symbol, {}).update({
+                    "last_exit_floor_price": profitable_floor_price,
+                    "last_exit_deferred_reason": reason,
+                    "exit_blocked_until": time.time() + 30,
+                })
+                self._save_active_trades()
+                return
+            price = max(price, profitable_floor_price)
         if (min_coin and amount < min_coin) or (amount * price < min_base):
             if is_partial:
                 reason_text = (
@@ -1306,6 +1384,12 @@ class IndodaxExecutor:
         symbol = signal.get("symbol", "UNKNOWN")
         side = signal.get("side", "BUY")
         price = float(signal.get("price", 0))
+        live_price, live_price_meta = await self._resolve_live_entry_price(symbol, price)
+        if live_price > 0:
+            price = live_price
+            signal["price"] = price
+            signal["live_entry_price_idr"] = price
+            signal["live_entry_price_meta"] = live_price_meta
         confidence = signal.get("confidence", 0)
         change_pct = abs(signal.get("change_5m_pct", signal.get("change_pct", 0)))
         pump_stage = str(signal.get("pump_stage", "IGNITION") or "IGNITION").upper()

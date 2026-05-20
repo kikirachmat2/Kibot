@@ -18,6 +18,7 @@ from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
 from Core.Support.ki_config import PROJECT_ROOT, STATE_DIR, KiConfig
+from Core.Treasury.accounting_truth import build_accounting_truth
 
 app = FastAPI(title="KiBot Sovereign Dashboard", version="3.4")
 
@@ -446,9 +447,94 @@ def _load_pnl_reconciliation() -> Dict[str, Any]:
     except Exception:
         return _read_json(STATE / "pnl_reconciliation.json", {})
 
+
+def _resolve_accounting_view(
+    accounting_truth: Dict[str, Any],
+    *,
+    governor_current_total_equity_idr: float,
+    governor_reset_total_balance_idr: float,
+    governor_daily_pnl_idr: float,
+    governor_daily_pnl_pct: float,
+    live_total_equity_idr: float,
+    snapshot_total_equity_idr: float,
+    live_reset_total_balance_idr: float,
+    live_daily_pnl_idr: float,
+    live_daily_pnl_pct: float,
+    governor_fresh_today: bool,
+) -> Dict[str, Any]:
+    """Choose the dashboard balance view without letting stale canonical state override live snapshots.
+
+    Fresh governor state remains authoritative. When the governor is stale or
+    inconsistent, the live combined portfolio snapshot should remain visible and
+    should drive daily PnL so holdings never appear to disappear.
+    """
+
+    truth = accounting_truth if isinstance(accounting_truth, dict) else {}
+    truth_total = _safe_float(truth.get("current_total_equity_idr"), 0.0)
+    truth_reset = _safe_float(truth.get("reset_total_balance_idr"), 0.0)
+    truth_daily_pnl = _safe_float(truth.get("daily_pnl_idr"), 0.0)
+    truth_daily_pct = _safe_float(truth.get("daily_pnl_pct"), 0.0)
+    truth_source = str(truth.get("source") or "unknown")
+
+    live_total = _safe_float(live_total_equity_idr, 0.0)
+    snapshot_total = _safe_float(snapshot_total_equity_idr, 0.0)
+    fallback_total = live_total if live_total > 0.0 else snapshot_total
+    fallback_reset = _safe_float(live_reset_total_balance_idr, 0.0)
+    fallback_daily_pnl = _safe_float(live_daily_pnl_idr, 0.0)
+    fallback_daily_pct = _safe_float(live_daily_pnl_pct, 0.0)
+    governor_total = _safe_float(governor_current_total_equity_idr, 0.0)
+    governor_reset = _safe_float(governor_reset_total_balance_idr, 0.0)
+    governor_daily = _safe_float(governor_daily_pnl_idr, 0.0)
+    governor_daily_pct = _safe_float(governor_daily_pnl_pct, 0.0)
+
+    fresh_can_win = governor_fresh_today and governor_total > 0.0
+    if fresh_can_win:
+        total = governor_total
+        reset_total = governor_reset if governor_reset > 0.0 else (truth_reset if truth_reset > 0.0 else fallback_reset)
+        daily_pnl = governor_daily if governor_daily != 0.0 or truth_daily_pnl == 0.0 else truth_daily_pnl
+        daily_pct = governor_daily_pct if governor_daily_pct != 0.0 or truth_daily_pct == 0.0 else truth_daily_pct
+        source = "capital_governor"
+    else:
+        total = fallback_total if fallback_total > 0.0 else truth_total
+        reset_total = fallback_reset if fallback_reset > 0.0 else truth_reset
+        if total > 0.0 and reset_total > 0.0:
+            daily_pnl = total - reset_total
+            daily_pct = (daily_pnl / max(reset_total, 1.0)) * 100.0
+        else:
+            daily_pnl = fallback_daily_pnl if fallback_daily_pnl != 0.0 else truth_daily_pnl
+            daily_pct = fallback_daily_pct if fallback_daily_pct != 0.0 else truth_daily_pct
+        source = "live_portfolio_fallback" if fallback_total > 0.0 else truth_source
+
+    if reset_total <= 0.0:
+        reset_total = total - daily_pnl if total > 0.0 else 0.0
+    if total <= 0.0 and truth_total > 0.0:
+        total = truth_total
+    if daily_pnl == 0.0 and total > 0.0 and reset_total > 0.0:
+        daily_pnl = total - reset_total
+        daily_pct = (daily_pnl / max(reset_total, 1.0)) * 100.0
+
+    return {
+        **truth,
+        "source": source,
+        "current_total_equity_idr": total,
+        "total_balance_idr": total,
+        "reset_total_balance_idr": reset_total,
+        "start_total_equity_idr": reset_total,
+        "daily_pnl_idr": daily_pnl,
+        "combined_pnl_idr": daily_pnl,
+        "daily_return_idr": daily_pnl,
+        "daily_pnl_pct": daily_pct,
+        "daily_return_pct": daily_pct,
+        "live_total_equity_idr": live_total,
+        "snapshot_total_equity_idr": snapshot_total,
+        "governor_fresh_today": governor_fresh_today,
+    }
+
+
 def _build_portfolio(telemetry: Dict[str, Any]) -> Dict[str, Any]:
     portfolio = telemetry.get("portfolio") if isinstance(telemetry, dict) else {}
     portfolio = portfolio if isinstance(portfolio, dict) else {}
+    accounting_truth = build_accounting_truth()
     polymarket_live = _load_polymarket_state()
     polymarket = portfolio.get("polymarket") if isinstance(portfolio.get("polymarket"), dict) else {}
     if polymarket_live:
@@ -458,6 +544,11 @@ def _build_portfolio(telemetry: Dict[str, Any]) -> Dict[str, Any]:
     indodax_equity = _safe_float(portfolio.get("equity_idr"), 0.0)
     idr_cash = _safe_float(portfolio.get("idr_cash"), indodax_equity)
     coin_holdings = _safe_float(portfolio.get("coin_holdings_idr"), 0.0)
+    phantom_state = _load_phantom_state()
+    phantom_equity_idr = _safe_float(
+        phantom_state.get("total_value_idr"),
+        _safe_float(phantom_state.get("equity_idr"), 0.0),
+    )
     refreshed_positions = []
     refreshed_holdings = 0.0
     for item in active_positions:
@@ -487,17 +578,17 @@ def _build_portfolio(telemetry: Dict[str, Any]) -> Dict[str, Any]:
     poly_daily_pnl_usd = _safe_float(polymarket.get("daily_pnl_usd"), 0.0)
     poly_daily_pnl_idr = _safe_float(polymarket.get("daily_pnl_idr"), poly_daily_pnl_usd * USD_IDR_RATE)
 
-    # Recompute combined equity from live components. The telemetry field can lag
-    # behind `equity_idr` when held coins are repriced, so do not let stale cash
-    # overwrite the real portfolio total shown in the control plane.
-    combined_equity = indodax_equity + poly_equity_idr
+    # Canonical total balance is the combined live venue equity. The accounting
+    # truth layer keeps the dashboard, governor, and daily PnL on the same
+    # number even while positions remain open.
+    live_total_equity = indodax_equity + phantom_equity_idr
+    snapshot_total_equity = _safe_float(portfolio.get("combined_equity_idr"), _safe_float(portfolio.get("total_balance_idr"), 0.0))
 
     realized_daily_pnl = _realized_daily_pnl_idr()
     open_pnl = _active_trade_unrealized_pnl(active_positions)
     unrealized_daily_pnl = _safe_float(open_pnl.get("unrealized_pnl_idr"), 0.0)
-    daily_pnl = realized_daily_pnl + unrealized_daily_pnl + poly_daily_pnl_idr
-    pnl_base = max(combined_equity - daily_pnl, _safe_float(open_pnl.get("position_cost_basis_idr"), 0.0), 1.0)
-    daily_pnl_pct = (daily_pnl / pnl_base) * 100.0
+    live_daily_pnl = realized_daily_pnl + unrealized_daily_pnl + poly_daily_pnl_idr
+    live_daily_pnl_pct = (live_daily_pnl / max(live_total_equity if live_total_equity > 0.0 else max(snapshot_total_equity, 1.0), 1.0)) * 100.0
 
     # Load Capital Governor reconciled data if available and fresh for today.
     # Prefer the governor as the canonical total-balance source whenever it
@@ -506,14 +597,23 @@ def _build_portfolio(telemetry: Dict[str, Any]) -> Dict[str, Any]:
     gov_data = _read_json(STATE / "capital_governor.json", {})
     has_open_positions = bool(open_pnl.get("positions")) or bool(active_positions)
     governor_fresh_today = bool(gov_data and gov_data.get("date") == datetime.now(WIB).strftime("%Y-%m-%d"))
-    if governor_fresh_today:
-        combined_equity = _safe_float(gov_data.get("current_total_equity_idr"), combined_equity)
-        daily_pnl = _safe_float(gov_data.get("daily_pnl_idr"), daily_pnl)
-        daily_pnl_pct = _safe_float(gov_data.get("daily_pnl_pct"), daily_pnl_pct)
-    reset_total_balance = _safe_float(
-        gov_data.get("reset_total_balance_idr"),
-        _safe_float(gov_data.get("start_total_equity_idr"), combined_equity - daily_pnl),
+    accounting_view = _resolve_accounting_view(
+        accounting_truth,
+        governor_current_total_equity_idr=_safe_float(gov_data.get("current_total_equity_idr"), 0.0),
+        governor_reset_total_balance_idr=_safe_float(gov_data.get("reset_total_balance_idr"), _safe_float(gov_data.get("start_total_equity_idr"), 0.0)),
+        governor_daily_pnl_idr=_safe_float(gov_data.get("daily_pnl_idr"), 0.0),
+        governor_daily_pnl_pct=_safe_float(gov_data.get("daily_pnl_pct"), 0.0),
+        live_total_equity_idr=live_total_equity,
+        snapshot_total_equity_idr=snapshot_total_equity,
+        live_reset_total_balance_idr=_safe_float(gov_data.get("reset_total_balance_idr"), _safe_float(gov_data.get("start_total_equity_idr"), snapshot_total_equity)),
+        live_daily_pnl_idr=_safe_float(gov_data.get("daily_pnl_idr"), live_daily_pnl),
+        live_daily_pnl_pct=_safe_float(gov_data.get("daily_pnl_pct"), live_daily_pnl_pct),
+        governor_fresh_today=governor_fresh_today,
     )
+    combined_equity = _safe_float(accounting_view.get("current_total_equity_idr"), live_total_equity if live_total_equity > 0.0 else snapshot_total_equity)
+    daily_pnl = _safe_float(accounting_view.get("daily_pnl_idr"), live_daily_pnl)
+    daily_pnl_pct = _safe_float(accounting_view.get("daily_pnl_pct"), live_daily_pnl_pct)
+    reset_total_balance = _safe_float(accounting_view.get("reset_total_balance_idr"), _safe_float(gov_data.get("reset_total_balance_idr"), _safe_float(gov_data.get("start_total_equity_idr"), combined_equity - daily_pnl)))
 
     daily_state = portfolio.get("daily_state") if isinstance(portfolio.get("daily_state"), dict) else {}
     daily_color = "GREEN" if daily_pnl > 0 else "RECOVERY" if daily_pnl < 0 else "FLAT"
@@ -535,6 +635,7 @@ def _build_portfolio(telemetry: Dict[str, Any]) -> Dict[str, Any]:
         "equity_idr": indodax_equity,
         "idr_cash": idr_cash,
         "coin_holdings_idr": coin_holdings,
+        "phantom_equity_idr": phantom_equity_idr,
         "combined_equity_idr": combined_equity,
         "total_balance_idr": combined_equity,
         "reset_total_balance_idr": reset_total_balance,
@@ -550,6 +651,7 @@ def _build_portfolio(telemetry: Dict[str, Any]) -> Dict[str, Any]:
         "daily_return_pct": daily_pnl_pct,
         "daily_color": daily_color,
         "daily_state": daily_state,
+        "accounting_truth": accounting_view,
         "realized_pnl_idr": realized_daily_pnl,
         "unrealized_pnl_idr": unrealized_daily_pnl,
         "position_cost_basis_idr": _safe_float(open_pnl.get("position_cost_basis_idr"), 0.0),
@@ -747,6 +849,20 @@ def _build_summary() -> Dict[str, Any]:
     brain_state = _read_json(STATE / "brain_status.json", {})
     services = _service_statuses(telemetry if isinstance(telemetry, dict) else {})
     portfolio = _build_portfolio(telemetry if isinstance(telemetry, dict) else {})
+    accounting_truth = portfolio.get("accounting_truth") if isinstance(portfolio, dict) else {}
+    if not isinstance(accounting_truth, dict):
+        accounting_truth = build_accounting_truth()
+    if isinstance(portfolio, dict):
+        portfolio["accounting_truth"] = accounting_truth
+        portfolio["combined_equity_idr"] = _safe_float(accounting_truth.get("current_total_equity_idr"), _safe_float(portfolio.get("combined_equity_idr"), 0.0))
+        portfolio["total_balance_idr"] = portfolio["combined_equity_idr"]
+        portfolio["reset_total_balance_idr"] = _safe_float(accounting_truth.get("reset_total_balance_idr"), _safe_float(portfolio.get("reset_total_balance_idr"), 0.0))
+        portfolio["start_total_equity_idr"] = portfolio["reset_total_balance_idr"]
+        portfolio["daily_pnl_idr"] = _safe_float(accounting_truth.get("daily_pnl_idr"), _safe_float(portfolio.get("daily_pnl_idr"), 0.0))
+        portfolio["combined_pnl_idr"] = portfolio["daily_pnl_idr"]
+        portfolio["daily_return_idr"] = portfolio["daily_pnl_idr"]
+        portfolio["daily_pnl_pct"] = _safe_float(accounting_truth.get("daily_pnl_pct"), _safe_float(portfolio.get("daily_pnl_pct"), 0.0))
+        portfolio["daily_return_pct"] = portfolio["daily_pnl_pct"]
     pnl_reconciliation = _load_pnl_reconciliation()
 
     # Load Autonomous Intelligence Gates serialized states
@@ -807,6 +923,7 @@ def _build_summary() -> Dict[str, Any]:
         "generated_at": datetime.now(timezone.utc).isoformat(),
         "generated_at_wib": datetime.now(WIB).isoformat(),
         "portfolio": portfolio,
+        "accounting_truth": accounting_truth,
         "pnl_reconciliation": pnl_reconciliation,
         "strategy": {
             "global_mode": str(strategy.get("global_mode") or "UNKNOWN") if isinstance(strategy, dict) else "UNKNOWN",
@@ -1105,6 +1222,7 @@ def _build_control_plane_payload() -> Dict[str, Any]:
     import time
     summary_data = _build_summary()
     portfolio_live = summary_data.get("portfolio", {}) if isinstance(summary_data, dict) else {}
+    accounting_truth = summary_data.get("accounting_truth", {}) if isinstance(summary_data, dict) else {}
     pnl_reconciliation = summary_data.get("pnl_reconciliation", {}) if isinstance(summary_data, dict) else {}
     
     # Build a live treasury snapshot first; venue-scoped permission is derived later.
@@ -1150,23 +1268,23 @@ def _build_control_plane_payload() -> Dict[str, Any]:
                 daily_pct = _safe_float(gov_data.get("daily_pnl_pct"), 0.0)
                 portfolio_live = summary_data.get("portfolio", {}) if isinstance(summary_data, dict) else {}
                 live_open_positions = bool(portfolio_live.get("open_position_pnl")) or bool(portfolio_live.get("active_positions"))
-                live_daily_pnl = _safe_float(portfolio_live.get("daily_pnl_idr"), gov_daily_pnl)
-                live_daily_pct = _safe_float(portfolio_live.get("daily_pnl_pct"), daily_pct)
-                live_equity = _safe_float(portfolio_live.get("combined_equity_idr"), current_equity)
+                live_daily_pnl = _safe_float(accounting_truth.get("daily_pnl_idr"), _safe_float(portfolio_live.get("daily_pnl_idr"), gov_daily_pnl))
+                live_daily_pct = _safe_float(accounting_truth.get("daily_pnl_pct"), _safe_float(portfolio_live.get("daily_pnl_pct"), daily_pct))
+                live_equity = _safe_float(accounting_truth.get("current_total_equity_idr"), _safe_float(portfolio_live.get("combined_equity_idr"), current_equity))
                 risk_remaining = max(0.0, gov_loss_cap + gov_daily_pnl)
                 capital_block.update({
                     "status": str(gov_data.get("status") or "RECONCILED"),
-                    "starting_equity_today_idr": start_equity,
-                    "start_total_equity_idr": start_equity,
-                    "reset_total_balance_idr": _safe_float(gov_data.get("reset_total_balance_idr"), start_equity),
-                    "current_total_equity_idr": current_equity,
-                    "total_balance_idr": current_equity,
+                    "starting_equity_today_idr": _safe_float(accounting_truth.get("reset_total_balance_idr"), start_equity),
+                    "start_total_equity_idr": _safe_float(accounting_truth.get("reset_total_balance_idr"), start_equity),
+                    "reset_total_balance_idr": _safe_float(accounting_truth.get("reset_total_balance_idr"), start_equity),
+                    "current_total_equity_idr": _safe_float(accounting_truth.get("current_total_equity_idr"), current_equity),
+                    "total_balance_idr": _safe_float(accounting_truth.get("current_total_equity_idr"), current_equity),
                     "open_buy_order_reserve_idr": _safe_float(gov_data.get("open_buy_order_reserve_idr"), 0.0),
-                    "daily_pnl_idr": gov_daily_pnl,
-                    "combined_pnl_idr": gov_daily_pnl,
-                    "daily_return_idr": gov_daily_pnl,
-                    "daily_pnl_pct": daily_pct,
-                    "daily_return_pct": daily_pct,
+                    "daily_pnl_idr": _safe_float(accounting_truth.get("daily_pnl_idr"), gov_daily_pnl),
+                    "combined_pnl_idr": _safe_float(accounting_truth.get("daily_pnl_idr"), gov_daily_pnl),
+                    "daily_return_idr": _safe_float(accounting_truth.get("daily_pnl_idr"), gov_daily_pnl),
+                    "daily_pnl_pct": _safe_float(accounting_truth.get("daily_pnl_pct"), daily_pct),
+                    "daily_return_pct": _safe_float(accounting_truth.get("daily_pnl_pct"), daily_pct),
                     "live_current_total_equity_idr": live_equity,
                     "live_daily_pnl_idr": live_daily_pnl,
                     "live_daily_pnl_pct": live_daily_pct,
@@ -1195,13 +1313,13 @@ def _build_control_plane_payload() -> Dict[str, Any]:
     live_has_open_positions = bool(portfolio_live.get("open_position_pnl")) or bool(portfolio_live.get("active_positions"))
     live_current_equity = _safe_float(
         portfolio_live.get("total_balance_idr"),
-        _safe_float(portfolio_live.get("combined_equity_idr"), _safe_float(portfolio_live.get("equity_idr"), 0.0)),
+        _safe_float(portfolio_live.get("combined_equity_idr"), _safe_float(portfolio_live.get("current_total_equity_idr"), 0.0)),
     )
     live_daily_pnl = _safe_float(portfolio_live.get("daily_return_idr"), _safe_float(portfolio_live.get("daily_pnl_idr"), 0.0))
     live_daily_pct = _safe_float(portfolio_live.get("daily_return_pct"), _safe_float(portfolio_live.get("daily_pnl_pct"), 0.0))
     live_start_equity = _safe_float(
         portfolio_live.get("governor_current_total_equity_idr"),
-        _safe_float(portfolio_live.get("reset_total_balance_idr"), _safe_float(portfolio_live.get("combined_equity_idr"), 0.0) - live_daily_pnl),
+        _safe_float(portfolio_live.get("reset_total_balance_idr"), _safe_float(portfolio_live.get("start_total_equity_idr"), 0.0)),
     )
     if not capital_block["current_total_equity_idr"] and live_current_equity:
         capital_block.update({
@@ -1607,19 +1725,19 @@ def _build_control_plane_payload() -> Dict[str, Any]:
         "route_live_ready": route_live_ready,
         "current_entry_approved": current_entry_approved,
         "portfolio": {
-            "combined_equity_idr": _safe_float(portfolio.get("combined_equity_idr"), 0.0),
-            "total_equity_idr": _safe_float(portfolio.get("combined_equity_idr"), 0.0),
-            "starting_equity_today_idr": _safe_float(portfolio.get("governor_current_total_equity_idr"), _safe_float(portfolio.get("reset_total_balance_idr"), 0.0)),
-            "start_total_equity_idr": _safe_float(portfolio.get("governor_current_total_equity_idr"), _safe_float(portfolio.get("reset_total_balance_idr"), 0.0)),
-            "total_balance_idr": _safe_float(portfolio.get("total_balance_idr"), _safe_float(portfolio.get("combined_equity_idr"), 0.0)),
-            "reset_total_balance_idr": _safe_float(portfolio.get("reset_total_balance_idr"), _safe_float(portfolio.get("governor_current_total_equity_idr"), 0.0)),
+            "combined_equity_idr": _safe_float(accounting_truth.get("current_total_equity_idr"), _safe_float(portfolio.get("combined_equity_idr"), 0.0)),
+            "total_equity_idr": _safe_float(accounting_truth.get("current_total_equity_idr"), _safe_float(portfolio.get("combined_equity_idr"), 0.0)),
+            "starting_equity_today_idr": _safe_float(accounting_truth.get("reset_total_balance_idr"), _safe_float(portfolio.get("reset_total_balance_idr"), 0.0)),
+            "start_total_equity_idr": _safe_float(accounting_truth.get("reset_total_balance_idr"), _safe_float(portfolio.get("reset_total_balance_idr"), 0.0)),
+            "total_balance_idr": _safe_float(accounting_truth.get("current_total_equity_idr"), _safe_float(portfolio.get("total_balance_idr"), 0.0)),
+            "reset_total_balance_idr": _safe_float(accounting_truth.get("reset_total_balance_idr"), _safe_float(portfolio.get("reset_total_balance_idr"), 0.0)),
             "idr_cash": _safe_float(portfolio.get("idr_cash"), 0.0),
             "coin_holdings_idr": _safe_float(portfolio.get("coin_holdings_idr"), 0.0),
-            "daily_pnl_idr": _safe_float(portfolio.get("daily_pnl_idr"), 0.0),
-            "combined_pnl_idr": _safe_float(portfolio.get("daily_pnl_idr"), 0.0),
-            "daily_return_idr": _safe_float(portfolio.get("daily_return_idr"), _safe_float(portfolio.get("daily_pnl_idr"), 0.0)),
-            "daily_pnl_pct": _safe_float(portfolio.get("daily_pnl_pct"), 0.0),
-            "daily_return_pct": _safe_float(portfolio.get("daily_return_pct"), _safe_float(portfolio.get("daily_pnl_pct"), 0.0)),
+            "daily_pnl_idr": _safe_float(accounting_truth.get("daily_pnl_idr"), _safe_float(portfolio.get("daily_pnl_idr"), 0.0)),
+            "combined_pnl_idr": _safe_float(accounting_truth.get("daily_pnl_idr"), _safe_float(portfolio.get("daily_pnl_idr"), 0.0)),
+            "daily_return_idr": _safe_float(accounting_truth.get("daily_pnl_idr"), _safe_float(portfolio.get("daily_return_idr"), _safe_float(portfolio.get("daily_pnl_idr"), 0.0))),
+            "daily_pnl_pct": _safe_float(accounting_truth.get("daily_pnl_pct"), _safe_float(portfolio.get("daily_pnl_pct"), 0.0)),
+            "daily_return_pct": _safe_float(accounting_truth.get("daily_pnl_pct"), _safe_float(portfolio.get("daily_return_pct"), _safe_float(portfolio.get("daily_pnl_pct"), 0.0))),
             "daily_pnl_real_idr": _safe_float(portfolio.get("daily_pnl_real_idr"), 0.0),
             "daily_pnl_shadow_idr": _safe_float(portfolio.get("daily_pnl_shadow_idr"), 0.0),
             "real_pnl_idr": _safe_float(portfolio.get("daily_pnl_real_idr"), 0.0),
@@ -1637,6 +1755,7 @@ def _build_control_plane_payload() -> Dict[str, Any]:
             "governor_current_total_equity_idr": _safe_float(portfolio.get("governor_current_total_equity_idr"), 0.0),
             "governor_daily_pnl_idr": _safe_float(portfolio.get("governor_daily_pnl_idr"), 0.0),
             "governor_daily_pnl_pct": _safe_float(portfolio.get("governor_daily_pnl_pct"), 0.0),
+            "accounting_truth": accounting_truth,
             "max_daily_loss_pct": 1.5
         },
         "pnl_reconciliation": pnl_reconciliation,

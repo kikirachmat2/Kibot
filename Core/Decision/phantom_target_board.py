@@ -241,12 +241,13 @@ def build_phantom_target_board() -> Dict[str, Any]:
     executable_routes.sort(key=lambda x: (route_priority(x["route"]), x["wave_score"], x["volume_or_liquidity"], x["change_pct"]), reverse=True)
     ranked_routes.sort(key=lambda x: (route_priority(x["route"]), x["wave_score"], x["volume_or_liquidity"], x["change_pct"]), reverse=True)
     top_targets: List[Dict[str, Any]] = []
-    seen_routes = set()
+    seen_keys = set()
     for item in ranked_routes:
         route_name = str(item.get("route") or "")
-        if route_name in seen_routes and len(top_targets) < 5:
+        identity = f"{route_name}|{str(item.get('mint_or_market') or item.get('symbol') or '').lower()}"
+        if identity in seen_keys and len(top_targets) < 5:
             continue
-        seen_routes.add(route_name)
+        seen_keys.add(identity)
         item = dict(item)
         item["rank"] = len(top_targets) + 1
         top_targets.append(item)

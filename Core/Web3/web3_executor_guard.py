@@ -80,10 +80,15 @@ class Web3ExecutorGuard:
             reasons.append('quote_context_missing')
         if spend_reserve:
             reasons.append('reserve_locked')
-        if route.get('network') == 'base' and route.get('executor') is False:
-            reasons.append('base_executor_missing')
-        if route.get('network') == 'future_web3':
-            reasons.append('future_web3_scout_only')
+        route_network = str(route.get('network') or route.get('route') or "").strip().lower()
+        route_status = str(route.get("status") or "").upper()
+        route_reason = str(route.get("reason") or "").strip()
+        if route_network == 'base':
+            if route_status.startswith("BLOCKED") or route.get('executor') is False:
+                reasons.append(route_reason or 'base_executor_missing')
+        if route_network == 'future_web3':
+            if route_status.startswith("BLOCKED") or route.get('executor') is False:
+                reasons.append(route_reason or 'future_web3_blocked')
 
         fee_state = fee_intelligence or route.get("fee_intelligence") or quote.get("fee_intelligence")
         if not isinstance(fee_state, dict) or not fee_state:

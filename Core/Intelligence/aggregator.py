@@ -13,6 +13,7 @@ from pathlib import Path
 from datetime import datetime, timedelta
 
 from Core.Support.ki_config import WIB
+from Core.Treasury.accounting_truth import build_accounting_truth
 
 class CouncilDataAggregator:
     """
@@ -316,6 +317,14 @@ class CouncilDataAggregator:
         except Exception as e:
             print(f"ERROR [Aggregator]: Indodax balance fetch failed: {e}")
 
+        phantom_state = self._load_state_json("phantom_treasury.json", {})
+        phantom_equity_idr = 0.0
+        if isinstance(phantom_state, dict):
+            phantom_equity_idr = _safe_float(
+                phantom_state.get("total_value_idr"),
+                _safe_float(phantom_state.get("chains", {}).get("base", {}).get("value_idr"), 0.0),
+            )
+
         poly_state = {}
         try:
             async with httpx.AsyncClient(timeout=3.0) as client:
@@ -338,17 +347,21 @@ class CouncilDataAggregator:
         poly_equity_idr = usdc_balance * usd_idr_rate
         active_bets = list(poly_state.get("active_bets") or poly_state.get("top_opportunities") or [])
 
-        combined_equity_idr = idr_balance + poly_equity_idr
+        accounting_truth = build_accounting_truth()
+        live_total_equity_idr = float(idr_balance + phantom_equity_idr)
+        combined_equity_idr = float(accounting_truth.get("current_total_equity_idr", live_total_equity_idr) or 0.0)
         realized_daily_pnl_idr = self._realized_daily_pnl_idr()
         open_pnl = self._active_trade_unrealized_pnl(active_positions)
         unrealized_daily_pnl_idr = float(open_pnl.get("unrealized_pnl_idr", 0.0) or 0.0)
         position_cost_basis_idr = float(open_pnl.get("position_cost_basis_idr", 0.0) or 0.0)
-        daily_pnl_idr = realized_daily_pnl_idr + unrealized_daily_pnl_idr + poly_daily_pnl_idr
-        reset_total_balance_idr = max(combined_equity_idr - daily_pnl_idr, 0.0)
+        reset_total_balance_idr = float(accounting_truth.get("reset_total_balance_idr", max(combined_equity_idr - (realized_daily_pnl_idr + unrealized_daily_pnl_idr), 0.0)) or 0.0)
+        daily_pnl_idr = float(accounting_truth.get("daily_pnl_idr", combined_equity_idr - reset_total_balance_idr) or 0.0)
+        daily_pnl_pct = float(accounting_truth.get("daily_pnl_pct", (daily_pnl_idr / max(reset_total_balance_idr, 1.0)) * 100.0) or 0.0)
         total_balance_idr = combined_equity_idr
         gov_state = self._load_state_json("capital_governor.json", {})
         today = datetime.now(WIB).strftime("%Y-%m-%d")
-        if isinstance(gov_state, dict) and str(gov_state.get("date") or "") == today:
+        governor_fresh_today = isinstance(gov_state, dict) and str(gov_state.get("date") or "") == today and _safe_float(gov_state.get("current_total_equity_idr"), 0.0) > 0.0
+        if governor_fresh_today:
             total_balance_idr = _safe_float(gov_state.get("current_total_equity_idr"), total_balance_idr)
             reset_total_balance_idr = _safe_float(
                 gov_state.get("reset_total_balance_idr"),
@@ -365,10 +378,10 @@ class CouncilDataAggregator:
             open_buy_order_reserve_idr = _safe_float(gov_state.get("open_buy_order_reserve_idr"), 0.0)
         else:
             open_buy_order_reserve_idr = 0.0
-            pnl_base = max(reset_total_balance_idr, position_cost_basis_idr, 1.0)
-            daily_pnl_pct = (daily_pnl_idr / pnl_base * 100.0)
-        if not isinstance(gov_state, dict) or str(gov_state.get("date") or "") != today:
-            pnl_base = max(reset_total_balance_idr, position_cost_basis_idr, 1.0)
+            if live_total_equity_idr > 0.0:
+                total_balance_idr = live_total_equity_idr
+            daily_pnl_idr = total_balance_idr - reset_total_balance_idr
+            pnl_base = max(reset_total_balance_idr, 1.0)
             daily_pnl_pct = (daily_pnl_idr / pnl_base * 100.0)
         green_state = "GREEN" if daily_pnl_idr > 0 else "RECOVERY" if daily_pnl_idr < 0 else "FLAT"
 
@@ -399,6 +412,21 @@ class CouncilDataAggregator:
             "reset_total_balance_idr": reset_total_balance_idr,
             "start_total_equity_idr": reset_total_balance_idr,
             "open_buy_order_reserve_idr": open_buy_order_reserve_idr,
+            "phantom_equity_idr": phantom_equity_idr,
+            "accounting_truth": {
+                **accounting_truth,
+                "current_total_equity_idr": total_balance_idr,
+                "total_balance_idr": total_balance_idr,
+                "reset_total_balance_idr": reset_total_balance_idr,
+                "start_total_equity_idr": reset_total_balance_idr,
+                "daily_pnl_idr": daily_pnl_idr,
+                "combined_pnl_idr": daily_pnl_idr,
+                "daily_return_idr": daily_pnl_idr,
+                "daily_pnl_pct": daily_pnl_pct,
+                "daily_return_pct": daily_pnl_pct,
+                "live_total_equity_idr": live_total_equity_idr,
+                "governor_fresh_today": governor_fresh_today,
+            },
             "polymarket": {
                 "usdc_balance": usdc_balance,
                 "equity_idr": poly_equity_idr,

@@ -839,10 +839,12 @@ class CapitalGovernor:
             # + any pending buy reserve that is already part of the exchange account value.
             indodax_live_equity = indodax_real_balance + indodax_coin_holdings_idr
             phantom_reconciliation = phantom_summary.get("reconciliation", {}) if isinstance(phantom_summary, dict) else {}
-            phantom_ready = (
-                phantom_summary.get("status") in {"OK", "SCOUTING"}
-                and bool(phantom_reconciliation.get("matches_user_wallet"))
-            )
+            phantom_ready = bool(phantom_equity_idr > 0.0)
+            phantom_status = str(phantom_summary.get("status") or "").upper() if isinstance(phantom_summary, dict) else ""
+            if phantom_status in {"OK", "SCOUTING", "DEGRADED"} and phantom_equity_idr > 0.0:
+                phantom_ready = True
+            elif phantom_status in {"OK", "SCOUTING"} and bool(phantom_reconciliation.get("matches_user_wallet")):
+                phantom_ready = True
 
             daily_reset_state = _load_daily_reset_state()
             daily_reset_status = str(daily_reset_state.get("status") or "").upper().strip()
@@ -972,7 +974,10 @@ class CapitalGovernor:
 
             phantom_reason = ""
             if not phantom_ready:
-                phantom_reason = "phantom_reconciliation_required"
+                if phantom_equity_idr > 0.0:
+                    phantom_reason = "phantom_reconciliation_degraded"
+                else:
+                    phantom_reason = "phantom_balance_unavailable"
             elif daily_reset_block:
                 phantom_reason = self.daily_reset_reason or "daily_rollover_exit_pending"
             elif global_hard_stop:

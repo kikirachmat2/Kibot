@@ -15,6 +15,8 @@ Synthesizes market catalysts, security threats, and trending narratives.
 import os
 import json
 import time
+import shutil
+import subprocess
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Dict, List, Any
@@ -27,6 +29,7 @@ from Core.Intelligence.defi_metrics_fetcher import DeFiMetricsFetcher
 
 WORLD_MODEL_FILE = STATE_DIR / "world_model.json"
 AI_TRACE_FILE = STATE_DIR / "ai_decision_trace.json"
+AI_PATROL_FILE = STATE_DIR / "ai_patrol.json"
 
 # Lazy imports to avoid circular dependency
 def get_ai_search():
@@ -54,6 +57,17 @@ class WorldScout:
         self.defi_fetcher = DeFiMetricsFetcher()
         self.adaptation_engine = ScriptAdaptationEngine()
         self.breaker = CircuitBreaker("WORLD_SCOUT", max_failures=3, reset_after_sec=600)
+        self.patrol_services = [
+            "kibot-capital-governor",
+            "kibot-scanner",
+            "kibot-executor",
+            "kibot-indodax-director",
+            "kibot-phantom-brain",
+            "kibot-target-board",
+            "kibot-telemetry",
+            "kibot-dashboard",
+            "kibot-ai-scout",
+        ]
 
     def _log(self, msg: str):
         print(f"[SCOUT][{time.strftime('%Y-%m-%d %H:%M:%S')}] {msg}", flush=True)
@@ -74,6 +88,120 @@ class WorldScout:
             AI_TRACE_FILE.write_text(json.dumps(payload, indent=2), encoding="utf-8")
         except Exception as exc:
             self._log(f"[WARN] Failed to write ai_decision_trace heartbeat: {exc}")
+
+    def _run_command(self, args: List[str], timeout: int = 10) -> Dict[str, Any]:
+        try:
+            proc = subprocess.run(args, capture_output=True, text=True, timeout=timeout, check=False)
+            return {
+                "ok": proc.returncode == 0,
+                "returncode": proc.returncode,
+                "stdout": (proc.stdout or "")[-4000:],
+                "stderr": (proc.stderr or "")[-4000:],
+            }
+        except Exception as exc:
+            return {"ok": False, "returncode": -1, "stdout": "", "stderr": str(exc)}
+
+    def _file_age_s(self, path: Path) -> float:
+        try:
+            if path.exists():
+                return round(time.time() - path.stat().st_mtime, 1)
+        except Exception:
+            pass
+        return -1.0
+
+    async def perform_runtime_patrol(self) -> Dict[str, Any]:
+        self._log("Running 5-minute runtime patrol across services, logs, and support tools...")
+
+        state_files = [
+            "capital_governor.json",
+            "phantom_treasury.json",
+            "indodax_scanner_state.json",
+            "phantom_top_targets.json",
+            "scanner_executor_contract.json",
+            "server_telemetry.json",
+            "ai_decision_trace.json",
+            "ai_strategy_review.json",
+        ]
+        freshness = {}
+        stale = []
+        for name in state_files:
+            path = STATE_DIR / name
+            age = self._file_age_s(path)
+            freshness[name] = age
+            if age < 0:
+                stale.append({"file": name, "reason": "missing"})
+            elif age > 300:
+                stale.append({"file": name, "reason": f"stale_{int(age)}s"})
+
+        services = {}
+        for svc in self.patrol_services:
+            res = self._run_command(["systemctl", "is-active", svc], timeout=5)
+            services[svc] = {
+                "active": bool(res.get("ok")) and "active" in str(res.get("stdout", "")).strip().lower(),
+                "raw": str(res.get("stdout", "")).strip() or str(res.get("stderr", "")).strip(),
+            }
+
+        toolchain = {
+            "gh": bool(shutil.which("gh")),
+            "aider": bool(shutil.which("aider")),
+            "copilot": bool(shutil.which("copilot")),
+        }
+        gh_status = self._run_command(["gh", "auth", "status", "-h", "github.com"], timeout=10) if toolchain["gh"] else {"ok": False, "stdout": "", "stderr": "gh_missing"}
+        copilot_status = self._run_command(["gh", "copilot", "--help"], timeout=10) if toolchain["gh"] else {"ok": False, "stdout": "", "stderr": "gh_missing"}
+        journal_alerts = {}
+        for svc in ("kibot-scanner", "kibot-executor", "kibot-dashboard"):
+            res = self._run_command(["journalctl", "-u", svc, "-n", "20", "--no-pager"], timeout=12)
+            text = f"{res.get('stdout', '')}\n{res.get('stderr', '')}".strip()
+            matches = []
+            for line in text.splitlines():
+                upper = line.upper()
+                if any(token in upper for token in ("ERROR", "CRITICAL", "TRACEBACK", "FAILED", "EXCEPTION")):
+                    matches.append(line.strip())
+            journal_alerts[svc] = matches[:8]
+
+        alerts = []
+        for item in stale:
+            alerts.append(f"{item['file']}:{item['reason']}")
+        for svc, info in services.items():
+            if not info.get("active"):
+                alerts.append(f"{svc}:inactive")
+        if not gh_status.get("ok", False):
+            alerts.append("gh_auth_unavailable")
+
+        payload = {
+            "updated_at": datetime.now(timezone.utc).isoformat(),
+            "objective": "maximize_risk_adjusted_profit_for_boss",
+            "mode": "runtime_patrol",
+            "services": services,
+            "toolchain": {
+                "gh": toolchain["gh"],
+                "gh_auth_ok": bool(gh_status.get("ok")),
+                "aider": toolchain["aider"],
+                "copilot": bool(copilot_status.get("ok")) or toolchain["copilot"],
+            },
+            "state_freshness_s": freshness,
+            "stale_files": stale,
+            "journal_alerts": journal_alerts,
+            "alerts": alerts[:20],
+            "support_action": "continue" if not alerts else "review_and_fix",
+            "next_check_seconds": 300,
+        }
+        AI_PATROL_FILE.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+        try:
+            review_payload = {
+                "status": "COMPLETED",
+                "timestamp": time.time(),
+                "proposed_adjustments": {
+                    "confidence_floor_delta": 0.0,
+                    "min_score_delta": 0.0,
+                    "reasoning": f"runtime_patrol alerts={len(alerts)} support_action={payload['support_action']}",
+                },
+                "runtime_patrol": payload,
+            }
+            (STATE_DIR / "ai_strategy_review.json").write_text(json.dumps(review_payload, indent=2), encoding="utf-8")
+        except Exception as exc:
+            self._log(f"[WARN] Failed to write ai_strategy_review from patrol: {exc}")
+        return payload
 
     async def perform_scouting(self):
         self._log("Initiating global scouting mission...")
@@ -157,6 +285,19 @@ class WorldScout:
                     market_summary=summary_text,
                 )
                 try:
+                    patrol = await self.perform_runtime_patrol()
+                    self._write_ai_trace(
+                        best_action=str((analysis or {}).get("best_action") or "WAIT"),
+                        venue=str((analysis or {}).get("venue") or "indodax"),
+                        reason=f"{str((analysis or {}).get('reason') or 'analysis_update')} | patrol={len(patrol.get('alerts', []))}",
+                        confidence=float((analysis or {}).get("confidence") or 0.0),
+                        risk_status=str((analysis or {}).get("risk_status") or "UNKNOWN"),
+                        next_check_seconds=int((analysis or {}).get("next_check_seconds") or 60),
+                        market_summary=str((analysis or {}).get("market_summary") or summary_text or ""),
+                    )
+                except Exception as patrol_exc:
+                    self._log(f"[WARN] Runtime patrol failed: {patrol_exc}")
+                try:
                     self.adaptation_engine.run_adaptation_cycle()
                 except Exception as adapt_exc:
                     self._log(f"[WARN] Script adaptation cycle failed: {adapt_exc}")
@@ -238,6 +379,7 @@ async def run_scout_loop():
     scout = WorldScout()
     last_global_scout = 0
     last_trace_heartbeat = 0.0
+    last_runtime_patrol = 0.0
     
     while True:
         now = time.time()
@@ -254,7 +396,7 @@ async def run_scout_loop():
             except Exception as e:
                 scout._log(f"[ERROR] Urgent scouting processing failed: {e}")
 
-        # 2. Global Scouting every 5 minutes (300s)
+        # 2. Global Scouting and runtime patrol every 5 minutes (300s)
         if (now - last_global_scout) >= 300:
             try:
                 await scout.perform_scouting()
@@ -262,6 +404,13 @@ async def run_scout_loop():
             except Exception as e:
                 import traceback
                 scout._log(f"[ERROR] Global scouting failed: {e}\n{traceback.format_exc()}")
+
+        if (now - last_runtime_patrol) >= 300:
+            try:
+                await scout.perform_runtime_patrol()
+                last_runtime_patrol = now
+            except Exception as e:
+                scout._log(f"[WARN] Runtime patrol failed: {e}")
 
         # 3. AI decision heartbeat every 60s so healthchecks see a fresh trace
         if (now - last_trace_heartbeat) >= 60:

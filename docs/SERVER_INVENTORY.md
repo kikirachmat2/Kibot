@@ -43,6 +43,8 @@ To prevent false assumptions regarding the "live" status of KiBot, the actual op
 *   **Real Order Verified:** `Yes` (Orders remain gated by RiskGate, Capital Governor, and live-route readiness)
 *   **Kill Switch:** `Not Active` (The `state/KILL_SWITCH` sentinel file is absent, allowing guarded live execution to run)
 *   **Risk Limits:** Strict daily loss threshold set to `1.5%` maximum drawdown.
+*   **Canonical Money Truth:** dashboard/control-plane now treat `total_balance_idr`, `reset_total_balance_idr`, `daily_return_idr`, and `daily_return_pct` as the combined Indodax + Phantom balance contract; cash/coin/reserve splits are secondary context only.
+*   **Runtime Patrol:** `Core/Intelligence/kibot_ai_scout.py` writes `state/ai_patrol.json` every 5 minutes to verify service health, log anomalies, and AI/Copilot/GitHub tooling readiness without blocking live trading.
 
 
 ---

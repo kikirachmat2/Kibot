@@ -44,7 +44,7 @@
 - **Explicit Live Gate**: order real-money hanya jalan jika `KIBOT_LIVE_TRADING_ENABLED=true` atau `KIBOT_TRADING_MODE=live`.
 - **Visual Control Plane**: workflow delegasi dan state runtime bisa dilihat lewat dashboard web interaktif di port `8787` melalui `bin/kibot-dashboard`.
 - **PnL Mark-to-Market**: daily PnL memakai realized PnL + unrealized open trade PnL, bukan sekadar nilai holdings.
-- **Canonical Money Truth**: dashboard, governor, report, dan notifier wajib membaca `total_balance_idr`, `reset_total_balance_idr`, `daily_return_idr`, dan `daily_return_pct` sebagai patokan utama; cash/coin breakdown hanya detail sekunder.
+- **Canonical Money Truth**: dashboard, governor, report, dan notifier wajib membaca `total_balance_idr`, `reset_total_balance_idr`, `daily_return_idr`, dan `daily_return_pct` sebagai patokan utama; total ini merepresentasikan saldo gabungan Indodax + Phantom secara realtime, sedangkan cash/coin breakdown, pending order, dan reserve hanya detail sekunder.
 - **Council-Gated Execution**: scanner tidak lagi boleh bypass Council; executor menerima order real-money hanya dari `COUNCIL_MANDATE` kecuali override env eksplisit.
 - **Anti Tick-Trap Pump Filter**: pump hunter menolak coin dengan tick-size kasar, level harga 24h terlalu sedikit, spread/OBI buruk, atau riwayat candle datar seperti jebakan 1↔2 IDR.
 - **Pump Lifecycle Runtime**: setiap entry harus melewati scanner evidence, fast+deep council, pre-trade orderbook simulation, RiskGate, lalu executor exit-plan.
@@ -60,6 +60,7 @@
 - **No Spam Recovery**: posisi yang tidak bisa dijual karena minimum order exchange ditandai `exit_blocked_until`, bukan dicoba setiap 5 detik tanpa henti.
 - **Wallet-Reconciled State**: executor menyamakan `active_trades.json` dengan wallet/open-orders Indodax live, jadi posisi palsu tidak lagi membuat Council salah hitung.
 - **Bounded Council Thinking**: AI/websearch tetap dipakai, tetapi setiap deliberasi punya timeout dan deterministic fallback berbasis evidence lokal agar sistem tidak freeze saat provider lambat.
+- **Runtime Patrol**: `Core/Intelligence/kibot_ai_scout.py` menjalankan patrol runtime setiap 5 menit untuk cek service, state freshness, log error, dan kesiapan tooling AI/Copilot/GitHub tanpa menjadi blocking path trading.
 - **WIB Business Day**: RiskGate, dashboard, midnight report, dan PnL harian memakai tanggal WIB, bukan timezone UTC server.
 - **System Commander**: health non-trading dipusatkan di `Core/Support/system_commander.py`, yang menilai service, resource, model, inventory, provider/source health, drift GitHub/server, dan operator-required state.
 - **Honest Autonomy Register**: strategy docs membedakan blueprint matang vs runtime maturity, supaya dashboard dan operator tidak salah menganggap dokumen “100%” sebagai bukti runtime tanpa smoke test.
