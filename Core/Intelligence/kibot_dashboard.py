@@ -579,9 +579,9 @@ def _translate_to_human(agent: str, message: str, tag: str) -> str:
         import re
         m = re.search(r"Combined\s+([\d,.]+)\s+IDR\s*\|\s*cash\s*([\d,.]+)\s*\|\s*koin\s*([\d,.]+)", msg, re.IGNORECASE)
         if m:
-            equity, cash, coin = m.groups()
-            return f"Total portofolio terpantau di angka Rp {equity} IDR (Kas: Rp {cash}, Aset aktif: Rp {coin}). Skema alokasi aman terkendali."
-        return f"Portofolio terkelola dengan total ekuitas Rp {msg}. Alokasi modal optimal."
+            equity, _, _ = m.groups()
+            return f"Total saldo gabungan terpantau di angka Rp {equity} IDR."
+        return f"Total saldo gabungan terkelola di angka Rp {msg}."
 
     # 2. Council
     if agent == "Council":
@@ -1151,6 +1151,7 @@ def _build_control_plane_payload() -> Dict[str, Any]:
                         "total_balance_idr": current_equity,
                         "open_buy_order_reserve_idr": _safe_float(gov_data.get("open_buy_order_reserve_idr"), 0.0),
                         "daily_pnl_idr": gov_daily_pnl,
+                        "combined_pnl_idr": gov_daily_pnl,
                         "daily_pnl_pct": daily_pct,
                         "live_current_total_equity_idr": live_equity,
                         "live_daily_pnl_idr": live_daily_pnl,
@@ -1590,6 +1591,7 @@ def _build_control_plane_payload() -> Dict[str, Any]:
             "idr_cash": _safe_float(portfolio.get("idr_cash"), 0.0),
             "coin_holdings_idr": _safe_float(portfolio.get("coin_holdings_idr"), 0.0),
             "daily_pnl_idr": _safe_float(portfolio.get("daily_pnl_idr"), 0.0),
+            "combined_pnl_idr": _safe_float(portfolio.get("daily_pnl_idr"), 0.0),
             "daily_pnl_pct": _safe_float(portfolio.get("daily_pnl_pct"), 0.0),
             "daily_pnl_real_idr": _safe_float(portfolio.get("daily_pnl_real_idr"), 0.0),
             "daily_pnl_shadow_idr": _safe_float(portfolio.get("daily_pnl_shadow_idr"), 0.0),
