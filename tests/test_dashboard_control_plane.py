@@ -37,9 +37,14 @@ def test_control_plane_payload_structure():
     port = data["portfolio"]
     assert "combined_equity_idr" in port
     assert "total_equity_idr" in port
+    assert "total_balance_idr" in port
+    assert "reset_total_balance_idr" in port
     assert "daily_pnl_real_idr" in port
     assert "daily_pnl_shadow_idr" in port
     assert "real_pnl_idr" in port
+    assert "combined_pnl_idr" in port
+    assert "daily_return_idr" in port
+    assert "daily_return_pct" in port
 
     # 3. Venue command performance cards
     assert "venues" in data
@@ -157,6 +162,8 @@ def test_control_plane_preserves_explicit_hard_stop_reason(tmp_path, monkeypatch
     assert payload["mode"]["allow_new_live_orders_reason"].startswith("global_daily_loss_cap_breached")
     assert payload["capital"]["allow_new_orders_reason"].startswith("global_daily_loss_cap_breached")
     assert payload["capital"]["pending_orders_count"] == 0
+    assert payload["capital"]["combined_pnl_idr"] == -10_000
+    assert payload["capital"]["reset_total_balance_idr"] == 100_000
 
 
 def test_control_plane_prefers_fresh_governor_total_equity_with_open_positions(tmp_path, monkeypatch):
@@ -188,6 +195,8 @@ def test_control_plane_prefers_fresh_governor_total_equity_with_open_positions(t
     })
 
     assert portfolio["combined_equity_idr"] == 100_000
+    assert portfolio["total_balance_idr"] == 100_000
+    assert portfolio["reset_total_balance_idr"] == 100_000
     assert portfolio["daily_pnl_source"] == "capital_governor"
 
 

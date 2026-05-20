@@ -344,8 +344,32 @@ class CouncilDataAggregator:
         unrealized_daily_pnl_idr = float(open_pnl.get("unrealized_pnl_idr", 0.0) or 0.0)
         position_cost_basis_idr = float(open_pnl.get("position_cost_basis_idr", 0.0) or 0.0)
         daily_pnl_idr = realized_daily_pnl_idr + unrealized_daily_pnl_idr + poly_daily_pnl_idr
-        pnl_base = max(combined_equity_idr - daily_pnl_idr, position_cost_basis_idr, 1.0)
-        daily_pnl_pct = (daily_pnl_idr / pnl_base * 100.0)
+        reset_total_balance_idr = max(combined_equity_idr - daily_pnl_idr, 0.0)
+        total_balance_idr = combined_equity_idr
+        gov_state = self._load_state_json("capital_governor.json", {})
+        today = datetime.now(WIB).strftime("%Y-%m-%d")
+        if isinstance(gov_state, dict) and str(gov_state.get("date") or "") == today:
+            total_balance_idr = _safe_float(gov_state.get("current_total_equity_idr"), total_balance_idr)
+            reset_total_balance_idr = _safe_float(
+                gov_state.get("reset_total_balance_idr"),
+                _safe_float(gov_state.get("start_total_equity_idr"), reset_total_balance_idr),
+            )
+            daily_pnl_idr = _safe_float(
+                gov_state.get("daily_return_idr"),
+                _safe_float(gov_state.get("daily_pnl_idr"), daily_pnl_idr),
+            )
+            daily_pnl_pct = _safe_float(
+                gov_state.get("daily_return_pct"),
+                _safe_float(gov_state.get("daily_pnl_pct"), daily_pnl_pct),
+            )
+            open_buy_order_reserve_idr = _safe_float(gov_state.get("open_buy_order_reserve_idr"), 0.0)
+        else:
+            open_buy_order_reserve_idr = 0.0
+            pnl_base = max(reset_total_balance_idr, position_cost_basis_idr, 1.0)
+            daily_pnl_pct = (daily_pnl_idr / pnl_base * 100.0)
+        if not isinstance(gov_state, dict) or str(gov_state.get("date") or "") != today:
+            pnl_base = max(reset_total_balance_idr, position_cost_basis_idr, 1.0)
+            daily_pnl_pct = (daily_pnl_idr / pnl_base * 100.0)
         green_state = "GREEN" if daily_pnl_idr > 0 else "RECOVERY" if daily_pnl_idr < 0 else "FLAT"
 
         snapshot.update({
@@ -356,6 +380,9 @@ class CouncilDataAggregator:
             "return_pct": daily_pnl_pct,
             "daily_pnl_idr": daily_pnl_idr,
             "daily_pnl_pct": daily_pnl_pct,
+            "combined_pnl_idr": daily_pnl_idr,
+            "daily_return_idr": daily_pnl_idr,
+            "daily_return_pct": daily_pnl_pct,
             "realized_pnl_idr": realized_daily_pnl_idr,
             "unrealized_pnl_idr": unrealized_daily_pnl_idr,
             "position_cost_basis_idr": position_cost_basis_idr,
@@ -367,7 +394,11 @@ class CouncilDataAggregator:
                 "reason": "open_trade_mark_to_market" if open_pnl.get("positions") else "realized_daily_pnl",
             },
             "active_positions": active_positions,
-            "combined_equity_idr": combined_equity_idr,
+            "combined_equity_idr": total_balance_idr,
+            "total_balance_idr": total_balance_idr,
+            "reset_total_balance_idr": reset_total_balance_idr,
+            "start_total_equity_idr": reset_total_balance_idr,
+            "open_buy_order_reserve_idr": open_buy_order_reserve_idr,
             "polymarket": {
                 "usdc_balance": usdc_balance,
                 "equity_idr": poly_equity_idr,

@@ -44,6 +44,7 @@
 - **Explicit Live Gate**: order real-money hanya jalan jika `KIBOT_LIVE_TRADING_ENABLED=true` atau `KIBOT_TRADING_MODE=live`.
 - **Visual Control Plane**: workflow delegasi dan state runtime bisa dilihat lewat dashboard web interaktif di port `8787` melalui `bin/kibot-dashboard`.
 - **PnL Mark-to-Market**: daily PnL memakai realized PnL + unrealized open trade PnL, bukan sekadar nilai holdings.
+- **Canonical Money Truth**: dashboard, governor, report, dan notifier wajib membaca `total_balance_idr`, `reset_total_balance_idr`, `daily_return_idr`, dan `daily_return_pct` sebagai patokan utama; cash/coin breakdown hanya detail sekunder.
 - **Council-Gated Execution**: scanner tidak lagi boleh bypass Council; executor menerima order real-money hanya dari `COUNCIL_MANDATE` kecuali override env eksplisit.
 - **Anti Tick-Trap Pump Filter**: pump hunter menolak coin dengan tick-size kasar, level harga 24h terlalu sedikit, spread/OBI buruk, atau riwayat candle datar seperti jebakan 1↔2 IDR.
 - **Pump Lifecycle Runtime**: setiap entry harus melewati scanner evidence, fast+deep council, pre-trade orderbook simulation, RiskGate, lalu executor exit-plan.

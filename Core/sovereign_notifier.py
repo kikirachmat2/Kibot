@@ -186,11 +186,10 @@ class SovereignNotifier:
         # 3. Indodax Financials
         portfolio = data.get("portfolio", {})
         equity = portfolio.get("equity_idr", 0)
-        combined_equity = portfolio.get("combined_equity_idr", equity)
-        idr_cash = portfolio.get("idr_cash", 0)
-        coin_holdings = portfolio.get("coin_holdings_idr", 0)
-        pnl_val = portfolio.get("daily_pnl_idr", portfolio.get("pnl_idr", 0))
-        ret_pct = portfolio.get("daily_pnl_pct", portfolio.get("return_pct", 0.0))
+        combined_equity = portfolio.get("total_balance_idr", portfolio.get("combined_equity_idr", equity))
+        reset_balance = portfolio.get("reset_total_balance_idr", portfolio.get("start_total_equity_idr", 0))
+        pnl_val = portfolio.get("daily_return_idr", portfolio.get("daily_pnl_idr", portfolio.get("pnl_idr", 0)))
+        ret_pct = portfolio.get("daily_return_pct", portfolio.get("daily_pnl_pct", portfolio.get("return_pct", 0.0)))
         daily_state = portfolio.get("daily_state", {}) if isinstance(portfolio.get("daily_state"), dict) else {}
         try:
             pnl_num = float(pnl_val or 0)
@@ -244,7 +243,7 @@ class SovereignNotifier:
 
 ━━━━━━━━━━━━━━━━━━━━━━
 
-💼 Combined Equity : Rp {combined_equity:,.0f}
+💼 Total Saldo Gabungan : Rp {combined_equity:,.0f}
 🎯 Daily State     : {daily_color}
 
 {batam_str}
@@ -258,11 +257,9 @@ class SovereignNotifier:
 ━━━━━━━━━━━━━━━━━━━━━━
 🇮🇩 INDODAX
 
-💰 Total Saldo : Rp {equity:,.0f}
-💵 Cash        : Rp {float(idr_cash or 0):,.0f}
-🪙 Coin Value  : Rp {float(coin_holdings or 0):,.0f}
-{ret_emoji} Return      : {ret_num:+.2f}%
-{pnl_emoji} PnL         : Rp {pnl_num:,.0f}
+💰 Saldo Setelah Reset : Rp {reset_balance:,.0f}
+{ret_emoji} PnL Harian %  : {ret_num:+.2f}%
+{pnl_emoji} Return Harian : Rp {pnl_num:,.0f}
 {wl_emoji} Trade W/L   : {wl_ratio}
 
 📂 Portofolio:

@@ -127,6 +127,9 @@ async def test_capital_governor_drawdown_enforcement(monkeypatch, tmp_path):
         gov_data = await governor.reconcile_governor()
         # total_equity = 100k + (5 * 16000) = 180,000 IDR
         assert gov_data["current_total_equity_idr"] == 180000.0
+        assert gov_data["total_balance_idr"] == 180000.0
+        assert gov_data["combined_pnl_idr"] == gov_data["daily_pnl_idr"]
+        assert gov_data["reset_total_balance_idr"] == gov_data["start_total_equity_idr"]
         
         # Verify GOVERNOR_FILE exists
         assert GOVERNOR_FILE.exists()

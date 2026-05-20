@@ -510,6 +510,10 @@ def _build_portfolio(telemetry: Dict[str, Any]) -> Dict[str, Any]:
         combined_equity = _safe_float(gov_data.get("current_total_equity_idr"), combined_equity)
         daily_pnl = _safe_float(gov_data.get("daily_pnl_idr"), daily_pnl)
         daily_pnl_pct = _safe_float(gov_data.get("daily_pnl_pct"), daily_pnl_pct)
+    reset_total_balance = _safe_float(
+        gov_data.get("reset_total_balance_idr"),
+        _safe_float(gov_data.get("start_total_equity_idr"), combined_equity - daily_pnl),
+    )
 
     daily_state = portfolio.get("daily_state") if isinstance(portfolio.get("daily_state"), dict) else {}
     daily_color = "GREEN" if daily_pnl > 0 else "RECOVERY" if daily_pnl < 0 else "FLAT"
@@ -533,13 +537,17 @@ def _build_portfolio(telemetry: Dict[str, Any]) -> Dict[str, Any]:
         "coin_holdings_idr": coin_holdings,
         "combined_equity_idr": combined_equity,
         "total_balance_idr": combined_equity,
+        "reset_total_balance_idr": reset_total_balance,
         "open_buy_order_reserve_idr": _safe_float(gov_data.get("open_buy_order_reserve_idr"), 0.0) if isinstance(gov_data, dict) else 0.0,
         "daily_pnl_idr": daily_pnl,
+        "combined_pnl_idr": daily_pnl,
+        "daily_return_idr": daily_pnl,
         "daily_pnl_real_idr": daily_pnl_real_idr,
         "daily_pnl_shadow_idr": daily_pnl_shadow_idr,
         "daily_pnl_source": "capital_governor" if governor_fresh_today else "live_portfolio",
         "live_trading_enabled": live_trading_enabled,
         "daily_pnl_pct": daily_pnl_pct,
+        "daily_return_pct": daily_pnl_pct,
         "daily_color": daily_color,
         "daily_state": daily_state,
         "realized_pnl_idr": realized_daily_pnl,
@@ -1105,10 +1113,15 @@ def _build_control_plane_payload() -> Dict[str, Any]:
     capital_block = {
         "status": "UNRECONCILED",
         "starting_equity_today_idr": 0.0,
+        "start_total_equity_idr": 0.0,
+        "reset_total_balance_idr": 0.0,
         "current_total_equity_idr": 0.0,
         "total_balance_idr": 0.0,
         "daily_pnl_idr": 0.0,
+        "combined_pnl_idr": 0.0,
+        "daily_return_idr": 0.0,
         "daily_pnl_pct": 0.0,
+        "daily_return_pct": 0.0,
         "max_daily_loss_pct": 1.5,
         "risk_remaining_idr": 0.0,
         "date": "",
@@ -1130,46 +1143,49 @@ def _build_control_plane_payload() -> Dict[str, Any]:
                 gov_state_data = gov_data if isinstance(gov_data, dict) else {}
                 
                 today = datetime.now(WIB).strftime("%Y-%m-%d")
+                gov_loss_cap = _safe_float(gov_data.get("max_daily_loss_idr"), 0.0)
+                gov_daily_pnl = _safe_float(gov_data.get("daily_pnl_idr"), 0.0)
+                start_equity = _safe_float(gov_data.get("start_total_equity_idr"), 0.0)
+                current_equity = _safe_float(gov_data.get("current_total_equity_idr"), 0.0)
+                daily_pct = _safe_float(gov_data.get("daily_pnl_pct"), 0.0)
+                portfolio_live = summary_data.get("portfolio", {}) if isinstance(summary_data, dict) else {}
+                live_open_positions = bool(portfolio_live.get("open_position_pnl")) or bool(portfolio_live.get("active_positions"))
+                live_daily_pnl = _safe_float(portfolio_live.get("daily_pnl_idr"), gov_daily_pnl)
+                live_daily_pct = _safe_float(portfolio_live.get("daily_pnl_pct"), daily_pct)
+                live_equity = _safe_float(portfolio_live.get("combined_equity_idr"), current_equity)
+                risk_remaining = max(0.0, gov_loss_cap + gov_daily_pnl)
+                capital_block.update({
+                    "status": str(gov_data.get("status") or "RECONCILED"),
+                    "starting_equity_today_idr": start_equity,
+                    "start_total_equity_idr": start_equity,
+                    "reset_total_balance_idr": _safe_float(gov_data.get("reset_total_balance_idr"), start_equity),
+                    "current_total_equity_idr": current_equity,
+                    "total_balance_idr": current_equity,
+                    "open_buy_order_reserve_idr": _safe_float(gov_data.get("open_buy_order_reserve_idr"), 0.0),
+                    "daily_pnl_idr": gov_daily_pnl,
+                    "combined_pnl_idr": gov_daily_pnl,
+                    "daily_return_idr": gov_daily_pnl,
+                    "daily_pnl_pct": daily_pct,
+                    "daily_return_pct": daily_pct,
+                    "live_current_total_equity_idr": live_equity,
+                    "live_daily_pnl_idr": live_daily_pnl,
+                    "live_daily_pnl_pct": live_daily_pct,
+                    "live_has_open_positions": live_open_positions,
+                    "daily_pnl_source": "capital_governor",
+                    "max_daily_loss_pct": _safe_float(gov_data.get("max_daily_loss_pct"), 1.5),
+                    "risk_remaining_idr": risk_remaining,
+                    "global_risk_remaining_idr": risk_remaining,
+                    "date": str(gov_data.get("date") or today),
+                })
                 if gov_data.get("date") != today:
                     rejection_reason = f"FAIL-CLOSED: Capital Governor state date '{gov_data.get('date')}' is not today '{today}'"
                 else:
-                    gov_loss_cap = _safe_float(gov_data.get("max_daily_loss_idr"), 0.0)
-                    gov_daily_pnl = _safe_float(gov_data.get("daily_pnl_idr"), 0.0)
-                    start_equity = _safe_float(gov_data.get("start_total_equity_idr"), 0.0)
-                    current_equity = _safe_float(gov_data.get("current_total_equity_idr"), 0.0)
-                    daily_pct = _safe_float(gov_data.get("daily_pnl_pct"), 0.0)
-                    portfolio_live = summary_data.get("portfolio", {}) if isinstance(summary_data, dict) else {}
-                    live_open_positions = bool(portfolio_live.get("open_position_pnl")) or bool(portfolio_live.get("active_positions"))
-                    live_daily_pnl = _safe_float(portfolio_live.get("daily_pnl_idr"), gov_daily_pnl)
-                    live_daily_pct = _safe_float(portfolio_live.get("daily_pnl_pct"), daily_pct)
-                    live_equity = _safe_float(portfolio_live.get("combined_equity_idr"), current_equity)
-                    risk_remaining = max(0.0, gov_loss_cap + gov_daily_pnl)
-                    capital_block.update({
-                        "status": str(gov_data.get("status") or "RECONCILED"),
-                        "starting_equity_today_idr": start_equity,
-                        "current_total_equity_idr": current_equity,
-                        "total_balance_idr": current_equity,
-                        "open_buy_order_reserve_idr": _safe_float(gov_data.get("open_buy_order_reserve_idr"), 0.0),
-                        "daily_pnl_idr": gov_daily_pnl,
-                        "combined_pnl_idr": gov_daily_pnl,
-                        "daily_pnl_pct": daily_pct,
-                        "live_current_total_equity_idr": live_equity,
-                        "live_daily_pnl_idr": live_daily_pnl,
-                        "live_daily_pnl_pct": live_daily_pct,
-                        "live_has_open_positions": live_open_positions,
-                        "daily_pnl_source": "capital_governor",
-                        "max_daily_loss_pct": _safe_float(gov_data.get("max_daily_loss_pct"), 1.5),
-                        "risk_remaining_idr": risk_remaining,
-                        "global_risk_remaining_idr": risk_remaining,
-                        "date": str(gov_data.get("date") or today),
-                    })
-                    gov_status = str(gov_data.get("status") or "").upper()
-                    if gov_status == "RECONCILED":
-                        rejection_reason = "Governor reconciled; venue-scoped permission pending"
-                    elif gov_status == "BLOCKED_WITH_REASON":
-                        rejection_reason = str(gov_data.get("allow_new_orders_reason") or "capital_governor_blocked")
-                    else:
-                        rejection_reason = f"FAIL-CLOSED: Capital Governor status is '{gov_data.get('status')}' (expected 'RECONCILED')"
+                    rejection_reason = "Governor reconciled; venue-scoped permission pending"
+                gov_status = str(gov_data.get("status") or "").upper()
+                if gov_status == "BLOCKED_WITH_REASON":
+                    rejection_reason = str(gov_data.get("allow_new_orders_reason") or "capital_governor_blocked")
+                elif gov_status not in {"", "RECONCILED", "BLOCKED_WITH_REASON"}:
+                    rejection_reason = f"FAIL-CLOSED: Capital Governor status is '{gov_data.get('status')}' (expected 'RECONCILED')"
         except Exception as e:
             rejection_reason = f"FAIL-CLOSED: Error validating Capital Governor: {e}"
 
@@ -1178,22 +1194,27 @@ def _build_control_plane_payload() -> Dict[str, Any]:
     # governor branch above, but the display should not zero out the portfolio.
     live_has_open_positions = bool(portfolio_live.get("open_position_pnl")) or bool(portfolio_live.get("active_positions"))
     live_current_equity = _safe_float(
-        portfolio_live.get("combined_equity_idr"),
-        _safe_float(portfolio_live.get("equity_idr"), 0.0),
+        portfolio_live.get("total_balance_idr"),
+        _safe_float(portfolio_live.get("combined_equity_idr"), _safe_float(portfolio_live.get("equity_idr"), 0.0)),
     )
-    live_daily_pnl = _safe_float(portfolio_live.get("daily_pnl_idr"), 0.0)
-    live_daily_pct = _safe_float(portfolio_live.get("daily_pnl_pct"), 0.0)
+    live_daily_pnl = _safe_float(portfolio_live.get("daily_return_idr"), _safe_float(portfolio_live.get("daily_pnl_idr"), 0.0))
+    live_daily_pct = _safe_float(portfolio_live.get("daily_return_pct"), _safe_float(portfolio_live.get("daily_pnl_pct"), 0.0))
     live_start_equity = _safe_float(
         portfolio_live.get("governor_current_total_equity_idr"),
-        _safe_float(portfolio_live.get("combined_equity_idr"), 0.0) - live_daily_pnl,
+        _safe_float(portfolio_live.get("reset_total_balance_idr"), _safe_float(portfolio_live.get("combined_equity_idr"), 0.0) - live_daily_pnl),
     )
     if not capital_block["current_total_equity_idr"] and live_current_equity:
         capital_block.update({
             "starting_equity_today_idr": live_start_equity,
+            "start_total_equity_idr": live_start_equity,
+            "reset_total_balance_idr": live_start_equity,
             "current_total_equity_idr": live_current_equity,
             "total_balance_idr": live_current_equity,
             "daily_pnl_idr": live_daily_pnl,
             "daily_pnl_pct": live_daily_pct,
+            "combined_pnl_idr": live_daily_pnl,
+            "daily_return_idr": live_daily_pnl,
+            "daily_return_pct": live_daily_pct,
             "live_current_total_equity_idr": live_current_equity,
             "live_daily_pnl_idr": live_daily_pnl,
             "live_daily_pnl_pct": live_daily_pct,
@@ -1588,11 +1609,17 @@ def _build_control_plane_payload() -> Dict[str, Any]:
         "portfolio": {
             "combined_equity_idr": _safe_float(portfolio.get("combined_equity_idr"), 0.0),
             "total_equity_idr": _safe_float(portfolio.get("combined_equity_idr"), 0.0),
+            "starting_equity_today_idr": _safe_float(portfolio.get("governor_current_total_equity_idr"), _safe_float(portfolio.get("reset_total_balance_idr"), 0.0)),
+            "start_total_equity_idr": _safe_float(portfolio.get("governor_current_total_equity_idr"), _safe_float(portfolio.get("reset_total_balance_idr"), 0.0)),
+            "total_balance_idr": _safe_float(portfolio.get("total_balance_idr"), _safe_float(portfolio.get("combined_equity_idr"), 0.0)),
+            "reset_total_balance_idr": _safe_float(portfolio.get("reset_total_balance_idr"), _safe_float(portfolio.get("governor_current_total_equity_idr"), 0.0)),
             "idr_cash": _safe_float(portfolio.get("idr_cash"), 0.0),
             "coin_holdings_idr": _safe_float(portfolio.get("coin_holdings_idr"), 0.0),
             "daily_pnl_idr": _safe_float(portfolio.get("daily_pnl_idr"), 0.0),
             "combined_pnl_idr": _safe_float(portfolio.get("daily_pnl_idr"), 0.0),
+            "daily_return_idr": _safe_float(portfolio.get("daily_return_idr"), _safe_float(portfolio.get("daily_pnl_idr"), 0.0)),
             "daily_pnl_pct": _safe_float(portfolio.get("daily_pnl_pct"), 0.0),
+            "daily_return_pct": _safe_float(portfolio.get("daily_return_pct"), _safe_float(portfolio.get("daily_pnl_pct"), 0.0)),
             "daily_pnl_real_idr": _safe_float(portfolio.get("daily_pnl_real_idr"), 0.0),
             "daily_pnl_shadow_idr": _safe_float(portfolio.get("daily_pnl_shadow_idr"), 0.0),
             "real_pnl_idr": _safe_float(portfolio.get("daily_pnl_real_idr"), 0.0),
