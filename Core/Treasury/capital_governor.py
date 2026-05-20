@@ -195,6 +195,19 @@ def load_daily_inventory_snapshot(state_dir: Optional[Path] = None) -> Dict[str,
     snapshot["open_count"] = int(snapshot["open_count"])
     return snapshot
 
+
+def _load_daily_reset_state(state_dir: Optional[Path] = None) -> Dict[str, Any]:
+    """Read the daily reset coordinator state if it exists."""
+    base_dir = state_dir or STATE_DIR
+    path = base_dir / "daily_reset_state.json"
+    if not path.exists():
+        return {}
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        return {}
+    return data if isinstance(data, dict) else {}
+
 class CapitalGovernor:
     """
     Sovereign Capital Governor
@@ -621,6 +634,29 @@ class CapitalGovernor:
                 phantom_summary.get("status") in {"OK", "SCOUTING"}
                 and bool(phantom_reconciliation.get("matches_user_wallet"))
             )
+
+            daily_reset_state = _load_daily_reset_state()
+            daily_reset_status = str(daily_reset_state.get("status") or "").upper().strip()
+            daily_reset_current_mode = str(daily_reset_state.get("current_global_mode") or "").upper().strip()
+            daily_reset_active = bool(
+                daily_reset_status in {"PRE_CLOSE", "EXITING", "PENDING_RESET"}
+                or (
+                    daily_reset_status == "MONITORING"
+                    and daily_reset_current_mode == "EXIT_ALL"
+                    and bool(daily_reset_state.get("forced_exit_all", False))
+                )
+            )
+            if daily_reset_active:
+                self.pending_daily_reset = True
+                self.daily_reset_reason = str(
+                    daily_reset_state.get("reason")
+                    or self.daily_reset_reason
+                    or "daily_rollover_exit_pending"
+                ).strip()
+            elif daily_reset_status == "RESET_DONE" and self.pending_daily_reset:
+                self.pending_daily_reset = False
+                if self.daily_reset_reason in {"", "daily_rollover_exit_pending"}:
+                    self.daily_reset_reason = ""
             
             # Read in-flight internal transfers destined for Phantom
             in_flight_idr = self._read_in_flight_transfers(self.last_reset_date, phantom_equity_idr)
