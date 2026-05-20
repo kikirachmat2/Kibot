@@ -127,15 +127,6 @@ class PumpfunScanner:
 
     async def _score_candidate(self, candidate: Dict[str, Any]) -> Dict[str, Any]:
         mint = str(candidate.get("mint") or "")
-        route = await self.detector.detect_best_effort(mint, pair_hint=candidate.get("pair") if isinstance(candidate.get("pair"), dict) else {})
-        candidate["route_type"] = route.get("route_type", "UNSUPPORTED")
-        candidate["route_in"] = "Jupiter" if route.get("buy_route_available") else "Pumpfun"
-        candidate["route_out"] = "Jupiter" if route.get("sell_route_available") else "none"
-        candidate["route_availability"] = "VERIFIED" if route.get("buy_route_available") else "UNVERIFIED"
-        candidate["exit_route_availability"] = "VERIFIED" if route.get("sell_route_available") else "FAILED"
-        candidate["route_check_source"] = "pumpfun_route_detector"
-        candidate["route_state"] = route
-
         strategy_eval = self.strategy.evaluate_candidate(
             {
                 "symbol": candidate.get("symbol"),
@@ -156,6 +147,31 @@ class PumpfunScanner:
         )
 
         candidate.update(strategy_eval)
+        route = await self.detector.detect_best_effort(
+            mint,
+            pair_hint=candidate.get("pair") if isinstance(candidate.get("pair"), dict) else {},
+            trade_size_idr=float(candidate.get("max_trade_idr", 0) or 0.0),
+            balance_snapshot=None,
+        )
+        candidate["route_type"] = route.get("route_type", "UNSUPPORTED")
+        candidate["route_in"] = "Jupiter" if route.get("buy_route_available") else "Pumpfun"
+        candidate["route_out"] = "Jupiter" if route.get("sell_route_available") else "none"
+        candidate["route_availability"] = "VERIFIED" if route.get("buy_route_available") else "UNVERIFIED"
+        candidate["exit_route_availability"] = "VERIFIED" if route.get("sell_route_available") else "FAILED"
+        candidate["route_check_source"] = "pumpfun_route_detector"
+        candidate["route_state"] = route
+        candidate["fee_intelligence"] = (
+            route.get("jupiter_quote", {}).get("fee_intelligence")
+            if isinstance(route.get("jupiter_quote"), dict)
+            else {}
+        ) or candidate.get("fee_intelligence") or {}
+        if isinstance(candidate.get("fee_intelligence"), dict):
+            candidate["gas_fee_idr"] = float(candidate["fee_intelligence"].get("gas_fee_idr", 0.0) or 0.0)
+            candidate["gas_floor_idr"] = float(candidate["fee_intelligence"].get("gas_floor_idr", 0.0) or 0.0)
+            candidate["gas_mode"] = str(candidate["fee_intelligence"].get("gas_mode", "") or "")
+            candidate["gas_affordable"] = bool(candidate["fee_intelligence"].get("gas_affordable", True))
+            candidate["gas_reason"] = str(candidate["fee_intelligence"].get("gas_reason", "") or "")
+
         if candidate["route_type"] == "PUMPFUN_BONDING_CURVE":
             candidate["decision"] = "REJECT"
             candidate["reason"] = "no_exit_route"
@@ -163,17 +179,26 @@ class PumpfunScanner:
             candidate["decision"] = "REJECT"
             candidate["reason"] = route.get("reason") or "unsupported_route"
         elif candidate["route_type"] == "JUPITER_ROUTABLE" and candidate.get("decision") == "APPROVE":
+            if not bool(candidate.get("gas_affordable", True)):
+                candidate["decision"] = "REJECT"
+                candidate["reason"] = candidate.get("gas_reason") or "gas_fee_unaffordable"
+                candidate["source_proof"] = candidate.get("source_proof") or {}
+                return candidate
             quote_router = Web3QuoteRouter()
             quote = await quote_router.quote(
                 route="solana",
                 input_asset="So11111111111111111111111111111111111111112",
                 output_asset=mint,
                 amount_raw=int(os.getenv("WEB3_MEME_SCAN_QUOTE_RAW", "10000000") or 10000000),
+                trade_size_idr=float(candidate.get("max_trade_idr", 0) or 0.0),
+                balance_snapshot=None,
+                route_context={"source": "pumpfun_scanner", "mint": mint, "route_type": candidate["route_type"]},
             )
             candidate["quote_ok"] = bool(quote.get("quote_ok"))
             candidate["quote_reason"] = quote.get("reason", "")
             candidate["expected_out"] = quote.get("expected_out", 0)
             candidate["slippage_pct"] = float(quote.get("slippage_pct", 0) or 0)
+            candidate["fee_intelligence"] = quote.get("fee_intelligence") or candidate.get("fee_intelligence") or {}
             safety = self.safety.evaluate(
                 {
                     "liquidity": candidate.get("liquidity_usd", 0),
@@ -186,6 +211,12 @@ class PumpfunScanner:
                     "mint_authority_enabled": False,
                     "freeze_authority_enabled": False,
                     "ev": candidate.get("ev_pct", 0),
+                    "trade_size_idr": float(candidate.get("max_trade_idr", 0) or 0.0),
+                    "gas_fee_idr": float(candidate.get("gas_fee_idr", 0.0) or 0.0),
+                    "gas_floor_idr": float(candidate.get("gas_floor_idr", 0.0) or 0.0),
+                    "gas_mode": candidate.get("gas_mode", ""),
+                    "gas_affordable": bool(candidate.get("gas_affordable", True)),
+                    "gas_reason": candidate.get("gas_reason", ""),
                 }
             )
             candidate["safety_score"] = float(safety.get("score", 0) or 0)

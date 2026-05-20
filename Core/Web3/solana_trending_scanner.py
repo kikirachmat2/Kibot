@@ -44,9 +44,17 @@ class SolanaTrendingScanner:
         STATE_DIR.mkdir(parents=True, exist_ok=True)
         TREND_FILE.write_text(json.dumps(state, indent=2, ensure_ascii=False))
 
-    async def _quote_candidate(self, mint: str, amount_raw: int) -> Dict[str, Any]:
+    async def _quote_candidate(self, mint: str, amount_raw: int, trade_size_idr: float = 0.0) -> Dict[str, Any]:
         router = Web3QuoteRouter()
-        return await router.quote("solana", "So11111111111111111111111111111111111111112", mint, amount_raw)
+        return await router.quote(
+            "solana",
+            "So11111111111111111111111111111111111111112",
+            mint,
+            amount_raw,
+            trade_size_idr=trade_size_idr,
+            balance_snapshot=None,
+            route_context={"source": "solana_trending_scanner", "mint": mint},
+        )
 
     def _evaluate_safety(self, candidate: Dict[str, Any], quote: Dict[str, Any]) -> Dict[str, Any]:
         checker = Web3SafetyChecker()
@@ -61,6 +69,12 @@ class SolanaTrendingScanner:
             "token_type": "solana",
             "mint_authority_enabled": bool(candidate.get("mint_authority_enabled", False)),
             "freeze_authority_enabled": bool(candidate.get("freeze_authority_enabled", False)),
+            "trade_size_idr": float(candidate.get("max_trade_idr", 0) or 0.0),
+            "gas_fee_idr": float(candidate.get("gas_fee_idr", 0.0) or quote.get("gas_floor_idr", 0.0) or quote.get("gas_idr", 0.0) or 0.0),
+            "gas_floor_idr": float(candidate.get("gas_floor_idr", 0.0) or quote.get("gas_floor_idr", 0.0) or quote.get("gas_idr", 0.0) or 0.0),
+            "gas_mode": str(candidate.get("gas_mode") or quote.get("gas_mode") or "unknown"),
+            "gas_affordable": candidate.get("gas_affordable") if candidate.get("gas_affordable") is not None else quote.get("gas_affordable", True),
+            "gas_reason": candidate.get("gas_reason") or quote.get("gas_reason") or "",
         }
         return checker.evaluate(payload)
 
@@ -197,15 +211,34 @@ class SolanaTrendingScanner:
             try:
                 evaluated = strategy.evaluate_candidate(item)
                 merged = {**item, **evaluated}
+                mint = str(merged.get("mint") or "")
                 route_state = await self.route_detector.detect_best_effort(
-                    merged.get("mint", ""),
+                    mint,
                     pair_hint=item.get("pair") if isinstance(item.get("pair"), dict) else {},
+                    trade_size_idr=float(merged.get("max_trade_idr", 0) or 0.0),
+                    balance_snapshot=None,
                 )
                 merged["route_type"] = route_state.get("route_type", "UNSUPPORTED")
                 merged["route_state"] = route_state
                 merged["can_buy"] = bool(route_state.get("buy_route_available"))
                 merged["can_sell"] = bool(route_state.get("sell_route_available"))
-                mint = str(merged.get("mint") or "")
+                merged["fee_intelligence"] = (
+                    route_state.get("jupiter_quote", {}).get("fee_intelligence")
+                    if isinstance(route_state.get("jupiter_quote"), dict)
+                    else {}
+                ) or merged.get("fee_intelligence") or {}
+                if isinstance(merged.get("fee_intelligence"), dict):
+                    merged["gas_fee_idr"] = float(merged["fee_intelligence"].get("gas_fee_idr", 0.0) or 0.0)
+                    merged["gas_floor_idr"] = float(merged["fee_intelligence"].get("gas_floor_idr", 0.0) or 0.0)
+                    merged["gas_mode"] = str(merged["fee_intelligence"].get("gas_mode", "") or "")
+                    merged["gas_affordable"] = bool(merged["fee_intelligence"].get("gas_affordable", True))
+                    merged["gas_reason"] = str(merged["fee_intelligence"].get("gas_reason", "") or "")
+                if merged.get("route_type") == "PUMPFUN_BONDING_CURVE" and not merged.get("can_sell"):
+                    merged["decision"] = "REJECT"
+                    merged["reason"] = "no_exit_route"
+                elif merged.get("route_type") == "UNSUPPORTED":
+                    merged["decision"] = "REJECT"
+                    merged["reason"] = route_state.get("reason") or "unsupported_route"
 
                 if merged.get("decision") == "APPROVE":
                     if not mint:
@@ -219,11 +252,18 @@ class SolanaTrendingScanner:
                         }}
 
                     amount_raw = int(os.getenv("WEB3_MEME_SCAN_QUOTE_RAW", "10000000") or 10000000)
-                    quote = await self._quote_candidate(mint, amount_raw)
+                    quote = await self._quote_candidate(mint, amount_raw, trade_size_idr=float(merged.get("max_trade_idr", 0) or 0.0))
                     merged["quote_ok"] = bool(quote.get("quote_ok"))
                     merged["quote_reason"] = quote.get("reason", "")
                     merged["expected_out"] = quote.get("expected_out", 0)
                     merged["slippage_pct"] = float(quote.get("slippage_pct", merged.get("slippage_pct", 0)) or 0)
+                    merged["fee_intelligence"] = quote.get("fee_intelligence") or merged.get("fee_intelligence") or {}
+                    if isinstance(merged.get("fee_intelligence"), dict):
+                        merged["gas_fee_idr"] = float(merged["fee_intelligence"].get("gas_fee_idr", 0.0) or 0.0)
+                        merged["gas_floor_idr"] = float(merged["fee_intelligence"].get("gas_floor_idr", 0.0) or 0.0)
+                        merged["gas_mode"] = str(merged["fee_intelligence"].get("gas_mode", "") or "")
+                        merged["gas_affordable"] = bool(merged["fee_intelligence"].get("gas_affordable", True))
+                        merged["gas_reason"] = str(merged["fee_intelligence"].get("gas_reason", "") or "")
                     safety = self._evaluate_safety(merged, quote)
                     merged["safety_score"] = float(safety.get("score", merged.get("safety_score", 0)) or 0)
                     merged["max_trade_idr"] = int(min(int(merged.get("max_trade_idr", 0) or 0), int(safety.get("max_trade_idr", 0) or 0)) if safety.get("passed") else 0)

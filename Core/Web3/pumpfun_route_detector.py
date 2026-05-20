@@ -94,16 +94,33 @@ class PumpfunRouteDetector:
                 return pair
         return {}
 
-    async def _quote_solana(self, mint: str, amount_raw: int = 1_000_000) -> Dict[str, Any]:
+    async def _quote_solana(
+        self,
+        mint: str,
+        amount_raw: int = 1_000_000,
+        *,
+        trade_size_idr: float | None = None,
+        balance_snapshot: Dict[str, Any] | None = None,
+    ) -> Dict[str, Any]:
         router = Web3QuoteRouter()
         return await router.quote(
             route="solana",
             input_asset=JUPITER_SOL_MINT,
             output_asset=mint,
             amount_raw=amount_raw,
+            trade_size_idr=float(trade_size_idr or 0.0),
+            balance_snapshot=balance_snapshot,
+            route_context={"source": "pumpfun_route_detector"},
         )
 
-    async def detect(self, mint: str, pair_hint: Dict[str, Any] | None = None) -> Dict[str, Any]:
+    async def detect(
+        self,
+        mint: str,
+        pair_hint: Dict[str, Any] | None = None,
+        *,
+        trade_size_idr: float | None = None,
+        balance_snapshot: Dict[str, Any] | None = None,
+    ) -> Dict[str, Any]:
         mint = str(mint or "").strip()
         pair_hint = pair_hint or {}
         state = self._blank_state()
@@ -112,7 +129,15 @@ class PumpfunRouteDetector:
         if not pair and mint:
             pair = await self._dexscreener_pair(mint)
 
-        quote = await self._quote_solana(mint) if mint else {"quote_ok": False, "reason": "mint_missing"}
+        quote = (
+            await self._quote_solana(
+                mint,
+                trade_size_idr=float(trade_size_idr or 0.0),
+                balance_snapshot=balance_snapshot,
+            )
+            if mint
+            else {"quote_ok": False, "reason": "mint_missing"}
+        )
         quote_ok = bool(quote.get("quote_ok"))
 
         dex_hint = _has_pumpfun_hint(pair)

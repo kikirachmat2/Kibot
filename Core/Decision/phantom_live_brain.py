@@ -42,6 +42,13 @@ def write_phantom_live_brain(payload: Dict[str, Any]) -> Dict[str, Any]:
 
 def build_phantom_live_brain() -> Dict[str, Any]:
     board = build_phantom_target_board()
+    pnl_reconciliation = {}
+    try:
+        from Core.Treasury.pnl_reconciliation import reconcile_pnl_state
+
+        pnl_reconciliation = reconcile_pnl_state(write=True)
+    except Exception:
+        pnl_reconciliation = {}
     mover = {}
     governor = {}
     global_block = False
@@ -138,6 +145,7 @@ def build_phantom_live_brain() -> Dict[str, Any]:
         "size": {"amount_idr": 0 if global_block else int(best.get("volume_or_liquidity") or base_idrx_balance or sol_balance or 0)},
         "fatal_blocker": global_reason if global_block else ("" if best or base_idrx_balance > 0 or sol_balance > 0 else "no_tradable_phantom_balance"),
         "advisory_notes": notes,
+        "what_if_checks": pnl_reconciliation.get("what_if_checks", []) if isinstance(pnl_reconciliation, dict) else [],
         "fee_intelligence": selected_fee,
         "recovery_mode": recovery_mode,
         "deadline_stage": deadline.get("stage"),

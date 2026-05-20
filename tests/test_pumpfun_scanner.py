@@ -27,7 +27,7 @@ async def test_pumpfun_scanner_rejects_no_exit_route(monkeypatch, tmp_path):
             "pair": {"dexId": "pumpfun", "label": "pump.fun"},
         }]
 
-    async def fake_detect(mint, pair_hint=None):
+    async def fake_detect(mint, pair_hint=None, trade_size_idr=0.0, balance_snapshot=None, **kwargs):
         return {
             "updated_at": "now",
             "mint": mint,
@@ -67,10 +67,11 @@ async def test_pumpfun_scanner_approves_jupiter_routable(monkeypatch, tmp_path):
             "price_change_1h_pct": 22,
             "change_24h_pct": 90,
             "holders": 200,
+            "safety_score": 80,
             "pair": {"dexId": "raydium", "label": "raydium"},
         }]
 
-    async def fake_detect(mint, pair_hint=None):
+    async def fake_detect(mint, pair_hint=None, trade_size_idr=0.0, balance_snapshot=None, **kwargs):
         return {
             "updated_at": "now",
             "mint": mint,
@@ -82,8 +83,8 @@ async def test_pumpfun_scanner_approves_jupiter_routable(monkeypatch, tmp_path):
             "reason": "jupiter_quote_available",
         }
 
-    async def fake_quote(self, route, input_asset, output_asset, amount_raw):
-        return {"quote_ok": True, "expected_out": 1000, "slippage_pct": 0.4}
+    async def fake_quote(self, route, input_asset, output_asset, amount_raw, **kwargs):
+        return {"quote_ok": True, "expected_out": 1000, "slippage_pct": 0.4, "fee_intelligence": {"gas_affordable": True, "gas_reason": "ok"}}
 
     monkeypatch.setattr(scanner, "_dexscreener_candidates", fake_dex)
     monkeypatch.setattr(scanner.detector, "detect_best_effort", fake_detect)

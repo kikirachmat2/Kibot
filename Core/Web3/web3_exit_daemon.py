@@ -64,6 +64,9 @@ class Web3ExitDaemon:
                 input_asset=str(position.get("input_asset") or position.get("asset") or ""),
                 output_asset=str(position.get("output_asset") or "So11111111111111111111111111111111111111112"),
                 amount_raw=amount_raw,
+                trade_size_idr=float(position.get("entry_value_idr") or position.get("current_value_idr") or 0.0),
+                balance_snapshot={"position": position},
+                route_context={"source": "web3_exit_daemon", "position_id": position.get("id")},
             )
         except Exception as exc:
             return {"quote_ok": False, "reason": str(exc), "expires_at": None, "expected_out": 0}
@@ -79,11 +82,16 @@ class Web3ExitDaemon:
         time_stop_seconds = int(position.get("time_stop_seconds") or self.default_time_stop_seconds)
         stop_loss_pct = float(position.get("stop_loss_pct") or 0.0)
         take_profit_pct = float(position.get("take_profit_pct") or 0.0)
+        fee_state = refreshed_quote.get("fee_intelligence") if isinstance(refreshed_quote.get("fee_intelligence"), dict) else {}
+        gas_reason = str((fee_state or {}).get("gas_reason") or refreshed_quote.get("gas_reason") or "").strip()
 
         reason = ""
         action = "HOLD"
         if not refreshed_quote.get("quote_ok"):
             reason = refreshed_quote.get("reason") or "stale_quote"
+            action = "EXIT_RECOMMENDED"
+        elif fee_state and not bool(fee_state.get("gas_affordable", True)):
+            reason = gas_reason or "gas_fee_unaffordable"
             action = "EXIT_RECOMMENDED"
         elif take_profit_pct > 0 and pnl_pct >= take_profit_pct:
             reason = "take_profit"
@@ -104,7 +112,7 @@ class Web3ExitDaemon:
             "pnl_idr": pnl_idr,
             "pnl_pct": pnl_pct,
             "age_seconds": age_seconds,
-            "needs_operator_attention": action == "EXIT_RECOMMENDED" and not refreshed_quote.get("quote_ok"),
+            "needs_operator_attention": action == "EXIT_RECOMMENDED" and (not refreshed_quote.get("quote_ok") or bool(fee_state and not fee_state.get("gas_affordable", True))),
         }
 
     async def tick_async(self) -> Dict[str, Any]:

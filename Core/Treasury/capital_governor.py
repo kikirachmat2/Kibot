@@ -15,6 +15,7 @@ logger = logging.getLogger("CapitalGovernor")
 
 STATE_DIR = Path(__file__).resolve().parent.parent.parent / "state"
 GOVERNOR_FILE = STATE_DIR / "capital_governor.json"
+ANCHOR_FILE = STATE_DIR / "daily_equity_anchor.json"
 
 def _today_wib() -> str:
     """Business day boundary follows WIB."""
@@ -58,6 +59,35 @@ class CapitalGovernor:
         self.last_reset_date = _today_wib()
         
         self._load_governor_state()
+
+    def _load_daily_anchor(self) -> Dict[str, Any]:
+        """Return today's daily equity anchor. The anchor is the PnL baseline source of truth."""
+        if not ANCHOR_FILE.exists():
+            return {}
+        try:
+            data = json.loads(ANCHOR_FILE.read_text(encoding="utf-8"))
+        except Exception as e:
+            logger.error(f"❌ Failed to load daily equity anchor: {e}")
+            return {}
+        if data.get("date") != _today_wib():
+            return {}
+        return data if isinstance(data, dict) else {}
+
+    def _write_daily_anchor(self) -> None:
+        """Keep the healthcheck anchor aligned with the governor baseline."""
+        if self.start_total_equity_idr <= 0.0:
+            return
+        try:
+            STATE_DIR.mkdir(parents=True, exist_ok=True)
+            ANCHOR_FILE.write_text(json.dumps({
+                "date": self.last_reset_date,
+                "start_equity_idr": self.start_total_equity_idr,
+                "max_daily_loss_pct": KiConfig.MAX_DAILY_LOSS_PERCENT,
+                "max_daily_loss_idr": self.max_daily_loss_idr,
+                "source": "capital_governor",
+            }, indent=4), encoding="utf-8")
+        except Exception as e:
+            logger.error(f"❌ Failed to write daily equity anchor: {e}")
 
     def _load_governor_state(self):
         self.status = "UNRECONCILED"
@@ -108,6 +138,17 @@ class CapitalGovernor:
         else:
             self.last_reset_date = _today_wib()
 
+        anchor = self._load_daily_anchor()
+        anchor_equity = float(anchor.get("start_equity_idr", 0.0) or 0.0)
+        if anchor_equity > 0.0:
+            # The healthcheck anchor is the canonical daily baseline. If the
+            # governor file drifted, trust the anchor and force one PnL source.
+            self.start_total_equity_idr = anchor_equity
+            self.max_daily_loss_idr = float(
+                anchor.get("max_daily_loss_idr", anchor_equity * (KiConfig.MAX_DAILY_LOSS_PERCENT / 100.0)) or 0.0
+            )
+            self.last_reset_date = str(anchor.get("date") or _today_wib())
+
     def save(self):
         try:
             STATE_DIR.mkdir(parents=True, exist_ok=True)
@@ -149,6 +190,7 @@ class CapitalGovernor:
                     "targets": getattr(self, "targets_snapshot", {}),
                     "phantom_details": getattr(self, "phantom_details_snapshot", {}),
                 }, f, indent=4)
+            self._write_daily_anchor()
         except Exception as e:
             logger.error(f"❌ Failed to save Capital Governor state: {e}")
 
@@ -264,12 +306,22 @@ class CapitalGovernor:
     async def check_daily_reset(self, total_equity_idr: float):
         """Reset starting total equity anchor if a new WIB day has begun."""
         today = _today_wib()
+        anchor = self._load_daily_anchor()
+        anchor_equity = float(anchor.get("start_equity_idr", 0.0) or 0.0)
+        if anchor_equity > 0.0 and self.start_total_equity_idr > 0.0:
+            self.last_reset_date = today
+            self.start_total_equity_idr = anchor_equity
+            self.max_daily_loss_idr = float(
+                anchor.get("max_daily_loss_idr", anchor_equity * (KiConfig.MAX_DAILY_LOSS_PERCENT / 100.0)) or 0.0
+            )
+            return
         if self.last_reset_date != today or self.start_total_equity_idr <= 0.0:
             self.last_reset_date = today
             self.start_total_equity_idr = total_equity_idr
             self.max_daily_loss_idr = total_equity_idr * (KiConfig.MAX_DAILY_LOSS_PERCENT / 100.0)
             self.reset_deposits_offset = 0.0
             self.reset_withdrawals_offset = 0.0
+            self._write_daily_anchor()
             logger.info(f"⚓ Daily Total Equity Anchor Reset: Rp{self.start_total_equity_idr:,.2f} (Cap: Rp{self.max_daily_loss_idr:,.2f})")
 
     def manual_pnl_reset(self):
@@ -298,6 +350,7 @@ class CapitalGovernor:
         self.external_deposits_today = 0.0
         self.external_withdrawals_today = 0.0
         self.save()
+        self._write_daily_anchor()
         logger.info(f"⚓ PnL Anchor reset to current reconciled equity. Starting Equity: Rp{self.start_total_equity_idr:,.2f}. Offsets registered: Dep Rp{self.reset_deposits_offset:,.2f}, Wd Rp{self.reset_withdrawals_offset:,.2f}")
 
     async def reconcile_governor(self) -> Dict[str, Any]:
@@ -382,6 +435,16 @@ class CapitalGovernor:
                 self.start_indodax_equity_idr = float(primary_indodax_balance or 0.0)
             if self.start_phantom_equity_idr <= 0.0:
                 self.start_phantom_equity_idr = float(phantom_equity_idr or 0.0)
+
+            venue_anchor_sum = self.start_indodax_equity_idr + self.start_phantom_equity_idr
+            if (
+                self.start_total_equity_idr > 0.0
+                and venue_anchor_sum > 0.0
+                and abs(venue_anchor_sum - self.start_total_equity_idr) > max(1000.0, self.start_total_equity_idr * 0.05)
+            ):
+                current_split_total = max(primary_indodax_balance + phantom_equity_idr, 1.0)
+                self.start_indodax_equity_idr = self.start_total_equity_idr * (primary_indodax_balance / current_split_total)
+                self.start_phantom_equity_idr = self.start_total_equity_idr * (phantom_equity_idr / current_split_total)
             if self.start_indodax_equity_idr <= 0.0:
                 self.start_indodax_equity_idr = float(primary_indodax_balance or 0.0)
             if self.start_phantom_equity_idr <= 0.0:

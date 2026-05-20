@@ -5,6 +5,7 @@ from Core.Exchange.indodax import IndodaxGateway
 from Core.Intelligence.defi_metrics_fetcher import DeFiMetricsFetcher
 from Core.Support.ki_utils import telegram_send
 from Core.Support.ki_config import KiConfig
+from Core.Web3.web3_fee_intelligence import build_fee_intelligence
 
 logger = logging.getLogger("BridgeRouter")
 
@@ -112,6 +113,22 @@ class BridgeRouter:
         expected_monthly_yield_idr = amount_idr * (target_apy / 100) / 12
         
         self.transition_to("fee_checked", f"Fee: Rp {fee_idr:,.0f}, Expected Yield: Rp {expected_monthly_yield_idr:,.0f}")
+
+        fee_state = build_fee_intelligence(
+            "bridge",
+            trade_size_idr=float(amount_idr),
+            fee_hint_idr=float(fee_idr),
+            route_context={"from_chain": "indodax", "to_chain": target_network, "coin": coin, "network": network},
+            balance_snapshot={"indodax": {"amount_idr": float(amount_idr)}},
+        )
+        if not fee_state.get("gas_affordable", True):
+            self.transition_to("blocked", str(fee_state.get("gas_reason") or "bridge_fee_unaffordable"))
+            logger.warning(
+                "🛡️ FEE GUARD BLOCKED TRANSFER: bridge fee intelligence says not affordable. "
+                "Reason: %s",
+                fee_state.get("gas_reason"),
+            )
+            return False
 
         # Block if fee > expected profit
         if fee_idr > expected_monthly_yield_idr:

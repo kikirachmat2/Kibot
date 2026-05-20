@@ -12,7 +12,7 @@ async def test_refresh_quote_awaits_router_quote(monkeypatch):
     called = {}
 
     class DummyRouter:
-        async def quote(self, *, route, input_asset, output_asset, amount_raw):
+        async def quote(self, *, route, input_asset, output_asset, amount_raw, **kwargs):
             called["route"] = route
             called["input_asset"] = input_asset
             called["output_asset"] = output_asset
@@ -132,4 +132,3 @@ async def test_stop_loss_creates_recommendation_first(tmp_path, monkeypatch):
     saved = json.loads(positions_file.read_text())
     assert saved[0]["status"] == "EXIT_RECOMMENDED"
     assert saved[0]["exit_reason"] == "stop_loss"
-

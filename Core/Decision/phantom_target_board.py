@@ -5,6 +5,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List
 
+from Core.Web3.web3_fee_intelligence import build_fee_intelligence
+
 STATE_DIR = Path(__file__).resolve().parent.parent.parent / "state"
 STATE_FILE = STATE_DIR / "phantom_top_targets.json"
 
@@ -132,6 +134,15 @@ def build_phantom_target_board() -> Dict[str, Any]:
 
     routes: List[Dict[str, Any]] = []
     source_breakdown: Dict[str, Dict[str, Any]] = {}
+    route_budgets = {
+        "solana_jupiter": float(treasury.get("buckets", {}).get("swap_idr", 0.0) or 0.0),
+        "pumpfun_jupiter": float(treasury.get("buckets", {}).get("swap_idr", 0.0) or 0.0),
+        "pumpfun_native": float(treasury.get("buckets", {}).get("swap_idr", 0.0) or 0.0),
+        "solana_meme": float(treasury.get("buckets", {}).get("swap_idr", 0.0) or 0.0),
+        "base_swap": float(treasury.get("base_idrx_balance", treasury.get("chains", {}).get("base", {}).get("normalized_idrx", 0.0)) or 0.0),
+        "polymarket": float(treasury.get("buckets", {}).get("polymarket_idr", 0.0) or 0.0),
+        "future_web3": float(treasury.get("buckets", {}).get("future_web3_idr", 0.0) or 0.0),
+    }
     for source_name, (payload, keys) in source_map.items():
         raw_items = _extract_candidates(payload, keys)
         normalized: List[Dict[str, Any]] = []
@@ -168,6 +179,23 @@ def build_phantom_target_board() -> Dict[str, Any]:
         route_exit_ready = bool(route_caps.get("can_exit"))
         candidate = dict(route)
         advisory_notes = list(candidate.get("advisory_notes") or [])
+        trade_budget_idr = float(route_budgets.get(candidate["route"], candidate.get("volume_or_liquidity", 0.0)) or candidate.get("volume_or_liquidity", 0.0) or 0.0)
+        fee_state = build_fee_intelligence(
+            candidate["route"],
+            trade_size_idr=trade_budget_idr,
+            balance_snapshot=treasury,
+            quote={"quote_ok": bool(candidate.get("quote_ok", False))},
+            route_context={"source_file": candidate.get("source_file", ""), "executor_status": route_caps.get("status", "")},
+        )
+        candidate["fee_intelligence"] = fee_state
+        candidate["gas_fee_idr"] = float(fee_state.get("gas_fee_idr", 0.0) or 0.0)
+        candidate["gas_floor_idr"] = float(fee_state.get("gas_floor_idr", 0.0) or 0.0)
+        candidate["gas_mode"] = str(fee_state.get("gas_mode") or "")
+        candidate["gas_affordable"] = bool(fee_state.get("gas_affordable", True))
+        candidate["gas_reason"] = str(fee_state.get("gas_reason") or "")
+        candidate["gasless_cap_idr"] = float(fee_state.get("gasless_cap_idr", 0.0) or 0.0)
+        candidate["fee_breakdown"] = fee_state.get("fee_breakdown", {})
+        candidate["min_profitable_trade_idr"] = float(fee_state.get("min_profitable_trade_idr", 0.0) or 0.0)
         if candidate.get("reason") == "no_quote":
             candidate["reason"] = ""
         if not route["source_proof_ok"]:
@@ -179,13 +207,14 @@ def build_phantom_target_board() -> Dict[str, Any]:
                 reason = "no_exit_route"
         elif route_caps.get("status", "").upper().startswith("BLOCKED") and not route_exec_ready:
             reason = route_caps.get("reason") or route["reason"] or "executor_blocked"
+        elif not candidate["gas_affordable"]:
+            reason = candidate["gas_reason"] or "gas_fee_unaffordable"
         candidate["advisory_notes"] = sorted(set(advisory_notes))
         if reason:
             candidate["executor_status"] = "BLOCKED_WITH_REASON"
             candidate["reason"] = reason
-            if reason == "no_exit_route" and route["route"] in {"solana_jupiter", "pumpfun_jupiter", "pumpfun_native", "base_swap", "polymarket", "future_web3"}:
+            if reason.startswith("gas_") or reason == "no_exit_route":
                 candidate["recommended_action"] = "WATCH"
-                candidate["reason"] = ""
             else:
                 candidate["recommended_action"] = "REJECT" if reason not in {"manual_transfer_required"} else "MANUAL_TRANSFER_REQUIRED"
             blocked_routes.setdefault(route["route"], []).append(candidate)

@@ -35,6 +35,21 @@ async def test_pumpfun_runner_writes_latency(monkeypatch, tmp_path):
         }
 
     monkeypatch.setattr("Core.Web3.pumpfun_live_runner.PumpfunFastScanner.scan", fake_scan)
+    async def fake_detect_best_effort(self, mint, pair_hint=None, trade_size_idr=0.0, balance_snapshot=None, **kwargs):
+        return {
+            "updated_at": "now",
+            "mint": mint,
+            "route_type": "JUPITER_ROUTABLE",
+            "buy_route_available": True,
+            "sell_route_available": True,
+            "jupiter_quote": {"quote_ok": True, "fee_intelligence": {"gas_affordable": True, "gas_reason": "ok"}},
+            "pumpfun_curve": {"detected": False},
+            "reason": "jupiter_quote_available",
+        }
+    monkeypatch.setattr("Core.Web3.pumpfun_live_runner.PumpfunRouteDetector.detect_best_effort", fake_detect_best_effort)
+    async def fake_maybe_trade(self, candidate):
+        return {"status": "READY", "reason": "jupiter_routable"}
+    monkeypatch.setattr("Core.Web3.pumpfun_live_runner.PumpfunLiveRunner._maybe_trade", fake_maybe_trade)
 
     runner = PumpfunLiveRunner()
     state = await runner.tick()

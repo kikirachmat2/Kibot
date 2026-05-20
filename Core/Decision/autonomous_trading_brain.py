@@ -46,6 +46,7 @@ def build_autonomous_trading_brain() -> Dict[str, Any]:
     phantom = build_phantom_target_board()
     capital_governor = {}
     fee_state = {}
+    pnl_reconciliation = {}
     try:
         gov_path = Path(__file__).resolve().parent.parent.parent / "state" / "capital_governor.json"
         if gov_path.exists():
@@ -58,6 +59,12 @@ def build_autonomous_trading_brain() -> Dict[str, Any]:
             fee_state = json.loads(fee_path.read_text(encoding="utf-8"))
     except Exception:
         fee_state = {}
+    try:
+        from Core.Treasury.pnl_reconciliation import reconcile_pnl_state
+
+        pnl_reconciliation = reconcile_pnl_state(write=True)
+    except Exception:
+        pnl_reconciliation = {}
     trading_pnl_pct = float(capital_governor.get("trading_pnl_pct", capital_governor.get("daily_pnl_pct", 0.0)) or 0.0)
     trading_pnl_idr = float(capital_governor.get("trading_pnl_idr", capital_governor.get("daily_pnl_idr", 0.0)) or 0.0)
     max_daily_loss_idr = float(capital_governor.get("max_daily_loss_idr", 0.0) or 0.0)
@@ -114,6 +121,7 @@ def build_autonomous_trading_brain() -> Dict[str, Any]:
             },
             "fatal_blockers": [reason],
             "advisory_signals": ["exit_only"],
+            "what_if_checks": pnl_reconciliation.get("what_if_checks", []) if isinstance(pnl_reconciliation, dict) else [],
             "reason": reason,
             "next_action": "EXIT_ONLY",
             "next_check_seconds": 5,
@@ -260,6 +268,7 @@ def build_autonomous_trading_brain() -> Dict[str, Any]:
         "sizing": sizing,
         "fatal_blockers": fatal_blockers,
         "advisory_signals": advisory_signals,
+        "what_if_checks": pnl_reconciliation.get("what_if_checks", []) if isinstance(pnl_reconciliation, dict) else [],
         "fee_intelligence": fee_state,
         "reason": reason,
         "next_action": "ENTER" if selected_candidate and sizing.get("approved", False) else "SCAN_MORE",

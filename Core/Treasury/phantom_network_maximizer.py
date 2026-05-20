@@ -25,7 +25,13 @@ def write_phantom_network_maximizer(payload: Dict[str, Any]) -> Dict[str, Any]:
     treasury = _read_json(TREASURY_FILE, {})
     targets = _read_json(TARGETS_FILE, {})
     route_candidates = list(targets.get("top_targets", []) or []) if isinstance(targets, dict) else []
-    executable = [t for t in route_candidates if isinstance(t, dict) and str(t.get("executor_status") or "").upper() == "EXECUTABLE"]
+    executable = [
+        t
+        for t in route_candidates
+        if isinstance(t, dict)
+        and str(t.get("executor_status") or "").upper() == "EXECUTABLE"
+        and bool(t.get("gas_affordable", True))
+    ]
     executable.sort(key=lambda x: (
         float(x.get("wave_score") or x.get("entry_score") or 0.0),
         float(x.get("volume_or_liquidity") or x.get("volume_24h_idr") or 0.0),
@@ -45,9 +51,13 @@ def write_phantom_network_maximizer(payload: Dict[str, Any]) -> Dict[str, Any]:
         "best_route": best_route,
         "best_candidate": best,
         "executable_routes": [str(t.get("route") or "") for t in executable],
-        "blocked_routes": {},
+        "blocked_routes": {
+            str(t.get("route") or f"idx_{idx}"): str(t.get("gas_reason") or t.get("reason") or "route_blocked")
+            for idx, t in enumerate(route_candidates)
+            if isinstance(t, dict) and not (str(t.get("executor_status") or "").upper() == "EXECUTABLE" and bool(t.get("gas_affordable", True)))
+        },
         "recommended_action": "ENTER" if best_route else "SCAN_NEXT",
-        "reason": "" if best_route else "no_executable_phantom_route",
+        "reason": "" if best_route else ("no_executable_phantom_route" if route_candidates else "no_phantom_route_candidates"),
     }
     resolved.update(payload or {})
     if not resolved.get("best_route"):

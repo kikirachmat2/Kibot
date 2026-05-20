@@ -23,16 +23,30 @@ async def test_trending_scanner_picks_best_candidate(monkeypatch, tmp_path):
             "volume_1h_usd": 25000,
             "volume_24h_usd": 100000,
             "holders": 120,
-            "age_minutes": 45,
+            "age_minutes": 10080,
+            "safety_score": 80,
             "source": "dexscreener",
         }]
 
     async def fake_jup():
         return []
 
+    async def fake_detect(mint, pair_hint=None, trade_size_idr=0.0, balance_snapshot=None, **kwargs):
+        return {
+            "updated_at": "now",
+            "mint": mint,
+            "route_type": "JUPITER_ROUTABLE",
+            "buy_route_available": True,
+            "sell_route_available": True,
+            "jupiter_quote": {"quote_ok": True, "fee_intelligence": {"gas_affordable": True, "gas_reason": "ok"}},
+            "pumpfun_curve": {"detected": False},
+            "reason": "jupiter_quote_available",
+        }
+
     monkeypatch.setattr(scanner, "_dexscreener_candidates", fake_dex)
     monkeypatch.setattr(scanner, "_jupiter_candidates", fake_jup)
-    async def fake_quote(mint, amount_raw):
+    monkeypatch.setattr(scanner.route_detector, "detect_best_effort", fake_detect)
+    async def fake_quote(mint, amount_raw, trade_size_idr=0.0, **kwargs):
         return {
             "route": "solana",
             "input_asset": "SOL",
@@ -40,9 +54,10 @@ async def test_trending_scanner_picks_best_candidate(monkeypatch, tmp_path):
             "quote_ok": True,
             "expected_out": 1000,
             "slippage_pct": 0.5,
-            "gas_idr": 1000,
+            "gas_idr": 1,
             "expires_at": "2030-01-01T00:00:00Z",
             "fresh_at": "2030-01-01T00:00:00Z",
+            "fee_intelligence": {"gas_affordable": True, "gas_reason": "ok", "gas_fee_idr": 1, "gas_floor_idr": 1},
         }
 
     monkeypatch.setattr(scanner, "_quote_candidate", fake_quote)

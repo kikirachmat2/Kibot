@@ -24,6 +24,8 @@ class VenueLedger:
             try:
                 with open(LEDGER_FILE, "r") as f:
                     self.venues = json.load(f)
+                    if self._sanitize_ledger():
+                        self.save()
                     logger.info("✅ Venue Ledger state successfully loaded.")
             except Exception as e:
                 logger.error(f"❌ Failed to load Venue Ledger state: {e}")
@@ -31,29 +33,41 @@ class VenueLedger:
         else:
             self._initialize_default()
 
+    def _sanitize_ledger(self) -> bool:
+        allowed_modes = {"LIVE", "REAL", "RECONCILED", "BLOCKED_WITH_REASON", "SCOUTING", "OFFLINE"}
+        legacy_terms = ("paper", "simulation", "shadow", "mock", "canary", "view-only")
+        before = json.dumps(self.venues or {}, sort_keys=True, default=str)
+        clean: Dict[str, Dict[str, Any]] = {}
+        for key, venue in (self.venues or {}).items():
+            lowered = f"{key} {json.dumps(venue, default=str)}".lower()
+            if any(term in lowered for term in legacy_terms):
+                continue
+            item = venue if isinstance(venue, dict) else {}
+            mode = str(item.get("mode") or "LIVE").upper()
+            if mode not in allowed_modes:
+                mode = "LIVE"
+            item["mode"] = mode
+            item.setdefault("status", "ACTIVE")
+            item.setdefault("reason", "Operational")
+            clean[key] = item
+        self.venues = clean
+        after = json.dumps(self.venues or {}, sort_keys=True, default=str)
+        return before != after
+
     def _initialize_default(self):
         self.venues = {
             "indodax_real": {
                 "venue": "Indodax Real",
-                "mode": "REAL",
+                "mode": "LIVE",
                 "equity_idr": 0.0,
                 "daily_pnl_idr": 0.0,
                 "open_exposure_idr": 0.0,
                 "status": "ACTIVE",
                 "reason": "Operational"
             },
-            "indodax_shadow": {
-                "venue": "Indodax Shadow",
-                "mode": "SHADOW",
-                "equity_idr": 1000000.0, # Initial shadow reserve balance
-                "daily_pnl_idr": 0.0,
-                "open_exposure_idr": 0.0,
-                "status": "ACTIVE",
-                "reason": "Shadow ledger active"
-            },
             "phantom": {
                 "venue": "Phantom Treasury",
-                "mode": "SCOUTING_ONLY",
+                "mode": "LIVE",
                 "equity_idr": 0.0,
                 "daily_pnl_idr": 0.0,
                 "open_exposure_idr": 0.0,
@@ -62,7 +76,7 @@ class VenueLedger:
             },
             "polymarket": {
                 "venue": "Polymarket",
-                "mode": "SCOUTING_ONLY",
+                "mode": "LIVE",
                 "equity_idr": 0.0,
                 "daily_pnl_idr": 0.0,
                 "open_exposure_idr": 0.0,
@@ -71,7 +85,7 @@ class VenueLedger:
             },
             "cash_wait": {
                 "venue": "Cash Wait",
-                "mode": "REAL",
+                "mode": "LIVE",
                 "equity_idr": 0.0,
                 "daily_pnl_idr": 0.0,
                 "open_exposure_idr": 0.0,
@@ -91,10 +105,13 @@ class VenueLedger:
 
     def update_venue(self, venue_key: str, **kwargs):
         """Update metrics for a specific venue and save state."""
+        legacy_terms = ("paper", "simulation", "shadow", "mock", "canary", "view-only")
+        if any(term in str(venue_key).lower() for term in legacy_terms):
+            return
         if venue_key not in self.venues:
             self.venues[venue_key] = {
                 "venue": venue_key.replace("_", " ").title(),
-                "mode": "SHADOW",
+                "mode": "LIVE",
                 "equity_idr": 0.0,
                 "daily_pnl_idr": 0.0,
                 "open_exposure_idr": 0.0,

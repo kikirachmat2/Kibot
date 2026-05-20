@@ -40,6 +40,13 @@ def write_indodax_live_brain(payload: Dict[str, Any]) -> Dict[str, Any]:
 
 def build_indodax_live_brain() -> Dict[str, Any]:
     board = build_indodax_target_board()
+    pnl_reconciliation = {}
+    try:
+        from Core.Treasury.pnl_reconciliation import reconcile_pnl_state
+
+        pnl_reconciliation = reconcile_pnl_state(write=True)
+    except Exception:
+        pnl_reconciliation = {}
     targets = board.get("top_targets", []) if isinstance(board, dict) else []
     best = targets[0] if targets else {}
     governor = {}
@@ -107,6 +114,7 @@ def build_indodax_live_brain() -> Dict[str, Any]:
         "size_idr": size_idr,
         "fatal_blocker": global_reason if global_block else "",
         "advisory_notes": notes,
+        "what_if_checks": pnl_reconciliation.get("what_if_checks", []) if isinstance(pnl_reconciliation, dict) else [],
         "recovery_mode": recovery_mode,
         "deadline_stage": deadline.get("stage"),
         "next_action": decision,

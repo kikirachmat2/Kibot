@@ -315,6 +315,10 @@ def _load_web3_state() -> Dict[str, Any]:
     return _read_json(STATE / "web3_opportunities.json", {})
 
 
+def _load_web3_fee_state() -> Dict[str, Any]:
+    return _read_json(STATE / "web3_fee_state.json", {})
+
+
 def _load_solana_trending_state() -> Dict[str, Any]:
     return _read_json(STATE / "solana_trending_candidates.json", {})
 
@@ -432,6 +436,15 @@ def _load_live_order_dispatcher() -> Dict[str, Any]:
 
 def _load_capital_movement_runtime() -> Dict[str, Any]:
     return _read_json(STATE / "capital_movement_runtime.json", {})
+
+
+def _load_pnl_reconciliation() -> Dict[str, Any]:
+    try:
+        from Core.Treasury.pnl_reconciliation import reconcile_pnl_state
+
+        return reconcile_pnl_state(write=True)
+    except Exception:
+        return _read_json(STATE / "pnl_reconciliation.json", {})
 
 def _build_portfolio(telemetry: Dict[str, Any]) -> Dict[str, Any]:
     portfolio = telemetry.get("portfolio") if isinstance(telemetry, dict) else {}
@@ -745,6 +758,7 @@ def _build_summary() -> Dict[str, Any]:
     brain_state = _read_json(STATE / "brain_status.json", {})
     services = _service_statuses(telemetry if isinstance(telemetry, dict) else {})
     portfolio = _build_portfolio(telemetry if isinstance(telemetry, dict) else {})
+    pnl_reconciliation = _load_pnl_reconciliation()
 
     # Load Autonomous Intelligence Gates serialized states
     autonomous_director = _read_json(STATE / "autonomous_director.json", {})
@@ -804,6 +818,7 @@ def _build_summary() -> Dict[str, Any]:
         "generated_at": datetime.now(timezone.utc).isoformat(),
         "generated_at_wib": datetime.now(WIB).isoformat(),
         "portfolio": portfolio,
+        "pnl_reconciliation": pnl_reconciliation,
         "strategy": {
             "global_mode": str(strategy.get("global_mode") or "UNKNOWN") if isinstance(strategy, dict) else "UNKNOWN",
             "indodax": strategy_indodax,
@@ -1010,6 +1025,7 @@ def _build_summary() -> Dict[str, Any]:
     summary["web3"] = {
         "routes": summary.get("phantom_multichain", {}).get("registry", {}),
         "opportunities": summary.get("web3_opportunities", {}),
+        "fee_intelligence": _load_web3_fee_state(),
         "positions": summary.get("web3_positions", []),
         "exit": summary.get("web3_exit", {}),
         "pumpfun": summary.get("pumpfun_candidates", {}),
@@ -1099,6 +1115,7 @@ def _build_control_plane_payload() -> Dict[str, Any]:
     import time
     summary_data = _build_summary()
     portfolio_live = summary_data.get("portfolio", {}) if isinstance(summary_data, dict) else {}
+    pnl_reconciliation = summary_data.get("pnl_reconciliation", {}) if isinstance(summary_data, dict) else {}
     
     # Build a live treasury snapshot first; venue-scoped permission is derived later.
     allow_new_live_orders = False
@@ -1114,6 +1131,7 @@ def _build_control_plane_payload() -> Dict[str, Any]:
         "date": "",
         "global_risk_remaining_idr": 0.0,
     }
+    gov_state_data: Dict[str, Any] = {}
     gov_file = STATE / "capital_governor.json"
     if not gov_file.exists():
         rejection_reason = "FAIL-CLOSED: Capital Governor state file does not exist"
@@ -1126,6 +1144,7 @@ def _build_control_plane_payload() -> Dict[str, Any]:
             else:
                 with open(gov_file, "r") as f:
                     gov_data = json.load(f)
+                gov_state_data = gov_data if isinstance(gov_data, dict) else {}
                 
                 today = datetime.now(WIB).strftime("%Y-%m-%d")
                 if gov_data.get("status") != "RECONCILED":
@@ -1246,7 +1265,7 @@ def _build_control_plane_payload() -> Dict[str, Any]:
             "freshness": _latest_mtime(STATE / "punishment_state.json"),
         },
         "risk_gate": {
-            "status": "PASS",
+            "status": "BLOCKED" if str(capital_block.get("status") or "").upper() == "BLOCKED_WITH_REASON" else "PASS",
             "max_drawdown_limit": 1.5,
             "current_drawdown": _safe_float(portfolio.get("unrealized_pnl_idr"), 0.0),
         },
@@ -1264,18 +1283,12 @@ def _build_control_plane_payload() -> Dict[str, Any]:
         "indodax_real": {
             "venue": "Indodax Real",
             "mode": "REAL",
-            "equity_idr": _safe_float(portfolio.get("equity_idr"), 0.0) if KiConfig.LIVE_TRADING_ENABLED else 0.0,
-            "daily_pnl_idr": _safe_float(portfolio.get("daily_pnl_real_idr"), 0.0),
-            "status": "ACTIVE" if KiConfig.LIVE_TRADING_ENABLED else "BLOCKED",
-            "reason": "Live trading disabled" if not KiConfig.LIVE_TRADING_ENABLED else "Operational",
-        },
-        "indodax_shadow": {
-            "venue": "Indodax Shadow",
-            "mode": "SHADOW",
-            "equity_idr": _safe_float(portfolio.get("daily_pnl_shadow_idr"), 0.0),
-            "daily_pnl_idr": _safe_float(portfolio.get("daily_pnl_shadow_idr"), 0.0),
-            "status": "ACTIVE",
-            "reason": "Shadow ledger active",
+            "equity_idr": _safe_float((gov_state_data.get("venues", {}).get("indodax", {}) if isinstance(gov_state_data.get("venues"), dict) else {}).get("equity_idr"), _safe_float(portfolio.get("equity_idr"), 0.0)) if KiConfig.LIVE_TRADING_ENABLED else 0.0,
+            "daily_pnl_idr": _safe_float((gov_state_data.get("venues", {}).get("indodax", {}) if isinstance(gov_state_data.get("venues"), dict) else {}).get("daily_pnl_idr"), _safe_float(portfolio.get("daily_pnl_real_idr"), 0.0)),
+            "daily_loss_cap_idr": _safe_float((gov_state_data.get("venues", {}).get("indodax", {}) if isinstance(gov_state_data.get("venues"), dict) else {}).get("daily_loss_cap_idr"), 0.0),
+            "allow_orders": bool((gov_state_data.get("venues", {}).get("indodax", {}) if isinstance(gov_state_data.get("venues"), dict) else {}).get("allow_orders", False)),
+            "status": str((gov_state_data.get("venues", {}).get("indodax", {}) if isinstance(gov_state_data.get("venues"), dict) else {}).get("status") or ("ACTIVE" if KiConfig.LIVE_TRADING_ENABLED else "BLOCKED")),
+            "reason": str((gov_state_data.get("venues", {}).get("indodax", {}) if isinstance(gov_state_data.get("venues"), dict) else {}).get("reason") or ("Live trading disabled" if not KiConfig.LIVE_TRADING_ENABLED else "Operational")),
         },
         "phantom": {
             "venue": "Phantom Treasury",
@@ -1292,6 +1305,9 @@ def _build_control_plane_payload() -> Dict[str, Any]:
             "status_detail": pt.get("status"),
             "reconciliation": pt.get("reconciliation", {}),
             "chains": pt.get("chains", {}),
+            "allow_orders": bool((gov_state_data.get("venues", {}).get("phantom", {}) if isinstance(gov_state_data.get("venues"), dict) else {}).get("allow_orders", False)),
+            "daily_loss_cap_idr": _safe_float((gov_state_data.get("venues", {}).get("phantom", {}) if isinstance(gov_state_data.get("venues"), dict) else {}).get("daily_loss_cap_idr"), 0.0),
+            "daily_pnl_idr": _safe_float((gov_state_data.get("venues", {}).get("phantom", {}) if isinstance(gov_state_data.get("venues"), dict) else {}).get("daily_pnl_idr"), 0.0),
         },
         "web3": {
             "routes": summary_data.get("phantom_multichain", {}).get("registry", {}),
@@ -1355,15 +1371,26 @@ def _build_control_plane_payload() -> Dict[str, Any]:
         }
     }
 
-    venue_permissions = {
-        name: bool(
-            (venues.get(name) or {}).get("allow_orders", True)
-            and str((venues.get(name) or {}).get("status") or "").upper() in {"ACTIVE", "LIVE_READY", "RECONCILED"}
-        )
-        for name in ("indodax_real", "phantom", "polymarket")
-    }
-    venue_permissions["cash_wait"] = True
-    allow_new_live_orders = any(venue_permissions.get(name, False) for name in ("indodax_real", "phantom", "polymarket"))
+    if gov_state_data:
+        gov_venues = gov_state_data.get("venues", {}) if isinstance(gov_state_data.get("venues"), dict) else {}
+        venue_permissions = {
+            "indodax_real": bool((gov_venues.get("indodax") or {}).get("allow_orders", False)),
+            "phantom": bool((gov_venues.get("phantom") or {}).get("allow_orders", False)),
+            "polymarket": bool(gov_state_data.get("allow_new_orders", False)) and str((venues.get("polymarket") or {}).get("status") or "").upper() in {"ACTIVE", "LIVE_READY", "RECONCILED"},
+            "cash_wait": True,
+        }
+        allow_new_live_orders = bool(gov_state_data.get("allow_new_orders", False))
+        rejection_reason = str(gov_state_data.get("allow_new_orders_reason") or rejection_reason)
+    else:
+        venue_permissions = {
+            name: bool(
+                (venues.get(name) or {}).get("allow_orders", False)
+                and str((venues.get(name) or {}).get("status") or "").upper() in {"ACTIVE", "LIVE_READY", "RECONCILED"}
+            )
+            for name in ("indodax_real", "phantom", "polymarket")
+        }
+        venue_permissions["cash_wait"] = True
+        allow_new_live_orders = any(venue_permissions.get(name, False) for name in ("indodax_real", "phantom", "polymarket"))
     if allow_new_live_orders:
         ready_venues = [name for name in ("indodax_real", "phantom", "polymarket") if venue_permissions.get(name)]
         rejection_reason = "venue-scoped allowances active: " + ", ".join(ready_venues)
@@ -1388,11 +1415,7 @@ def _build_control_plane_payload() -> Dict[str, Any]:
         str((venues.get(name) or {}).get("status") or "").upper() in {"ACTIVE", "LIVE_READY", "RECONCILED"}
         for name in ("indodax_real", "phantom", "polymarket", "cash_wait")
     )
-    current_entry_approved = bool(
-        allow_new_live_orders
-        and route_live_ready
-        and gates["risk_gate"]["status"] == "PASS"
-    )
+    current_entry_approved = bool(allow_new_live_orders and route_live_ready and gates["risk_gate"]["status"] == "PASS")
     mode["allow_new_live_orders"] = allow_new_live_orders
     mode["allow_new_live_orders_reason"] = rejection_reason
     mode["advisory_gates"] = {
@@ -1403,6 +1426,7 @@ def _build_control_plane_payload() -> Dict[str, Any]:
         "effect": "does_not_block_live_orders",
     }
     mode["venue_allowances"] = venue_permissions
+    mode["what_if_checks"] = pnl_reconciliation.get("what_if_checks", []) if isinstance(pnl_reconciliation, dict) else []
 
     # 5. Runtime Health
     scanner_stats = _read_json(STATE / "scanner_runtime.json", {})
@@ -1590,6 +1614,7 @@ def _build_control_plane_payload() -> Dict[str, Any]:
             "governor_daily_pnl_pct": _safe_float(portfolio.get("governor_daily_pnl_pct"), 0.0),
             "max_daily_loss_pct": 1.5
         },
+        "pnl_reconciliation": pnl_reconciliation,
         "capital": capital_block,
         "venues": venues,
         "web3": {
@@ -1686,8 +1711,6 @@ def _build_control_plane_payload() -> Dict[str, Any]:
         merged_data.pop(legacy_key, None)
     if isinstance(merged_data.get("portfolio"), dict):
         merged_data["portfolio"].setdefault("daily_pnl_shadow_idr", _safe_float(portfolio.get("daily_pnl_shadow_idr"), 0.0))
-    if isinstance(merged_data.get("venues"), dict):
-        merged_data["venues"].setdefault("indodax_shadow", merged_data["venues"].get("indodax_shadow", {}))
     return _scrub_legacy_payload(merged_data)
 
 
