@@ -12,6 +12,33 @@ from Core.Treasury.capital_governor import CapitalGovernor, GOVERNOR_FILE
 from Core.risk_gate import RiskGate
 from Core.Support.ki_config import KiConfig
 
+
+def _isolate_runtime_state(monkeypatch, tmp_path: Path) -> Path:
+    """Keep tests from mutating the operator's live state directory."""
+    import Core.Treasury.capital_governor as capital_module
+    import Core.Treasury.venue_ledger as ledger_module
+    import Core.Treasury.phantom_treasury as phantom_module
+    import Core.risk_gate as risk_module
+
+    tmp_path.mkdir(parents=True, exist_ok=True)
+    monkeypatch.setattr(capital_module, "STATE_DIR", tmp_path)
+    monkeypatch.setattr(capital_module, "GOVERNOR_FILE", tmp_path / "capital_governor.json")
+    monkeypatch.setattr(capital_module, "ANCHOR_FILE", tmp_path / "daily_equity_anchor.json")
+    monkeypatch.setattr(ledger_module, "STATE_DIR", tmp_path)
+    monkeypatch.setattr(ledger_module, "LEDGER_FILE", tmp_path / "venue_ledger.json")
+    monkeypatch.setattr(phantom_module, "STATE_DIR", tmp_path)
+    monkeypatch.setattr(phantom_module, "PHANTOM_STATE_FILE", tmp_path / "phantom_treasury.json")
+    monkeypatch.setattr(
+        phantom_module,
+        "PHANTOM_RECONCILIATION_FILE",
+        tmp_path / "TREASURY_RECONCILIATION_REQUIRED",
+    )
+    monkeypatch.setattr(risk_module, "STATE_DIR", tmp_path)
+    monkeypatch.setattr(risk_module, "RISK_STATE_FILE", tmp_path / "risk_state.json")
+    monkeypatch.setitem(globals(), "GOVERNOR_FILE", tmp_path / "capital_governor.json")
+    return tmp_path
+
+
 def test_allocation_policy():
     policy = AllocationPolicy()
     
@@ -27,7 +54,8 @@ def test_allocation_policy():
     assert targets_pos["phantom"] == 0.25
     assert targets_pos["reserve"] == 0.15
 
-def test_venue_ledger(tmp_path):
+def test_venue_ledger(monkeypatch, tmp_path):
+    _isolate_runtime_state(monkeypatch, tmp_path)
     ledger = VenueLedger()
     
     # Test setting and updating venues
@@ -41,7 +69,8 @@ def test_venue_ledger(tmp_path):
     assert v_phantom["equity_idr"] == 50000.0
 
 @pytest.mark.anyio
-async def test_phantom_treasury():
+async def test_phantom_treasury(monkeypatch, tmp_path):
+    _isolate_runtime_state(monkeypatch, tmp_path)
     # Mock PhantomRouter
     router = MagicMock()
     router.wallet_address = "0xPhantomWalletAddress"
@@ -64,7 +93,8 @@ async def test_phantom_treasury():
         assert summary["total_value_idr"] == 95.0 * 16000.0
 
 @pytest.mark.anyio
-async def test_capital_governor_drawdown_enforcement():
+async def test_capital_governor_drawdown_enforcement(monkeypatch, tmp_path):
+    _isolate_runtime_state(monkeypatch, tmp_path)
     # Setup mock Indodax and Phantom router
     indodax = AsyncMock()
     indodax.get_info = AsyncMock(return_value={
@@ -119,7 +149,8 @@ async def test_capital_governor_drawdown_enforcement():
 
 
 @pytest.mark.anyio
-async def test_capital_governor_global_hard_stop_flags_blocked():
+async def test_capital_governor_global_hard_stop_flags_blocked(monkeypatch, tmp_path):
+    _isolate_runtime_state(monkeypatch, tmp_path)
     indodax = AsyncMock()
     indodax.get_info = AsyncMock(return_value={
         "success": 1,
@@ -156,7 +187,8 @@ async def test_capital_governor_global_hard_stop_flags_blocked():
     assert data["allow_new_orders"] is False
 
 @pytest.mark.anyio
-async def test_capital_governor_flows_and_hardenings(tmp_path):
+async def test_capital_governor_flows_and_hardenings(monkeypatch, tmp_path):
+    _isolate_runtime_state(monkeypatch, tmp_path)
     # Setup mock Indodax and Phantom router
     indodax = AsyncMock()
     indodax.get_info = AsyncMock(return_value={
@@ -250,7 +282,8 @@ async def test_capital_governor_flows_and_hardenings(tmp_path):
     assert "is stale" in reason
 
 @pytest.mark.anyio
-async def test_capital_governor_manual_reset():
+async def test_capital_governor_manual_reset(monkeypatch, tmp_path):
+    _isolate_runtime_state(monkeypatch, tmp_path)
     # Setup mock Indodax and Phantom router
     indodax = AsyncMock()
     indodax.get_info = AsyncMock(return_value={
