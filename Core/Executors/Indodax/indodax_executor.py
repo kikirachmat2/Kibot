@@ -260,7 +260,9 @@ class IndodaxExecutor:
                         pending_entry_amount = float(data.get("amount") or 0.0)
                         if pending_entry_order and pending_entry_amount <= 1e-8:
                             # A buy has been accepted but has not yet appeared in the wallet.
-                            # Keep it as pending capital, not as an exit-managed position.
+                            # If price has run away, cancel the stale order so the
+                            # next cycle can re-evaluate at live market levels.
+                            await self._handle_pending_entry(symbol, data)
                             continue
                         if await self._handle_pending_exit(symbol, data, fee_roundtrip_pct):
                             continue
@@ -460,6 +462,209 @@ class IndodaxExecutor:
             order_side = str(order.get("type") or order.get("side") or "").lower()
             if order_side and order_side != side.lower():
                 return False
+        return True
+
+    async def _handle_pending_entry(self, symbol: str, data: Dict[str, Any]) -> bool:
+        """Cancel stale entry orders whose price has drifted away from the market."""
+        pending_entry_order_id = str(data.get("entry_pending_order_id") or "").strip()
+        if not pending_entry_order_id:
+            return False
+
+        pending_amount = float(data.get("amount") or 0.0)
+        if pending_amount > 1e-8:
+            return False
+
+        pair = symbol.lower().replace("/", "_")
+        if "_" not in pair:
+            pair = f"{pair}_idr"
+
+        try:
+            open_orders = self._extract_orders(await self.indodax.get_open_orders(pair))
+        except Exception as exc:
+            logger.debug(f"[Executor] openOrders check failed for pending entry {symbol}: {exc}")
+            return False
+
+        exchange_order_id = str(data.get("entry_pending_exchange_order_id") or "").strip()
+        matching_order = None
+        for order in open_orders:
+            if self._order_matches(order, order_id=exchange_order_id or pending_entry_order_id, side="buy"):
+                matching_order = order
+                break
+
+        if not matching_order:
+            # Let wallet reconciliation clear it if the exchange no longer knows
+            # about the order. We only cancel orders that are still open.
+            return False
+
+        pending_price = float(data.get("entry_pending_price") or data.get("price") or 0.0)
+        pending_since = float(data.get("entry_pending_since") or data.get("time") or time.time())
+        age_sec = max(0.0, time.time() - pending_since)
+
+        current_ref_price = 0.0
+        best_ask = 0.0
+        best_bid = 0.0
+        try:
+            orderbook = await self.indodax.get_orderbook(symbol)
+            bids = orderbook.get("bids", []) or []
+            asks = orderbook.get("asks", []) or []
+            if bids:
+                best_bid = float(bids[0][0])
+            if asks:
+                best_ask = float(asks[0][0])
+            current_ref_price = best_ask or best_bid
+        except Exception as ob_err:
+            logger.debug(f"[Executor] orderbook fetch failed for pending entry {symbol}: {ob_err}")
+
+        if current_ref_price <= 0:
+            try:
+                ticker = await self.indodax.get_ticker(pair)
+                current_ref_price = float(ticker.get("last", 0.0) or 0.0)
+            except Exception as tick_err:
+                logger.debug(f"[Executor] ticker fetch failed for pending entry {symbol}: {tick_err}")
+
+        drift_pct = 0.0
+        if pending_price > 0 and current_ref_price > 0:
+            drift_pct = ((current_ref_price - pending_price) / pending_price) * 100.0
+
+        strategy = load_strategy()
+        indo_strat = strategy.get("indodax", {})
+        cancel_gap_pct = float(
+            indo_strat.get(
+                "entry_pending_cancel_gap_pct",
+                os.getenv("KIBOT_ENTRY_PENDING_CANCEL_GAP_PCT", "2.0"),
+            )
+            or 2.0
+        )
+        max_age_sec = float(
+            indo_strat.get(
+                "entry_pending_max_age_sec",
+                os.getenv("KIBOT_ENTRY_PENDING_MAX_AGE_SEC", "120"),
+            )
+            or 120
+        )
+
+        if age_sec < max_age_sec and drift_pct < cancel_gap_pct:
+            data["entry_pending_last_seen"] = time.time()
+            data["entry_pending_status"] = "OPEN"
+            self._save_active_trades()
+            return True
+
+        reason_bits = [
+            f"age={age_sec:.0f}s>=max{max_age_sec:.0f}s" if age_sec >= max_age_sec else "",
+            f"market_drift={drift_pct:.2f}%>=gap{cancel_gap_pct:.2f}%" if drift_pct >= cancel_gap_pct else "",
+        ]
+        reason = "; ".join(bit for bit in reason_bits if bit) or "pending_entry_stale"
+        logger.warning(
+            "🛑 CANCELING STALE ENTRY: %s pending buy %s @ %.0f is stale (%s); market ref=%.0f bid=%.0f ask=%.0f",
+            symbol,
+            pending_entry_order_id,
+            pending_price,
+            reason,
+            current_ref_price,
+            best_bid,
+            best_ask,
+        )
+
+        sovereign_order_id = str(data.get("sovereign_order_id") or "").strip()
+        tracker = None
+        if _ORDER_TRACKER_AVAILABLE and sovereign_order_id:
+            try:
+                tracker = _get_tracker()
+                current_record = tracker.load(sovereign_order_id) or {}
+                current_state = str(current_record.get("state") or "").upper()
+                if current_state not in {"STALE", "CANCEL_REQUESTED", "CANCELLED", "FAILED"}:
+                    tracker.transition(
+                        sovereign_order_id,
+                        "STALE",
+                        note=reason,
+                        trade_history_payload={
+                            "reason": reason,
+                            "source": "indodax_executor",
+                        },
+                    )
+            except Exception as tracker_err:
+                logger.debug(f"[Executor] tracker stale transition failed for {symbol}: {tracker_err}")
+
+        cancel_target = exchange_order_id or pending_entry_order_id
+        cancel_result: Dict[str, Any] = {}
+        try:
+            cancel_result = await self.indodax.cancel_order(symbol, cancel_target, "buy")
+        except Exception as cancel_err:
+            logger.warning(f"🛑 Pending entry cancel request failed for {symbol}: {cancel_err}")
+            cancel_result = {"success": 0, "error": str(cancel_err)}
+
+        if cancel_result.get("success") == 1:
+            logger.info(f"✅ CANCELED STALE ENTRY: {symbol} order {cancel_target} cancelled")
+            if tracker and sovereign_order_id:
+                try:
+                    tracker.transition(
+                        sovereign_order_id,
+                        "CANCELLED",
+                        note=reason,
+                        trade_history_payload={
+                            "reason": reason,
+                            "source": "indodax_executor",
+                        },
+                    )
+                except Exception as tracker_err:
+                    logger.debug(f"[Executor] tracker cancel transition failed for {symbol}: {tracker_err}")
+
+            _emit_trade_history("ORDER_STALE", {
+                "source": "indodax_executor",
+                "venue": "indodax",
+                "symbol": symbol,
+                "pair": pair,
+                "side": "BUY",
+                "status": "STALE",
+                "order_id": cancel_target,
+                "price_idr": pending_price,
+                "amount_idr": float(data.get("entry_pending_budget_idr") or data.get("cost") or 0.0),
+                "trade_profile": data.get("trade_profile", "STANDARD"),
+                "lifecycle": data.get("lifecycle"),
+                "reason": reason,
+            })
+
+            trade = self.active_trades.get(symbol, {})
+            for key in [
+                "entry_pending_order_id",
+                "entry_pending_exchange_order_id",
+                "entry_pending_budget_idr",
+                "entry_pending_price",
+                "entry_pending_status",
+                "entry_pending_since",
+                "entry_pending_reason",
+                "entry_pending_last_seen",
+                "sovereign_order_id",
+            ]:
+                trade.pop(key, None)
+            trade["entry_pending_cancelled_at"] = time.time()
+            trade["entry_pending_cancel_reason"] = reason
+            if not float(trade.get("amount") or 0.0):
+                # No filled coin exists yet, so the stale entry can be fully removed.
+                self.active_trades.pop(symbol, None)
+            self._save_active_trades()
+            self.report_to_batam(symbol, "ENTRY_CANCELLED", f"Stale pending buy cancelled: {reason}")
+            return True
+
+        if tracker and sovereign_order_id:
+            try:
+                current_record = tracker.load(sovereign_order_id) or {}
+                current_state = str(current_record.get("state") or "").upper()
+                if current_state not in {"STALE", "CANCEL_REQUESTED", "CANCELLED", "FAILED"}:
+                    tracker.transition(
+                        sovereign_order_id,
+                        "CANCEL_REQUESTED",
+                        note=f"{reason} | cancel_failed",
+                    )
+            except Exception as tracker_err:
+                logger.debug(f"[Executor] tracker cancel-request transition failed for {symbol}: {tracker_err}")
+
+        trade = self.active_trades.setdefault(symbol, {})
+        trade["entry_pending_status"] = "CANCEL_FAILED"
+        trade["entry_pending_last_seen"] = time.time()
+        trade["entry_pending_reason"] = reason
+        trade["entry_pending_cancel_error"] = str(cancel_result.get("error") or "cancel_failed")
+        self._save_active_trades()
         return True
 
     async def _handle_pending_exit(self, symbol: str, data: Dict[str, Any], fee_roundtrip_pct: float = 1.02) -> bool:
@@ -673,6 +878,7 @@ class IndodaxExecutor:
                             trade["entry_pending_resolved_at"] = time.time()
                             for key in [
                                 "entry_pending_order_id",
+                                "entry_pending_exchange_order_id",
                                 "entry_pending_budget_idr",
                                 "entry_pending_price",
                                 "entry_pending_reason",
@@ -1516,6 +1722,7 @@ class IndodaxExecutor:
                         "learning_probe": learning_probe,
                         "sovereign_order_id": sovereign_order_id,
                         "entry_pending_order_id": pending_order_ref,
+                        "entry_pending_exchange_order_id": order_id or "",
                         "entry_pending_budget_idr": pending_budget,
                         "entry_pending_price": actual_price,
                         "entry_pending_status": "OPEN",

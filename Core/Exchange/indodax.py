@@ -225,6 +225,16 @@ class IndodaxGateway:
         IndodaxGateway._info_cache = None
         return await self._post_private("trade", params)
 
+    async def cancel_order(self, pair: str, order_id: str | int, order_type: str = "buy") -> Dict[str, Any]:
+        """Cancel an existing open order on Indodax."""
+        params = {
+            "pair": self._normalize_pair(pair),
+            "order_id": str(order_id),
+            "type": str(order_type).lower(),
+        }
+        IndodaxGateway._info_cache = None
+        return await self._post_private("cancelOrder", params)
+
     async def withdraw_coin(self, currency: str, withdraw_address: str, withdraw_amount: float, withdraw_memo: str = "") -> Dict[str, Any]:
         """
         Request a crypto withdrawal to an external wallet.
