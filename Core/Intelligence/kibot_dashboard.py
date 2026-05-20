@@ -1147,9 +1147,7 @@ def _build_control_plane_payload() -> Dict[str, Any]:
                 gov_state_data = gov_data if isinstance(gov_data, dict) else {}
                 
                 today = datetime.now(WIB).strftime("%Y-%m-%d")
-                if gov_data.get("status") != "RECONCILED":
-                    rejection_reason = f"FAIL-CLOSED: Capital Governor status is '{gov_data.get('status')}' (expected 'RECONCILED')"
-                elif gov_data.get("date") != today:
+                if gov_data.get("date") != today:
                     rejection_reason = f"FAIL-CLOSED: Capital Governor state date '{gov_data.get('date')}' is not today '{today}'"
                 else:
                     gov_loss_cap = _safe_float(gov_data.get("max_daily_loss_idr"), 0.0)
@@ -1173,13 +1171,19 @@ def _build_control_plane_payload() -> Dict[str, Any]:
                         "live_daily_pnl_idr": live_daily_pnl,
                         "live_daily_pnl_pct": live_daily_pct,
                         "live_has_open_positions": live_open_positions,
-                        "daily_pnl_source": "live_portfolio" if live_open_positions else "governor",
+                        "daily_pnl_source": "capital_governor",
                         "max_daily_loss_pct": _safe_float(gov_data.get("max_daily_loss_pct"), 1.5),
                         "risk_remaining_idr": risk_remaining,
                         "global_risk_remaining_idr": risk_remaining,
                         "date": str(gov_data.get("date") or today),
                     })
-                    rejection_reason = "Governor reconciled; venue-scoped permission pending"
+                    gov_status = str(gov_data.get("status") or "").upper()
+                    if gov_status == "RECONCILED":
+                        rejection_reason = "Governor reconciled; venue-scoped permission pending"
+                    elif gov_status == "BLOCKED_WITH_REASON":
+                        rejection_reason = str(gov_data.get("allow_new_orders_reason") or "capital_governor_blocked")
+                    else:
+                        rejection_reason = f"FAIL-CLOSED: Capital Governor status is '{gov_data.get('status')}' (expected 'RECONCILED')"
         except Exception as e:
             rejection_reason = f"FAIL-CLOSED: Error validating Capital Governor: {e}"
 
