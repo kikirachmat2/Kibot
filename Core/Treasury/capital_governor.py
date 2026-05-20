@@ -138,6 +138,131 @@ def _is_residual_inventory_entry(payload: Any, *, min_notional_idr: float = 10_0
     return 0.0 < notional < float(min_notional_idr)
 
 
+def _pending_buy_order_reserve_idr(state_dir: Optional[Path] = None) -> float:
+    """
+    Estimate IDR reserved by open BUY orders that have not settled yet.
+
+    This is added back into consolidated equity so the total balance stays
+    stable while limit entries are working through the exchange.
+    """
+    base_dir = state_dir or STATE_DIR
+    reserve = 0.0
+    seen_keys: set[str] = set()
+
+    def _to_float(value: Any) -> float:
+        try:
+            if value in (None, "", "None", "nan"):
+                return 0.0
+            return float(value)
+        except Exception:
+            return 0.0
+
+    def _register(key: str, value: float) -> None:
+        nonlocal reserve
+        if value <= 0.0:
+            return
+        key = str(key or "").strip()
+        if key and key in seen_keys:
+            return
+        if key:
+            seen_keys.add(key)
+        reserve += float(value)
+
+    active_trades_file = base_dir / "active_trades.json"
+    if active_trades_file.exists():
+        try:
+            active_trades = json.loads(active_trades_file.read_text(encoding="utf-8"))
+        except Exception as exc:
+            logger.debug("Failed to load active_trades.json for reserve estimate: %s", exc)
+            active_trades = {}
+        if isinstance(active_trades, dict):
+            for symbol, trade in active_trades.items():
+                if not isinstance(trade, dict):
+                    continue
+                pending_marker = any(
+                    bool(trade.get(key))
+                    for key in (
+                        "entry_pending_order_id",
+                        "entry_pending_exchange_order_id",
+                        "entry_pending_status",
+                        "entry_pending_since",
+                    )
+                )
+                if not pending_marker:
+                    continue
+                state = str(trade.get("entry_pending_status") or trade.get("status") or trade.get("state") or "").upper().strip()
+                if state in {"CANCELLED", "FAILED", "FILLED", "RECONCILED"}:
+                    continue
+                budget = _to_float(
+                    trade.get("entry_pending_budget_idr")
+                    or trade.get("budget_idr")
+                    or trade.get("cost")
+                    or trade.get("notional_idr"),
+                )
+                if budget <= 0.0:
+                    continue
+                reserve_key = next(
+                    (
+                        str(trade.get(field) or "").strip()
+                        for field in (
+                            "entry_pending_order_id",
+                            "entry_pending_exchange_order_id",
+                            "sovereign_order_id",
+                        )
+                        if str(trade.get(field) or "").strip()
+                    ),
+                    f"BUY_RESERVE:{str(symbol).upper()}:{budget:.2f}",
+                )
+                _register(reserve_key, budget)
+
+    orders_dir = base_dir / "orders"
+    index_file = orders_dir / "_index.json"
+    if index_file.exists():
+        try:
+            index_data = json.loads(index_file.read_text(encoding="utf-8"))
+        except Exception as exc:
+            logger.debug("Failed to load order index for reserve estimate: %s", exc)
+            index_data = {}
+        open_ids = index_data.get("open", []) if isinstance(index_data, dict) else []
+        if isinstance(open_ids, list):
+            for order_id in open_ids:
+                if not order_id:
+                    continue
+                order_file = orders_dir / f"{order_id}.json"
+                if not order_file.exists():
+                    continue
+                try:
+                    order = json.loads(order_file.read_text(encoding="utf-8"))
+                except Exception as exc:
+                    logger.debug("Failed to load order %s for reserve estimate: %s", order_id, exc)
+                    continue
+                if not isinstance(order, dict):
+                    continue
+                side = str(order.get("side") or order.get("type") or "").upper().strip()
+                state = str(order.get("state") or "").upper().strip()
+                if side != "BUY" or state in {"FILLED", "RECONCILED", "CANCELLED", "FAILED"}:
+                    continue
+                budget = _to_float(order.get("budget_idr") or order.get("amount_idr") or order.get("notional_idr"))
+                if budget <= 0.0:
+                    continue
+                if state == "PARTIAL_FILL":
+                    fill_price = _to_float(order.get("fill_price"))
+                    coin_amount = _to_float(order.get("coin_amount"))
+                    if fill_price > 0.0 and coin_amount > 0.0:
+                        budget = max(0.0, budget - (fill_price * coin_amount))
+                reserve_key = next(
+                    (
+                        str(order.get(field) or "").strip()
+                        for field in ("exchange_order_id", "order_id")
+                        if str(order.get(field) or "").strip()
+                    ),
+                    f"BUY_RESERVE:{str(order.get('pair') or '').upper()}:{budget:.2f}",
+                )
+                _register(reserve_key, budget)
+
+    return round(reserve, 8)
+
+
 def load_daily_inventory_snapshot(state_dir: Optional[Path] = None) -> Dict[str, Any]:
     """Return a conservative snapshot of live inventory that still needs flattening."""
     base_dir = state_dir or STATE_DIR
@@ -705,13 +830,9 @@ class CapitalGovernor:
                 indodax_shadow_balance = shadow_ledger.get("equity_idr", 1000000.0)
 
             # 3. Calculate Total Consolidated Equity
-            # Controlled-live mode takes actual Indodax cash + mark-to-market coin holdings,
-            # otherwise shadow reserve.
-            primary_indodax_balance = (
-                (indodax_real_balance + indodax_coin_holdings_idr)
-                if KiConfig.LIVE_TRADING_ENABLED
-                else indodax_shadow_balance
-            )
+            # Controlled-live mode takes actual Indodax cash + mark-to-market coin holdings
+            # + any pending buy reserve that is already part of the exchange account value.
+            indodax_live_equity = indodax_real_balance + indodax_coin_holdings_idr
             phantom_reconciliation = phantom_summary.get("reconciliation", {}) if isinstance(phantom_summary, dict) else {}
             phantom_ready = (
                 phantom_summary.get("status") in {"OK", "SCOUTING"}
@@ -743,6 +864,12 @@ class CapitalGovernor:
             
             # Read in-flight internal transfers destined for Phantom
             in_flight_idr = self._read_in_flight_transfers(self.last_reset_date, phantom_equity_idr)
+            pending_buy_reserve_idr = _pending_buy_order_reserve_idr()
+            primary_indodax_balance = (
+                indodax_live_equity + pending_buy_reserve_idr
+                if KiConfig.LIVE_TRADING_ENABLED
+                else indodax_shadow_balance
+            )
 
             # Venue-specific anchors keep one venue's drawdown from blocking the others.
             if self.start_indodax_equity_idr <= 0.0:
@@ -770,8 +897,9 @@ class CapitalGovernor:
             self.phantom_daily_pnl_idr = phantom_equity_idr - self.start_phantom_equity_idr
             self.indodax_daily_pnl_pct = (self.indodax_daily_pnl_idr / max(self.start_indodax_equity_idr, 1.0)) * 100.0
             self.phantom_daily_pnl_pct = (self.phantom_daily_pnl_idr / max(self.start_phantom_equity_idr, 1.0)) * 100.0
-            
-            # Total Consolidated Equity = Primary Indodax Balance + Phantom Balance + In-flight internal transfers
+
+            # Total Consolidated Equity = Primary Indodax Balance (including reserve) + Phantom Balance
+            # + In-flight internal transfers.
             self.current_total_equity_idr = primary_indodax_balance + phantom_equity_idr + in_flight_idr
             
             # Check and initialize today's start anchor if needed
@@ -797,7 +925,7 @@ class CapitalGovernor:
                 self.daily_pnl_pct = 0.0
                 self.trading_pnl_pct = 0.0
                 
-            indodax_ready = (indodax_real_balance + indodax_coin_holdings_idr) > 0
+            indodax_ready = primary_indodax_balance > 0
             self.status = "RECONCILED" if (phantom_ready or indodax_ready) else "DEGRADED"
             if not phantom_ready:
                 logger.warning("⚠️ Phantom treasury not yet reconciled; live Phantom routes remain venue-scoped.")
@@ -806,7 +934,7 @@ class CapitalGovernor:
             targets = self.policy.compute_targets(phantom_equity_idr)
             
             # 5. Sync to Venue Ledger
-            self.ledger.update_venue("indodax_real", equity_idr=indodax_real_balance + indodax_coin_holdings_idr)
+            self.ledger.update_venue("indodax_real", equity_idr=primary_indodax_balance)
             self.ledger.update_venue("indodax_shadow", equity_idr=indodax_shadow_balance)
             self.ledger.update_venue("phantom", equity_idr=phantom_equity_idr)
             self.ledger.update_venue("cash_wait", equity_idr=self.current_total_equity_idr * targets.get("reserve", 0.20))
@@ -884,6 +1012,7 @@ class CapitalGovernor:
                 "global_status": self.status,
                 "start_total_equity_idr": self.start_total_equity_idr,
                 "current_total_equity_idr": self.current_total_equity_idr,
+                "open_buy_order_reserve_idr": pending_buy_reserve_idr,
                 "max_daily_loss_idr": self.max_daily_loss_idr,
                 "daily_pnl_idr": self.daily_pnl_idr,
                 "daily_pnl_pct": self.daily_pnl_pct,
@@ -902,7 +1031,8 @@ class CapitalGovernor:
                 "venues": {
                     "indodax": {
                         "status": "RECONCILED" if indodax_allow_orders else "BLOCKED_WITH_REASON",
-                        "equity_idr": indodax_real_balance + indodax_coin_holdings_idr,
+                        "equity_idr": primary_indodax_balance,
+                        "open_buy_order_reserve_idr": pending_buy_reserve_idr,
                         "start_equity_idr": self.start_indodax_equity_idr,
                         "daily_pnl_idr": self.indodax_daily_pnl_idr,
                         "daily_pnl_pct": self.indodax_daily_pnl_pct,

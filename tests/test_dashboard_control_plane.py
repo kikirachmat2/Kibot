@@ -4,12 +4,13 @@ Visual Control Plane Dashboard Integration and Integrity Tests
 
 import json
 import os
+from datetime import datetime
 import pytest
 from pathlib import Path
 from fastapi.testclient import TestClient
 
-from Core.Intelligence.kibot_dashboard import app, _build_control_plane_payload
-from Core.Support.ki_config import KiConfig, STATE_DIR
+from Core.Intelligence.kibot_dashboard import app, _build_control_plane_payload, _build_portfolio
+from Core.Support.ki_config import KiConfig, STATE_DIR, WIB
 
 client = TestClient(app)
 
@@ -156,6 +157,38 @@ def test_control_plane_preserves_explicit_hard_stop_reason(tmp_path, monkeypatch
     assert payload["mode"]["allow_new_live_orders_reason"].startswith("global_daily_loss_cap_breached")
     assert payload["capital"]["allow_new_orders_reason"].startswith("global_daily_loss_cap_breached")
     assert payload["capital"]["pending_orders_count"] == 0
+
+
+def test_control_plane_prefers_fresh_governor_total_equity_with_open_positions(tmp_path, monkeypatch):
+    monkeypatch.setattr("Core.Intelligence.kibot_dashboard.STATE", tmp_path)
+    monkeypatch.setattr("Core.Intelligence.kibot_dashboard._read_json", lambda path, default: json.loads(path.read_text(encoding="utf-8")) if path.exists() and path.name == "capital_governor.json" else default)
+    today = datetime.now(WIB).strftime("%Y-%m-%d")
+    (tmp_path / "capital_governor.json").write_text(json.dumps({
+        "date": today,
+        "status": "RECONCILED",
+        "allow_new_orders": True,
+        "allow_new_orders_reason": "",
+        "start_total_equity_idr": 100_000,
+        "current_total_equity_idr": 100_000,
+        "daily_pnl_idr": 0,
+        "daily_pnl_pct": 0,
+        "max_daily_loss_idr": 1_500,
+    }), encoding="utf-8")
+
+    portfolio = _build_portfolio({
+        "portfolio": {
+            "combined_equity_idr": 90_000,
+            "realized_pnl_idr": 0,
+            "unrealized_pnl_idr": -1_500,
+            "daily_pnl_idr": -1_500,
+            "daily_pnl_pct": -1.5,
+            "active_positions": [{"pair": "EDEN/IDR", "amount": 10.0, "price_idr": 1_000.0, "value_idr": 10_000.0}],
+            "open_position_pnl": [{"pair": "EDEN/IDR", "amount": 10.0, "price_idr": 1_000.0, "value_idr": 10_000.0}],
+        }
+    })
+
+    assert portfolio["combined_equity_idr"] == 100_000
+    assert portfolio["daily_pnl_source"] == "capital_governor"
 
 
 def test_simulated_vs_real_pnl_isolation(tmp_path, monkeypatch):

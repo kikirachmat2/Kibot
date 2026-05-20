@@ -499,14 +499,14 @@ def _build_portfolio(telemetry: Dict[str, Any]) -> Dict[str, Any]:
     pnl_base = max(combined_equity - daily_pnl, _safe_float(open_pnl.get("position_cost_basis_idr"), 0.0), 1.0)
     daily_pnl_pct = (daily_pnl / pnl_base) * 100.0
 
-    # Load Capital Governor Reconciled Data if available and fresh for today.
-    # Do not let the governor override live MTM while positions/orders are open:
-    # the dashboard should keep showing the live portfolio view, with the
-    # governor carried separately as the risk ledger.
+    # Load Capital Governor reconciled data if available and fresh for today.
+    # Prefer the governor as the canonical total-balance source whenever it
+    # is current, even while positions or orders are open. Live portfolio
+    # data is still exposed separately for context and mark-to-market detail.
     gov_data = _read_json(STATE / "capital_governor.json", {})
     has_open_positions = bool(open_pnl.get("positions")) or bool(active_positions)
     governor_fresh_today = bool(gov_data and gov_data.get("date") == datetime.now(WIB).strftime("%Y-%m-%d"))
-    if governor_fresh_today and not has_open_positions:
+    if governor_fresh_today:
         combined_equity = _safe_float(gov_data.get("current_total_equity_idr"), combined_equity)
         daily_pnl = _safe_float(gov_data.get("daily_pnl_idr"), daily_pnl)
         daily_pnl_pct = _safe_float(gov_data.get("daily_pnl_pct"), daily_pnl_pct)
@@ -532,10 +532,11 @@ def _build_portfolio(telemetry: Dict[str, Any]) -> Dict[str, Any]:
         "idr_cash": idr_cash,
         "coin_holdings_idr": coin_holdings,
         "combined_equity_idr": combined_equity,
+        "open_buy_order_reserve_idr": _safe_float(gov_data.get("open_buy_order_reserve_idr"), 0.0) if isinstance(gov_data, dict) else 0.0,
         "daily_pnl_idr": daily_pnl,
         "daily_pnl_real_idr": daily_pnl_real_idr,
         "daily_pnl_shadow_idr": daily_pnl_shadow_idr,
-        "daily_pnl_source": "governor" if governor_fresh_today and not has_open_positions else "live_portfolio",
+        "daily_pnl_source": "capital_governor" if governor_fresh_today else "live_portfolio",
         "live_trading_enabled": live_trading_enabled,
         "daily_pnl_pct": daily_pnl_pct,
         "daily_color": daily_color,
@@ -1145,6 +1146,7 @@ def _build_control_plane_payload() -> Dict[str, Any]:
                         "status": str(gov_data.get("status") or "RECONCILED"),
                         "starting_equity_today_idr": start_equity,
                         "current_total_equity_idr": current_equity,
+                        "open_buy_order_reserve_idr": _safe_float(gov_data.get("open_buy_order_reserve_idr"), 0.0),
                         "daily_pnl_idr": gov_daily_pnl,
                         "daily_pnl_pct": daily_pct,
                         "live_current_total_equity_idr": live_equity,
@@ -1591,6 +1593,7 @@ def _build_control_plane_payload() -> Dict[str, Any]:
             "realized_pnl_idr": _safe_float(portfolio.get("realized_pnl_idr"), 0.0),
             "unrealized_pnl_idr": _safe_float(portfolio.get("unrealized_pnl_idr"), 0.0),
             "position_cost_basis_idr": _safe_float(portfolio.get("position_cost_basis_idr"), 0.0),
+            "open_buy_order_reserve_idr": _safe_float(portfolio.get("open_buy_order_reserve_idr"), 0.0),
             "open_position_pnl": portfolio.get("open_position_pnl", []),
             "active_positions": portfolio.get("active_positions", []),
             "has_open_positions": bool(portfolio.get("has_open_positions")),

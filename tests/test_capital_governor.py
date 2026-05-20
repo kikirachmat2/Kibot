@@ -357,3 +357,57 @@ async def test_capital_governor_manual_reset(monkeypatch, tmp_path):
         # Clean up transfers file
         if transfers_file.exists():
             transfers_file.unlink()
+
+
+@pytest.mark.anyio
+async def test_capital_governor_includes_open_buy_reserve(monkeypatch, tmp_path):
+    _isolate_runtime_state(monkeypatch, tmp_path)
+    indodax = AsyncMock()
+    indodax.get_info = AsyncMock(return_value={
+        "success": 1,
+        "return": {
+            "balance": {
+                "idr": 75_000.0
+            }
+        }
+    })
+
+    router = MagicMock()
+    router.wallet_address = "0xPhantomWalletAddress"
+    router.get_balances = AsyncMock(return_value={
+        "usdc_balance": 5.0,
+        "sol_balance": 0.0,
+        "matic_balance": 0.0
+    })
+
+    orders_dir = tmp_path / "orders"
+    orders_dir.mkdir(parents=True, exist_ok=True)
+    (orders_dir / "_index.json").write_text(json.dumps({
+        "open": ["buy_123"],
+        "orders": {
+            "buy_123": {
+                "pair": "EDEN/IDR",
+                "side": "BUY",
+                "state": "SUBMITTED",
+            }
+        }
+    }), encoding="utf-8")
+    (orders_dir / "buy_123.json").write_text(json.dumps({
+        "order_id": "buy_123",
+        "pair": "EDEN/IDR",
+        "side": "BUY",
+        "state": "SUBMITTED",
+        "budget_idr": 25_000.0,
+        "exchange_order_id": "ex_buy_123",
+    }), encoding="utf-8")
+
+    with patch.object(KiConfig, "LIVE_TRADING_ENABLED", True), \
+         patch.object(KiConfig, "ENABLE_POLYMARKET_LIVE", False):
+        governor = CapitalGovernor(indodax, router)
+        governor.start_total_equity_idr = 0.0
+
+        gov_data = await governor.reconcile_governor()
+
+        # 75k cash + 25k reserved order + 80k Phantom equity = 180k total.
+        assert gov_data["current_total_equity_idr"] == 180000.0
+        assert gov_data["open_buy_order_reserve_idr"] == 25000.0
