@@ -98,6 +98,9 @@ def record_trade_event(event_type: str, payload: Optional[Dict[str, Any]] = None
         "amount_idr": _safe_float(payload.get("amount_idr") or payload.get("notional_idr") or payload.get("filled_rp") or payload.get("budget_idr"), 0.0),
         "entry_price_idr": _safe_float(payload.get("entry_price_idr") or payload.get("entry_price"), 0.0),
         "exit_price_idr": _safe_float(payload.get("exit_price_idr") or payload.get("exit_price"), 0.0),
+        "fee_idr": _safe_float(payload.get("fee_idr") or payload.get("fee"), 0.0),
+        "gross_realized_pnl_idr": _safe_float(payload.get("gross_realized_pnl_idr"), 0.0),
+        "net_realized_pnl_idr": _safe_float(payload.get("net_realized_pnl_idr"), 0.0),
         "realized_pnl_idr": _safe_float(payload.get("realized_pnl_idr") or payload.get("pnl_idr"), 0.0),
         "realized_pnl_pct": _safe_float(payload.get("realized_pnl_pct") or payload.get("pnl_pct"), 0.0),
         "note": str(payload.get("note") or payload.get("message") or ""),
@@ -143,10 +146,13 @@ def _activity_from_event(row: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         return {"time": ts, "agent": agent, "tag": "BUY", "message": msg, "offset": "0"}
 
     if kind in {"POSITION_CLOSED", "SELL_FILLED", "ORDER_RECONCILED"}:
-        pnl = _safe_float(row.get("realized_pnl_idr"), 0.0)
+        pnl = _safe_float(row.get("net_realized_pnl_idr") or row.get("realized_pnl_idr"), 0.0)
         pct = _safe_float(row.get("realized_pnl_pct"), 0.0)
+        fee = _safe_float(row.get("fee_idr"), 0.0)
         label = "SELL PROFIT" if pnl >= 0 else "SELL LOSS"
-        msg = f"{pair} {_rp(abs(pnl))} ({pct:+.2f}%)"
+        msg = f"{pair} net {_rp(abs(pnl))} ({pct:+.2f}%)"
+        if fee > 0:
+            msg += f" fee {_rp(fee)}"
         return {"time": ts, "agent": agent, "tag": label, "message": msg, "offset": "0"}
 
     if kind in {"SWAP", "CAPITAL_SWAP", "CROSS_CHAIN_SWAP"}:
@@ -171,6 +177,7 @@ def summarize_today(limit: int = 2000) -> Dict[str, Any]:
         "rejections": 0,
         "stale": 0,
         "realized_pnl_idr": 0.0,
+        "fee_paid_idr": 0.0,
         "best_win_idr": None,
         "worst_loss_idr": None,
         "recent_activity": [],
@@ -213,7 +220,8 @@ def summarize_today(limit: int = 2000) -> Dict[str, Any]:
             if primary_id:
                 seen_sell_keys.add(primary_id)
             summary["sell_fills"] += 1
-            pnl = _safe_float(row.get("realized_pnl_idr"), 0.0)
+            pnl = _safe_float(row.get("net_realized_pnl_idr") or row.get("realized_pnl_idr"), 0.0)
+            summary["fee_paid_idr"] += _safe_float(row.get("fee_idr"), 0.0)
             summary["realized_pnl_idr"] += pnl
             if pnl >= 0:
                 summary["wins"] += 1
@@ -248,4 +256,5 @@ def summarize_today(limit: int = 2000) -> Dict[str, Any]:
     if summary["worst_loss_idr"] is not None:
         summary["worst_loss_idr"] = round(float(summary["worst_loss_idr"]), 2)
     summary["realized_pnl_idr"] = round(float(summary["realized_pnl_idr"]), 2)
+    summary["fee_paid_idr"] = round(float(summary["fee_paid_idr"]), 2)
     return summary

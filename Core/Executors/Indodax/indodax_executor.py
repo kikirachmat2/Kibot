@@ -34,6 +34,8 @@ try:
         check_partial_tp,
         check_trailing_stop,
         load_plan,
+        minimum_profitable_exit_pct,
+        minimum_profitable_exit_price,
     )
     from Core.Intelligence.pre_trade_simulator import simulate_indodax_entry
     from Core.Intelligence.decision_journal import log_execution_event, log_pre_trade_simulation
@@ -142,6 +144,49 @@ class IndodaxExecutor:
         except Exception as e:
             logger.error(f"Failed to save legacy guard stats: {e}")
 
+    @staticmethod
+    def _exit_cost_basis(trade: Dict[str, Any], exit_amount: float) -> float:
+        """Allocate the entry cost basis for the amount actually exited."""
+        state_amount = float(trade.get("amount", 0) or 0)
+        total_cost = float(trade.get("cost", 0) or 0)
+        if state_amount > 0 and total_cost > 0:
+            ratio = max(0.0, min(float(exit_amount) / max(state_amount, 1e-9), 1.0))
+            return round(total_cost * ratio, 2)
+        entry_price = float(trade.get("price", 0) or 0)
+        return round(max(0.0, float(exit_amount)) * max(0.0, entry_price), 2)
+
+    @staticmethod
+    def _estimate_roundtrip_fee_idr(entry_cost_idr: float, exit_value_idr: float, fee_roundtrip_pct: float) -> float:
+        """Estimate total entry+exit fees for the realized slice."""
+        fee_rate = max(0.0, float(fee_roundtrip_pct)) / 100.0
+        if fee_rate <= 0:
+            return 0.0
+        fee_base = max(0.0, float(entry_cost_idr) + float(exit_value_idr))
+        return round(fee_base * fee_rate / 2.0, 2)
+
+    def _net_exit_result(
+        self,
+        trade: Dict[str, Any],
+        exit_amount: float,
+        exit_price: float,
+        fee_roundtrip_pct: float,
+    ) -> Dict[str, float]:
+        """Return fee-aware exit math for a realized slice."""
+        exit_amount = max(0.0, float(exit_amount))
+        exit_price = max(0.0, float(exit_price))
+        exit_value_idr = round(exit_amount * exit_price, 2)
+        entry_cost_idr = self._exit_cost_basis(trade, exit_amount)
+        gross_pnl_idr = round(exit_value_idr - entry_cost_idr, 2)
+        fee_idr = self._estimate_roundtrip_fee_idr(entry_cost_idr, exit_value_idr, fee_roundtrip_pct)
+        net_pnl_idr = round(gross_pnl_idr - fee_idr, 2)
+        return {
+            "entry_cost_idr": entry_cost_idr,
+            "exit_value_idr": exit_value_idr,
+            "gross_pnl_idr": gross_pnl_idr,
+            "fee_idr": fee_idr,
+            "net_pnl_idr": net_pnl_idr,
+        }
+
 
     async def start(self):
         print(f"🚀 {self.__class__.__name__} Starting...")
@@ -204,12 +249,14 @@ class IndodaxExecutor:
                     indo_strat.get("green_hold_tp_multiplier", daily_state.get("take_profit_multiplier", 1.0)) or 1.0
                 )
                 urgency = check_urgency()
+                fee_roundtrip_pct = float(indo_strat.get("fee_roundtrip_pct", 1.02) or 1.02)
+                fee_buffer_pct = float(indo_strat.get("fee_buffer_pct", 0.3) or 0.3)
 
                 if urgency.get("flag") == "EMERGENCY_PAUSE":
                     logger.warning(f"🚨 EMERGENCY PAUSE DETECTED: {urgency.get('reason')}")
                 else:
                     for symbol, data in list(self.active_trades.items()):
-                        if await self._handle_pending_exit(symbol, data):
+                        if await self._handle_pending_exit(symbol, data, fee_roundtrip_pct):
                             continue
 
                         blocked_until = float(data.get("exit_blocked_until", 0) or 0)
@@ -238,6 +285,12 @@ class IndodaxExecutor:
                                 exit_plan = load_plan(str(data.get("sovereign_order_id"))) or {}
                             except Exception:
                                 exit_plan = {}
+
+                        min_profit_pct = max(
+                            float(exit_plan.get("minimum_profitable_exit_pct", 0.0) or 0.0),
+                            float(exit_plan.get("breakeven_after_pct", 0.0) or 0.0),
+                            minimum_profitable_exit_pct(fee_roundtrip_pct, fee_buffer_pct),
+                        )
 
                         if exit_plan:
                             try:
@@ -324,19 +377,29 @@ class IndodaxExecutor:
                             continue
 
                         # 3. Dynamic Take Profit (V3.2 fallback)
-                        base_take_profit_pct = float(indo_strat.get("take_profit_pct", 0.5))
+                        base_take_profit_pct = max(float(indo_strat.get("take_profit_pct", 0.5)), min_profit_pct)
                         effective_take_profit_pct = base_take_profit_pct
                         if green_hold_mode:
                             effective_take_profit_pct = base_take_profit_pct * max(1.0, green_hold_multiplier)
-                            if change >= base_take_profit_pct and change < effective_take_profit_pct:
-                                logger.debug(
-                                    f"🟢 GREEN HOLD: {symbol} holding profit @ {change:.2f}% "
-                                    f"(TP {base_take_profit_pct:.2f}% -> {effective_take_profit_pct:.2f}%)"
-                                )
+                        effective_take_profit_pct = max(effective_take_profit_pct, min_profit_pct)
+                        if green_hold_mode and change >= base_take_profit_pct and change < effective_take_profit_pct:
+                            logger.debug(
+                                f"🟢 GREEN HOLD: {symbol} holding profit @ {change:.2f}% "
+                                f"(TP {base_take_profit_pct:.2f}% -> {effective_take_profit_pct:.2f}%)"
+                            )
 
                         if change >= effective_take_profit_pct:
-                            logger.info(f"💰 TAKE PROFIT HIT: {symbol} @ {change:.2f}%")
-                            await self.execute_exit(symbol, last_price, "TAKE_PROFIT")
+                            target_price = minimum_profitable_exit_price(
+                                float(data.get("price") or last_price or 0.0),
+                                fee_roundtrip_pct,
+                                fee_buffer_pct,
+                            )
+                            exit_price = max(last_price, target_price) if target_price > 0 else last_price
+                            logger.info(
+                                f"💰 TAKE PROFIT HIT: {symbol} @ {change:.2f}% "
+                                f"(target >= Rp{exit_price:,.0f}, floor={min_profit_pct:.2f}%)"
+                            )
+                            await self.execute_exit(symbol, exit_price, "TAKE_PROFIT")
                             continue
 
                         # 4. Midnight Oracle Exit
@@ -393,7 +456,7 @@ class IndodaxExecutor:
                 return False
         return True
 
-    async def _handle_pending_exit(self, symbol: str, data: Dict[str, Any]) -> bool:
+    async def _handle_pending_exit(self, symbol: str, data: Dict[str, Any], fee_roundtrip_pct: float = 1.02) -> bool:
         """Keep pending exits honest until Indodax confirms the asset really left the wallet."""
         order_id = str(data.get("exit_pending_order_id") or "")
         if not order_id:
@@ -420,28 +483,52 @@ class IndodaxExecutor:
 
         if live_amount <= 1e-8:
             if pending_amount > 0 and exit_price > 0 and entry_price > 0:
-                pnl_val = (exit_price - entry_price) * pending_amount
-                self.risk.update_pnl(pnl_val)
-                if KiConfig.CANARY_LIVE_ENABLED and pnl_val < 0:
+                math_result = self._net_exit_result(data, pending_amount, exit_price, fee_roundtrip_pct)
+                self.risk.update_pnl(math_result["net_pnl_idr"])
+                if KiConfig.CANARY_LIVE_ENABLED and math_result["net_pnl_idr"] < 0:
                     stats = self._load_canary_stats()
-                    stats["daily_loss_idr"] += abs(pnl_val)
+                    stats["daily_loss_idr"] += abs(math_result["net_pnl_idr"])
                     self._save_canary_stats(stats)
                     logger.info(f"📉 CANARY STATS: Daily loss updated to Rp{stats['daily_loss_idr']:,.0f}")
             logger.info(f"✅ EXIT FILLED: {symbol} pending order {order_id} settled; state cleared.")
 
             self.active_trades.pop(symbol, None)
             self._save_active_trades()
+            if pending_amount > 0 and exit_price > 0 and entry_price > 0:
+                math_result = self._net_exit_result(data, pending_amount, exit_price, fee_roundtrip_pct)
+                _emit_trade_history("SELL_FILLED", {
+                    "source": "indodax_executor",
+                    "venue": "indodax",
+                    "symbol": symbol,
+                    "pair": pair,
+                    "side": "SELL",
+                    "status": "FILLED",
+                    "order_id": order_id,
+                    "price_idr": exit_price,
+                    "entry_price_idr": entry_price,
+                    "exit_price_idr": exit_price,
+                    "amount_coin": pending_amount,
+                    "amount_idr": math_result["exit_value_idr"],
+                    "fee_idr": math_result["fee_idr"],
+                    "gross_realized_pnl_idr": math_result["gross_pnl_idr"],
+                    "net_realized_pnl_idr": math_result["net_pnl_idr"],
+                    "realized_pnl_idr": math_result["net_pnl_idr"],
+                    "realized_pnl_pct": (math_result["net_pnl_idr"] / max(math_result["entry_cost_idr"], 1e-9)) * 100.0,
+                    "reason": "pending_exit_settled",
+                    "trade_profile": data.get("trade_profile", "STANDARD"),
+                    "lifecycle": data.get("lifecycle"),
+                })
             self.report_to_batam(symbol, "EXIT_FILLED", f"Pending exit filled @ {exit_price}")
             return True
 
         state_amount = float(data.get("amount") or live_amount)
         if pending_amount > 0 and live_amount < state_amount and exit_price > 0 and entry_price > 0:
             filled_amount = max(0.0, state_amount - live_amount)
-            pnl_val = (exit_price - entry_price) * filled_amount
-            self.risk.update_pnl(pnl_val)
-            if KiConfig.CANARY_LIVE_ENABLED and pnl_val < 0:
+            math_result = self._net_exit_result(data, filled_amount, exit_price, fee_roundtrip_pct)
+            self.risk.update_pnl(math_result["net_pnl_idr"])
+            if KiConfig.CANARY_LIVE_ENABLED and math_result["net_pnl_idr"] < 0:
                 stats = self._load_canary_stats()
-                stats["daily_loss_idr"] += abs(pnl_val)
+                stats["daily_loss_idr"] += abs(math_result["net_pnl_idr"])
                 self._save_canary_stats(stats)
                 logger.info(f"📉 CANARY STATS: Daily loss updated to Rp{stats['daily_loss_idr']:,.0f}")
             logger.info(
@@ -469,6 +556,28 @@ class IndodaxExecutor:
             ]:
                 trade.pop(key, None)
             self._save_active_trades()
+            _emit_trade_history("SELL_FILLED", {
+                "source": "indodax_executor",
+                "venue": "indodax",
+                "symbol": symbol,
+                "pair": pair,
+                "side": "SELL",
+                "status": "FILLED",
+                "order_id": order_id,
+                "price_idr": exit_price,
+                "entry_price_idr": entry_price,
+                "exit_price_idr": exit_price,
+                "amount_coin": filled_amount,
+                "amount_idr": math_result["exit_value_idr"],
+                "fee_idr": math_result["fee_idr"],
+                "gross_realized_pnl_idr": math_result["gross_pnl_idr"],
+                "net_realized_pnl_idr": math_result["net_pnl_idr"],
+                "realized_pnl_idr": math_result["net_pnl_idr"],
+                "realized_pnl_pct": (math_result["net_pnl_idr"] / max(math_result["entry_cost_idr"], 1e-9)) * 100.0,
+                "reason": "partial_exit_settled",
+                "trade_profile": data.get("trade_profile", "STANDARD"),
+                "lifecycle": data.get("lifecycle"),
+            })
             self.report_to_batam(symbol, "PARTIAL_EXIT_FILLED", f"Partial exit filled @ {exit_price}")
             return True
 
@@ -725,11 +834,14 @@ class IndodaxExecutor:
                 return
 
             exit_amount = filled_amount if filled_amount > 0 else amount
-            pnl_amount = (price - float(trade.get("price", 0) or 0)) * exit_amount
-            self.risk.update_pnl(pnl_amount)
-            if KiConfig.CANARY_LIVE_ENABLED and pnl_amount < 0:
+            strategy = load_strategy()
+            indo_strat = strategy.get("indodax", {}) if isinstance(strategy, dict) else {}
+            fee_roundtrip_pct = float(indo_strat.get("fee_roundtrip_pct", 1.02) or 1.02)
+            math_result = self._net_exit_result(trade, exit_amount, price, fee_roundtrip_pct)
+            self.risk.update_pnl(math_result["net_pnl_idr"])
+            if KiConfig.CANARY_LIVE_ENABLED and math_result["net_pnl_idr"] < 0:
                 stats = self._load_canary_stats()
-                stats["daily_loss_idr"] += abs(pnl_amount)
+                stats["daily_loss_idr"] += abs(math_result["net_pnl_idr"])
                 self._save_canary_stats(stats)
                 logger.info(f"📉 CANARY STATS: Daily loss updated to Rp{stats['daily_loss_idr']:,.0f}")
 
@@ -740,13 +852,21 @@ class IndodaxExecutor:
                 if ot_order_id and not is_partial:
                     try:
                         sell_value_idr = price * exit_amount
-                        _get_tracker().reconcile(ot_order_id, sell_value_idr=sell_value_idr)
+                        _get_tracker().reconcile(
+                            ot_order_id,
+                            sell_value_idr=sell_value_idr,
+                            fee_idr=math_result["fee_idr"],
+                            gross_pnl_idr=math_result["gross_pnl_idr"],
+                        )
                     except Exception as ot_err:
                         logger.warning(f"[Executor] OrderTracker reconcile failed for {symbol}: {ot_err}")
 
             logger.info(f"✅ EXIT FILLED: {symbol} via {reason} @ {price} amount={exit_amount:.8f}")
             if live_after > 1e-8:
-                remaining_cost = max(0.0, float(trade.get("cost", 0.0) or 0.0) * (live_after / max(state_amount, 1e-9)))
+                remaining_cost = max(
+                    0.0,
+                    float(trade.get("cost", 0.0) or 0.0) * (live_after / max(state_amount, 1e-9)),
+                )
                 self.active_trades.setdefault(symbol, {}).update({
                     "amount": live_after,
                     "cost": remaining_cost,
@@ -757,6 +877,30 @@ class IndodaxExecutor:
             else:
                 self.active_trades.pop(symbol, None)
             self._save_active_trades()
+            _emit_trade_history("SELL_FILLED", {
+                "source": "indodax_executor",
+                "venue": "indodax",
+                "symbol": symbol,
+                "pair": pair,
+                "side": "SELL",
+                "status": "FILLED",
+                "order_id": trade.get("sovereign_order_id") or "",
+                "exchange_order_id": res.get("return", {}).get("order_id") if isinstance(res.get("return"), dict) else "",
+                "price_idr": price,
+                "entry_price_idr": float(trade.get("price", price) or price),
+                "exit_price_idr": price,
+                "amount_coin": exit_amount,
+                "amount_idr": math_result["exit_value_idr"],
+                "fee_idr": math_result["fee_idr"],
+                "gross_realized_pnl_idr": math_result["gross_pnl_idr"],
+                "net_realized_pnl_idr": math_result["net_pnl_idr"],
+                "realized_pnl_idr": math_result["net_pnl_idr"],
+                "realized_pnl_pct": (math_result["net_pnl_idr"] / max(math_result["entry_cost_idr"], 1e-9)) * 100.0,
+                "reason": reason,
+                "partial": bool(live_after > 1e-8),
+                "trade_profile": trade.get("trade_profile", "STANDARD"),
+                "lifecycle": trade.get("lifecycle"),
+            })
             if _ORDER_TRACKER_AVAILABLE:
                 try:
                     log_execution_event("EXIT_FILLED", {
@@ -765,6 +909,11 @@ class IndodaxExecutor:
                         "price": price,
                         "amount": exit_amount,
                         "partial": is_partial,
+                        "entry_price_idr": float(trade.get("price", price) or price),
+                        "exit_price_idr": price,
+                        "fee_idr": math_result["fee_idr"],
+                        "gross_realized_pnl_idr": math_result["gross_pnl_idr"],
+                        "net_realized_pnl_idr": math_result["net_pnl_idr"],
                     })
                 except Exception:
                     pass

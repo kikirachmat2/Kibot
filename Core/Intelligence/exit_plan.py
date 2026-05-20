@@ -33,6 +33,26 @@ PARTIAL_TP_DEFAULT    = 0.8        # take 50% off at 0.8% profit
 PARTIAL_TP_FRACTION   = 0.50       # sell 50% of position for partial TP
 MAX_HOLD_DEFAULT_MIN  = 120        # 2 hours max hold
 
+
+def minimum_profitable_exit_pct(
+    fee_roundtrip_pct: float = FEE_ROUNDTRIP_PCT * 100,
+    buffer_pct: float = BREAKEVEN_BUFFER_PCT,
+) -> float:
+    """Return the minimum gross move required to still clear round-trip fees."""
+    return max(0.0, float(fee_roundtrip_pct) + float(buffer_pct))
+
+
+def minimum_profitable_exit_price(
+    entry_price: float,
+    fee_roundtrip_pct: float = FEE_ROUNDTRIP_PCT * 100,
+    buffer_pct: float = BREAKEVEN_BUFFER_PCT,
+) -> float:
+    """Return the minimum sell price that should still be net-profitable after fees."""
+    entry = float(entry_price or 0.0)
+    if entry <= 0:
+        return 0.0
+    return round(entry * (1 + minimum_profitable_exit_pct(fee_roundtrip_pct, buffer_pct) / 100.0), 8)
+
 # §6: Trailing profit schedule (threshold_pct → trail_pct)
 DEFAULT_TRAILING_SCHEDULE = [
     (1.2, 0.6),    # above +1.2%  → trail with 0.6% buffer
@@ -85,6 +105,14 @@ def _lifecycle_to_exit_params(lifecycle: str, daily_color: str, urgency: str) ->
         params["partial_take_profit_pct"] = min(params["partial_take_profit_pct"], 0.4)
         params["partial_take_profit_fraction"] = max(params["partial_take_profit_fraction"], 0.65)
         params["max_hold_minutes"]        = min(params["max_hold_minutes"], 30)
+
+    profitable_floor = minimum_profitable_exit_pct()
+    params["breakeven_after_pct"] = max(params["breakeven_after_pct"], profitable_floor)
+    params["partial_take_profit_pct"] = max(params["partial_take_profit_pct"], profitable_floor)
+    params["trailing_schedule"] = [
+        (max(float(threshold), profitable_floor), float(trail_pct))
+        for threshold, trail_pct in params["trailing_schedule"]
+    ]
 
     return params
 
@@ -151,9 +179,12 @@ def build_exit_plan(
         "pair":                         signal.get("symbol", "UNKNOWN"),
         "entry_price":                  entry_price,
         "lifecycle":                    lifecycle,
+        "fee_roundtrip_pct":            round(FEE_ROUNDTRIP_PCT * 100, 3),
         "hard_stop_pct":                round(params["hard_stop_pct"], 3),
         "hard_stop_price":              round(entry_price * (1 - params["hard_stop_pct"] / 100), 8) if entry_price > 0 else 0,
         "breakeven_after_pct":          round(params["breakeven_after_pct"], 3),
+        "minimum_profitable_exit_pct":   round(minimum_profitable_exit_pct(), 3),
+        "minimum_profitable_exit_price": round(minimum_profitable_exit_price(entry_price), 8) if entry_price > 0 else 0,
         "partial_take_profit_pct":      round(params["partial_take_profit_pct"], 3),
         "partial_take_profit_fraction": round(params["partial_take_profit_fraction"], 3),
         "trailing_profit_schedule":     params["trailing_schedule"],
@@ -228,10 +259,15 @@ def check_trailing_stop(
 
     # Trailing schedule
     schedule = plan.get("trailing_profit_schedule", DEFAULT_TRAILING_SCHEDULE)
+    min_profit_pct = float(
+        plan.get("minimum_profitable_exit_pct")
+        or plan.get("breakeven_after_pct")
+        or minimum_profitable_exit_pct()
+    )
     active_trail_pct = None
     for threshold, trail_buffer in sorted(schedule, key=lambda x: x[0], reverse=True):
-        if peak_pct >= threshold:
-            active_trail_pct = trail_buffer
+        if peak_pct >= max(float(threshold), min_profit_pct):
+            active_trail_pct = max(float(trail_buffer), 0.0)
             break
 
     if active_trail_pct is not None:
@@ -262,7 +298,12 @@ def check_partial_tp(plan: Dict, current_price: float, already_partial: bool = F
         return {"should_partial": False, "fraction": 0, "reason": "already_partial"}
 
     entry   = float(plan.get("entry_price", 0))
-    tp_pct  = float(plan.get("partial_take_profit_pct", 0.8))
+    min_profit_pct = float(
+        plan.get("minimum_profitable_exit_pct")
+        or plan.get("breakeven_after_pct")
+        or minimum_profitable_exit_pct()
+    )
+    tp_pct  = max(float(plan.get("partial_take_profit_pct", 0.8)), min_profit_pct)
     fraction = float(plan.get("partial_take_profit_fraction", 0.5))
 
     if entry <= 0:

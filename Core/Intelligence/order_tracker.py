@@ -270,6 +270,7 @@ class OrderTracker:
         fill_price: Optional[float] = None,
         coin_amount: Optional[float] = None,
         raw_response: Any = None,
+        trade_history_payload: Optional[Dict[str, Any]] = None,
     ) -> dict:
         """
         Move an order to a new state.
@@ -312,7 +313,7 @@ class OrderTracker:
         _atomic_write(_order_path(order_id), record)
         _update_index(order_id, record["pair"], new_state, record["side"])
         event_type = f"ORDER_{new_state}".upper()
-        _emit_trade_history(event_type, {
+        history_payload = {
             "order_id": order_id,
             "pair": record.get("pair"),
             "side": record.get("side"),
@@ -326,7 +327,10 @@ class OrderTracker:
             "trade_grade": record.get("trade_grade"),
             "lifecycle": record.get("lifecycle"),
             "source": "order_tracker",
-        })
+        }
+        if isinstance(trade_history_payload, dict):
+            history_payload.update(trade_history_payload)
+        _emit_trade_history(event_type, history_payload)
         logger.info(f"[OrderTracker] {order_id} → {new_state}" + (f" | {note}" if note else ""))
         return record
 
@@ -335,6 +339,8 @@ class OrderTracker:
         order_id: str,
         sell_value_idr: Optional[float] = None,
         pnl_idr: Optional[float] = None,
+        fee_idr: Optional[float] = None,
+        gross_pnl_idr: Optional[float] = None,
     ) -> dict:
         """
         Mark an order as RECONCILED after sell confirms.
@@ -349,46 +355,57 @@ class OrderTracker:
         coins     = float(record.get("coin_amount") or 0)
 
         if pnl_idr is None and sell_value_idr is not None:
-            pnl_idr = round(sell_value_idr - budget, 2)
+            pnl_idr = round(sell_value_idr - budget - float(fee_idr or 0.0), 2)
         if pnl_idr is None:
             pnl_idr = 0.0
+        if gross_pnl_idr is None and sell_value_idr is not None:
+            gross_pnl_idr = round(sell_value_idr - budget, 2)
 
         pnl_pct = round((pnl_idr / budget) * 100, 3) if budget > 0 else 0.0
 
         record["pnl_idr"] = round(pnl_idr, 2)
         record["pnl_pct"] = pnl_pct
         exit_price = round(sell_value_idr / max(coins, 1e-9), 8) if sell_value_idr is not None and coins > 0 else None
-        _emit_trade_history("ORDER_RECONCILED", {
-            "order_id": order_id,
-            "pair": record.get("pair"),
-            "side": record.get("side"),
-            "state": "RECONCILED",
-            "status": "CLOSED",
-            "entry_price_idr": fill_px,
-            "exit_price_idr": exit_price or 0.0,
-            "amount_coin": coins,
-            "amount_idr": budget,
-            "realized_pnl_idr": pnl_idr,
-            "realized_pnl_pct": pnl_pct,
-            "trade_grade": record.get("trade_grade"),
-            "lifecycle": record.get("lifecycle"),
-            "source": "order_tracker",
-            "reason": "sell_value_reconciled",
-        })
+        reconciled_record = self.transition(
+            order_id,
+            "RECONCILED",
+            note=f"PnL={pnl_idr:+.0f} IDR ({pnl_pct:+.2f}%)",
+            trade_history_payload={
+                "state": "RECONCILED",
+                "status": "CLOSED",
+                "entry_price_idr": fill_px,
+                "exit_price_idr": exit_price or 0.0,
+                "amount_coin": coins,
+                "amount_idr": budget,
+                "fee_idr": float(fee_idr or 0.0),
+                "gross_realized_pnl_idr": float(gross_pnl_idr or 0.0),
+                "net_realized_pnl_idr": pnl_idr,
+                "realized_pnl_idr": pnl_idr,
+                "realized_pnl_pct": pnl_pct,
+                "trade_grade": record.get("trade_grade"),
+                "lifecycle": record.get("lifecycle"),
+                "reason": "sell_value_reconciled",
+            },
+        )
+        reconciled_record["pnl_idr"] = round(pnl_idr, 2)
+        reconciled_record["pnl_pct"] = pnl_pct
+        reconciled_record["updated_at"] = _now_wib().isoformat()
+        _atomic_write(_order_path(order_id), reconciled_record)
+        _update_index(order_id, reconciled_record["pair"], "RECONCILED", reconciled_record["side"])
 
         # Feed to learning engine
         try:
             from Core.Intelligence.kibot_learning_engine import get_engine
             engine = get_engine()
-            pair_key = record["pair"].lower().replace("/", "_")
+            pair_key = reconciled_record["pair"].lower().replace("/", "_")
             won = pnl_idr > 0
             gain_pct = pnl_pct / 100.0
-            engine.record_trade(pair_key, won=won, gain_pct=gain_pct)
+            engine.record_trade(pair_key, gain_pct, regime=reconciled_record.get("trade_grade", "NORMAL"), won=won, pnl_idr=pnl_idr)
             logger.info(f"[OrderTracker] Recorded trade to learning engine: {pair_key} PnL={pnl_idr:+.0f} IDR")
         except Exception as e:
             logger.warning(f"[OrderTracker] Learning engine update failed: {e}")
 
-        return self.transition(order_id, "RECONCILED", note=f"PnL={pnl_idr:+.0f} IDR ({pnl_pct:+.2f}%)")
+        return reconciled_record
 
     def mark_stale(self, order_id: str) -> Optional[dict]:
         """Mark an order as STALE if it has exceeded max_hold_minutes."""
