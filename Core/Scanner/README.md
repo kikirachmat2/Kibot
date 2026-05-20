@@ -26,3 +26,4 @@ Scanner layer untuk membaca peluang pasar dan mengirim sinyal HMAC-signed ke Cou
 - Interval scanner default lebih agresif untuk flow cepat.
 - Universal scanner dijalankan aman dari thread context.
 - Universal lead-lag signals are context only unless Council can match them to a supported executor route. Deterministic fallback is not allowed to turn generic exchange/entity signals into Indodax buy orders.
+- Market-wide route state files (`indodax_scanner_state.json`, `solana_*`, `pumpfun_*`, `base_scanner_state.json`, `future_web3_scanner_state.json`) are refreshed by the active `kibot-scanner` engine, while `scanner_executor_contract.json` is refreshed by the control-plane target board loop. This keeps route coverage canonical without duplicate daemons.

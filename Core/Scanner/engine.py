@@ -33,6 +33,11 @@ try:
 except ImportError:
     Web3OpportunityScanner = None
 
+try:
+    from Core.Scanner.market_wide_wave_scanner import MarketWideWaveScanner
+except ImportError:
+    MarketWideWaveScanner = None
+
 
 class ScannerEngine:
     def __init__(self, scanners: Sequence[Any] | None = None, interval_s: int | None = None):
@@ -57,6 +62,8 @@ class ScannerEngine:
         self._web3_scan_interval_s = float(os.getenv("KIBOT_WEB3_SCAN_INTERVAL_SEC", "30") or 30)
         self._last_ai_trace_refresh = 0.0
         self._ai_trace_interval_s = float(os.getenv("KIBOT_AI_TRACE_REFRESH_SEC", "60") or 60)
+        self._last_market_wide_scan = 0.0
+        self._market_wide_scan_interval_s = float(os.getenv("KIBOT_MARKET_WIDE_SCAN_INTERVAL_SEC", "120") or 120)
 
         # LeadLag alpha engine setup
         self.leadlag_enabled = os.getenv("KIBOT_LEADLAG_ENABLED", "true").strip().lower() in {"1", "true", "yes", "on"}
@@ -78,6 +85,12 @@ class ScannerEngine:
             logger.info("✅ Web3 Opportunity Scanner initialized in HFT Scanner.")
         else:
             self.web3_scanner = None
+
+        if MarketWideWaveScanner is not None:
+            self.market_wide_scanner = MarketWideWaveScanner()
+            logger.info("✅ Market-Wide Wave Scanner initialized in HFT Scanner.")
+        else:
+            self.market_wide_scanner = None
 
         # Turbo Adaptive Mode setup
         self.scanner_turbo = os.getenv("KIBOT_SCANNER_TURBO", "true").strip().lower() in {"1", "true", "yes", "on", "auto"}
@@ -481,6 +494,13 @@ class ScannerEngine:
                 Path(tmp.name).replace(trace_path)
             except Exception as _ai_err:
                 logger.debug(f"[Scanner] ai_decision_trace heartbeat skipped: {_ai_err}")
+
+        if self.market_wide_scanner and (started_at - self._last_market_wide_scan >= self._market_wide_scan_interval_s):
+            self._last_market_wide_scan = started_at
+            try:
+                await self.market_wide_scanner.scan()
+            except Exception as _mw_err:
+                logger.debug(f"[Scanner] market-wide wave scan skipped: {_mw_err}")
 
         # ── §17.2 Persist best Indodax signal for dashboard Signal Intel panel ──
         if indo_signals:

@@ -10,6 +10,19 @@ logger = logging.getLogger("ScannerExecutorContract")
 STATE_DIR = Path(__file__).resolve().parent.parent.parent / "state"
 CONTRACT_FILE = STATE_DIR / "scanner_executor_contract.json"
 
+
+def _resolve_state_path(raw: str) -> Path:
+    raw = str(raw or "")
+    if not raw:
+        return STATE_DIR
+    path = Path(raw)
+    if path.is_absolute():
+        return path
+    parts = path.parts
+    if parts and parts[0] == "state":
+        path = Path(*parts[1:]) if len(parts) > 1 else Path()
+    return STATE_DIR / path
+
 class ScannerExecutorContract:
     """
     Registry contract that defines the standard pairing and capabilities of
@@ -153,9 +166,9 @@ class ScannerExecutorContract:
             if not r.get("source_proof_required"):
                 r["source_proof_required"] = True
 
-            scanner_file = STATE_DIR / str(r.get("scanner_state_file") or "")
-            executor_file = STATE_DIR / str(r.get("executor_state_file") or "")
-            position_file = STATE_DIR / str(r.get("position_state_file") or "")
+            scanner_file = _resolve_state_path(str(r.get("scanner_state_file") or ""))
+            executor_file = _resolve_state_path(str(r.get("executor_state_file") or ""))
+            position_file = _resolve_state_path(str(r.get("position_state_file") or ""))
 
             scanner_exists = bool(r.get("scanner")) and scanner_file.exists()
             executor_exists = bool(r.get("executor")) and executor_file.exists()
@@ -210,9 +223,7 @@ class ScannerExecutorContract:
             executor_path = route.get("executor_state_file")
             if not executor_path:
                 continue
-            path = Path(str(executor_path))
-            if not path.is_absolute():
-                path = STATE_DIR / path.name if str(path).startswith("state/") else STATE_DIR / str(path)
+            path = _resolve_state_path(str(executor_path))
             payload = {
                 "updated_at": datetime.now(timezone.utc).isoformat(),
                 "route": route.get("route", ""),
