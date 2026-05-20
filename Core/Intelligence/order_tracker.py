@@ -122,7 +122,7 @@ def _load_active_trade_symbols() -> set[str]:
     in active_trades.json. If it does not, the FILLED record is a ghost and
     should stop blocking open-order calculations.
     """
-    active = _load_json(Path("state/active_trades.json"))
+    active = _load_json(ORDERS_DIR.parent / "active_trades.json")
     symbols: set[str] = set()
     if isinstance(active, dict):
         for symbol, trade in active.items():
