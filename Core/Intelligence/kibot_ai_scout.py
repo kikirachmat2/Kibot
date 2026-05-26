@@ -145,9 +145,11 @@ class WorldScout:
             "gh": bool(shutil.which("gh")),
             "aider": bool(shutil.which("aider")),
             "copilot": bool(shutil.which("copilot")),
+            "crush": bool(shutil.which("crush")),
         }
         gh_status = self._run_command(["gh", "auth", "status", "-h", "github.com"], timeout=10) if toolchain["gh"] else {"ok": False, "stdout": "", "stderr": "gh_missing"}
         copilot_status = self._run_command(["gh", "copilot", "--help"], timeout=10) if toolchain["gh"] else {"ok": False, "stdout": "", "stderr": "gh_missing"}
+        crush_status = self._run_command(["crush", "--help"], timeout=10) if toolchain["crush"] else {"ok": False, "stdout": "", "stderr": "crush_missing"}
         journal_alerts = {}
         for svc in ("kibot-scanner", "kibot-executor", "kibot-dashboard"):
             res = self._run_command(["journalctl", "-u", svc, "-n", "20", "--no-pager"], timeout=12)
@@ -178,6 +180,7 @@ class WorldScout:
                 "gh_auth_ok": bool(gh_status.get("ok")),
                 "aider": toolchain["aider"],
                 "copilot": bool(copilot_status.get("ok")) or toolchain["copilot"],
+                "crush": bool(crush_status.get("ok")),
             },
             "state_freshness_s": freshness,
             "stale_files": stale,

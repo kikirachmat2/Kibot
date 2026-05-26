@@ -60,7 +60,7 @@
 - **No Spam Recovery**: posisi yang tidak bisa dijual karena minimum order exchange ditandai `exit_blocked_until`, bukan dicoba setiap 5 detik tanpa henti.
 - **Wallet-Reconciled State**: executor menyamakan `active_trades.json` dengan wallet/open-orders Indodax live, jadi posisi palsu tidak lagi membuat Council salah hitung.
 - **Bounded Council Thinking**: AI/websearch tetap dipakai, tetapi setiap deliberasi punya timeout dan deterministic fallback berbasis evidence lokal agar sistem tidak freeze saat provider lambat.
-- **Runtime Patrol**: `Core/Intelligence/kibot_ai_scout.py` menjalankan patrol runtime setiap 5 menit untuk cek service, state freshness, log error, dan kesiapan tooling AI/Copilot/GitHub tanpa menjadi blocking path trading.
+- **Runtime Patrol**: `Core/Intelligence/kibot_ai_scout.py` menjalankan patrol runtime setiap 5 menit untuk cek service, state freshness, log error, dan kesiapan tooling AI/Copilot/GitHub/Crush tanpa menjadi blocking path trading.
 - **WIB Business Day**: RiskGate, dashboard, midnight report, dan PnL harian memakai tanggal WIB, bukan timezone UTC server.
 - **System Commander**: health non-trading dipusatkan di `Core/Support/system_commander.py`, yang menilai service, resource, model, inventory, provider/source health, drift GitHub/server, dan operator-required state.
 - **Honest Autonomy Register**: strategy docs membedakan blueprint matang vs runtime maturity, supaya dashboard dan operator tidak salah menganggap dokumen “100%” sebagai bukti runtime tanpa smoke test.

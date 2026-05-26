@@ -1,6 +1,6 @@
 # 🗄️ KiBot Sovereign — Server Inventory
-> **Server**: BrainSystem (Batam Master)  
-> **Last Verified**: 2026-05-15  
+> **Server**: BrainSystem (Batam Master)
+> **Last Verified**: 2026-05-23
 > **Purpose**: Snapshot runtime server state yang tidak selalu terlihat dari repo source
 
 ---
@@ -96,7 +96,7 @@
 | `POLYMARKET_WALLET_ADDRESS` | SET | Wallet EVM untuk Polymarket |
 | `POLYMARKET_PRIVATE_KEY` | SET | Private key Phantom/EVM untuk eksekusi Polymarket |
 | `KIBOT_LIVE_TRADING_ENABLED` | SET / TRUE | Gate entry real-money |
-| `KIBOT_TRADING_MODE` | live | Explicit operator mode |
+| `KIBOT_TRADING_MODE` | controlled-live | Explicit operator mode |
 
 ---
 
@@ -131,7 +131,7 @@
 | `numpy` | ✅ | Numerical computing |
 | `pandas` | ✅ | Data handling |
 | `web3` | ✅ | Polygon / EVM |
-| `TA-Lib` | ✅ | Native package installed on Batam; fallback shim remains for portability |
+| `TA-Lib` | ❌ | Missing on Batam; fallback shim remains for portability |
 
 ---
 
@@ -240,7 +240,7 @@ These exist on the server but are easy to miss if you only inspect the code tree
 61. Indodax now has a dedicated Binance→Indodax lead-lag route: `Core/Scanner/indodax_binance_leadlag_scanner.py` keeps a short rolling comparison window plus aggressive bootstrap mode, `Core/Decision/indodax_target_board.py` prioritizes lead-lag candidates above generic volume leaders when the spread and lag are valid, and `Core/Decision/live_order_dispatcher.py` can dispatch aggressive lead-lag watch candidates when the configured gap/lag thresholds are met. This keeps the Indodax path reactive to Binance front-running without waiting for a perfect long-window confirmation.
 61. PnL reconciliation is now explicit and adversarial. `Core/Treasury/pnl_reconciliation.py` writes `state/pnl_reconciliation.json`, compares the daily anchor, capital governor, venue ledger, active trades, and hard-stop state, and emits what-if checks for anchor drift, legacy open-position drag, non-live ledger rows, and hard-stop breaches. Dashboard, autonomous brain, Indodax brain, and Phantom brain surface those checks so order logic cannot silently trust one stale number.
 62. Daily rollover is now run by `Core/Decision/daily_reset_coordinator.py` through `config/systemd/kibot-daily-reset.service`. The coordinator forces `EXIT_ALL` before midnight WIB, waits for open inventory to flatten, then resets the daily baseline and restores the previous live strategy without deleting `state/trade_history/`.
-63. Canonical accounting truth now flows through `Core/Treasury/accounting_truth.py` and the dashboard/control-plane so `total_balance_idr`, `reset_total_balance_idr`, `daily_return_idr`, and `daily_return_pct` always represent the combined Indodax + Phantom balance, while `Core/Intelligence/kibot_ai_scout.py` also writes `state/ai_patrol.json` and `state/ai_strategy_review.json` every 5 minutes to prove runtime/service/tooling readiness without blocking trading.
+63. Canonical accounting truth now flows through `Core/Treasury/accounting_truth.py` and the dashboard/control-plane so `total_balance_idr`, `reset_total_balance_idr`, `daily_return_idr`, and `daily_return_pct` always represent the combined Indodax + Phantom balance, while `Core/Intelligence/kibot_ai_scout.py` also writes `state/ai_patrol.json` and `state/ai_strategy_review.json` every 5 minutes to prove runtime/service/tooling readiness, including GitHub CLI, Copilot, Aider, and Crush, without blocking trading.
 
 ---
 

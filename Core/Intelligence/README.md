@@ -7,7 +7,7 @@ AI Orchestration, Learning, and Market Intelligence models.
 - `kibot_ai_coordinator.py` mengatur alur AI dan provider fallback.
 - `kibot_learning_engine.py` menyimpan state belajar dan validasi integritas.
 - `kibot_rag.py` menyuntikkan fakta server dan memori operasional ke agent.
-- `kibot_ai_scout.py` menjaga scouting intel pasar dan berita global tetap hidup, sekaligus menjalankan runtime patrol 5 menit untuk service/log/tooling readiness.
+- `kibot_ai_scout.py` menjaga scouting intel pasar dan berita global tetap hidup, sekaligus menjalankan runtime patrol 5 menit untuk service/log/tooling readiness termasuk GitHub CLI, Copilot, Aider, dan Crush.
 - `kibot_whatif_engine.py` menjaga simulasi skenario selalu terbarui untuk council.
 - `SovereignCouncil` membaca `whatif_results.json` dan evidence web sebelum memberi mandat trading.
 - `SovereignCouncil` sekarang juga memberi posture eksplisit `ENTER / WAIT / EXIT`, plus recovery mode terkontrol saat equity harian merah dan masih ada waktu sebelum midnight. Jika governor harian sudah melewati hard loss cap, runtime masuk `BLOCKED_WITH_REASON` / `EXIT_ONLY` dan entry baru tidak lagi boleh lewat dispatcher atau RiskGate.
