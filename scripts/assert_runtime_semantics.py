@@ -34,6 +34,23 @@ def _count_targets(data: dict[str, Any]) -> int:
     return len(targets) if isinstance(targets, list) else 0
 
 
+def _env_or_dotenv(name: str) -> str:
+    val = os.getenv(name, "").strip()
+    if val:
+        return val
+    env_file = ROOT / ".env"
+    try:
+        for line in env_file.read_text(encoding="utf-8").splitlines():
+            if not line or line.lstrip().startswith("#") or "=" not in line:
+                continue
+            key, raw = line.split("=", 1)
+            if key.strip() == name:
+                return raw.strip().strip("\"'")
+    except Exception:
+        pass
+    return ""
+
+
 def main() -> int:
     blockers: list[str] = []
     warnings: list[str] = []
@@ -68,7 +85,15 @@ def main() -> int:
         )
 
     if str(dispatcher.get("status") or "").upper().startswith("BLOCKED"):
-        blockers.append("dispatcher_blocked:" + str(dispatcher.get("reason") or "unknown"))
+        dispatcher_reason = str(dispatcher.get("reason") or "").strip()
+        if not dispatcher_reason:
+            child_reasons = []
+            for key in ("indodax", "phantom"):
+                child = dispatcher.get(key)
+                if isinstance(child, dict) and child.get("reason"):
+                    child_reasons.append(f"{key}:{child.get('reason')}")
+            dispatcher_reason = "; ".join(child_reasons)
+        blockers.append("dispatcher_blocked:" + (dispatcher_reason or "unknown"))
 
     target_count = _count_targets(indodax_targets) + _count_targets(phantom_targets)
     if target_count > 0 and not allow_orders:
@@ -79,8 +104,8 @@ def main() -> int:
     if scanner_status in {"NO_DATA", "SOURCE_FAILED"} and pairs_checked > 0:
         blockers.append(f"indodax_scanner_status_inconsistent:{scanner_status}_pairs_{pairs_checked}")
 
-    telegram_token = bool(os.getenv("KIBOT_TELEGRAM_TOKEN") or os.getenv("TELEGRAM_BOT_TOKEN"))
-    telegram_chat = bool(os.getenv("KIBOT_TELEGRAM_CHAT_ID") or os.getenv("TELEGRAM_CHAT_ID"))
+    telegram_token = bool(_env_or_dotenv("KIBOT_TELEGRAM_TOKEN") or _env_or_dotenv("TELEGRAM_BOT_TOKEN"))
+    telegram_chat = bool(_env_or_dotenv("KIBOT_TELEGRAM_CHAT_ID") or _env_or_dotenv("TELEGRAM_CHAT_ID"))
     if not telegram_token or not telegram_chat:
         warnings.append("telegram_env_missing")
 

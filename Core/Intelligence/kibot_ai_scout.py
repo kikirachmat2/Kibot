@@ -173,6 +173,13 @@ class WorldScout:
         daily_reset_pending = bool(governor.get("daily_reset_pending", False))
         dispatcher_status = str(dispatcher.get("status") or "").strip()
         dispatcher_reason = str(dispatcher.get("reason") or "").strip()
+        if not dispatcher_reason:
+            child_reasons = []
+            for key in ("indodax", "phantom"):
+                child = dispatcher.get(key)
+                if isinstance(child, dict) and child.get("reason"):
+                    child_reasons.append(f"{key}:{child.get('reason')}")
+            dispatcher_reason = "; ".join(child_reasons)
 
         semantic_alerts: List[str] = []
         blockers: List[Dict[str, Any]] = []

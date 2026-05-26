@@ -275,7 +275,7 @@ class MarketWideWaveScanner:
 
         # 1. Indodax
         indodax_file = STATE_DIR / "indodax_scanner_state.json"
-        indodax_status = source_status.get("base") or source_status.get("indodax") or "NO_DATA"
+        indodax_status = source_status.get("indodax") or "NO_DATA"
         if indodax_status == "OK" and not candidates_by_route["indodax"]:
             indodax_status = "NO_DATA"
         indodax_payload = {
@@ -291,6 +291,17 @@ class MarketWideWaveScanner:
                 existing = json.loads(indodax_file.read_text())
             except Exception:
                 existing = {}
+            existing_has_real_data = bool(
+                existing.get("pairs_checked")
+                or existing.get("gainers_24h")
+                or existing.get("volume_leaders")
+                or existing.get("brutal_momentum_candidates")
+                or existing.get("candidates_found")
+            )
+            if indodax_status == "NO_DATA" and existing_has_real_data:
+                indodax_payload["status"] = "OK"
+                indodax_payload["source_status"] = "OK"
+                indodax_payload["no_data_reason"] = ""
             indodax_payload = merge_refresh(existing, indodax_payload)
         indodax_file.write_text(json.dumps(indodax_payload, indent=2, ensure_ascii=False))
 
