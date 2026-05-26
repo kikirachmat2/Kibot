@@ -18,6 +18,7 @@ CORE_SERVICES=(
   kibot-phantom-brain
   kibot-target-board
   kibot-telemetry
+  kibot-workflow-supervisor
   kibot-daily-reset
   kibot-pumpfun
   kibot-base
@@ -164,6 +165,14 @@ cmd_tools() {
     echo "aider not installed"
     echo "Hint: pipx install aider-chat && export PATH=\"\$HOME/.local/bin:\$PATH\""
   fi
+
+  section "Crush"
+  if command -v crush >/dev/null 2>&1; then
+    crush --version || crush --help | head -20 || true
+  else
+    echo "crush not installed"
+    echo "Hint: npm install -g @charmland/crush"
+  fi
 }
 
 cmd_doctor() {
@@ -286,6 +295,17 @@ cmd_install_tools() {
     pipx install aider-chat || true
   else
     echo "pipx missing. Install pipx first, then run: pipx install aider-chat"
+  fi
+
+  section "Crush"
+  if command -v crush >/dev/null 2>&1; then
+    crush --version || true
+    echo "Crush already installed."
+  elif command -v npm >/dev/null 2>&1; then
+    echo "[install] npm install -g @charmland/crush"
+    npm install -g @charmland/crush || true
+  else
+    echo "npm missing. Install Node/npm first, then run: npm install -g @charmland/crush"
   fi
 }
 

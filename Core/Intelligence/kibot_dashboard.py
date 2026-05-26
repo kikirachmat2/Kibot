@@ -406,6 +406,10 @@ def _load_ai_decision_trace() -> Dict[str, Any]:
     return _read_json(STATE / "ai_decision_trace.json", {})
 
 
+def _load_workflow_automation() -> Dict[str, Any]:
+    return _read_json(STATE / "workflow_automation.json", {})
+
+
 def _load_autonomous_sizing_state() -> Dict[str, Any]:
     return _read_json(STATE / "autonomous_sizing.json", {})
 
@@ -1053,6 +1057,7 @@ def _build_summary() -> Dict[str, Any]:
     summary["scanner_health"] = _load_scanner_health()
     summary["target_board_runtime"] = _load_target_board_runtime()
     summary["daily_reset"] = _read_json(STATE / "daily_reset_state.json", {})
+    summary["workflow_automation"] = _load_workflow_automation()
     summary["indodax_top_targets"] = _load_indodax_top_targets()
     summary["phantom_top_targets"] = _load_phantom_top_targets()
     summary["ai_decision_trace"] = _load_ai_decision_trace()
@@ -1148,6 +1153,7 @@ def _build_summary() -> Dict[str, Any]:
     summary["server_truth"] = summary.get("server_telemetry", {})
     summary["scanner_health_state"] = summary.get("scanner_health", {})
     summary["target_board_runtime_state"] = summary.get("target_board_runtime", {})
+    summary["workflow_automation_state"] = summary.get("workflow_automation", {})
 
     summary["ai"] = summary.get("ai_decision_trace", {})
 
@@ -1801,6 +1807,11 @@ def _build_control_plane_payload() -> Dict[str, Any]:
             "data": summary_data.get("daily_reset", {}),
             "age_s": _file_age_s(STATE / "daily_reset_state.json"),
             "fresh": _file_age_s(STATE / "daily_reset_state.json") >= 0 and _file_age_s(STATE / "daily_reset_state.json") < 15,
+        },
+        "workflow_automation": {
+            "data": summary_data.get("workflow_automation", {}),
+            "age_s": _file_age_s(STATE / "workflow_automation.json"),
+            "fresh": _file_age_s(STATE / "workflow_automation.json") >= 0 and _file_age_s(STATE / "workflow_automation.json") < 45,
         },
         "indodax_top_targets": {
             "data": summary_data.get("indodax_top_targets", {}),

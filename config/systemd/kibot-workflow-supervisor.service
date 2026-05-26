@@ -1,0 +1,22 @@
+[Unit]
+Description=KiBot Workflow Automation Supervisor
+After=network-online.target kibot-capital-governor.service kibot-scanner.service kibot-target-board.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=ubuntu
+WorkingDirectory=/home/ubuntu/KiBot
+EnvironmentFile=-/home/ubuntu/KiBot/.env
+EnvironmentFile=-/home/ubuntu/KiBot/.env.kiv
+Environment=PYTHONUNBUFFERED=1
+Environment=PYTHONPATH=.
+ExecStart=/home/ubuntu/KiBot/.venv/bin/python3 -m Core.Support.workflow_supervisor
+Restart=always
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=kibot-workflow-supervisor
+
+[Install]
+WantedBy=multi-user.target
