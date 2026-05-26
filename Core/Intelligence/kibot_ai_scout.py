@@ -286,9 +286,11 @@ class WorldScout:
             path = STATE_DIR / name
             age = self._file_age_s(path)
             freshness[name] = age
+            max_age_s = 86400 if name == "telegram_throttle.json" else 300
             if age < 0:
-                stale.append({"file": name, "reason": "missing"})
-            elif age > 300:
+                if name != "telegram_throttle.json":
+                    stale.append({"file": name, "reason": "missing"})
+            elif age > max_age_s:
                 stale.append({"file": name, "reason": f"stale_{int(age)}s"})
 
         services = {}

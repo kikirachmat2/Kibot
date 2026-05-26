@@ -158,6 +158,45 @@ def _support_tools() -> dict[str, Any]:
     }
 
 
+def _remediation_for(source: str, reason: str) -> dict[str, Any]:
+    normalized = f"{source}:{reason}".lower()
+    if "daily_rollover_exit_pending" in normalized:
+        return {
+            "action": "EXIT_OR_RECONCILE_OPEN_ROLLOVER_POSITION",
+            "owner": "kibot-executor + daily-reset",
+            "reason": "open inventory must be sold or reconciled before new entries",
+        }
+    if "daily_loss_cap_breached" in normalized or "global_hard_stop" in normalized:
+        return {
+            "action": "RECOVERY_EXIT_ONLY_UNTIL_NEXT_DAILY_RESET",
+            "owner": "capital-governor + risk-gate",
+            "reason": "daily hard loss cap protects remaining capital",
+        }
+    if "sol_balance_below_trade_min" in normalized:
+        return {
+            "action": "PHANTOM_SCAN_CURRENT_CHAIN_OR_WAIT_FOR_SOL_TOPUP",
+            "owner": "phantom-brain",
+            "reason": "Solana routes need SOL above trade+fee minimum; Base routes may still be evaluated separately",
+        }
+    if "inactive_services" in normalized:
+        return {
+            "action": "RESTART_INACTIVE_SERVICE",
+            "owner": "workflow-supervisor/operator",
+            "reason": "systemd runtime is not fully online",
+        }
+    if "telegram" in normalized:
+        return {
+            "action": "FIX_TELEGRAM_CONFIG_OR_NETWORK",
+            "owner": "ai-scout/workflow-supervisor",
+            "reason": "operator alerts need Telegram connectivity",
+        }
+    return {
+        "action": "INSPECT_BLOCKER_AND_RETRY",
+        "owner": "workflow-supervisor",
+        "reason": reason or source,
+    }
+
+
 def build_workflow_automation_state() -> dict[str, Any]:
     now = datetime.now(timezone.utc).isoformat()
     governor = _read_json(STATE / "capital_governor.json", {})
@@ -193,6 +232,12 @@ def build_workflow_automation_state() -> dict[str, Any]:
         blockers.append({"source": "telegram", "reason": telegram.get("reason") or "telegram_not_ready"})
     if isinstance(ai_patrol, dict) and ai_patrol.get("support_action") == "repair_runtime_blocker":
         blockers.append({"source": "ai_patrol", "reason": "; ".join(ai_patrol.get("alerts", [])[:4]) or "runtime_patrol_alert"})
+
+    remediation_plan = [
+        _remediation_for(str(item.get("source") or ""), str(item.get("reason") or ""))
+        for item in blockers
+        if isinstance(item, dict)
+    ]
 
     scanner_fresh = (
         _age_s(STATE / "indodax_top_targets.json") >= 0
@@ -239,10 +284,10 @@ def build_workflow_automation_state() -> dict[str, Any]:
         next_action = "restart inactive services and rerun workflow supervisor"
     elif dispatcher_status.startswith("BLOCKED"):
         overall_status = "TRADING_FLOW_BLOCKED_WITH_REASON"
-        next_action = dispatcher_reason or "inspect live_order_dispatcher"
+        next_action = remediation_plan[0]["action"] if remediation_plan else (dispatcher_reason or "inspect live_order_dispatcher")
     elif not allow_orders:
         overall_status = "TRADING_FLOW_BLOCKED_WITH_REASON"
-        next_action = governor_reason or "inspect capital governor"
+        next_action = remediation_plan[0]["action"] if remediation_plan else (governor_reason or "inspect capital governor")
     elif enter_targets > 0:
         overall_status = "TRADING_FLOW_READY"
         next_action = "dispatcher may enter eligible candidate"
@@ -284,6 +329,7 @@ def build_workflow_automation_state() -> dict[str, Any]:
             "age_s": _age_s(STATE / "ai_patrol.json"),
         },
         "blockers": blockers,
+        "remediation_plan": remediation_plan,
         "next_check_seconds": int(float(os.getenv("KIBOT_WORKFLOW_SUPERVISOR_INTERVAL_SEC", "30") or 30)),
     }
     return payload
