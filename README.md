@@ -61,6 +61,7 @@
 - **Wallet-Reconciled State**: executor menyamakan `active_trades.json` dengan wallet/open-orders Indodax live, jadi posisi palsu tidak lagi membuat Council salah hitung.
 - **Bounded Council Thinking**: AI/websearch tetap dipakai, tetapi setiap deliberasi punya timeout dan deterministic fallback berbasis evidence lokal agar sistem tidak freeze saat provider lambat.
 - **Runtime Patrol**: `Core/Intelligence/kibot_ai_scout.py` menjalankan patrol runtime setiap 5 menit untuk cek service, state freshness, log error, dan kesiapan tooling AI/Copilot/GitHub/Crush tanpa menjadi blocking path trading.
+- **Semantic Runtime Patrol**: patrol AI juga membaca `capital_governor.json`, `live_order_dispatcher.json`, top target boards, scanner status, dan Telegram throttle/API. Jadi kondisi seperti target ada tetapi order OFF, hard stop aktif, rollover pending, atau Telegram tidak siap menjadi alert eksplisit, bukan sekadar “service active”.
 - **WIB Business Day**: RiskGate, dashboard, midnight report, dan PnL harian memakai tanggal WIB, bukan timezone UTC server.
 - **System Commander**: health non-trading dipusatkan di `Core/Support/system_commander.py`, yang menilai service, resource, model, inventory, provider/source health, drift GitHub/server, dan operator-required state.
 - **Honest Autonomy Register**: strategy docs membedakan blueprint matang vs runtime maturity, supaya dashboard dan operator tidak salah menganggap dokumen “100%” sebagai bukti runtime tanpa smoke test.

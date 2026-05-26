@@ -326,3 +326,7 @@ The KiBot sovereign production node on Batam is in a **highly optimized, perfect
 *   **Resilience:** Continuous test automation is green, rollback pathways are active, and strict self-healing triggers are validated.
 
 Ready for next-phase authorization or structural modifications.
+
+## 11. Runtime Semantic Patrol Update
+
+`Core/Intelligence/kibot_ai_scout.py` now verifies runtime truth beyond green `systemd` state. The patrol reads capital governor order permission, live dispatcher status, top target boards, scanner source status, and Telegram throttle/API readiness. If targets are visible but orders are blocked, daily rollover is pending, global hard stop is active, dispatcher is blocked, Telegram is unhealthy, or scanner state contradicts real fetched data, `state/ai_patrol.json` records an explicit alert and `scripts/assert_runtime_semantics.py` can fail the operator check with the exact blocker.
