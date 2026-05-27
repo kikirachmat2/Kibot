@@ -79,3 +79,34 @@ def test_runtime_patrol_writes_telegram_status_without_credentials(tmp_path, mon
     assert payload["telegram"]["configured"] is False
     assert "telegram_config_missing" in payload["alerts"]
     assert "runtime_semantics" in payload
+
+
+def test_ai_patrol_does_not_send_telegram_for_auto_repairable_rollover(tmp_path, monkeypatch):
+    monkeypatch.setattr(kibot_ai_scout, "STATE_DIR", tmp_path)
+
+    _write(
+        tmp_path / "capital_governor.json",
+        {
+            "allow_new_orders": False,
+            "allow_new_orders_reason": "daily_rollover_exit_pending (1 open; symbols=POND/IDR)",
+            "daily_reset_pending": True,
+            "daily_reset_reason": "daily_rollover_exit_pending",
+        },
+    )
+    _write(
+        tmp_path / "live_order_dispatcher.json",
+        {"status": "BLOCKED_WITH_REASON", "reason": "daily_rollover_exit_pending (1 open; symbols=POND/IDR)"},
+    )
+    _write(tmp_path / "indodax_top_targets.json", {"top_targets": [{"recommended_action": "ENTER"}]})
+    _write(tmp_path / "phantom_top_targets.json", {"top_targets": []})
+
+    scout = kibot_ai_scout.WorldScout()
+    semantics = scout._runtime_semantics()
+
+    assert scout._runtime_blocker_auto_repairable(semantics) is True
+    assert asyncio.run(
+        scout._notify_runtime_blockers(
+            semantics,
+            {"configured": True, "bot_api_ok": True},
+        )
+    ) is False

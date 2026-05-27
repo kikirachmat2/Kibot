@@ -17,6 +17,11 @@ from Core.Support.ki_config import PROJECT_ROOT, STATE_DIR
 ROOT = Path(PROJECT_ROOT)
 STATE = Path(STATE_DIR)
 STATE_FILE = STATE / "workflow_automation.json"
+REPAIR_STATE_FILE = STATE / "workflow_auto_repair.json"
+
+AUTO_REPAIRABLE_MARKERS = (
+    "daily_rollover_exit_pending",
+)
 
 CRITICAL_SERVICES = [
     "kibot-capital-governor",
@@ -63,6 +68,56 @@ def _run(args: list[str], timeout: int = 6) -> dict[str, Any]:
         }
     except Exception as exc:
         return {"ok": False, "stdout": "", "stderr": str(exc), "returncode": -1}
+
+
+def _blocker_text(blockers: Any) -> str:
+    try:
+        return json.dumps(blockers, ensure_ascii=False, sort_keys=True).lower()
+    except Exception:
+        return str(blockers).lower()
+
+
+def _is_auto_repairable_blocker(blockers: Any) -> bool:
+    text = _blocker_text(blockers)
+    return any(marker in text for marker in AUTO_REPAIRABLE_MARKERS)
+
+
+def _repair_key(blockers: Any) -> str:
+    text = _blocker_text(blockers)
+    if "daily_rollover_exit_pending" in text:
+        return "daily_rollover_exit_pending"
+    return "unknown"
+
+
+def _update_repair_tracking(key: str, *, attempted: bool, resolved: bool) -> dict[str, Any]:
+    now_ts = time.time()
+    previous = _read_json(REPAIR_STATE_FILE, {})
+    if not isinstance(previous, dict):
+        previous = {}
+    current = previous.get(key) if isinstance(previous.get(key), dict) else {}
+    if resolved:
+        current = {
+            "key": key,
+            "first_seen_at": "",
+            "last_seen_at": "",
+            "attempts": 0,
+            "resolved_at": datetime.now(timezone.utc).isoformat(),
+        }
+    else:
+        first_seen = float(current.get("first_seen_ts") or now_ts)
+        attempts = int(current.get("attempts") or 0) + (1 if attempted else 0)
+        current = {
+            "key": key,
+            "first_seen_ts": first_seen,
+            "first_seen_at": datetime.fromtimestamp(first_seen, tz=timezone.utc).isoformat(),
+            "last_seen_ts": now_ts,
+            "last_seen_at": datetime.now(timezone.utc).isoformat(),
+            "attempts": attempts,
+            "age_s": round(now_ts - first_seen, 1),
+        }
+    previous[key] = current
+    _write_json(REPAIR_STATE_FILE, previous)
+    return current
 
 
 def _service_statuses() -> dict[str, dict[str, Any]]:
@@ -339,6 +394,11 @@ async def notify_if_needed(payload: dict[str, Any]) -> bool:
     blockers = payload.get("blockers")
     if not blockers:
         return False
+    auto_repair = payload.get("auto_repair") if isinstance(payload.get("auto_repair"), dict) else {}
+    if auto_repair.get("attempted") and not auto_repair.get("operator_alert_required"):
+        return False
+    if _is_auto_repairable_blocker(blockers) and not auto_repair.get("operator_alert_required"):
+        return False
     try:
         from Core.sovereign_notifier import SovereignNotifier
 
@@ -360,8 +420,80 @@ async def notify_if_needed(payload: dict[str, Any]) -> bool:
         return False
 
 
+async def attempt_auto_repair(payload: dict[str, Any]) -> dict[str, Any]:
+    blockers = payload.get("blockers", [])
+    result: dict[str, Any] = {
+        "attempted": False,
+        "auto_repairable": _is_auto_repairable_blocker(blockers),
+        "actions": [],
+        "operator_alert_required": False,
+        "operator_alert_reason": "",
+        "next_action": "NO_AUTO_REPAIR_REQUIRED",
+    }
+    if not result["auto_repairable"]:
+        if blockers:
+            result["operator_alert_required"] = True
+            result["operator_alert_reason"] = "non_auto_repairable_blocker"
+            result["next_action"] = "ESCALATE_NON_REPAIRABLE_BLOCKER"
+        return result
+
+    key = _repair_key(blockers)
+    result["attempted"] = True
+    result["next_action"] = "AUTO_REPAIR_IN_PROGRESS"
+
+    try:
+        from Core.Decision.daily_reset_coordinator import evaluate_daily_reset
+
+        reset_state = await evaluate_daily_reset()
+        result["actions"].append(
+            {
+                "action": "daily_reset_coordinator.evaluate_daily_reset",
+                "ok": True,
+                "status": reset_state.get("status") if isinstance(reset_state, dict) else "",
+                "reason": reset_state.get("reason") if isinstance(reset_state, dict) else "",
+                "next_action": reset_state.get("next_action") if isinstance(reset_state, dict) else "",
+            }
+        )
+    except Exception as exc:
+        result["actions"].append(
+            {
+                "action": "daily_reset_coordinator.evaluate_daily_reset",
+                "ok": False,
+                "error": str(exc),
+            }
+        )
+        result["operator_alert_required"] = True
+        result["operator_alert_reason"] = f"auto_repair_exception:{exc}"
+        result["next_action"] = "AUTO_REPAIR_FAILED_ESCALATE"
+
+    tracking = _update_repair_tracking(key, attempted=True, resolved=False)
+    result["tracking"] = tracking
+    alert_after_s = int(float(os.getenv("KIBOT_WORKFLOW_AUTOREPAIR_ALERT_AFTER_SEC", "900") or 900))
+    alert_after_attempts = int(float(os.getenv("KIBOT_WORKFLOW_AUTOREPAIR_ALERT_AFTER_ATTEMPTS", "20") or 20))
+    if not result["operator_alert_required"] and (
+        float(tracking.get("age_s") or 0) >= alert_after_s
+        or int(tracking.get("attempts") or 0) >= alert_after_attempts
+    ):
+        result["operator_alert_required"] = True
+        result["operator_alert_reason"] = (
+            f"auto_repair_still_blocked_after_{tracking.get('age_s')}s_"
+            f"attempts_{tracking.get('attempts')}"
+        )
+        result["next_action"] = "AUTO_REPAIR_PERSISTENT_ESCALATE"
+    return result
+
+
 async def run_once() -> dict[str, Any]:
     payload = build_workflow_automation_state()
+    auto_repair = await attempt_auto_repair(payload)
+    if auto_repair.get("attempted"):
+        payload = build_workflow_automation_state()
+        payload["auto_repair"] = auto_repair
+        if not auto_repair.get("operator_alert_required"):
+            payload["current_best_action"] = auto_repair.get("next_action") or "AUTO_REPAIR_IN_PROGRESS"
+            payload["overall_status"] = "AUTO_REPAIR_IN_PROGRESS"
+    else:
+        payload["auto_repair"] = auto_repair
     payload["telegram_alert_sent"] = await notify_if_needed(payload)
     _write_json(STATE_FILE, payload)
     return payload

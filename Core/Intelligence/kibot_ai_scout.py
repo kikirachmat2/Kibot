@@ -237,9 +237,22 @@ class WorldScout:
             "alerts": semantic_alerts,
         }
 
+    def _runtime_blocker_auto_repairable(self, semantics: Dict[str, Any]) -> bool:
+        text = json.dumps(
+            {
+                "alerts": semantics.get("alerts", []),
+                "blockers": semantics.get("blockers", []),
+                "reason": semantics.get("allow_new_orders_reason") or semantics.get("dispatcher_reason"),
+            },
+            ensure_ascii=False,
+        ).lower()
+        return "daily_rollover_exit_pending" in text
+
     async def _notify_runtime_blockers(self, semantics: Dict[str, Any], telegram: Dict[str, Any]) -> bool:
         alerts = semantics.get("alerts", [])
         if not alerts or not telegram.get("configured"):
+            return False
+        if self._runtime_blocker_auto_repairable(semantics):
             return False
         try:
             from Core.sovereign_notifier import SovereignNotifier
@@ -339,7 +352,11 @@ class WorldScout:
         elif telegram_status.get("bot_api_ok") is False:
             alerts.append(str(telegram_status.get("reason") or "telegram_bot_api_failed"))
 
+        auto_repairable_runtime = self._runtime_blocker_auto_repairable(runtime_semantics)
         telegram_alert_sent = await self._notify_runtime_blockers(runtime_semantics, telegram_status)
+        support_action = "continue"
+        if alerts:
+            support_action = "auto_repair_in_progress" if auto_repairable_runtime else "repair_runtime_blocker"
 
         payload = {
             "updated_at": datetime.now(timezone.utc).isoformat(),
@@ -357,10 +374,11 @@ class WorldScout:
             "stale_files": stale,
             "journal_alerts": journal_alerts,
             "runtime_semantics": runtime_semantics,
+            "auto_repairable_runtime_blocker": auto_repairable_runtime,
             "telegram": telegram_status,
             "telegram_alert_sent": telegram_alert_sent,
             "alerts": alerts[:20],
-            "support_action": "continue" if not alerts else "repair_runtime_blocker",
+            "support_action": support_action,
             "next_check_seconds": 300,
         }
         AI_PATROL_FILE.write_text(json.dumps(payload, indent=2), encoding="utf-8")
