@@ -522,12 +522,25 @@ class CapitalGovernor:
             return {}
         return data if isinstance(data, dict) else {}
 
-    def _write_daily_anchor(self) -> None:
+    def _write_daily_anchor(self, *, force: bool = False) -> None:
         """Keep the healthcheck anchor aligned with the governor baseline."""
         if self.start_total_equity_idr <= 0.0:
             return
         try:
             STATE_DIR.mkdir(parents=True, exist_ok=True)
+            existing = self._load_daily_anchor()
+            existing_equity = float(existing.get("start_equity_idr", 0.0) or 0.0)
+            if existing and existing_equity > 0.0 and not force:
+                self.last_reset_date = str(existing.get("date") or self.last_reset_date or _today_wib())
+                self.start_total_equity_idr = existing_equity
+                self.max_daily_loss_idr = float(
+                    existing.get(
+                        "max_daily_loss_idr",
+                        existing_equity * (KiConfig.MAX_DAILY_LOSS_PERCENT / 100.0),
+                    )
+                    or 0.0
+                )
+                return
             ANCHOR_FILE.write_text(json.dumps({
                 "date": self.last_reset_date,
                 "start_equity_idr": self.start_total_equity_idr,
@@ -592,6 +605,18 @@ class CapitalGovernor:
     def save(self):
         try:
             STATE_DIR.mkdir(parents=True, exist_ok=True)
+            existing_anchor = self._load_daily_anchor()
+            existing_anchor_equity = float(existing_anchor.get("start_equity_idr", 0.0) or 0.0)
+            if existing_anchor and existing_anchor_equity > 0.0:
+                self.last_reset_date = str(existing_anchor.get("date") or self.last_reset_date or _today_wib())
+                self.start_total_equity_idr = existing_anchor_equity
+                self.max_daily_loss_idr = float(
+                    existing_anchor.get(
+                        "max_daily_loss_idr",
+                        existing_anchor_equity * (KiConfig.MAX_DAILY_LOSS_PERCENT / 100.0),
+                    )
+                    or 0.0
+                )
             global_hard_stop = bool(self.max_daily_loss_idr > 0.0 and self.daily_pnl_idr <= -self.max_daily_loss_idr)
             daily_reset_block = bool(getattr(self, "pending_daily_reset", False))
             allow_new_orders = bool(getattr(self, "allow_new_orders", False)) and not global_hard_stop and not daily_reset_block
@@ -831,7 +856,7 @@ class CapitalGovernor:
             self.status = "RECONCILED"
             self.allow_new_orders = True
             self.allow_new_orders_reason = ""
-            self._write_daily_anchor()
+            self._write_daily_anchor(force=True)
             self.save()
             logger.info(f"⚓ Daily Total Equity Anchor Reset: Rp{self.start_total_equity_idr:,.2f} (Cap: Rp{self.max_daily_loss_idr:,.2f})")
 
@@ -863,7 +888,7 @@ class CapitalGovernor:
         self.pending_daily_reset = False
         self.daily_reset_reason = ""
         self.save()
-        self._write_daily_anchor()
+        self._write_daily_anchor(force=True)
         logger.info(f"⚓ PnL Anchor reset to current reconciled equity. Starting Equity: Rp{self.start_total_equity_idr:,.2f}. Offsets registered: Dep Rp{self.reset_deposits_offset:,.2f}, Wd Rp{self.reset_withdrawals_offset:,.2f}")
 
     async def reconcile_governor(self) -> Dict[str, Any]:

@@ -156,6 +156,40 @@ async def test_pending_daily_reset_does_not_rewrite_today_anchor(monkeypatch, tm
     assert anchor["start_equity_idr"] == pytest.approx(177_155.27)
 
 
+def test_runtime_save_does_not_rewrite_today_anchor(monkeypatch, tmp_path):
+    _isolate_runtime_state(monkeypatch, tmp_path)
+    today = datetime.now(WIB).date()
+
+    _write_json(tmp_path / "capital_governor.json", {
+        "date": str(today),
+        "start_total_equity_idr": 177_155.27,
+        "max_daily_loss_idr": 2_657.32905,
+        "status": "RECONCILED",
+        "daily_reset_pending": False,
+        "allow_new_orders": True,
+        "allow_new_orders_reason": "",
+    })
+    _write_json(tmp_path / "daily_equity_anchor.json", {
+        "date": str(today),
+        "start_equity_idr": 177_155.27,
+        "max_daily_loss_pct": 1.5,
+        "max_daily_loss_idr": 2_657.32905,
+        "source": "capital_governor",
+    })
+
+    governor = CapitalGovernor(None, None)
+    governor.start_total_equity_idr = 162_548.22
+    governor.max_daily_loss_idr = 2_438.22
+    governor.current_total_equity_idr = 157_308.18
+    governor.save()
+
+    data = json.loads((tmp_path / "capital_governor.json").read_text(encoding="utf-8"))
+    anchor = json.loads((tmp_path / "daily_equity_anchor.json").read_text(encoding="utf-8"))
+    assert data["start_total_equity_idr"] == pytest.approx(177_155.27)
+    assert data["reset_total_balance_idr"] == pytest.approx(177_155.27)
+    assert anchor["start_equity_idr"] == pytest.approx(177_155.27)
+
+
 def test_load_daily_inventory_snapshot_ignores_dust_residuals(monkeypatch, tmp_path):
     _isolate_runtime_state(monkeypatch, tmp_path)
     _write_json(tmp_path / "active_trades.json", {

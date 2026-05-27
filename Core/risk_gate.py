@@ -113,6 +113,9 @@ class RiskGate:
     def _save_equity_anchor(self, balance_idr: float) -> dict:
         anchor_file = STATE_DIR / "daily_equity_anchor.json"
         today = _today_wib()
+        existing = self._load_equity_anchor()
+        if existing and existing.get("date") == today and float(existing.get("start_equity_idr", 0.0) or 0.0) > 0.0:
+            return existing
         data = {
             "date": today,
             "start_equity_idr": balance_idr,
