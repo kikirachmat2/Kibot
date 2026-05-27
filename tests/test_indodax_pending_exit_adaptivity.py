@@ -127,3 +127,34 @@ async def test_hard_stop_detail_bypasses_profitable_floor(monkeypatch):
     executor.indodax.trade.assert_awaited_once()
     assert executor.indodax.trade.await_args.kwargs["price"] == 108.0
     assert executor.active_trades[symbol]["exit_pending_order_id"] == "SELL-2"
+
+
+@pytest.mark.anyio
+async def test_execute_exit_blocks_pair_maintenance_without_submit(monkeypatch):
+    executor = IndodaxExecutor()
+    executor._save_active_trades = lambda: None
+    symbol = "POND/IDR"
+    executor.active_trades[symbol] = {
+        "amount": 556.0,
+        "price": 112.5,
+        "cost": 62550.0,
+    }
+
+    executor.indodax.get_balance = AsyncMock(return_value=556.0)
+    executor.indodax.get_pair_info = AsyncMock(return_value={
+        "trade_min_traded_currency": 85,
+        "trade_min_base_currency": 10000,
+        "is_maintenance": 1,
+        "is_market_suspended": 0,
+    })
+    executor.indodax.trade = AsyncMock()
+
+    monkeypatch.setattr(indodax_module, "load_strategy", lambda: {
+        "indodax": {"fee_roundtrip_pct": 1.02}
+    })
+
+    await executor.execute_exit(symbol, 108.0, "DAILY_ROLLOVER")
+
+    executor.indodax.trade.assert_not_awaited()
+    assert executor.active_trades[symbol]["route_status"] == "BLOCKED_WITH_REASON"
+    assert "EXIT_ROUTE_TEMPORARILY_UNAVAILABLE" in executor.active_trades[symbol]["exit_blocked_reason"]

@@ -1156,6 +1156,33 @@ class IndodaxExecutor:
                             f"{state_amount:.8f} -> {live_amount:.8f}"
                         )
                         data["amount"] = live_amount
+                        entry_price = float(data.get("price", 0.0) or 0.0)
+                        current_cost = float(data.get("cost", 0.0) or 0.0)
+                        expected_cost = live_amount * entry_price if entry_price > 0 else 0.0
+                        if expected_cost > 0 and (
+                            current_cost <= 0
+                            or current_cost < expected_cost * 0.5
+                            or current_cost > expected_cost * 1.5
+                        ):
+                            data["cost"] = expected_cost
+                            data["cost_reconciled_reason"] = "wallet_amount_changed_cost_basis_repaired"
+                            logger.info(
+                                f"🔄 RECONCILE: {symbol} cost basis repaired "
+                                f"Rp{current_cost:,.0f} -> Rp{expected_cost:,.0f}"
+                            )
+                        last_price = float(data.get("last_price", 0.0) or data.get("price", 0.0) or 0.0)
+                        if last_price > 0:
+                            try:
+                                pair_info = await self.indodax.get_pair_info(pair)
+                                min_base = float(pair_info.get("trade_min_base_currency", 10_000) or 10_000)
+                                min_coin = float(pair_info.get("trade_min_traded_currency", 0) or 0)
+                                if live_amount * last_price >= min_base and (not min_coin or live_amount >= min_coin):
+                                    stale_reason = str(data.get("exit_blocked_reason") or "")
+                                    if stale_reason.startswith("EXIT_MINIMUM_NOT_MET"):
+                                        data.pop("exit_blocked_reason", None)
+                                        data.pop("exit_blocked_until", None)
+                            except Exception:
+                                pass
                         changed = True
 
                 # Wallet holdings that are large enough to trade must be visible
@@ -1233,6 +1260,34 @@ class IndodaxExecutor:
         pair_info = await self.indodax.get_pair_info(pair)
         min_coin = float(pair_info.get("trade_min_traded_currency", 0) or 0)
         min_base = float(pair_info.get("trade_min_base_currency", 10_000) or 10_000)
+        if int(pair_info.get("is_maintenance", 0) or 0) == 1 or int(pair_info.get("is_market_suspended", 0) or 0) == 1:
+            reason_text = (
+                f"EXIT_ROUTE_TEMPORARILY_UNAVAILABLE: {pair} maintenance="
+                f"{pair_info.get('is_maintenance')} suspended={pair_info.get('is_market_suspended')}"
+            )
+            logger.warning(f"⚠️ {symbol} exit blocked: {reason_text}")
+            self.active_trades.setdefault(symbol, {}).update({
+                "amount": amount,
+                "exit_blocked_until": time.time() + 1800,
+                "exit_blocked_reason": reason_text,
+                "route_status": "BLOCKED_WITH_REASON",
+            })
+            self._save_active_trades()
+            _emit_trade_history("EXIT_REJECTED", {
+                "source": "indodax_executor",
+                "venue": "indodax",
+                "symbol": symbol,
+                "pair": pair,
+                "side": "SELL",
+                "status": "REJECTED",
+                "reason": reason_text,
+                "price_idr": price,
+                "amount_coin": amount,
+                "amount_idr": price * amount,
+                "trade_profile": trade.get("trade_profile", "STANDARD"),
+                "lifecycle": trade.get("lifecycle"),
+            })
+            return
         strategy = load_strategy()
         indo_strat = strategy.get("indodax", {}) if isinstance(strategy, dict) else {}
         fee_roundtrip_pct = float(indo_strat.get("fee_roundtrip_pct", 1.02) or 1.02)

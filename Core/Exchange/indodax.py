@@ -231,21 +231,38 @@ class IndodaxGateway:
         
         IndodaxGateway._info_cache = None
         result = await self._post_private("trade", params)
-        if (
-            result.get("success") != 1
-            and amount_coin is not None
-            and amount_coin > 0
-            and "amount can't be in decimal" in str(result.get("error") or "").lower()
-        ):
-            integer_amount = int(float(amount_coin))
-            if integer_amount > 0 and params.get(coin_symbol) != integer_amount:
-                retry_params = dict(params)
-                retry_params[coin_symbol] = integer_amount
+        if result.get("success") != 1 and "amount can't be in decimal" in str(result.get("error") or "").lower():
+            retry_params = dict(params)
+            retry_changes = []
+
+            if amount_coin is not None and amount_coin > 0:
+                integer_amount = int(float(amount_coin))
+                if integer_amount > 0 and retry_params.get(coin_symbol) != integer_amount:
+                    retry_params[coin_symbol] = integer_amount
+                    retry_changes.append(f"amount={integer_amount}")
+
+            # Some IDR markets return a misleading decimal amount error when
+            # the rejected field is actually an unsupported decimal price.
+            if "_idr" in pair and price_value >= 1:
+                try:
+                    pair_info = await self.get_pair_info(pair)
+                    price_step = float(pair_info.get("price_precision") or pair_info.get("pricescale") or 0)
+                except Exception:
+                    price_step = 0.0
+                if price_step >= 1 or float(price_value).is_integer():
+                    retry_price = int(price_value)
+                else:
+                    retry_price = self.round_step(price_value, str(price_step or 0.001))
+                if retry_params.get("price") != retry_price:
+                    retry_params["price"] = retry_price
+                    retry_changes.append(f"price={retry_price}")
+
+            if retry_changes:
                 logger.warning(
-                    "🔁 Retrying %s %s with integer amount %s after decimal amount rejection.",
+                    "🔁 Retrying %s %s with %s after decimal rejection.",
                     type,
                     pair,
-                    integer_amount,
+                    ", ".join(retry_changes),
                 )
                 IndodaxGateway._info_cache = None
                 return await self._post_private("trade", retry_params)
