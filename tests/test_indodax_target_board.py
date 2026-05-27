@@ -99,3 +99,43 @@ def test_indodax_target_board_prioritizes_leadlag_pool(tmp_path, monkeypatch):
     assert result["top_targets"]
     assert result["top_targets"][0]["source_pool"] == "leadlag_candidates"
     assert result["top_targets"][0]["recommended_action"] == "ENTER"
+
+
+def test_indodax_target_board_blocks_maintenance_pair(tmp_path, monkeypatch):
+    monkeypatch.setattr(board, "STATE_DIR", tmp_path)
+    monkeypatch.setattr(board, "STATE_FILE", tmp_path / "indodax_top_targets.json")
+    scan = {
+        "source_status": "OK",
+        "pairs_checked": 1,
+        "brutal_momentum_candidates": [
+            {
+                "symbol": "POND/IDR",
+                "pair": "pond_idr",
+                "change_24h_pct": 175.0,
+                "volume_idr": 10_000_000_000,
+                "last_price": 112.0,
+                "entry_score": 999,
+                "route_status": "EXECUTABLE",
+                "is_maintenance": True,
+                "is_market_suspended": False,
+                "source_proof": {
+                    "source_type": "REAL_EXCHANGE",
+                    "source_name": "Indodax",
+                    "source_url_or_endpoint": "https://indodax.com/api/summaries",
+                    "raw_id": "pond_idr",
+                    "symbol": "POND/IDR",
+                    "address_or_mint": "pond_idr",
+                    "chain": "rupiah",
+                    "proof_ok": True,
+                },
+            }
+        ],
+    }
+    (tmp_path / "indodax_scanner_state.json").write_text(json.dumps(scan), encoding="utf-8")
+
+    result = board.build_indodax_target_board()
+
+    assert result["top_targets"][0]["symbol"] == "POND/IDR"
+    assert result["top_targets"][0]["route_status"] == "BLOCKED_WITH_REASON"
+    assert result["top_targets"][0]["recommended_action"] == "REJECT"
+    assert "maintenance" in result["top_targets"][0]["reason"]

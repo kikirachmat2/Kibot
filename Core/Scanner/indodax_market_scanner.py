@@ -1,6 +1,7 @@
 import os
 import json
 import logging
+import requests
 from datetime import datetime, timezone
 from pathlib import Path
 from Core.Scanner.source_proof import SourceProof
@@ -23,6 +24,78 @@ class IndodaxMarketScanner:
         self.leadlag_scanner = IndodaxBinanceLeadLagScanner()
         self.state_dir = STATE_DIR
 
+    def _fetch_pair_metadata(self) -> dict:
+        try:
+            rows = requests.get("https://indodax.com/api/pairs", timeout=8).json()
+            if not isinstance(rows, list):
+                return {}
+            out = {}
+            for row in rows:
+                if not isinstance(row, dict):
+                    continue
+                ticker_id = str(row.get("ticker_id") or "").lower()
+                if ticker_id:
+                    out[ticker_id] = row
+            return out
+        except Exception as exc:
+            logger.debug("Pair metadata fetch failed: %s", exc)
+            return {}
+
+    @staticmethod
+    def _pair_route_status(pair: str, pair_meta: dict) -> dict:
+        meta = pair_meta.get(str(pair).lower(), {}) if isinstance(pair_meta, dict) else {}
+        maintenance = int(meta.get("is_maintenance", 0) or 0) == 1
+        suspended = int(meta.get("is_market_suspended", 0) or 0) == 1
+        if maintenance or suspended:
+            reason = (
+                f"pair_unavailable_maintenance={int(maintenance)}_"
+                f"suspended={int(suspended)}"
+            )
+            return {
+                "is_maintenance": maintenance,
+                "is_market_suspended": suspended,
+                "route_status": "BLOCKED_WITH_REASON",
+                "recommended_action": "REJECT",
+                "reason": reason,
+                "pair_metadata": {
+                    "trade_min_base_currency": meta.get("trade_min_base_currency"),
+                    "trade_min_traded_currency": meta.get("trade_min_traded_currency"),
+                    "price_precision": meta.get("price_precision"),
+                    "volume_precision": meta.get("volume_precision"),
+                    "is_maintenance": meta.get("is_maintenance"),
+                    "is_market_suspended": meta.get("is_market_suspended"),
+                },
+            }
+        return {
+            "is_maintenance": False,
+            "is_market_suspended": False,
+            "route_status": "EXECUTABLE",
+            "recommended_action": "",
+            "reason": "",
+            "pair_metadata": {
+                "trade_min_base_currency": meta.get("trade_min_base_currency"),
+                "trade_min_traded_currency": meta.get("trade_min_traded_currency"),
+                "price_precision": meta.get("price_precision"),
+                "volume_precision": meta.get("volume_precision"),
+                "is_maintenance": meta.get("is_maintenance"),
+                "is_market_suspended": meta.get("is_market_suspended"),
+            },
+        }
+
+    @classmethod
+    def _apply_pair_route_status(cls, item: dict, pair_meta: dict) -> dict:
+        out = dict(item)
+        pair = str(out.get("pair") or out.get("mint") or out.get("symbol") or "").lower().replace("/", "_")
+        status = cls._pair_route_status(pair, pair_meta)
+        out.update({k: v for k, v in status.items() if k != "recommended_action" or v})
+        if status["route_status"] != "EXECUTABLE":
+            out["route_status"] = status["route_status"]
+            out["recommended_action"] = status["recommended_action"]
+            out["reason"] = status["reason"]
+        else:
+            out.setdefault("route_status", "EXECUTABLE")
+        return out
+
     async def scan(self) -> dict:
         logger.info("📡 Running real Indodax exchange scanner...")
         now_str = datetime.now(timezone.utc).isoformat()
@@ -31,6 +104,7 @@ class IndodaxMarketScanner:
         try:
             # 1. Fetch real tickers
             tickers = self.scanner.fetch_all_tickers()
+            pair_meta = self._fetch_pair_metadata()
             if not tickers:
                 state = {
                     "updated_at": now_str,
@@ -77,6 +151,7 @@ class IndodaxMarketScanner:
                 normalized = dict(c)
                 normalized.setdefault("source_pool", "leadlag_candidates")
                 normalized.setdefault("source_class", "leadlag_binance")
+                normalized = self._apply_pair_route_status(normalized, pair_meta)
                 leadlag_candidates.append(normalized)
 
             leadlag_watchlist = []
@@ -86,6 +161,7 @@ class IndodaxMarketScanner:
                 normalized = dict(c)
                 normalized.setdefault("source_pool", "leadlag_watchlist")
                 normalized.setdefault("source_class", "leadlag_binance")
+                normalized = self._apply_pair_route_status(normalized, pair_meta)
                 leadlag_watchlist.append(normalized)
 
             for pair, ticker in tickers.items():
@@ -101,6 +177,7 @@ class IndodaxMarketScanner:
                 range_position_pct = ((last_price - low) / range_span * 100.0) if high > low else 0.0
                 distance_to_high_pct = ((high - last_price) / high * 100.0) if high > 0 else 0.0
                 runup_from_low_pct = ((last_price - low) / low * 100.0) if low > 0 else 0.0
+                pair_status = self._pair_route_status(pair, pair_meta)
                 gainers_24h.append({
                     "symbol": pair.upper().replace("_", "/"),
                     "pair": pair,
@@ -122,6 +199,7 @@ class IndodaxMarketScanner:
                         chain="rupiah",
                         proof_ok=True
                     ),
+                    **pair_status,
                 })
                 volume_leaders.append({
                     "symbol": pair.upper().replace("_", "/"),
@@ -144,6 +222,7 @@ class IndodaxMarketScanner:
                         chain="rupiah",
                         proof_ok=True
                     ),
+                    **pair_status,
                 })
 
                 # Use the real pump detection engine from the smallcap scanner
@@ -196,7 +275,11 @@ class IndodaxMarketScanner:
                                 "runup_from_low_pct": runup_from_low_pct,
                                 "source_proof": proof
                             }
-                            candidates.append(candidate)
+                            candidate.update(pair_status)
+                            if pair_status["route_status"] == "EXECUTABLE":
+                                candidates.append(candidate)
+                            else:
+                                rejected_candidates.append(candidate)
                             gainers_24h.append({
                                 "symbol": symbol,
                                 "pair": pair,
@@ -280,7 +363,11 @@ class IndodaxMarketScanner:
                                 2,
                             ),
                         }
-                        candidates.append(candidate)
+                        candidate.update(pair_status)
+                        if pair_status["route_status"] == "EXECUTABLE":
+                            candidates.append(candidate)
+                        else:
+                            rejected_candidates.append(candidate)
                         gainers_24h.append({
                             "symbol": symbol,
                             "pair": pair,
@@ -293,6 +380,7 @@ class IndodaxMarketScanner:
                             "distance_to_high_pct": distance_to_high_pct,
                             "runup_from_low_pct": runup_from_low_pct,
                             "source_proof": proof,
+                            **pair_status,
                         })
                         volume_leaders.append({
                             "symbol": symbol,
@@ -306,6 +394,7 @@ class IndodaxMarketScanner:
                             "distance_to_high_pct": distance_to_high_pct,
                             "runup_from_low_pct": runup_from_low_pct,
                             "source_proof": proof,
+                            **pair_status,
                         })
 
             candidates.extend(leadlag_candidates)

@@ -13,6 +13,7 @@ def test_indodax_market_scanner_merges_leadlag_candidates(tmp_path, monkeypatch)
     monkeypatch.setattr(leadlag_module, "STATE_FILE", tmp_path / "indodax_binance_leadlag_scanner.json")
 
     scanner = IndodaxMarketScanner()
+    scanner._fetch_pair_metadata = lambda: {}
     scanner.scanner.fetch_all_tickers = lambda: {
         "btc_idr": {
             "last": 960_600_000.0,
@@ -83,3 +84,66 @@ def test_indodax_market_scanner_merges_leadlag_candidates(tmp_path, monkeypatch)
     assert state["leadlag_source_status"] == "OK"
     assert state["best_candidate"]["symbol"] == "BTC/IDR"
     assert state["best_candidate"]["source_pool"] == "leadlag_candidates"
+
+
+def test_indodax_market_scanner_blocks_maintenance_leadlag_candidate(tmp_path, monkeypatch):
+    monkeypatch.setattr(scanner_module, "STATE_DIR", tmp_path)
+    monkeypatch.setattr(scanner_module, "STATE_FILE", tmp_path / "indodax_scanner_state.json")
+
+    scanner = IndodaxMarketScanner()
+    scanner._fetch_pair_metadata = lambda: {
+        "pond_idr": {
+            "is_maintenance": 1,
+            "is_market_suspended": 0,
+            "trade_min_base_currency": 10000,
+            "trade_min_traded_currency": 90,
+        }
+    }
+    scanner.scanner.fetch_all_tickers = lambda: {
+        "pond_idr": {
+            "last": 112.0,
+            "buy": 111.0,
+            "sell": 112.0,
+            "high": 160.0,
+            "low": 48.0,
+            "vol_idr": 10_000_000_000.0,
+        }
+    }
+    scanner.scanner.detect_pump = lambda pair, ticker: None
+    scanner.leadlag_scanner.scan = AsyncMock(return_value={
+        "scan_mode": "BINANCE_TO_INDODAX_LEADLAG",
+        "source_status": "OK",
+        "pairs_checked": 1,
+        "binance_pairs_checked": 1,
+        "leadlag_candidates": [
+            {
+                "symbol": "POND/IDR",
+                "pair": "pond_idr",
+                "last_price": 112.0,
+                "entry_score": 99.0,
+                "volume_24h_idr": 10_000_000_000.0,
+                "route_status": "EXECUTABLE",
+                "recommended_action": "ENTER",
+                "source_proof": {
+                    "source_type": "REAL_EXCHANGE",
+                    "source_name": "Indodax",
+                    "source_url_or_endpoint": "https://indodax.com/api/summaries",
+                    "raw_id": "pond_idr",
+                    "symbol": "POND/IDR",
+                    "address_or_mint": "pond_idr",
+                    "chain": "idr",
+                    "proof_ok": True,
+                },
+            }
+        ],
+        "leadlag_watchlist": [],
+        "rejected_candidates": [],
+        "top_candidate": {},
+        "why_empty": "",
+    })
+
+    state = asyncio.run(scanner.scan())
+
+    assert state["leadlag_candidates"][0]["route_status"] == "BLOCKED_WITH_REASON"
+    assert state["leadlag_candidates"][0]["recommended_action"] == "REJECT"
+    assert "maintenance" in state["leadlag_candidates"][0]["reason"]

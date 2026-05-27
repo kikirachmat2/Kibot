@@ -78,6 +78,9 @@ def _build_candidate(item: Dict[str, Any], source_pool: str) -> Dict[str, Any]:
         "recommended_action": str(item.get("recommended_action") or "WATCH"),
         "reason": str(item.get("reason") or ""),
         "source_pool": source_pool,
+        "is_maintenance": bool(item.get("is_maintenance", False)),
+        "is_market_suspended": bool(item.get("is_market_suspended", False)),
+        "pair_metadata": item.get("pair_metadata", {}) if isinstance(item.get("pair_metadata"), dict) else {},
         "high_24h": float(item.get("high_24h") or 0.0),
         "low_24h": float(item.get("low_24h") or 0.0),
         "range_position_pct": float(item.get("range_position_pct") or 0.0),
@@ -164,7 +167,14 @@ def build_indodax_target_board() -> Dict[str, Any]:
     candidates = list(candidates_map.values())
     rejected = {}
     for c in candidates:
-        if not c["source_proof_ok"]:
+        if c.get("is_maintenance") or c.get("is_market_suspended"):
+            c["route_status"] = "BLOCKED_WITH_REASON"
+            c["recommended_action"] = "REJECT"
+            c["reason"] = c["reason"] or (
+                f"pair_unavailable_maintenance={int(bool(c.get('is_maintenance')))}_"
+                f"suspended={int(bool(c.get('is_market_suspended')))}"
+            )
+        elif not c["source_proof_ok"]:
             c["route_status"] = "BLOCKED_WITH_REASON"
             c["recommended_action"] = "REJECT"
             c["reason"] = "source_proof_missing_or_invalid"
