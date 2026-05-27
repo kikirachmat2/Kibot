@@ -5,6 +5,8 @@ Wants=network-online.target redis-server.service
 
 [Service]
 Type=simple
+User=ubuntu
+Group=ubuntu
 WorkingDirectory=/home/ubuntu/KiBot
 EnvironmentFile=/home/ubuntu/KiBot/.env
 ExecStart=/home/ubuntu/KiBot/.venv/bin/python3 -m Core.Decision.daily_reset_coordinator
