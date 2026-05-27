@@ -273,10 +273,14 @@ def load_daily_inventory_snapshot(state_dir: Optional[Path] = None) -> Dict[str,
         "open_symbols": [],
         "residual_count": 0,
         "residual_symbols": [],
+        "locked_count": 0,
+        "locked_symbols": [],
+        "locked_sources": {},
         "open_sources": {},
         "errors": [],
     }
     open_symbol_set: set[str] = set()
+    locked_symbol_set: set[str] = set()
 
     def _mark_open(source: str, count: int, symbols: Optional[list[str]] = None) -> None:
         if count <= 0:
@@ -295,6 +299,36 @@ def load_daily_inventory_snapshot(state_dir: Optional[Path] = None) -> Dict[str,
             snapshot["open_count"] += added
         else:
             snapshot["open_count"] += int(count)
+
+    def _mark_locked(source: str, count: int, symbols: Optional[list[str]] = None) -> None:
+        if count <= 0:
+            return
+        snapshot["locked_sources"][source] = int(count)
+        if symbols:
+            added = 0
+            for raw_symbol in symbols:
+                symbol = str(raw_symbol or "").upper().strip()
+                if not symbol or symbol in locked_symbol_set:
+                    continue
+                locked_symbol_set.add(symbol)
+                snapshot["locked_symbols"].append(symbol)
+                added += 1
+            snapshot["locked_count"] += added
+        else:
+            snapshot["locked_count"] += int(count)
+
+    def _is_externally_locked_inventory(trade: Dict[str, Any]) -> bool:
+        reason = str(trade.get("exit_blocked_reason") or trade.get("reason") or "").upper()
+        route_status = str(trade.get("route_status") or "").upper()
+        return route_status == "BLOCKED_WITH_REASON" and any(
+            marker in reason
+            for marker in (
+                "EXIT_ROUTE_TEMPORARILY_UNAVAILABLE",
+                "PAIR_UNAVAILABLE",
+                "MAINTENANCE",
+                "SUSPENDED",
+            )
+        )
 
     active_trades_file = base_dir / "active_trades.json"
     if active_trades_file.exists():
@@ -315,6 +349,9 @@ def load_daily_inventory_snapshot(state_dir: Optional[Path] = None) -> Dict[str,
                     if _is_residual_inventory_entry(trade):
                         residual_count += 1
                         residual_symbols.append(str(symbol).upper())
+                        continue
+                    if _is_externally_locked_inventory(trade):
+                        _mark_locked("active_trades", 1, [str(symbol).upper()])
                         continue
                     pending = any(
                         bool(trade.get(key))
@@ -409,11 +446,13 @@ def load_daily_inventory_snapshot(state_dir: Optional[Path] = None) -> Dict[str,
 
     snapshot["open_symbols"] = sorted({symbol for symbol in snapshot["open_symbols"] if symbol})
     snapshot["residual_symbols"] = sorted({symbol for symbol in snapshot["residual_symbols"] if symbol})
+    snapshot["locked_symbols"] = sorted({symbol for symbol in snapshot["locked_symbols"] if symbol})
     if snapshot["open_symbols"]:
         snapshot["open_count"] = len(snapshot["open_symbols"])
     else:
         snapshot["open_count"] = int(snapshot["open_count"])
     snapshot["residual_count"] = int(snapshot["residual_count"])
+    snapshot["locked_count"] = int(snapshot["locked_count"])
     return snapshot
 
 
@@ -595,6 +634,8 @@ class CapitalGovernor:
                     "reset_withdrawals_offset": self.reset_withdrawals_offset,
                     "daily_reset_pending": daily_reset_block,
                     "daily_reset_reason": self.daily_reset_reason if daily_reset_block else "",
+                    "locked_inventory_count": int(getattr(self, "locked_inventory_count", 0) or 0),
+                    "locked_inventory_symbols": list(getattr(self, "locked_inventory_symbols", []) or []),
                     "status": status,
                     "global_hard_stop": global_hard_stop,
                     "allow_new_orders": allow_new_orders,
@@ -720,6 +761,8 @@ class CapitalGovernor:
         """Reset starting total equity anchor if a new WIB day has begun."""
         today = _today_wib()
         inventory = load_daily_inventory_snapshot()
+        self.locked_inventory_count = int(inventory.get("locked_count", 0) or 0)
+        self.locked_inventory_symbols = list(inventory.get("locked_symbols", []) or [])
         day_changed = self.last_reset_date != today
         pending_reset = bool(getattr(self, "pending_daily_reset", False))
 
@@ -1051,6 +1094,8 @@ class CapitalGovernor:
                 "in_flight_idr": in_flight_idr,
                 "daily_reset_pending": daily_reset_block,
                 "daily_reset_reason": self.daily_reset_reason,
+                "locked_inventory_count": int(getattr(self, "locked_inventory_count", 0) or 0),
+                "locked_inventory_symbols": list(getattr(self, "locked_inventory_symbols", []) or []),
                 "status": self.status,
                 "global_hard_stop": global_hard_stop,
                 "global_hard_stop_reason": allow_reason if global_hard_stop else "",

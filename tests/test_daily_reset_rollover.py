@@ -129,6 +129,63 @@ def test_load_daily_inventory_snapshot_ignores_dust_residuals(monkeypatch, tmp_p
     assert snapshot["residual_symbols"] == ["PEPE/IDR"]
 
 
+def test_load_daily_inventory_snapshot_quarantines_exchange_locked_inventory(monkeypatch, tmp_path):
+    _isolate_runtime_state(monkeypatch, tmp_path)
+    _write_json(tmp_path / "active_trades.json", {
+        "POND/IDR": {
+            "amount": 556.0,
+            "price": 112.5,
+            "route_status": "BLOCKED_WITH_REASON",
+            "exit_blocked_reason": "EXIT_ROUTE_TEMPORARILY_UNAVAILABLE: pond_idr maintenance=1 suspended=0",
+        }
+    })
+
+    snapshot = capital_module.load_daily_inventory_snapshot(tmp_path)
+
+    assert snapshot["has_open_inventory"] is False
+    assert snapshot["open_count"] == 0
+    assert snapshot["locked_count"] == 1
+    assert snapshot["locked_symbols"] == ["POND/IDR"]
+
+
+@pytest.mark.anyio
+async def test_daily_reset_does_not_freeze_on_exchange_locked_inventory(monkeypatch, tmp_path):
+    _isolate_runtime_state(monkeypatch, tmp_path)
+    today = datetime.now(WIB).date()
+    yesterday = today - timedelta(days=1)
+    _write_json(tmp_path / "capital_governor.json", {
+        "date": str(yesterday),
+        "start_total_equity_idr": 100_000,
+        "max_daily_loss_idr": 1_500,
+        "status": "RECONCILED",
+        "daily_reset_pending": True,
+        "allow_new_orders": False,
+        "allow_new_orders_reason": "daily_rollover_exit_pending",
+    })
+    monkeypatch.setattr(capital_module, "load_daily_inventory_snapshot", lambda: {
+        "has_open_inventory": False,
+        "open_count": 0,
+        "open_symbols": [],
+        "locked_count": 1,
+        "locked_symbols": ["POND/IDR"],
+        "locked_sources": {"active_trades": 1},
+        "open_sources": {},
+        "errors": [],
+    })
+
+    governor = CapitalGovernor(None, None)
+    governor.pending_daily_reset = True
+    governor.current_total_equity_idr = 123_456.0
+    await governor.check_daily_reset(governor.current_total_equity_idr)
+    data = json.loads((tmp_path / "capital_governor.json").read_text(encoding="utf-8"))
+
+    assert data["daily_reset_pending"] is False
+    assert data["allow_new_orders"] is True
+    assert data["locked_inventory_count"] == 1
+    assert data["locked_inventory_symbols"] == ["POND/IDR"]
+    assert data["date"] == str(today)
+
+
 def test_load_daily_inventory_snapshot_dedupes_same_symbol(monkeypatch, tmp_path):
     _isolate_runtime_state(monkeypatch, tmp_path)
     _write_json(tmp_path / "active_trades.json", {
