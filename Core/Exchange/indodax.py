@@ -230,7 +230,26 @@ class IndodaxGateway:
             params['idr'] = int(amount_idr)
         
         IndodaxGateway._info_cache = None
-        return await self._post_private("trade", params)
+        result = await self._post_private("trade", params)
+        if (
+            result.get("success") != 1
+            and amount_coin is not None
+            and amount_coin > 0
+            and "amount can't be in decimal" in str(result.get("error") or "").lower()
+        ):
+            integer_amount = int(float(amount_coin))
+            if integer_amount > 0 and params.get(coin_symbol) != integer_amount:
+                retry_params = dict(params)
+                retry_params[coin_symbol] = integer_amount
+                logger.warning(
+                    "🔁 Retrying %s %s with integer amount %s after decimal amount rejection.",
+                    type,
+                    pair,
+                    integer_amount,
+                )
+                IndodaxGateway._info_cache = None
+                return await self._post_private("trade", retry_params)
+        return result
 
     async def cancel_order(self, pair: str, order_id: str | int, order_type: str = "buy") -> Dict[str, Any]:
         """Cancel an existing open order on Indodax."""
