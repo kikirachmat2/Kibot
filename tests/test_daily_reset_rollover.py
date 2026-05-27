@@ -111,6 +111,51 @@ async def test_daily_reset_waits_for_flat_inventory_then_resets(monkeypatch, tmp
     assert data["start_total_equity_idr"] == pytest.approx(123_456.0)
 
 
+@pytest.mark.anyio
+async def test_pending_daily_reset_does_not_rewrite_today_anchor(monkeypatch, tmp_path):
+    _isolate_runtime_state(monkeypatch, tmp_path)
+    today = datetime.now(WIB).date()
+
+    _write_json(tmp_path / "capital_governor.json", {
+        "date": str(today),
+        "start_total_equity_idr": 177_155.27,
+        "max_daily_loss_idr": 2_657.32905,
+        "status": "BLOCKED_WITH_REASON",
+        "daily_reset_pending": True,
+        "daily_reset_reason": "daily_rollover_exit_pending",
+        "allow_new_orders": False,
+        "allow_new_orders_reason": "daily_rollover_exit_pending",
+    })
+    _write_json(tmp_path / "daily_equity_anchor.json", {
+        "date": str(today),
+        "start_equity_idr": 177_155.27,
+        "max_daily_loss_pct": 1.5,
+        "max_daily_loss_idr": 2_657.32905,
+        "source": "capital_governor",
+    })
+    monkeypatch.setattr(capital_module, "load_daily_inventory_snapshot", lambda: {
+        "has_open_inventory": False,
+        "open_count": 0,
+        "open_symbols": [],
+        "open_sources": {},
+        "errors": [],
+    })
+
+    governor = CapitalGovernor(None, None)
+    governor.pending_daily_reset = True
+    governor.current_total_equity_idr = 157_308.18
+
+    await governor.check_daily_reset(governor.current_total_equity_idr)
+
+    data = json.loads((tmp_path / "capital_governor.json").read_text(encoding="utf-8"))
+    anchor = json.loads((tmp_path / "daily_equity_anchor.json").read_text(encoding="utf-8"))
+    assert data["daily_reset_pending"] is False
+    assert data["date"] == str(today)
+    assert data["start_total_equity_idr"] == pytest.approx(177_155.27)
+    assert data["reset_total_balance_idr"] == pytest.approx(177_155.27)
+    assert anchor["start_equity_idr"] == pytest.approx(177_155.27)
+
+
 def test_load_daily_inventory_snapshot_ignores_dust_residuals(monkeypatch, tmp_path):
     _isolate_runtime_state(monkeypatch, tmp_path)
     _write_json(tmp_path / "active_trades.json", {

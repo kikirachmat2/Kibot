@@ -772,6 +772,35 @@ class CapitalGovernor:
         self.locked_inventory_symbols = list(inventory.get("locked_symbols", []) or [])
         day_changed = self.last_reset_date != today
         pending_reset = bool(getattr(self, "pending_daily_reset", False))
+        today_anchor = self._load_daily_anchor()
+        anchor_equity = float(today_anchor.get("start_equity_idr", 0.0) or 0.0)
+
+        if today_anchor and anchor_equity > 0.0:
+            # The daily anchor is intentionally immutable for one WIB date.
+            # Pending rollover can delay trading, but it must never rewrite
+            # today's starting balance after inventory finally clears.
+            self.last_reset_date = today
+            self.start_total_equity_idr = anchor_equity
+            self.max_daily_loss_idr = float(
+                today_anchor.get(
+                    "max_daily_loss_idr",
+                    anchor_equity * (KiConfig.MAX_DAILY_LOSS_PERCENT / 100.0),
+                )
+                or 0.0
+            )
+            if pending_reset and not inventory.get("has_open_inventory"):
+                self.pending_daily_reset = False
+                self.daily_reset_reason = ""
+                self.status = "RECONCILED"
+                self.allow_new_orders = True
+                self.allow_new_orders_reason = ""
+                self.save()
+                logger.info(
+                    "⚓ Daily anchor preserved for %s at Rp%,.2f; cleared pending rollover without resetting baseline.",
+                    today,
+                    self.start_total_equity_idr,
+                )
+            return
 
         if day_changed or pending_reset or self.start_total_equity_idr <= 0.0:
             if inventory.get("has_open_inventory"):
