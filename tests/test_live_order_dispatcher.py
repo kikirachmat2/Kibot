@@ -136,6 +136,38 @@ def test_live_dispatcher_prunes_ghost_filled_tracker_orders(monkeypatch, tmp_pat
     assert order_tracker.get_tracker().get_open_orders() == []
 
 
+def test_order_tracker_prunes_exchange_locked_filled_order(monkeypatch, tmp_path):
+    monkeypatch.setattr(dispatcher, "STATE_DIR", tmp_path)
+    monkeypatch.setattr(dispatcher, "STATE_FILE", tmp_path / "live_order_dispatcher.json")
+
+    orders_dir = tmp_path / "orders"
+    monkeypatch.setattr(order_tracker, "ORDERS_DIR", orders_dir)
+    monkeypatch.setattr(order_tracker, "INDEX_FILE", orders_dir / "_index.json")
+    monkeypatch.setattr(order_tracker, "_tracker_instance", None)
+    (tmp_path / "active_trades.json").write_text(json.dumps({
+        "POND/IDR": {
+            "amount": 556.0,
+            "route_status": "BLOCKED_WITH_REASON",
+            "exit_blocked_reason": "EXIT_ROUTE_TEMPORARILY_UNAVAILABLE: pond_idr maintenance=1 suspended=0",
+        }
+    }), encoding="utf-8")
+
+    tracker = order_tracker.OrderTracker()
+    order_id = tracker.create(
+        "POND/IDR",
+        "BUY",
+        10_000,
+        112.5,
+        mandate={"source": "unit-test", "budget_fraction": 0.1},
+        exit_plan={"max_hold_minutes": 15},
+        signal={"trade_grade": "A", "confidence": 0.9},
+    )
+    tracker.transition(order_id, "SUBMITTED", exchange_order_id="EX-001", note="open order")
+    tracker.transition(order_id, "FILLED", fill_price=112.5, coin_amount=556, note="filled")
+
+    assert order_tracker.get_tracker().get_open_orders() == []
+
+
 def test_live_dispatcher_blocks_on_global_hard_stop(monkeypatch, tmp_path):
     monkeypatch.setattr(dispatcher, "STATE_DIR", tmp_path)
     monkeypatch.setattr(dispatcher, "STATE_FILE", tmp_path / "live_order_dispatcher.json")

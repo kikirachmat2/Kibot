@@ -141,6 +141,28 @@ def _load_active_trade_symbols() -> set[str]:
     return symbols
 
 
+def _load_exchange_locked_trade_symbols() -> set[str]:
+    active = _load_json(ORDERS_DIR.parent / "active_trades.json")
+    symbols: set[str] = set()
+    if isinstance(active, dict):
+        for symbol, trade in active.items():
+            if not isinstance(trade, dict):
+                continue
+            route_status = str(trade.get("route_status") or "").upper()
+            reason = str(trade.get("exit_blocked_reason") or trade.get("reason") or "").upper()
+            if route_status == "BLOCKED_WITH_REASON" and any(
+                marker in reason
+                for marker in (
+                    "EXIT_ROUTE_TEMPORARILY_UNAVAILABLE",
+                    "PAIR_UNAVAILABLE",
+                    "MAINTENANCE",
+                    "SUSPENDED",
+                )
+            ):
+                symbols.add(str(symbol).upper().strip())
+    return symbols
+
+
 def _now_wib() -> datetime:
     return datetime.now(WIB_TZ)
 
@@ -474,6 +496,7 @@ class OrderTracker:
         idx = _load_index()
         open_ids = idx.get("open", [])
         active_symbols = _load_active_trade_symbols()
+        locked_symbols = _load_exchange_locked_trade_symbols()
         records = []
         kept_open_ids: List[str] = []
         pruned = False
@@ -482,13 +505,15 @@ class OrderTracker:
             if r:
                 state = str(r.get("state") or "").upper().strip()
                 pair = str(r.get("pair") or r.get("symbol") or "").upper().strip()
-                if state == "FILLED" and pair and pair not in active_symbols:
+                if state == "FILLED" and pair and (pair not in active_symbols or pair in locked_symbols):
                     # Filled lifecycle records without active_trades backing are
-                    # ghosts from a previous session; keep the order file as
-                    # historical evidence, but stop treating them as live.
+                    # ghosts from a previous session. Filled records backed by
+                    # exchange-locked active inventory also should not block
+                    # the day rollover; active_trades remains the live holding
+                    # source until the exchange route opens again.
                     pruned = True
                     logger.info(
-                        "[OrderTracker] pruning ghost FILLED order %s (%s) from open index",
+                        "[OrderTracker] pruning non-actionable FILLED order %s (%s) from open index",
                         oid,
                         pair,
                     )
