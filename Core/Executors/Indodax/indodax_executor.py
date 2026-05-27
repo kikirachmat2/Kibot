@@ -187,6 +187,25 @@ class IndodaxExecutor:
             "net_pnl_idr": net_pnl_idr,
         }
 
+    @staticmethod
+    def _allows_loss_exit(reason: str) -> bool:
+        """Return True for exits where flattening risk beats waiting for profit."""
+        reason_upper = str(reason or "").upper()
+        return any(
+            marker in reason_upper
+            for marker in (
+                "HARD_STOP",
+                "TRAILING_STOP",
+                "MIDNIGHT_DEADLINE",
+                "EXIT_ALL",
+                "DAILY_ROLLOVER",
+                "GLOBAL_DAILY_LOSS_CAP",
+                "DISTRIBUTION_SPREAD_EXIT",
+                "DISTRIBUTION_OBI_EXIT",
+                "MAX_HOLD_EXIT",
+            )
+        )
+
     async def _resolve_live_exit_price(self, symbol: str, fallback_price: float = 0.0) -> tuple[float, Dict[str, Any]]:
         """Resolve a practical sell price from live orderbook/ticker."""
         pair = symbol.lower().replace("/", "_")
@@ -813,15 +832,7 @@ class IndodaxExecutor:
             )
             live_exit_price, price_meta = await self._resolve_live_exit_price(symbol, exit_price)
             desired_price = live_exit_price or exit_price
-            emergency_reasons = {
-                "HARD_STOP",
-                "TRAILING_STOP",
-                "MIDNIGHT_DEADLINE",
-                "EXIT_ALL",
-                "DAILY_ROLLOVER",
-                "GLOBAL_DAILY_LOSS_CAP",
-            }
-            if entry_price > 0 and pending_reason.upper() not in emergency_reasons:
+            if entry_price > 0 and not self._allows_loss_exit(pending_reason):
                 floor_price = minimum_profitable_exit_price(
                     entry_price,
                     fee_roundtrip_pct,
@@ -1231,8 +1242,7 @@ class IndodaxExecutor:
             fee_roundtrip_pct,
             float(indo_strat.get("exit_profit_buffer_pct", 0.3) or 0.3),
         )
-        reason_upper = str(reason or "").upper()
-        if profitable_floor_price > 0 and reason_upper not in {"HARD_STOP", "TRAILING_STOP", "MIDNIGHT_DEADLINE", "DISTRIBUTION_SPREAD_EXIT", "DISTRIBUTION_OBI_EXIT", "EXIT_ALL"}:
+        if profitable_floor_price > 0 and not self._allows_loss_exit(reason):
             if price < profitable_floor_price:
                 logger.info(
                     f"🧠 EXIT DEFERRED: {symbol} reason={reason} price Rp{price:,.0f} < profitable floor Rp{profitable_floor_price:,.0f}"

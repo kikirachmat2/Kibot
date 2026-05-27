@@ -94,3 +94,36 @@ async def test_pending_exit_keeps_fresh_open_sell(monkeypatch):
     assert handled is True
     executor.indodax.cancel_order.assert_not_awaited()
     assert executor.active_trades[symbol]["exit_blocked_reason"] == "EXIT_ORDER_OPEN:SELL-1"
+
+
+@pytest.mark.anyio
+async def test_hard_stop_detail_bypasses_profitable_floor(monkeypatch):
+    executor = IndodaxExecutor()
+    executor._save_active_trades = lambda: None
+    symbol = "POND/IDR"
+    executor.active_trades[symbol] = {
+        "amount": 556.0,
+        "price": 112.5,
+        "cost": 62550.0,
+    }
+
+    executor.indodax.get_balance = AsyncMock(return_value=556.0)
+    executor.indodax.get_pair_info = AsyncMock(return_value={
+        "trade_min_traded_currency": 85,
+        "trade_min_base_currency": 10000,
+    })
+    executor.indodax.trade = AsyncMock(return_value={"success": 1, "return": {"order_id": "SELL-2"}})
+    executor.indodax.get_open_orders = AsyncMock(return_value={"orders": [{"order_id": "SELL-2", "type": "sell"}]})
+
+    monkeypatch.setattr(indodax_module, "load_strategy", lambda: {
+        "indodax": {
+            "fee_roundtrip_pct": 1.02,
+            "exit_profit_buffer_pct": 0.3,
+        }
+    })
+
+    await executor.execute_exit(symbol, 108.0, "HARD_STOP (-4.00% < -2.5%)")
+
+    executor.indodax.trade.assert_awaited_once()
+    assert executor.indodax.trade.await_args.kwargs["price"] == 108.0
+    assert executor.active_trades[symbol]["exit_pending_order_id"] == "SELL-2"
