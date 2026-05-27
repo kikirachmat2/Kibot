@@ -187,6 +187,53 @@ class IndodaxExecutor:
             "net_pnl_idr": net_pnl_idr,
         }
 
+    async def _resolve_live_exit_price(self, symbol: str, fallback_price: float = 0.0) -> tuple[float, Dict[str, Any]]:
+        """Resolve a practical sell price from live orderbook/ticker."""
+        pair = symbol.lower().replace("/", "_")
+        if "_" not in pair:
+            pair = f"{pair}_idr"
+
+        resolved_price = float(fallback_price or 0.0)
+        metadata: Dict[str, Any] = {
+            "source": "fallback",
+            "fallback_price": resolved_price,
+            "pair": pair,
+            "best_bid": 0.0,
+            "best_ask": 0.0,
+            "spread_pct": 0.0,
+        }
+
+        try:
+            orderbook = await self.indodax.get_orderbook(symbol)
+            bids = orderbook.get("bids", []) if isinstance(orderbook, dict) else []
+            asks = orderbook.get("asks", []) if isinstance(orderbook, dict) else []
+            best_bid = float(bids[0][0]) if bids else 0.0
+            best_ask = float(asks[0][0]) if asks else 0.0
+            if best_bid > 0:
+                resolved_price = best_bid
+                metadata.update(
+                    {
+                        "source": "orderbook_best_bid",
+                        "best_bid": best_bid,
+                        "best_ask": best_ask,
+                        "spread_pct": ((best_ask - best_bid) / best_bid * 100.0) if best_ask > 0 else 0.0,
+                    }
+                )
+                return resolved_price, metadata
+        except Exception as exc:
+            metadata["orderbook_error"] = str(exc)
+
+        try:
+            ticker = await self.indodax.get_ticker(pair)
+            last_price = float(ticker.get("last", 0.0) or 0.0)
+            if last_price > 0:
+                resolved_price = last_price
+                metadata.update({"source": "ticker_last", "ticker_last": last_price})
+        except Exception as exc:
+            metadata["ticker_error"] = str(exc)
+
+        return resolved_price, metadata
+
     async def _resolve_live_entry_price(self, symbol: str, fallback_price: float = 0.0) -> tuple[float, Dict[str, Any]]:
         pair = symbol.lower().replace("/", "_")
         if "_" not in pair:
@@ -733,19 +780,140 @@ class IndodaxExecutor:
             pair = f"{pair}_idr"
         coin_symbol = pair.split("_")[0]
 
-        orders = self._extract_orders(await self.indodax.get_open_orders(pair))
-        if any(self._order_matches(order, order_id=order_id, side="sell") for order in orders):
-            self.active_trades.setdefault(symbol, {}).update({
-                "exit_blocked_until": time.time() + 60,
-                "exit_blocked_reason": f"EXIT_ORDER_OPEN:{order_id}",
-            })
-            self._save_active_trades()
-            return True
-
         live_amount = await self.indodax.get_balance(coin_symbol)
         pending_amount = float(data.get("exit_pending_amount") or data.get("amount") or 0.0)
         exit_price = float(data.get("exit_pending_price") or 0.0)
         entry_price = float(data.get("price") or 0.0)
+        pending_reason = str(data.get("exit_pending_reason") or "PENDING_EXIT_REPRICE")
+        pending_fraction = float(data.get("exit_pending_fraction") or 1.0)
+        pending_since = float(data.get("exit_pending_since") or time.time())
+        age_sec = max(0.0, time.time() - pending_since)
+
+        orders = self._extract_orders(await self.indodax.get_open_orders(pair))
+        matching_open_order = next(
+            (order for order in orders if self._order_matches(order, order_id=order_id, side="sell")),
+            None,
+        )
+        if matching_open_order:
+            strategy = load_strategy()
+            indo_strat = strategy.get("indodax", {}) if isinstance(strategy, dict) else {}
+            max_age_sec = float(
+                indo_strat.get(
+                    "exit_pending_max_age_sec",
+                    os.getenv("KIBOT_EXIT_PENDING_MAX_AGE_SEC", "90"),
+                )
+                or 90
+            )
+            reprice_gap_pct = float(
+                indo_strat.get(
+                    "exit_pending_reprice_gap_pct",
+                    os.getenv("KIBOT_EXIT_PENDING_REPRICE_GAP_PCT", "0.5"),
+                )
+                or 0.5
+            )
+            live_exit_price, price_meta = await self._resolve_live_exit_price(symbol, exit_price)
+            desired_price = live_exit_price or exit_price
+            emergency_reasons = {
+                "HARD_STOP",
+                "TRAILING_STOP",
+                "MIDNIGHT_DEADLINE",
+                "EXIT_ALL",
+                "DAILY_ROLLOVER",
+                "GLOBAL_DAILY_LOSS_CAP",
+            }
+            if entry_price > 0 and pending_reason.upper() not in emergency_reasons:
+                floor_price = minimum_profitable_exit_price(
+                    entry_price,
+                    fee_roundtrip_pct,
+                    float(indo_strat.get("exit_profit_buffer_pct", 0.3) or 0.3),
+                )
+                desired_price = max(desired_price, floor_price)
+
+            price_gap_pct = 0.0
+            if exit_price > 0 and desired_price > 0:
+                price_gap_pct = abs(desired_price - exit_price) / exit_price * 100.0
+            should_reprice = bool(age_sec >= max_age_sec or price_gap_pct >= reprice_gap_pct)
+
+            if not should_reprice:
+                self.active_trades.setdefault(symbol, {}).update({
+                    "amount": live_amount or pending_amount or float(data.get("amount") or 0.0),
+                    "exit_blocked_until": time.time() + 30,
+                    "exit_blocked_reason": f"EXIT_ORDER_OPEN:{order_id}",
+                    "exit_pending_last_seen": time.time(),
+                    "exit_pending_price_meta": price_meta,
+                })
+                self._save_active_trades()
+                return True
+
+            cancel_result: Dict[str, Any] = {}
+            try:
+                cancel_result = await self.indodax.cancel_order(symbol, order_id, "sell")
+            except Exception as cancel_err:
+                cancel_result = {"success": 0, "error": str(cancel_err)}
+
+            if cancel_result.get("success") != 1:
+                logger.warning(
+                    "⚠️ EXIT REPRICE CANCEL FAILED: %s order %s age=%.0fs gap=%.2f%% err=%s",
+                    symbol,
+                    order_id,
+                    age_sec,
+                    price_gap_pct,
+                    cancel_result.get("error") or cancel_result,
+                )
+                self.active_trades.setdefault(symbol, {}).update({
+                    "exit_blocked_until": time.time() + 30,
+                    "exit_blocked_reason": f"EXIT_CANCEL_FAILED:{order_id}",
+                    "exit_pending_last_seen": time.time(),
+                    "exit_pending_reprice_error": str(cancel_result.get("error") or cancel_result),
+                })
+                self._save_active_trades()
+                return True
+
+            logger.warning(
+                "🔁 EXIT REPRICE: %s cancelled stale sell %s @ %.8g age=%.0fs gap=%.2f%% -> %.8g",
+                symbol,
+                order_id,
+                exit_price,
+                age_sec,
+                price_gap_pct,
+                desired_price,
+            )
+            trade = self.active_trades.setdefault(symbol, {})
+            for key in [
+                "exit_pending_order_id",
+                "exit_pending_amount",
+                "exit_pending_price",
+                "exit_pending_reason",
+                "exit_pending_fraction",
+                "exit_pending_since",
+                "exit_pending_last_seen",
+                "exit_blocked_reason",
+            ]:
+                trade.pop(key, None)
+            trade["amount"] = live_amount or pending_amount or float(data.get("amount") or 0.0)
+            trade["last_exit_reprice_at"] = time.time()
+            trade["last_exit_reprice_from"] = exit_price
+            trade["last_exit_reprice_to"] = desired_price
+            trade["last_exit_reprice_reason"] = f"age={age_sec:.0f}s gap={price_gap_pct:.2f}%"
+            self._save_active_trades()
+            _emit_trade_history("EXIT_REPRICED", {
+                "source": "indodax_executor",
+                "venue": "indodax",
+                "symbol": symbol,
+                "pair": pair,
+                "side": "SELL",
+                "status": "REPRICED",
+                "order_id": order_id,
+                "price_idr": desired_price,
+                "entry_price_idr": entry_price,
+                "exit_price_idr": desired_price,
+                "amount_coin": trade["amount"],
+                "amount_idr": desired_price * trade["amount"],
+                "reason": pending_reason,
+                "note": f"cancelled stale exit age={age_sec:.0f}s gap={price_gap_pct:.2f}%",
+            })
+            await self.execute_exit(symbol, desired_price, pending_reason, pending_fraction)
+            return True
 
         if live_amount <= 1e-8:
             if pending_amount > 0 and exit_price > 0 and entry_price > 0:

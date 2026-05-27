@@ -127,3 +127,25 @@ def test_load_daily_inventory_snapshot_ignores_dust_residuals(monkeypatch, tmp_p
     assert snapshot["open_count"] == 0
     assert snapshot["residual_count"] == 1
     assert snapshot["residual_symbols"] == ["PEPE/IDR"]
+
+
+def test_load_daily_inventory_snapshot_dedupes_same_symbol(monkeypatch, tmp_path):
+    _isolate_runtime_state(monkeypatch, tmp_path)
+    _write_json(tmp_path / "active_trades.json", {
+        "PHA/IDR": {
+            "amount": 65.0,
+            "price": 959.0,
+            "exit_pending_order_id": "SELL-1",
+        }
+    })
+    _write_json(tmp_path / "positions.json", {
+        "open_positions": [
+            {"symbol": "PHA/IDR", "amount": 65.0, "price": 959.0},
+        ]
+    })
+
+    snapshot = capital_module.load_daily_inventory_snapshot(tmp_path)
+
+    assert snapshot["has_open_inventory"] is True
+    assert snapshot["open_count"] == 1
+    assert snapshot["open_symbols"] == ["PHA/IDR"]

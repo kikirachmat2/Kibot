@@ -276,15 +276,25 @@ def load_daily_inventory_snapshot(state_dir: Optional[Path] = None) -> Dict[str,
         "open_sources": {},
         "errors": [],
     }
+    open_symbol_set: set[str] = set()
 
     def _mark_open(source: str, count: int, symbols: Optional[list[str]] = None) -> None:
         if count <= 0:
             return
         snapshot["has_open_inventory"] = True
-        snapshot["open_count"] += int(count)
         snapshot["open_sources"][source] = int(count)
         if symbols:
-            snapshot["open_symbols"].extend(symbols)
+            added = 0
+            for raw_symbol in symbols:
+                symbol = str(raw_symbol or "").upper().strip()
+                if not symbol or symbol in open_symbol_set:
+                    continue
+                open_symbol_set.add(symbol)
+                snapshot["open_symbols"].append(symbol)
+                added += 1
+            snapshot["open_count"] += added
+        else:
+            snapshot["open_count"] += int(count)
 
     active_trades_file = base_dir / "active_trades.json"
     if active_trades_file.exists():
@@ -399,7 +409,10 @@ def load_daily_inventory_snapshot(state_dir: Optional[Path] = None) -> Dict[str,
 
     snapshot["open_symbols"] = sorted({symbol for symbol in snapshot["open_symbols"] if symbol})
     snapshot["residual_symbols"] = sorted({symbol for symbol in snapshot["residual_symbols"] if symbol})
-    snapshot["open_count"] = int(snapshot["open_count"])
+    if snapshot["open_symbols"]:
+        snapshot["open_count"] = len(snapshot["open_symbols"])
+    else:
+        snapshot["open_count"] = int(snapshot["open_count"])
     snapshot["residual_count"] = int(snapshot["residual_count"])
     return snapshot
 

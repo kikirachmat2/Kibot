@@ -215,8 +215,15 @@ class IndodaxGateway:
         
         if amount_coin is not None and amount_coin > 0:
             coin_symbol = pair.split('_')[0]
-            if coin_symbol.lower() in {"pepe", "shib", "floki"}:
-                params[coin_symbol] = int(amount_coin)
+            integer_amount_required = coin_symbol.lower() in {"pepe", "shib", "floki"}
+            try:
+                pair_info = await self.get_pair_info(pair)
+                min_coin = float(pair_info.get("trade_min_traded_currency", 0) or 0)
+                integer_amount_required = integer_amount_required or (min_coin >= 1 and float(min_coin).is_integer())
+            except Exception:
+                pass
+            if integer_amount_required:
+                params[coin_symbol] = int(float(amount_coin))
             else:
                 params[coin_symbol] = self.round_step(amount_coin, "0.00000001")
         elif amount_idr and type.lower() == 'buy':
