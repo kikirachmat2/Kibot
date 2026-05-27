@@ -16,6 +16,7 @@ logger = logging.getLogger("CapitalGovernor")
 STATE_DIR = Path(__file__).resolve().parent.parent.parent / "state"
 GOVERNOR_FILE = STATE_DIR / "capital_governor.json"
 ANCHOR_FILE = STATE_DIR / "daily_equity_anchor.json"
+ANCHOR_LOCK_FILE = STATE_DIR / "daily_equity_anchor_lock.json"
 
 def _today_wib() -> str:
     """Business day boundary follows WIB."""
@@ -511,6 +512,14 @@ class CapitalGovernor:
 
     def _load_daily_anchor(self) -> Dict[str, Any]:
         """Return today's daily equity anchor. The anchor is the PnL baseline source of truth."""
+        if ANCHOR_LOCK_FILE.exists():
+            try:
+                locked = json.loads(ANCHOR_LOCK_FILE.read_text(encoding="utf-8"))
+            except Exception as e:
+                logger.error(f"❌ Failed to load locked daily equity anchor: {e}")
+                locked = {}
+            if isinstance(locked, dict) and locked.get("date") == _today_wib():
+                return locked
         if not ANCHOR_FILE.exists():
             return {}
         try:

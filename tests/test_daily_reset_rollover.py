@@ -21,6 +21,7 @@ def _isolate_runtime_state(monkeypatch, tmp_path: Path) -> None:
     monkeypatch.setattr(capital_module, "STATE_DIR", tmp_path)
     monkeypatch.setattr(capital_module, "GOVERNOR_FILE", tmp_path / "capital_governor.json")
     monkeypatch.setattr(capital_module, "ANCHOR_FILE", tmp_path / "daily_equity_anchor.json")
+    monkeypatch.setattr(capital_module, "ANCHOR_LOCK_FILE", tmp_path / "daily_equity_anchor_lock.json")
     monkeypatch.setattr(ledger_module, "STATE_DIR", tmp_path)
     monkeypatch.setattr(ledger_module, "LEDGER_FILE", tmp_path / "venue_ledger.json")
     monkeypatch.setattr(phantom_module, "STATE_DIR", tmp_path)
@@ -188,6 +189,40 @@ def test_runtime_save_does_not_rewrite_today_anchor(monkeypatch, tmp_path):
     assert data["start_total_equity_idr"] == pytest.approx(177_155.27)
     assert data["reset_total_balance_idr"] == pytest.approx(177_155.27)
     assert anchor["start_equity_idr"] == pytest.approx(177_155.27)
+
+
+def test_locked_anchor_overrides_mutable_anchor(monkeypatch, tmp_path):
+    _isolate_runtime_state(monkeypatch, tmp_path)
+    today = datetime.now(WIB).date()
+
+    _write_json(tmp_path / "capital_governor.json", {
+        "date": str(today),
+        "start_total_equity_idr": 162_548.22,
+        "max_daily_loss_idr": 2_438.22,
+        "status": "RECONCILED",
+    })
+    _write_json(tmp_path / "daily_equity_anchor.json", {
+        "date": str(today),
+        "start_equity_idr": 162_548.22,
+        "max_daily_loss_pct": 1.5,
+        "max_daily_loss_idr": 2_438.22,
+        "source": "mutable_anchor",
+    })
+    _write_json(tmp_path / "daily_equity_anchor_lock.json", {
+        "date": str(today),
+        "start_equity_idr": 177_155.27,
+        "max_daily_loss_pct": 1.5,
+        "max_daily_loss_idr": 2_657.32905,
+        "source": "operator_locked_truth",
+    })
+
+    governor = CapitalGovernor(None, None)
+    governor.current_total_equity_idr = 157_308.18
+    governor.save()
+
+    data = json.loads((tmp_path / "capital_governor.json").read_text(encoding="utf-8"))
+    assert data["start_total_equity_idr"] == pytest.approx(177_155.27)
+    assert data["reset_total_balance_idr"] == pytest.approx(177_155.27)
 
 
 def test_load_daily_inventory_snapshot_ignores_dust_residuals(monkeypatch, tmp_path):

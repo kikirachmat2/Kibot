@@ -99,7 +99,16 @@ class RiskGate:
 
     def _load_equity_anchor(self) -> dict:
         anchor_file = STATE_DIR / "daily_equity_anchor.json"
+        lock_file = STATE_DIR / "daily_equity_anchor_lock.json"
         today = _today_wib()
+        if lock_file.exists():
+            try:
+                with open(lock_file, "r") as f:
+                    data = json.load(f)
+                    if data.get("date") == today:
+                        return data
+            except Exception as e:
+                logger.error(f"Failed to load locked daily equity anchor: {e}")
         if anchor_file.exists():
             try:
                 with open(anchor_file, "r") as f:
