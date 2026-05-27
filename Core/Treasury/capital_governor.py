@@ -596,6 +596,11 @@ class CapitalGovernor:
             daily_reset_block = bool(getattr(self, "pending_daily_reset", False))
             allow_new_orders = bool(getattr(self, "allow_new_orders", False)) and not global_hard_stop and not daily_reset_block
             base_reason = str(getattr(self, "allow_new_orders_reason", ""))
+            venues_snapshot = getattr(self, "venue_states", {}) if isinstance(getattr(self, "venue_states", {}), dict) else {}
+            indodax_snapshot = venues_snapshot.get("indodax", {}) if isinstance(venues_snapshot.get("indodax", {}), dict) else {}
+            phantom_snapshot = venues_snapshot.get("phantom", {}) if isinstance(venues_snapshot.get("phantom", {}), dict) else {}
+            allow_indodax_orders = bool(indodax_snapshot.get("allow_orders", allow_new_orders))
+            allow_phantom_orders = bool(phantom_snapshot.get("allow_orders", allow_new_orders))
             reasons = [reason for reason in [
                 base_reason,
                 (
@@ -640,7 +645,9 @@ class CapitalGovernor:
                     "global_hard_stop": global_hard_stop,
                     "allow_new_orders": allow_new_orders,
                     "allow_new_orders_reason": allow_reason,
-                    "venues": getattr(self, "venue_states", {}),
+                    "allow_indodax_orders": allow_indodax_orders,
+                    "allow_phantom_orders": allow_phantom_orders,
+                    "venues": venues_snapshot,
                     "targets": getattr(self, "targets_snapshot", {}),
                     "phantom_details": getattr(self, "phantom_details_snapshot", {}),
                 }, f, indent=4)

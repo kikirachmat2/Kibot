@@ -181,6 +181,8 @@ async def test_daily_reset_does_not_freeze_on_exchange_locked_inventory(monkeypa
 
     assert data["daily_reset_pending"] is False
     assert data["allow_new_orders"] is True
+    assert data["allow_indodax_orders"] is True
+    assert data["allow_phantom_orders"] is True
     assert data["locked_inventory_count"] == 1
     assert data["locked_inventory_symbols"] == ["POND/IDR"]
     assert data["date"] == str(today)
