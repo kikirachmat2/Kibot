@@ -13,7 +13,7 @@ from pathlib import Path
 from datetime import datetime, timedelta
 
 from Core.Support.ki_config import WIB
-from Core.Treasury.accounting_truth import build_accounting_truth
+from Core.Treasury.accounting_truth import build_accounting_truth, _safe_float
 
 class CouncilDataAggregator:
     """
