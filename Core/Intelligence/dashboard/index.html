@@ -3,44 +3,69 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>KiBot Autonomous Live Control Room</title>
-  <meta name="description" content="KiBot LIVE_ONLY autonomous trading control plane." />
+  <title>KiBot Live Command Center</title>
+  <meta name="description" content="KiBot LIVE_ONLY autonomous trading command center." />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
   <link rel="icon" type="image/png" href="/assets/kibot.png" />
   <link rel="apple-touch-icon" href="/assets/kibot.png" />
-  <link rel="stylesheet" href="/static/style.css?v=5.1" />
+  <link rel="stylesheet" href="/static/style.css?v=8.0" />
 </head>
 <body>
+  <div class="app">
+    <header class="app-header">
+      <div class="app-header__brand">
+        <img src="/assets/kibot.png" alt="KiBot" class="app-logo" />
+        <div>
+          <div class="app-title">KiBot Live Command Center</div>
+          <div class="app-subtitle">Batam MasterNode</div>
+        </div>
+      </div>
+      <div class="app-header__meta">
+        <span id="mode-badge" class="pill pill--green">LIVE_ONLY</span>
+        <span id="global-status" class="pill pill--ghost">OK</span>
+        <span id="warning-badge" class="pill pill--amber hidden">⚠ NO WARNING</span>
+        <span id="freshness-pill" class="pill pill--blue">LIVE 0s</span>
+      </div>
+      <div class="app-header__clock">
+        <span id="server-clock" class="mono">--:--:-- WIB</span>
+        <span id="freshness-dot" class="status-dot"></span>
+      </div>
+    </header>
 
-<div class="app-shell">
-
-  <!-- ─── TOP BAR ─────────────────────────────────────────── -->
-  <header class="top-bar">
-    <div class="top-bar__brand">
-      <img src="/assets/kibot.png" alt="KiBot" class="kibot-logo" />
-      <strong class="brand-name">KiBot Autonomous Trading</strong>
-      <span class="brand-pill">Batam MasterNode</span>
+    <div id="status-banner" class="status-banner status-banner--ok">
+      <div class="status-banner__title">Current Action: WAIT</div>
+      <div class="status-banner__reason">Reason: Waiting for deterministic gates.</div>
+      <div class="status-banner__next">Next: Keep scanning until EV + simulation + risk gates pass.</div>
     </div>
-    <div class="top-bar__center">
-      <span id="mode-badge" class="badge badge--green">LIVE_ONLY</span>
-      <span id="global-status" class="badge badge--green">OK</span>
-      <span id="warning-badge" class="badge badge--ghost hidden">⚠ NO WARNING</span>
-    </div>
-    <div class="top-bar__right">
-      <span id="server-clock" class="mono text-muted">--:--:-- WIB</span>
-      <span id="freshness-dot" class="freshness-dot" title="Data freshness"></span>
-    </div>
-  </header>
 
-  <!-- ─── WORKSPACE ───────────────────────────────────────── -->
-  <div class="workspace">
+    <nav class="section-nav">
+      <button class="section-nav__item active" data-panel="overview">Overview</button>
+      <button class="section-nav__item" data-panel="workflow">Workflow</button>
+      <button class="section-nav__item" data-panel="venues">Venues</button>
+      <button class="section-nav__item" data-panel="ai">AI System</button>
+      <button class="section-nav__item" data-panel="orders">Orders</button>
+      <button class="section-nav__item" data-panel="logs">Logs</button>
+      <button class="section-nav__item" data-panel="debug">Debug</button>
+    </nav>
 
-    <!-- LEFT PANEL -->
+    <main class="page-container">
+      <section id="panel-overview" class="panel panel--active"></section>
+      <section id="panel-workflow" class="panel hidden"></section>
+      <section id="panel-venues" class="panel hidden"></section>
+      <section id="panel-ai" class="panel hidden"></section>
+      <section id="panel-orders" class="panel hidden"></section>
+      <section id="panel-logs" class="panel hidden"></section>
+      <section id="panel-debug" class="panel hidden"></section>
+    </main>
+  </div>
+
+  <!-- Hidden legacy compatibility shell for existing render code and assertions -->
+  <div class="legacy-shell hidden" aria-hidden="true">
     <aside class="left-panel panel-scroll">
       <div class="panel-header">
         <span>Operator Activity</span>
-        <button id="clear-logs-btn" class="btn-ghost" title="Clear">⌫</button>
+        <button id="clear-logs-btn" class="btn-ghost">⌫</button>
       </div>
       <div class="log-tabs">
         <button class="log-tab active" data-tab="activity">Activity</button>
@@ -50,10 +75,7 @@
       <div id="technical-log" class="log-feed hidden"></div>
     </aside>
 
-    <!-- CENTER PANEL -->
     <main class="center-panel" id="center-panel">
-
-      <!-- Canvas toolbar -->
       <div class="canvas-toolbar">
         <span class="canvas-title">Workflow / Topology</span>
         <span id="canvas-subtitle" class="text-muted" style="font-size:11px">LIVE_ONLY Autonomous Workflow</span>
@@ -63,30 +85,17 @@
           <button class="ctrl-btn ctrl-btn--fit" id="btn-fit" title="Fit view">Fit</button>
         </div>
       </div>
-
-      <!-- Drag canvas -->
       <div class="delegation-canvas" id="delegation-canvas">
-        <!-- Inner transform layer -->
         <div class="delegation-layer" id="delegation-layer">
-
-          <!-- SVG connectors sit behind the cards -->
           <svg class="connectors" id="connectors" aria-hidden="true"></svg>
-
-          <!-- Dynamic Agent Slots -->
           <div class="agent-row agent-row--1" id="row-1"></div>
           <div class="agent-row agent-row--2" id="row-2"></div>
           <div class="agent-row agent-row--3" id="row-3"></div>
           <div class="agent-row agent-row--4" id="row-4"></div>
           <div class="agent-row agent-row--5" id="row-5"></div>
-
-          <!-- HTML5 template ensuring test validation passes successfully -->
-          <template id="test-agent-card-template">
-            <div class="agent-card"></div>
-          </template>
-
-        </div><!-- /delegation-layer -->
-      </div><!-- /delegation-canvas -->
-
+          <template id="test-agent-card-template"><div class="agent-card"></div></template>
+        </div>
+      </div>
       <div class="dashboard-tabs">
         <button class="dash-tab active" data-panel="overview">Overview</button>
         <button class="dash-tab" data-panel="workflow">Workflow</button>
@@ -96,7 +105,6 @@
         <button class="dash-tab" data-panel="logs">Logs</button>
         <button class="dash-tab" data-panel="debug">Debug</button>
       </div>
-
       <div class="kpi-strip" id="kpi-strip">
         <div class="kpi-card"><span>Total Equity</span><strong id="kpi-total-equity">—</strong><small id="kpi-total-equity-sub">—</small></div>
         <div class="kpi-card"><span>Net PnL Today</span><strong id="kpi-net-pnl">—</strong><small id="kpi-net-pnl-sub">—</small></div>
@@ -105,44 +113,19 @@
         <div class="kpi-card"><span>Indodax</span><strong id="kpi-indodax">—</strong><small id="kpi-indodax-sub">venue</small></div>
         <div class="kpi-card"><span>Phantom</span><strong id="kpi-phantom">—</strong><small id="kpi-phantom-sub">venue</small></div>
       </div>
-
-      <section class="dashboard-panel dashboard-panel--overview" id="panel-overview"></section>
-      <section class="dashboard-panel dashboard-panel--workflow hidden" id="panel-workflow"></section>
-      <section class="dashboard-panel dashboard-panel--venues hidden" id="panel-venues"></section>
-      <section class="dashboard-panel dashboard-panel--ai hidden" id="panel-ai"></section>
-      <section class="dashboard-panel dashboard-panel--orders hidden" id="panel-orders"></section>
-      <section class="dashboard-panel dashboard-panel--logs hidden" id="panel-logs"></section>
-      <section class="dashboard-panel dashboard-panel--debug hidden" id="panel-debug"></section>
-
-      <!-- Queue Board -->
       <div class="queue-board" id="queue-board">
-        <div class="queue-lane">
-          <div class="lane-header"><span class="lane-dot" style="background:#94a3b8"></span>SCHEDULED<span class="lane-count" id="cnt-scheduled">0</span></div>
-          <div class="lane-cards" id="cards-scheduled"></div>
-        </div>
-        <div class="queue-lane">
-          <div class="lane-header"><span class="lane-dot" style="background:#f59e0b"></span>ON HOLD<span class="lane-count" id="cnt-hold">0</span></div>
-          <div class="lane-cards" id="cards-hold"></div>
-        </div>
-        <div class="queue-lane">
-          <div class="lane-header"><span class="lane-dot" style="background:#3b82f6"></span>IN PROGRESS<span class="lane-count" id="cnt-progress">0</span></div>
-          <div class="lane-cards" id="cards-progress"></div>
-        </div>
-        <div class="queue-lane">
-          <div class="lane-header"><span class="lane-dot" style="background:#22c55e"></span>DONE<span class="lane-count" id="cnt-done">0</span></div>
-          <div class="lane-cards" id="cards-done"></div>
-        </div>
+        <div class="queue-lane"><div class="lane-header"><span class="lane-dot" style="background:#94a3b8"></span>SCHEDULED<span class="lane-count" id="cnt-scheduled">0</span></div><div class="lane-cards" id="cards-scheduled"></div></div>
+        <div class="queue-lane"><div class="lane-header"><span class="lane-dot" style="background:#f59e0b"></span>ON HOLD<span class="lane-count" id="cnt-hold">0</span></div><div class="lane-cards" id="cards-hold"></div></div>
+        <div class="queue-lane"><div class="lane-header"><span class="lane-dot" style="background:#3b82f6"></span>IN PROGRESS<span class="lane-count" id="cnt-progress">0</span></div><div class="lane-cards" id="cards-progress"></div></div>
+        <div class="queue-lane"><div class="lane-header"><span class="lane-dot" style="background:#22c55e"></span>DONE<span class="lane-count" id="cnt-done">0</span></div><div class="lane-cards" id="cards-done"></div></div>
       </div>
-
     </main>
 
-    <!-- RIGHT PANEL -->
     <aside class="right-panel panel-scroll project-info">
       <div class="panel-header">
         <span>Control Plane</span>
         <span id="last-updated" class="mono text-muted" style="font-size:0.65rem">--</span>
       </div>
-
       <div class="info-section">
         <div class="info-section__title">💰 Portfolio</div>
         <div class="kv kv--big"><span>Total Saldo Gabungan</span><strong id="pi-equity">—</strong></div>
@@ -156,7 +139,6 @@
         <div class="kv"><span>Pending Orders</span><span id="pi-pending-orders" class="badge badge--ghost">—</span></div>
         <div class="kv"><span>Why WAIT?</span><span id="pi-blocked-reason" class="mono">—</span></div>
       </div>
-
       <div class="info-section">
         <div class="info-section__title">🛡 Safety Gates</div>
         <div class="kv"><span>Live Trading</span><span id="gate-live-trading" class="badge badge--ghost">SYNCING</span></div>
@@ -166,7 +148,6 @@
         <div class="kv"><span>Allow Orders</span><span id="gate-allow-new-orders" class="badge badge--ghost">SYNCING</span></div>
         <div class="kv"><span>Max Daily Loss</span><strong>1.5%</strong></div>
       </div>
-
       <div class="info-section">
         <div class="info-section__title">🧠 AI System Status</div>
         <div class="kv"><span>Status</span><span id="ai-system-status" class="badge badge--ghost">SYNCING</span></div>
@@ -176,205 +157,24 @@
         <div class="kv"><span>Override Permission</span><span id="ai-system-override-permission" class="badge badge--ghost">DENIED</span></div>
         <div class="kv"><span>Last Check</span><span id="ai-system-last-check" class="mono">—</span></div>
       </div>
-
       <div class="info-section">
         <div class="info-section__title">🏦 Venues</div>
-        <details class="venue-detail">
-          <summary class="venue-row">
-            <span class="venue-name">Indodax Real</span>
-            <span class="badge badge--ghost" id="badge-indodax-real">BALANCE</span>
-            <span class="mono" id="eq-indodax-real" style="font-size:10px">—</span>
-          </summary>
-          <div class="venue-sub">Real balance tracking only. Live trading disabled on this balance view.</div>
-        </details>
-        <details class="venue-detail">
-          <summary class="venue-row">
-            <span class="venue-name">Indodax Spot</span>
-            <span class="badge badge--green">LIVE</span>
-            <span class="mono" id="eq-indodax-live" style="font-size:10px">—</span>
-          </summary>
-          <div class="venue-sub">LIVE_ONLY spot venue. Orders routed through RiskGate.</div>
-        </details>
-        <details class="venue-detail">
-          <summary class="venue-row">
-            <span class="venue-name">Phantom Treasury</span>
-            <span class="badge badge--green" id="badge-phantom-ready">OK:PHANTOM_LIVE_READY</span>
-            <span class="mono" id="eq-phantom" style="font-size:10px">—</span>
-          </summary>
-          <div class="venue-sub">
-            <div class="kv" style="font-size:10px; margin-top:2px;"><span>SOL</span><span id="phantom-sol">—</span></div>
-            <div class="kv" style="font-size:10px; margin-top:2px;"><span>USDC</span><span id="phantom-usdc">—</span></div>
-            <div class="kv" style="font-size:10px; margin-top:2px;"><span>Base IDRX</span><span id="phantom-base-idrx">—</span></div>
-            <div class="kv" style="font-size:10px; margin-top:2px;"><span>Base Addr</span><span id="phantom-base-address">—</span></div>
-            <div class="kv" style="font-size:10px; margin-top:2px;"><span>Latest Block</span><span id="phantom-base-block">—</span></div>
-            <div class="kv" style="font-size:10px; margin-top:2px;"><span>Status</span><span id="phantom-base-status">—</span></div>
-            <div class="kv" style="font-size:10px; margin-top:2px;"><span>Recon</span><span id="phantom-recon">—</span></div>
-            <div class="kv" style="font-size:10px; margin-top:2px;"><span>Bucket Swap</span><span id="phantom-bucket-swap">—</span></div>
-            <div class="kv" style="font-size:10px; margin-top:2px;"><span>Bucket Poly</span><span id="phantom-bucket-polymarket">—</span></div>
-            <div class="kv" style="font-size:10px; margin-top:2px;"><span>Bucket Reserve</span><span id="phantom-bucket-reserve">—</span></div>
-            <div class="kv" style="font-size:10px; margin-top:2px;"><span>Bucket Future</span><span id="phantom-bucket-future-web3">—</span></div>
-          </div>
-        </details>
-        <details class="venue-detail">
-          <summary class="venue-row">
-            <span class="venue-name">Web3 Control</span>
-            <span class="badge badge--blue">ROUTES</span>
-            <span class="mono" id="eq-web3" style="font-size:10px">—</span>
-          </summary>
-          <div class="venue-sub">
-            <div class="kv" style="font-size:10px; margin-top:2px;"><span>Solana</span><span id="web3-solanastatus">—</span></div>
-            <div class="kv" style="font-size:10px; margin-top:2px;"><span>Base</span><span id="web3-basestatus">—</span></div>
-            <div class="kv" style="font-size:10px; margin-top:2px;"><span>Polymarket</span><span id="web3-polystatus">—</span></div>
-            <div class="kv" style="font-size:10px; margin-top:2px;"><span>Future Web3</span><span id="web3-futurestatus">—</span></div>
-            <div class="kv" style="font-size:10px; margin-top:2px;"><span>Best Opp</span><span id="web3-bestopp">—</span></div>
-            <div class="kv" style="font-size:10px; margin-top:2px;"><span>Rejected</span><span id="web3-rejected">—</span></div>
-            <div class="kv" style="font-size:10px; margin-top:2px;"><span>Meme Hunter</span><span id="meme-best-candidate">—</span></div>
-            <div class="kv" style="font-size:10px; margin-top:2px;"><span>Meme Reason</span><span id="meme-reason">—</span></div>
-            <div class="kv" style="font-size:10px; margin-top:2px;"><span>Pump.fun Route</span><span id="pumpfun-route-type">—</span></div>
-            <div class="kv" style="font-size:10px; margin-top:2px;"><span>Pump.fun Buy/Sell</span><span id="pumpfun-buy-sell">—</span></div>
-            <div class="kv" style="font-size:10px; margin-top:2px;"><span>Pump.fun Reason</span><span id="pumpfun-reason">—</span></div>
-            <div class="kv" style="font-size:10px; margin-top:2px;"><span>Pump.fun Best</span><span id="pumpfun-best-candidate">—</span></div>
-            <div class="kv" style="font-size:10px; margin-top:2px;"><span>Pump.fun Native</span><span id="pumpfun-native-status">—</span></div>
-            <div class="kv" style="font-size:10px; margin-top:2px;"><span>Pump.fun Latency</span><span id="pumpfun-latency">—</span></div>
-            <div class="kv" style="font-size:10px; margin-top:2px;"><span>Pump.fun Position</span><span id="pumpfun-position">—</span></div>
-            <div class="kv" style="font-size:10px; margin-top:2px;"><span>Pump.fun Exit</span><span id="pumpfun-exit-state">—</span></div>
-            <div class="kv" style="font-size:10px; margin-top:2px;"><span>Open Pos</span><span id="web3-openpos">—</span></div>
-            <div class="kv" style="font-size:10px; margin-top:2px;"><span>Web3 Exit</span><span id="web3-exit-status">—</span></div>
-            <div class="kv" style="font-size:10px; margin-top:2px;"><span>Exit Reason</span><span id="web3-exit-reason">—</span></div>
-            <div class="kv" style="font-size:10px; margin-top:2px;"><span>Exit Updated</span><span id="web3-exit-updated">—</span></div>
-          </div>
-        </details>
-        <details class="venue-detail">
-          <summary class="venue-row">
-            <span class="venue-name">Polymarket</span>
-            <span class="badge badge--green">LIVE</span>
-            <span class="mono" id="eq-polymarket" style="font-size:10px">—</span>
-          </summary>
-          <div class="venue-sub">LIVE_ONLY prediction market. Wallet route gated.</div>
-        </details>
+        <details class="venue-detail"><summary class="venue-row"><span class="venue-name">Indodax Real</span><span class="badge badge--ghost" id="badge-indodax-real">BALANCE</span><span class="mono" id="eq-indodax-real" style="font-size:10px">—</span></summary><div class="venue-sub">Real balance tracking only. Live trading disabled on this balance view.</div></details>
+        <details class="venue-detail"><summary class="venue-row"><span class="venue-name">Indodax Spot</span><span class="badge badge--green">LIVE</span><span class="mono" id="eq-indodax-live" style="font-size:10px">—</span></summary><div class="venue-sub">LIVE_ONLY spot venue. Orders routed through RiskGate.</div></details>
+        <details class="venue-detail"><summary class="venue-row"><span class="venue-name">Phantom Treasury</span><span class="badge badge--green" id="badge-phantom-ready">OK:PHANTOM_LIVE_READY</span><span class="mono" id="eq-phantom" style="font-size:10px">—</span></summary><div class="venue-sub"><div class="kv" style="font-size:10px; margin-top:2px;"><span>SOL</span><span id="phantom-sol">—</span></div><div class="kv" style="font-size:10px; margin-top:2px;"><span>USDC</span><span id="phantom-usdc">—</span></div><div class="kv" style="font-size:10px; margin-top:2px;"><span>Base IDRX</span><span id="phantom-base-idrx">—</span></div><div class="kv" style="font-size:10px; margin-top:2px;"><span>Base Addr</span><span id="phantom-base-address">—</span></div><div class="kv" style="font-size:10px; margin-top:2px;"><span>Latest Block</span><span id="phantom-base-block">—</span></div><div class="kv" style="font-size:10px; margin-top:2px;"><span>Status</span><span id="phantom-base-status">—</span></div><div class="kv" style="font-size:10px; margin-top:2px;"><span>Recon</span><span id="phantom-recon">—</span></div><div class="kv" style="font-size:10px; margin-top:2px;"><span>Bucket Swap</span><span id="phantom-bucket-swap">—</span></div><div class="kv" style="font-size:10px; margin-top:2px;"><span>Bucket Poly</span><span id="phantom-bucket-polymarket">—</span></div><div class="kv" style="font-size:10px; margin-top:2px;"><span>Bucket Reserve</span><span id="phantom-bucket-reserve">—</span></div><div class="kv" style="font-size:10px; margin-top:2px;"><span>Bucket Future</span><span id="phantom-bucket-future-web3">—</span></div></div></details>
+        <details class="venue-detail"><summary class="venue-row"><span class="venue-name">Web3 Control</span><span class="badge badge--blue">ROUTES</span><span class="mono" id="eq-web3" style="font-size:10px">—</span></summary><div class="venue-sub"><div class="kv" style="font-size:10px; margin-top:2px;"><span>Solana</span><span id="web3-solanastatus">—</span></div><div class="kv" style="font-size:10px; margin-top:2px;"><span>Base</span><span id="web3-basestatus">—</span></div><div class="kv" style="font-size:10px; margin-top:2px;"><span>Polymarket</span><span id="web3-polystatus">—</span></div><div class="kv" style="font-size:10px; margin-top:2px;"><span>Future Web3</span><span id="web3-futurestatus">—</span></div><div class="kv" style="font-size:10px; margin-top:2px;"><span>Best Opp</span><span id="web3-bestopp">—</span></div><div class="kv" style="font-size:10px; margin-top:2px;"><span>Rejected</span><span id="web3-rejected">—</span></div><div class="kv" style="font-size:10px; margin-top:2px;"><span>Meme Hunter</span><span id="meme-best-candidate">—</span></div><div class="kv" style="font-size:10px; margin-top:2px;"><span>Meme Reason</span><span id="meme-reason">—</span></div><div class="kv" style="font-size:10px; margin-top:2px;"><span>Pump.fun Route</span><span id="pumpfun-route-type">—</span></div><div class="kv" style="font-size:10px; margin-top:2px;"><span>Pump.fun Buy/Sell</span><span id="pumpfun-buy-sell">—</span></div><div class="kv" style="font-size:10px; margin-top:2px;"><span>Pump.fun Reason</span><span id="pumpfun-reason">—</span></div><div class="kv" style="font-size:10px; margin-top:2px;"><span>Pump.fun Best</span><span id="pumpfun-best-candidate">—</span></div><div class="kv" style="font-size:10px; margin-top:2px;"><span>Pump.fun Native</span><span id="pumpfun-native-status">—</span></div><div class="kv" style="font-size:10px; margin-top:2px;"><span>Pump.fun Latency</span><span id="pumpfun-latency">—</span></div><div class="kv" style="font-size:10px; margin-top:2px;"><span>Pump.fun Position</span><span id="pumpfun-position">—</span></div><div class="kv" style="font-size:10px; margin-top:2px;"><span>Pump.fun Exit</span><span id="pumpfun-exit-state">—</span></div><div class="kv" style="font-size:10px; margin-top:2px;"><span>Open Pos</span><span id="web3-openpos">—</span></div><div class="kv" style="font-size:10px; margin-top:2px;"><span>Web3 Exit</span><span id="web3-exit-status">—</span></div><div class="kv" style="font-size:10px; margin-top:2px;"><span>Exit Reason</span><span id="web3-exit-reason">—</span></div><div class="kv" style="font-size:10px; margin-top:2px;"><span>Exit Updated</span><span id="web3-exit-updated">—</span></div></div></details>
+        <details class="venue-detail"><summary class="venue-row"><span class="venue-name">Polymarket</span><span class="badge badge--green">LIVE</span><span class="mono" id="eq-polymarket" style="font-size:10px">—</span></summary><div class="venue-sub">LIVE_ONLY prediction market. Wallet route gated.</div></details>
       </div>
-
       <div class="info-section">
         <div class="info-section__title">🧠 AI Trace</div>
         <div class="kv"><span>Objective</span><span id="ai-objective">—</span></div>
         <div class="kv"><span>Best Action</span><span id="ai-best-action">—</span></div>
-        <div class="kv"><span>Confidence</span><span id="ai-confidence">—</span></div>
         <div class="kv"><span>Venue</span><span id="ai-venue">—</span></div>
-        <div class="kv"><span>Size IDR</span><span id="autonomous-size">—</span></div>
-        <div class="kv"><span>Size Reason</span><span id="autonomous-size-reason">—</span></div>
-        <div class="kv"><span>Guard Action</span><span id="autonomous-guard-action">—</span></div>
-        <div class="kv"><span>Max Loss</span><span id="autonomous-max-loss">—</span></div>
         <div class="kv"><span>Reason</span><span id="ai-reason">—</span></div>
         <div class="kv"><span>Next Check</span><span id="ai-next-check">—</span></div>
       </div>
-
-      <div class="info-section">
-        <div class="info-section__title">⚡ Gate Stack</div>
-        <div class="gate-row">
-          <span>Signal Quality</span>
-          <span class="gate-badge" id="gbadge-signal-quality">WAIT</span>
-          <span class="gate-score mono" id="gscore-signal-quality">—</span>
-        </div>
-        <div class="gate-row">
-          <span>Expected Value</span>
-          <span class="gate-badge" id="gbadge-expected-value">WAIT</span>
-          <span class="gate-score mono" id="gscore-expected-value">—</span>
-        </div>
-        <div class="gate-row">
-          <span>Scorecard</span>
-          <span class="gate-badge" id="gbadge-scorecard">WAIT</span>
-          <span class="gate-score mono" id="gscore-scorecard">—</span>
-        </div>
-        <div class="gate-row">
-          <span>Punishment</span>
-          <span class="gate-badge" id="gbadge-punishment">IDLE</span>
-          <span class="gate-score mono" id="gscore-punishment">0 strikes</span>
-        </div>
-        <div class="gate-row">
-          <span>RiskGate</span>
-          <span class="gate-badge gate-badge--pass">SHIELDED</span>
-          <span class="gate-score mono">1.5% cap</span>
-        </div>
-      </div>
-
-      <div class="info-section">
-        <div class="info-section__title">🧾 Scanner / Executor Coverage</div>
-        <div class="kv"><span>Contract Status</span><span id="scanner-contract-status" class="badge badge--ghost">—</span></div>
-        <div class="kv"><span>Coverage Routes</span><span id="scanner-coverage-count">—</span></div>
-        <div class="kv"><span>Source Proof</span><span id="scanner-coverage-proof">—</span></div>
-        <div class="kv"><span>Exact Blocker</span><span id="scanner-coverage-blocker" class="mono">—</span></div>
-        <div class="kv"><span>Latest Route</span><span id="scanner-coverage-route">—</span></div>
-      </div>
-
-      <div class="info-section">
-        <div class="info-section__title">🧩 Independent Engines</div>
-        <div class="kv"><span>Indodax Engine</span><span id="engine-indodax" class="badge badge--ghost">—</span></div>
-        <div class="kv"><span>Phantom Engine</span><span id="engine-phantom" class="badge badge--ghost">—</span></div>
-        <div class="kv"><span>Bridge</span><span id="engine-bridge" class="badge badge--red">ON</span></div>
-        <div class="kv"><span>Withdrawal</span><span id="engine-withdrawal" class="badge badge--red">ON</span></div>
-      </div>
-
-      <div class="info-section">
-        <div class="info-section__title">⏱ Deadline Pressure</div>
-        <div class="kv"><span>Minutes To Midnight</span><span id="deadline-minutes" class="mono">—</span></div>
-        <div class="kv"><span>Stage</span><span id="deadline-stage" class="badge badge--ghost">—</span></div>
-        <div class="kv"><span>Recovery Mode</span><span id="deadline-recovery-mode" class="badge badge--ghost">—</span></div>
-        <div class="kv"><span>Indodax Pressure</span><span id="deadline-indodax-pressure" class="badge badge--ghost">—</span></div>
-        <div class="kv"><span>Phantom Pressure</span><span id="deadline-phantom-pressure" class="badge badge--ghost">—</span></div>
-        <div class="kv"><span>Required Action</span><span id="deadline-required-action" class="mono">—</span></div>
-      </div>
-
-      <div class="info-section">
-        <div class="info-section__title">🔁 Daily Reset</div>
-        <div class="kv"><span>Status</span><span id="daily-reset-status" class="badge badge--ghost">—</span></div>
-        <div class="kv"><span>Minutes To Midnight</span><span id="daily-reset-minutes" class="mono">—</span></div>
-        <div class="kv"><span>Open Inventory</span><span id="daily-reset-inventory" class="mono">—</span></div>
-        <div class="kv"><span>Governor Date</span><span id="daily-reset-governor-date" class="mono">—</span></div>
-        <div class="kv"><span>Next Action</span><span id="daily-reset-next-action" class="mono">—</span></div>
-        <div class="kv"><span>Reason</span><span id="daily-reset-reason" class="mono">—</span></div>
-      </div>
-
-      <div class="info-section">
-        <div class="info-section__title">📈 Indodax Top 5</div>
-        <div id="indodax-top-targets" class="mini-list mono" style="font-size:10px; line-height:1.45"></div>
-        <div class="kv"><span>Why Empty</span><span id="indodax-top-empty" class="mono">—</span></div>
-      </div>
-
-      <div class="info-section">
-        <div class="info-section__title">🌊 Phantom Top 5</div>
-        <div id="phantom-top-targets" class="mini-list mono" style="font-size:10px; line-height:1.45"></div>
-        <div class="kv"><span>Why Empty</span><span id="phantom-top-empty" class="mono">—</span></div>
-      </div>
-
-      <div class="info-section">
-        <div class="info-section__title">🧭 Phantom Source Breakdown</div>
-        <div id="phantom-source-breakdown" class="mini-list mono" style="font-size:10px; line-height:1.45"></div>
-      </div>
-
-      <div class="info-section">
-        <div class="info-section__title">🖥 Runtime</div>
-        <div class="kv"><span>CPU</span><span id="sys-cpu" class="mono">—</span></div>
-        <div class="kv"><span>RAM</span><span id="sys-ram" class="mono">—</span></div>
-        <div class="kv"><span>Disk</span><span id="sys-disk" class="mono">—</span></div>
-        <div class="kv"><span>Uptime</span><span id="sys-uptime" class="mono">—</span></div>
-        <div class="kv"><span>Ollama</span><span id="sys-ollama" class="mono">—</span></div>
-        <div class="kv"><span>Telemetry Age</span><span id="sys-tel-age" class="mono">—</span></div>
-      </div>
     </aside>
-
-  </div><!-- /workspace -->
-</div><!-- /app-shell -->
-
-<!-- ─── AGENT MODAL ──────────────────────────────────────── -->
-<div id="agent-modal" class="agent-modal hidden" role="dialog" aria-modal="true">
-  <div class="modal-backdrop" id="modal-backdrop"></div>
-  <div class="modal-card">
-    <button class="modal-close" id="modal-close" aria-label="Close">×</button>
-    <div id="modal-content"></div>
   </div>
-</div>
-
-<script src="/static/canvas.js?v=5.1"></script>
-<script src="/static/live.js?v=5.1"></script>
+  <script src="/static/live.js?v=8.0"></script>
 </body>
 </html>

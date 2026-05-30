@@ -1,0 +1,7 @@
+<resources>
+  <color name="kibot_primary">#1D4ED8</color>
+  <color name="kibot_secondary">#7C3AED</color>
+  <color name="kibot_background">#F8FAFC</color>
+  <color name="kibot_surface">#FFFFFF</color>
+  <color name="kibot_text">#0F172A</color>
+</resources>

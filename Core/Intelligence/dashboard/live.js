@@ -494,6 +494,15 @@ function renderListPanel(items, empty = '—') {
   return items.length ? `<div class="panel-list">${items.join('')}</div>` : `<div class="panel-empty">${esc(empty)}</div>`;
 }
 
+function renderMetricCard(label, value, sub = '') {
+  return `
+    <div class="metric-card gradient-border">
+      <div class="metric-card__label">${esc(label)}</div>
+      <div class="metric-card__value">${esc(value)}</div>
+      <div class="metric-card__sub">${esc(sub)}</div>
+    </div>`;
+}
+
 /* ─── Render from API data ───────────────────────────────── */
 function render(data) {
   _lastData = data;
@@ -974,64 +983,65 @@ function renderDashboardPanels(data) {
   const whyWait = String(decision.current_reason || (allowOrders ? 'No blocker' : 'WAIT')).trim() || 'No blocker';
   const nextAction = String(decision.current_action || workflow[0]?.name || 'SCAN').trim() || 'SCAN';
   const nextActionDetail = String(decision.last_gate_failed || workflow[0]?.reason || decision.current_reason || 'Proceed to next deterministic step').trim();
+  const banner = el('status-banner');
+  if (banner) {
+    const state = String(runtime.state || liveTruth.risk_state || 'OK').toUpperCase();
+    banner.className = `status-banner ${state === 'LOCKED' || state === 'EMERGENCY' ? 'status-banner--lock' : state === 'WARNING' ? 'status-banner--warn' : ''}`;
+    banner.innerHTML = `
+      <div class="status-banner__title">Current Action: ${esc(nextAction)}</div>
+      <div class="status-banner__reason">Reason: ${esc(whyWait)}</div>
+      <div class="status-banner__next">Next: ${esc(nextActionDetail)}</div>
+    `;
+  }
+  const freshnessPill = el('freshness-pill');
+  if (freshnessPill) freshnessPill.textContent = `LIVE ${freshnessLabel(runtime.freshness_s ?? 0)}`;
 
   const panelOverview = el('panel-overview');
   if (panelOverview) {
     panelOverview.innerHTML = `
-      <div class="panel-grid panel-grid--2">
-        <div class="panel-card panel-card--hero">
-          <div class="panel-card__title">Operator Summary</div>
-          <div class="panel-hero">
-            <div class="panel-hero__grid">
-              <div class="panel-hero__metric">
-                <span>Runtime</span>
-                <strong>${esc(runtime.mode || 'LIVE_ONLY')}</strong>
-                <small>${esc(runtime.state || '—')} · ${esc(runtime.node || 'Batam')}</small>
-              </div>
-              <div class="panel-hero__metric">
-                <span>Why WAIT?</span>
-                <strong>${esc(whyWait)}</strong>
-                <small>${allowOrders ? 'No blocker' : 'Gate blocked'}</small>
-              </div>
-              <div class="panel-hero__metric">
-                <span>Next Autonomous Action</span>
-                <strong>${esc(nextAction)}</strong>
-                <small>${esc(nextActionDetail)}</small>
-              </div>
-              <div class="panel-hero__metric">
-                <span>Freshness</span>
-                <strong>${esc(freshnessLabel(runtime.freshness_s ?? 0))}</strong>
-                <small>${esc(freshnessLabel(data.live_truth?.age_s ?? 0))} live truth</small>
-              </div>
-            </div>
-          </div>
-          <div class="panel-hero__chips">
-            <span class="${badgeClassForStatus(runtime.mode)}">${esc(runtime.mode || 'LIVE_ONLY')}</span>
-            <span class="${badgeClassForStatus(runtime.state)}">${esc(runtime.state || '—')}</span>
-            <span class="${badgeClassForStatus(allowOrders ? 'PASS' : 'REJECT')}">${allowOrders ? 'ALLOW ORDERS' : 'WAIT'}</span>
-            <span class="${badgeClassForStatus(liveTruth.risk_state)}">${esc(liveTruth.risk_state || '—')}</span>
-          </div>
-        </div>
-        <div class="panel-card">
-          <div class="panel-card__title">Portfolio</div>
-          ${renderKeyValue('Total Equity', idr(portfolio.total_equity_idr || 0))}
-          ${renderKeyValue('Starting Equity', idr(portfolio.starting_equity_idr || portfolio.start_total_equity_idr || 0))}
-          ${renderKeyValue('Net PnL Today', idr(portfolio.net_pnl_today_idr || 0))}
-          ${renderKeyValue('Risk Remaining', idr(portfolio.risk_remaining_idr || 0))}
-        </div>
-        <div class="panel-card">
-          <div class="panel-card__title">Decision</div>
+      <div class="content-grid content-grid--3">
+        ${renderMetricCard('Total Equity', idr(portfolio.total_equity_idr || 0), `Start ${idr(portfolio.starting_equity_idr || portfolio.start_total_equity_idr || 0)}`)}
+        ${renderMetricCard('Net PnL Today', idr(portfolio.net_pnl_today_idr || 0), `${pct(portfolio.net_pnl_today_pct || portfolio.daily_pnl_pct || 0)}`)}
+        ${renderMetricCard('Risk Remaining', idr(portfolio.risk_remaining_idr || 0), `Daily cap ${portfolio.daily_loss_cap_pct || 1.5}%`)}
+      </div>
+      <div class="content-grid content-grid--sidebar" style="margin-top:14px;">
+        <div class="card">
+          <div class="panel-card__title">Decision Now</div>
           ${renderKeyValue('Current Action', nextAction, badgeClassForStatus(nextAction))}
-          ${renderKeyValue('Current Reason', whyWait, 'mono')}
+          ${renderKeyValue('Why WAIT?', whyWait, 'mono')}
+          ${renderKeyValue('Next Autonomous Action', nextActionDetail, 'mono')}
           ${renderKeyValue('Last Gate', decision.last_gate_passed || '—', 'mono')}
           ${renderKeyValue('Last Rejection', (decision.last_rejection || {}).reason || decision.last_gate_failed || '—', 'mono')}
         </div>
-        <div class="panel-card">
-          <div class="panel-card__title">Truth Summary</div>
+        <div class="card">
+          <div class="panel-card__title">System Freshness</div>
+          ${renderKeyValue('Runtime', freshnessLabel(runtime.freshness_s ?? 0))}
+          ${renderKeyValue('Live Truth', freshnessLabel(data.live_truth?.age_s ?? 0))}
+          ${renderKeyValue('Server Telemetry', freshnessLabel(data.server_telemetry?.age_s ?? 0))}
+          ${renderKeyValue('Target Board', freshnessLabel(data.target_board_runtime?.age_s ?? 0))}
+        </div>
+        <div class="card">
+          <div class="panel-card__title">Risk Contract</div>
+          ${renderKeyValue('Allow Orders', allowOrders ? 'YES' : 'NO', badgeClassForStatus(allowOrders ? 'PASS' : 'REJECT'))}
+          ${renderKeyValue('Risk State', liveTruth.risk_state || '—', badgeClassForStatus(liveTruth.risk_state))}
           ${renderKeyValue('Open Positions', String(getCount(liveTruth.open_positions || [])))}
           ${renderKeyValue('Dust Positions', String(getCount(liveTruth.dust_positions || [])))}
-          ${renderKeyValue('Blocked Pairs', String(getCount(liveTruth.blocked_pairs || [])))}
-          ${renderKeyValue('Risk State', liveTruth.risk_state || '—', badgeClassForStatus(liveTruth.risk_state))}
+        </div>
+      </div>
+      <div class="content-grid content-grid--2" style="margin-top:14px;">
+        <div class="card">
+          <div class="panel-card__title">Opportunity Funnel</div>
+          ${renderKeyValue('Scanned', String(funnel.scanned ?? 0))}
+          ${renderKeyValue('Candidates', String(funnel.candidates ?? 0))}
+          ${renderKeyValue('Approved', String(funnel.approved ?? 0))}
+          ${renderKeyValue('Executed', String(funnel.executed ?? 0))}
+        </div>
+        <div class="card">
+          <div class="panel-card__title">PnL Breakdown</div>
+          ${renderKeyValue('Realized', idr(portfolio.realized_pnl_today_idr || 0))}
+          ${renderKeyValue('Unrealized', idr(portfolio.unrealized_pnl_idr || 0))}
+          ${renderKeyValue('Fees', idr(portfolio.fees_today_idr || 0))}
+          ${renderKeyValue('Net', idr(portfolio.net_pnl_today_idr || 0))}
         </div>
       </div>`;
   }
@@ -1195,7 +1205,7 @@ function renderDashboardPanels(data) {
 }
 
 function initDashboardTabs() {
-  const tabButtons = Array.from(document.querySelectorAll('.dash-tab'));
+  const tabButtons = Array.from(document.querySelectorAll('.dash-tab, .section-nav__item'));
   const panels = {
     overview: el('panel-overview'),
     workflow: el('panel-workflow'),
@@ -1210,6 +1220,7 @@ function initDashboardTabs() {
     Object.entries(panels).forEach(([key, node]) => {
       if (!node) return;
       node.classList.toggle('hidden', key !== name);
+      node.classList.toggle('panel--active', key === name);
     });
   };
   tabButtons.forEach(btn => btn.addEventListener('click', () => activate(btn.dataset.panel || 'overview')));

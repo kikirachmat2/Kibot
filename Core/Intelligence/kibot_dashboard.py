@@ -1985,6 +1985,35 @@ def _build_control_plane_payload() -> Dict[str, Any]:
         "logs": logs_v6,
         "debug": debug_v6,
     })
+    merged_data.update({
+        "portfolio_v8": portfolio_v6,
+        "venues_v8": venues,
+        "workflow_v8": workflow,
+        "orders_v8": orders_v6,
+        "logs_v8": logs_v6,
+        "ai_system_v8": merged_data.get("ai_system", {}),
+    })
+    if "ai_system" not in merged_data:
+        merged_data["ai_system"] = ai_system = {
+            "status": "OK" if isinstance(ai_inventory, dict) and ai_inventory.get("summary") else "DEGRADED",
+            "active_components": int((ai_inventory.get("summary", {}) or {}).get("active_components", 0) or 0),
+            "locked_or_conditional_components": int((ai_inventory.get("summary", {}) or {}).get("locked_or_conditional_components", 0) or 0),
+            "order_permission": "DENIED",
+            "override_permission": "DENIED",
+            "objective": "review_only",
+            "best_action": "",
+            "venue": "",
+            "reason": "",
+            "next_check_seconds": 0,
+            "last_advisory": "",
+        }
+    else:
+        ai_system = merged_data["ai_system"]
+    merged_data["ai_system"] = ai_system
+    merged_data["ai_system_v8"] = ai_system
+    merged_data["workflow_v8"] = workflow
+    merged_data["orders_v8"] = orders_v6
+    merged_data["logs_v8"] = logs_v6
     for legacy_key in (
         "indodax_paper",
         "paper_count",

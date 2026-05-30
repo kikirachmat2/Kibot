@@ -1,0 +1,59 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/widget_root"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:padding="12dp"
+    android:background="@drawable/widget_background">
+
+    <TextView
+        android:id="@+id/widget_mode"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="KiBot LIVE_ONLY"
+        android:textStyle="bold"
+        android:textColor="@android:color/white"
+        android:textSize="18sp" />
+
+    <TextView
+        android:id="@+id/widget_status"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="WAIT / OK / LOCKED"
+        android:textColor="@android:color/white"
+        android:textSize="12sp" />
+
+    <TextView
+        android:id="@+id/widget_equity"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Equity sync"
+        android:textColor="@android:color/white"
+        android:textStyle="bold"
+        android:textSize="16sp" />
+
+    <TextView
+        android:id="@+id/widget_pnl"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="PnL sync"
+        android:textColor="@android:color/white"
+        android:textSize="12sp" />
+
+    <TextView
+        android:id="@+id/widget_risk"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Risk sync"
+        android:textColor="@android:color/white"
+        android:textSize="12sp" />
+
+    <TextView
+        android:id="@+id/widget_venue"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Indodax · Phantom"
+        android:textColor="@android:color/white"
+        android:textSize="12sp" />
+</LinearLayout>
