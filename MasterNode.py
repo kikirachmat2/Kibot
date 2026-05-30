@@ -59,6 +59,15 @@ sys.path.append(str(ROOT_DIR))
 import re
 import shlex
 
+
+def _safe_float(value, default: float = 0.0) -> float:
+    try:
+        if value in (None, "", "None", "nan"):
+            return float(default)
+        return float(value)
+    except Exception:
+        return float(default)
+
 SAFE_COMMAND_PATTERNS = [
     r'^systemctl (status|is-active|restart|start|stop) kibot-\w+(\.service)?$',
     r'^systemctl (status|is-active|restart|start|stop) lazarus-ampere(\.service)?$',
