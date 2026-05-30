@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import json
 import os
+import subprocess
+import sys
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -33,6 +35,30 @@ def _safe_float(value: Any, default: float = 0.0) -> float:
 
 def _today_iso() -> str:
     return datetime.now(timezone.utc).astimezone().isoformat()
+
+
+def _probe_phantom_status() -> str:
+    script = PROJECT_ROOT / "scripts" / "diagnose_phantom_runtime.py"
+    if not script.exists():
+        return "BLOCKED_WITH_REASON"
+    try:
+        res = subprocess.run([sys.executable, str(script)], capture_output=True, text=True, check=False)
+        tail = (res.stdout or "").strip().splitlines()[-1] if (res.stdout or "").strip() else ""
+        if tail.startswith("OK:PHANTOM_LIVE_READY"):
+            return "OK"
+        if tail.startswith("OK:PHANTOM_LOCKED_MISSING_ENV"):
+            return "LOCKED_MISSING_ENV"
+        if tail.startswith("BLOCKED_BY_PHANTOM_SIGNING"):
+            return "BLOCKED_BY_PHANTOM_SIGNING"
+        if tail.startswith("BLOCKED_BY_RPC"):
+            return "BLOCKED_BY_RPC"
+        if tail.startswith("BLOCKED_BY_JUPITER"):
+            return "BLOCKED_BY_JUPITER"
+        if tail.startswith("BLOCKED_BY_WALLET_RECONCILIATION"):
+            return "BLOCKED_BY_WALLET_RECONCILIATION"
+    except Exception:
+        return "BLOCKED_WITH_REASON"
+    return "BLOCKED_WITH_REASON"
 
 
 def build_live_truth() -> Dict[str, Any]:
@@ -93,7 +119,7 @@ def build_live_truth() -> Dict[str, Any]:
     if not phantom_enabled or not phantom_rpc or not phantom_key:
         phantom_status = "LOCKED_MISSING_ENV"
     else:
-        phantom_status = phantom_governor_status
+        phantom_status = _probe_phantom_status() if phantom_governor_status in {"RECONCILED", "LIVE_READY", "OK", "BLOCKED_WITH_REASON"} else phantom_governor_status
     if indodax_status in {"BLOCKED_WITH_REASON", "DOWN", "ERROR", "LOCKED"} and phantom_status in {"BLOCKED_WITH_REASON", "DOWN", "ERROR", "LOCKED"}:
         risk_state = "EMERGENCY"
     elif indodax_status in {"BLOCKED_WITH_REASON", "DOWN", "ERROR", "LOCKED"} or phantom_status in {"BLOCKED_WITH_REASON", "DOWN", "ERROR", "LOCKED"}:

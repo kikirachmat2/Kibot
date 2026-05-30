@@ -45,6 +45,21 @@ async def _get_json(url: str) -> tuple[bool, Dict[str, Any]]:
         return False, {"error": str(exc)}
 
 
+async def _post_json(url: str, body: Dict[str, Any]) -> tuple[bool, Dict[str, Any]]:
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.post(url, json=body, timeout=8) as resp:
+                try:
+                    data = await resp.json()
+                except Exception:
+                    data = {}
+                if resp.status != 200:
+                    return False, {"status_code": resp.status, "body": data}
+                return True, data
+    except Exception as exc:
+        return False, {"error": str(exc)}
+
+
 async def main() -> int:
     enabled = str(os.getenv("KIBOT_PHANTOM_ENABLED", "true")).lower() in {"1", "true", "yes", "on"}
     rpc_url = os.getenv("SOLANA_RPC_URL") or os.getenv("KIBOT_SOLANA_RPC_URL") or ""
@@ -72,22 +87,24 @@ async def main() -> int:
             signing_ok = False
             wallet_ok = False
 
-        rpc_ok, rpc_payload = await _get_json(rpc_url)
+        rpc_ok, rpc_payload = await _post_json(
+            rpc_url,
+            {
+                "jsonrpc": "2.0",
+                "id": 1,
+                "method": "getHealth",
+            },
+        )
         if rpc_ok and keypair is not None:
-            try:
-                async with aiohttp.ClientSession() as session:
-                    body = {
-                        "jsonrpc": "2.0",
-                        "id": 1,
-                        "method": "getBalance",
-                        "params": [str(keypair.pubkey())],
-                    }
-                    async with session.post(rpc_url, json=body, timeout=6) as resp:
-                        rpc_ok = resp.status == 200
-                        rpc_payload = await resp.json()
-            except Exception as exc:
-                rpc_ok = False
-                rpc_payload = {"error": str(exc)}
+            rpc_ok, rpc_payload = await _post_json(
+                rpc_url,
+                {
+                    "jsonrpc": "2.0",
+                    "id": 2,
+                    "method": "getBalance",
+                    "params": [str(keypair.pubkey())],
+                },
+            )
 
         quote_url = "https://quote-api.jup.ag/v6/quote?inputMint=So11111111111111111111111111111111111111112&outputMint=So11111111111111111111111111111111111111112&amount=1000&slippageBps=50"
         jupiter_quote_ok, quote_payload = await _get_json(quote_url)
