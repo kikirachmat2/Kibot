@@ -39,6 +39,7 @@ AI Orchestration, Learning, and Market Intelligence models.
 - Web3 route selection sekarang membawa `fee_intelligence` yang eksplisit: Solana routes menghitung base fee + priority fee + gasless cap, Base routes menghitung L2 execution + L1 security fee, dan bridge routes menghitung source + destination chain cost sebelum executor/guard mengizinkan entry.
 - Dashboard membaca `daily_context`, `green_probability`, `market_heatmap`, `scanner_candidates`, dan `decision_journal`, sehingga control plane menampilkan kecerdasan strategi yang sama dengan runtime.
 - `SystemCommander` sekarang menjadi otak non-trading yang menilai service canonical, model Ollama, provider/source health, inventory utilization, GitHub/server drift, state files, dan resource server lalu menulis `state/system_commander.json` + `state/inventory_matrix.json`; snapshot itu juga dipersist ke decision journal agar toolchain, service, dan inventory history terbaca.
+- `scripts/build_ai_system_inventory.py` menulis `state/ai_system_inventory.json` sebagai inventaris runtime AI/advisory stack, termasuk role hot-path, advisory-only, lock status, dan evidence file.
 - Dashboard System Brain membaca kontrak `system_brain` yang sama dari backend, sehingga inventory utilization, source health, dan drift status tidak lagi panel dekoratif.
 
 ## Live Server Atlas
