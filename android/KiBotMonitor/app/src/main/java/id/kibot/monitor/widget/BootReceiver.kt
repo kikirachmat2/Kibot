@@ -3,26 +3,31 @@ package id.kibot.monitor.widget
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
-import androidx.work.ExistingPeriodicWorkPolicy
-import androidx.work.PeriodicWorkRequestBuilder
-import androidx.work.WorkManager
-import androidx.work.workDataOf
-import id.kibot.monitor.worker.KiBotSyncWorker
-import java.util.concurrent.TimeUnit
+import android.util.Log
+import id.kibot.monitor.data.SettingsStore
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 
 class BootReceiver : BroadcastReceiver() {
   override fun onReceive(context: Context, intent: Intent?) {
-    val request = PeriodicWorkRequestBuilder<KiBotSyncWorker>(15, TimeUnit.MINUTES)
-      .setInputData(workDataOf("boot" to true))
-      .build()
-    WorkManager.getInstance(context).enqueueUniquePeriodicWork(
-      WORK_NAME,
-      ExistingPeriodicWorkPolicy.UPDATE,
-      request,
-    )
+    val pending = goAsync()
+    CoroutineScope(Dispatchers.IO).launch {
+      try {
+        val settings = SettingsStore.instance().snapshot()
+        if (settings.monitoringEnabled) {
+          KiBotWorkScheduler.schedule(context.applicationContext, settings.pollIntervalMinutes)
+          Log.i(TAG, "boot schedule enabled interval=${settings.pollIntervalMinutes}")
+        } else {
+          Log.i(TAG, "boot ignored monitoring_disabled=true")
+        }
+      } finally {
+        pending.finish()
+      }
+    }
   }
 
   companion object {
-    const val WORK_NAME = "kibot_sync"
+    private const val TAG = "KiBotWorker"
   }
 }

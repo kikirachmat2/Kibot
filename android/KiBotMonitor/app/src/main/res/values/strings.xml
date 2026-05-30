@@ -1,3 +1,4 @@
 <resources>
-  <string name="app_name">KiBot Monitor</string>
+  <string name="app_name">KiBot</string>
+  <string name="widget_name">KiBot Status 5x2</string>
 </resources>

@@ -3,26 +3,19 @@ package id.kibot.monitor
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Surface
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.ui.Modifier
-import androidx.lifecycle.lifecycleScope
-import id.kibot.monitor.data.KiBotRepository
+import androidx.activity.viewModels
 import id.kibot.monitor.ui.KiBotApp
-import kotlinx.coroutines.launch
+import id.kibot.monitor.ui.KiBotDashboardViewModel
+import id.kibot.monitor.ui.KiBotTheme
 
 class MainActivity : ComponentActivity() {
+  private val viewModel: KiBotDashboardViewModel by viewModels()
+
   override fun onCreate(savedInstanceState: Bundle?) {
     super.onCreate(savedInstanceState)
     setContent {
-      MaterialTheme {
-        Surface(modifier = Modifier) {
-          LaunchedEffect(Unit) {
-            lifecycleScope.launch { KiBotRepository(this@MainActivity).refreshNow() }
-          }
-          KiBotApp()
-        }
+      KiBotTheme {
+        KiBotApp(viewModel = viewModel)
       }
     }
   }

@@ -1,0 +1,52 @@
+package id.kibot.monitor.data
+
+import android.util.Log
+import okhttp3.OkHttpClient
+import okhttp3.Request
+import java.io.IOException
+import java.util.concurrent.TimeUnit
+
+data class KiBotFetchResult(
+  val rawJson: String,
+  val httpStatus: Int,
+  val parsed: ParsedControlPlane,
+)
+
+class KiBotApi(
+  private val baseUrl: String,
+  private val client: OkHttpClient = OkHttpClient.Builder()
+    .connectTimeout(10, TimeUnit.SECONDS)
+    .readTimeout(10, TimeUnit.SECONDS)
+    .writeTimeout(10, TimeUnit.SECONDS)
+    .callTimeout(10, TimeUnit.SECONDS)
+    .build(),
+) {
+  fun fetchControlPlane(source: String): KiBotFetchResult {
+    val url = baseUrl.trimEnd('/') + "/api/control-plane"
+    Log.i(TAG, "fetch start source=$source url=$url")
+    val request = Request.Builder()
+      .url(url)
+      .header("Cache-Control", "no-cache")
+      .header("Accept", "application/json")
+      .build()
+
+    client.newCall(request).execute().use { response ->
+      val body = response.body?.string().orEmpty()
+      Log.i(TAG, "fetch result source=$source http=${response.code} bytes=${body.length}")
+      if (!response.isSuccessful) {
+        throw IOException("HTTP ${response.code}: ${body.take(240)}")
+      }
+      val parsed = ControlPlaneParser.parse(
+        rawJson = body,
+        httpStatus = response.code,
+        fetchedAtEpochMs = System.currentTimeMillis(),
+        source = source,
+      )
+      return KiBotFetchResult(rawJson = body, httpStatus = response.code, parsed = parsed)
+    }
+  }
+
+  companion object {
+    private const val TAG = "KiBotApi"
+  }
+}
