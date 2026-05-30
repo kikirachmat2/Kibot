@@ -13,7 +13,7 @@ const AGENTS = {
     label: "Kiki / Operator",
     service: "kibot-master",
     runtime: "systemd: kibot-master",
-    copy: "The sovereign operator. Sets policy, approves live gate, monitors all agents. Controlled-live mode active on Batam node.",
+    copy: "The sovereign operator. Sets policy, approves live gate, monitors all agents. LIVE_ONLY mode active on Batam node.",
     metric(summary) {
       return summary?.mode?.live_trading_enabled ? "live active" : "view active";
     }
@@ -94,16 +94,16 @@ const AGENTS = {
     label: "Indodax Spot",
     service: "kibot-executor",
     runtime: "systemd: kibot-executor",
-    copy: "Controlled-live exchange order placement with RiskGate and Capital Governor enforcement.",
+    copy: "LIVE_ONLY exchange order placement with RiskGate and Capital Governor enforcement.",
     metric(summary) {
       return summary?.mode?.live_trading_enabled ? "live active" : "live off";
     }
   },
-  indodax_shadow: {
-    label: "Indodax Shadow",
+  indodax_balance: {
+    label: "Indodax Balance",
     service: "kibot-executor",
     runtime: "systemd: kibot-executor",
-    copy: "Shadow accounting for internal analysis only.",
+    copy: "Balance accounting for internal analysis only.",
     metric(summary) {
       return "active";
     }
