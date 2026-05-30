@@ -6,8 +6,8 @@ from typing import Any, Dict
 
 import httpx
 
-JUPITER_QUOTE_URL = os.getenv("JUPITER_QUOTE_URL", "https://quote-api.jup.ag/v6/quote")
-JUPITER_SWAP_URL = os.getenv("JUPITER_SWAP_URL", "https://quote-api.jup.ag/v6/swap")
+JUPITER_QUOTE_URL = os.getenv("JUPITER_QUOTE_URL", "https://api.jup.ag/swap/v1/quote")
+JUPITER_SWAP_URL = os.getenv("JUPITER_SWAP_URL", "https://api.jup.ag/swap/v1/swap")
 
 
 @dataclass
@@ -83,4 +83,3 @@ class JupiterGateway:
             return {"ok": True, "reason": "OK", "swap_transaction": tx, "raw": data}
         except Exception as exc:
             return {"ok": False, "reason": f"swap_exception:{exc}", "raw": {}}
-
