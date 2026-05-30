@@ -3,8 +3,8 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>KiBot Delegation — Sovereign Control Room</title>
-  <meta name="description" content="KiBot Sovereign autonomous trading control plane — controlled live mode active." />
+  <title>KiBot Autonomous Live Control Room</title>
+  <meta name="description" content="KiBot LIVE_ONLY autonomous trading control plane." />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
   <link rel="icon" type="image/png" href="/assets/kibot.png" />
@@ -19,13 +19,13 @@
   <header class="top-bar">
     <div class="top-bar__brand">
       <img src="/assets/kibot.png" alt="KiBot" class="kibot-logo" />
-      <strong class="brand-name">KiBot Delegation</strong>
+      <strong class="brand-name">KiBot Autonomous Trading</strong>
       <span class="brand-pill">Batam MasterNode</span>
     </div>
     <div class="top-bar__center">
-      <span id="mode-badge" class="badge badge--green">CONTROLLED-LIVE</span>
-      <span id="global-status" class="badge badge--green">GREEN</span>
-      <span class="badge badge--ghost">🛡 GUARDS ACTIVE</span>
+      <span id="mode-badge" class="badge badge--green">LIVE_ONLY</span>
+      <span id="global-status" class="badge badge--green">OK</span>
+      <span id="warning-badge" class="badge badge--ghost hidden">⚠ NO WARNING</span>
     </div>
     <div class="top-bar__right">
       <span id="server-clock" class="mono text-muted">--:--:-- WIB</span>
@@ -39,7 +39,7 @@
     <!-- LEFT PANEL -->
     <aside class="left-panel panel-scroll">
       <div class="panel-header">
-        <span>Activity Feed</span>
+        <span>Operator Activity</span>
         <button id="clear-logs-btn" class="btn-ghost" title="Clear">⌫</button>
       </div>
       <div class="log-tabs">
@@ -55,8 +55,8 @@
 
       <!-- Canvas toolbar -->
       <div class="canvas-toolbar">
-        <span class="canvas-title">Agent Delegation Graph</span>
-        <span id="canvas-subtitle" class="text-muted" style="font-size:11px">Autonomous Orchestration · Controlled Live</span>
+        <span class="canvas-title">LIVE Workflow</span>
+        <span id="canvas-subtitle" class="text-muted" style="font-size:11px">LIVE_ONLY Autonomous Workflow</span>
         <div class="canvas-controls">
           <button class="ctrl-btn" id="btn-zoom-in" title="Zoom in">+</button>
           <button class="ctrl-btn" id="btn-zoom-out" title="Zoom out">−</button>
@@ -86,6 +86,33 @@
 
         </div><!-- /delegation-layer -->
       </div><!-- /delegation-canvas -->
+
+      <div class="dashboard-tabs">
+        <button class="dash-tab active" data-panel="overview">Overview</button>
+        <button class="dash-tab" data-panel="workflow">Workflow</button>
+        <button class="dash-tab" data-panel="venues">Venues</button>
+        <button class="dash-tab" data-panel="ai">AI System</button>
+        <button class="dash-tab" data-panel="orders">Orders</button>
+        <button class="dash-tab" data-panel="logs">Logs</button>
+        <button class="dash-tab" data-panel="debug">Debug</button>
+      </div>
+
+      <div class="kpi-strip" id="kpi-strip">
+        <div class="kpi-card"><span>Total Equity</span><strong id="kpi-total-equity">—</strong><small id="kpi-total-equity-sub">—</small></div>
+        <div class="kpi-card"><span>Net PnL Today</span><strong id="kpi-net-pnl">—</strong><small id="kpi-net-pnl-sub">—</small></div>
+        <div class="kpi-card"><span>Risk Remaining</span><strong id="kpi-risk-remaining">—</strong><small id="kpi-risk-remaining-sub">1.5% cap</small></div>
+        <div class="kpi-card"><span>Open Positions</span><strong id="kpi-open-positions">—</strong><small id="kpi-open-positions-sub">live</small></div>
+        <div class="kpi-card"><span>Indodax</span><strong id="kpi-indodax">—</strong><small id="kpi-indodax-sub">venue</small></div>
+        <div class="kpi-card"><span>Phantom</span><strong id="kpi-phantom">—</strong><small id="kpi-phantom-sub">venue</small></div>
+      </div>
+
+      <section class="dashboard-panel dashboard-panel--overview" id="panel-overview"></section>
+      <section class="dashboard-panel dashboard-panel--workflow hidden" id="panel-workflow"></section>
+      <section class="dashboard-panel dashboard-panel--venues hidden" id="panel-venues"></section>
+      <section class="dashboard-panel dashboard-panel--ai hidden" id="panel-ai"></section>
+      <section class="dashboard-panel dashboard-panel--orders hidden" id="panel-orders"></section>
+      <section class="dashboard-panel dashboard-panel--logs hidden" id="panel-logs"></section>
+      <section class="dashboard-panel dashboard-panel--debug hidden" id="panel-debug"></section>
 
       <!-- Queue Board -->
       <div class="queue-board" id="queue-board">
@@ -155,10 +182,10 @@
         <details class="venue-detail">
           <summary class="venue-row">
             <span class="venue-name">Indodax Real</span>
-            <span class="badge badge--ghost" id="badge-indodax-real">VIEW ONLY</span>
+            <span class="badge badge--ghost" id="badge-indodax-real">BALANCE</span>
             <span class="mono" id="eq-indodax-real" style="font-size:10px">—</span>
           </summary>
-          <div class="venue-sub">Real balance tracking only. Live trading OFF.</div>
+          <div class="venue-sub">Real balance tracking only. Live trading disabled on this balance view.</div>
         </details>
         <details class="venue-detail">
           <summary class="venue-row">
@@ -171,7 +198,7 @@
         <details class="venue-detail">
           <summary class="venue-row">
             <span class="venue-name">Phantom Treasury</span>
-            <span class="badge badge--green">RECONCILED</span>
+            <span class="badge badge--green" id="badge-phantom-ready">OK:PHANTOM_LIVE_READY</span>
             <span class="mono" id="eq-phantom" style="font-size:10px">—</span>
           </summary>
           <div class="venue-sub">

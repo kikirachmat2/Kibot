@@ -1903,6 +1903,88 @@ def _build_control_plane_payload() -> Dict[str, Any]:
         "warnings": warnings,
         "data_quality": data_quality_dict,
     })
+    runtime_v6 = {
+        "mode": "LIVE_ONLY" if str(KiConfig.TRADING_MODE).upper() == "LIVE_ONLY" else str(KiConfig.TRADING_MODE).upper(),
+        "state": "OK" if allow_new_live_orders else ("LOCKED" if rejection_reason else "CAUTION"),
+        "freshness_s": max(
+            0.0,
+            _file_age_s(STATE / "live_truth.json") if _file_age_s(STATE / "live_truth.json") >= 0 else 0.0,
+        ),
+        "updated_at": live_truth.get("updated_at") or datetime.now(timezone.utc).isoformat(),
+        "node": "Batam",
+    }
+    portfolio_v6 = {
+        "total_equity_idr": _safe_float(accounting_truth.get("current_total_equity_idr"), _safe_float(portfolio.get("combined_equity_idr"), 0.0)),
+        "starting_equity_idr": _safe_float(accounting_truth.get("reset_total_balance_idr"), _safe_float(portfolio.get("reset_total_balance_idr"), 0.0)),
+        "realized_pnl_today_idr": _safe_float(portfolio.get("realized_pnl_idr"), _safe_float(accounting_truth.get("daily_pnl_idr"), 0.0)),
+        "unrealized_pnl_idr": _safe_float(portfolio.get("unrealized_pnl_idr"), 0.0),
+        "fees_today_idr": _safe_float(portfolio.get("fees_today_idr"), 0.0),
+        "net_pnl_today_idr": _safe_float(accounting_truth.get("daily_pnl_idr"), _safe_float(portfolio.get("daily_pnl_idr"), 0.0)),
+        "risk_remaining_idr": _safe_float(capital_block.get("risk_remaining_idr"), 0.0),
+        "daily_loss_cap_pct": _safe_float(capital_block.get("max_daily_loss_pct"), 1.5),
+        "start_total_equity_idr": _safe_float(accounting_truth.get("reset_total_balance_idr"), _safe_float(portfolio.get("reset_total_balance_idr"), 0.0)),
+    }
+    decision_v6 = {
+        "current_action": "WAIT" if not allow_new_live_orders else "SCAN",
+        "current_reason": rejection_reason if not allow_new_live_orders else "venue-scoped allowance active",
+        "last_gate_passed": "risk_gate" if current_entry_approved else "none",
+        "last_gate_failed": "" if current_entry_approved else rejection_reason,
+        "last_candidate": summary_data.get("scanner_candidates", {}).get("best_candidate", {}) if isinstance(summary_data.get("scanner_candidates"), dict) else {},
+        "last_rejection": {"reason": rejection_reason} if rejection_reason else {},
+        "last_trade": live_truth.get("last_trade") or {},
+    }
+    workflow_steps = [
+        {"name": "Scanner", "status": runtime.get("scanner", {}).get("status", "WAIT"), "freshness_s": _file_age_s(STATE / "scanner_runtime.json"), "reason": summary_data.get("scanner_runtime", {}).get("reason", "")},
+        {"name": "LeadLag", "status": gates["signal_quality"]["status"], "freshness_s": _file_age_s(STATE / "leadlag_alpha.json"), "reason": gates["signal_quality"].get("details", [""])[0] if gates["signal_quality"].get("details") else ""},
+        {"name": "EV Gate", "status": gates["expected_value"]["status"], "freshness_s": _file_age_s(STATE / "expected_value.json"), "reason": ", ".join(gates["expected_value"].get("rejection_reasons", []) or [])},
+        {"name": "Scorecard", "status": gates["strategy_scorecard"]["status"], "freshness_s": _file_age_s(STATE / "strategy_scorecard.json"), "reason": ", ".join(gates["strategy_scorecard"].get("breakdown", []) or [])},
+        {"name": "Deterministic Gate", "status": "PASS" if current_entry_approved else "BLOCKED", "freshness_s": _file_age_s(STATE / "capital_governor.json"), "reason": rejection_reason},
+        {"name": "Sizing", "status": "PASS" if summary_data.get("autonomous_sizing", {}).get("size_idr", 0) else "WAIT", "freshness_s": _file_age_s(STATE / "autonomous_sizing.json"), "reason": summary_data.get("autonomous_sizing", {}).get("reason", "")},
+        {"name": "Executor", "status": "ACTIVE" if allow_new_live_orders else "WAIT", "freshness_s": _file_age_s(STATE / "live_order_dispatcher.json"), "reason": summary_data.get("live_order_dispatcher", {}).get("reason", "")},
+        {"name": "Exit Manager", "status": "ACTIVE" if summary_data.get("web3_exit") else "WAIT", "freshness_s": _file_age_s(STATE / "web3_exit_state.json"), "reason": summary_data.get("web3_exit", {}).get("latest_exit_reason", "")},
+    ]
+    opportunity_funnel = {
+        "scanned": int(summary_data.get("scanner_candidates", {}).get("candidates_found", 0) or 0) if isinstance(summary_data.get("scanner_candidates"), dict) else 0,
+        "candidates": int(summary_data.get("scanner_candidates", {}).get("candidate_count", 0) or 0) if isinstance(summary_data.get("scanner_candidates"), dict) else 0,
+        "ev_rejected": len([r for r in (ev.get("rejection_reasons") or []) if r]),
+        "simulation_rejected": len([r for r in (ss.get("breakdown") or []) if "SIM" in str(r).upper()]),
+        "risk_rejected": 0 if allow_new_live_orders else 1,
+        "approved": 1 if current_entry_approved else 0,
+        "executed": len(summary_data.get("trade_history", {}).get("recent_activity", []) or []),
+    }
+    orders_v6 = {
+        "open_orders": summary_data.get("order_tracker", {}).get("open_orders", []) if isinstance(summary_data.get("order_tracker"), dict) else [],
+        "pending_orders": capital_block.get("pending_orders_count", 0),
+        "closed_trades": summary_data.get("trade_history", {}).get("closed_trades", []) if isinstance(summary_data.get("trade_history"), dict) else [],
+        "rejected_candidates": summary_data.get("scanner_candidates", {}).get("rejected", []) if isinstance(summary_data.get("scanner_candidates"), dict) else [],
+        "dust_positions": portfolio.get("open_position_pnl", []),
+    }
+    logs_v6 = {
+        "operator_activity": decisions[:10],
+        "trade_events": summary_data.get("trade_history", {}).get("recent_activity", [])[:10] if isinstance(summary_data.get("trade_history"), dict) else [],
+        "exceptions": _read_json(STATE / "last_error.json", {}),
+        "technical": {"warnings": warnings, "stale_states": stale_states, "missing_states": missing_states},
+    }
+    debug_v6 = {
+        "legacy_debug": {
+            "shadow": summary_data.get("shadow_portfolio", {}),
+            "paper": _read_json(STATE / "paper_portfolio.json", {}),
+            "mock": _read_json(STATE / "mock_state.json", {}),
+            "canary": _read_json(STATE / "canary_state.json", {}),
+        },
+        "raw_live_truth": live_truth,
+        "raw_control_plane_payload": {},
+    }
+    merged_data.update({
+        "runtime": runtime_v6,
+        "portfolio_v6": portfolio_v6,
+        "decision": decision_v6,
+        "workflow": {"steps": workflow_steps},
+        "opportunity_funnel": opportunity_funnel,
+        "orders": orders_v6,
+        "logs": logs_v6,
+        "debug": debug_v6,
+    })
     for legacy_key in (
         "indodax_paper",
         "paper_count",

@@ -2,7 +2,7 @@
 "use strict";
 
 const POLL_MS    = 8000;
-const STALE_SECS = 300;
+const STALE_SECS = 90;
 const MAX_LOGS   = 80;
 const NOISE_RE   = /vault|decrypt|cipher|CEREBRAS_API_KEY|MISTRAL_API_KEY|os\.environ/i;
 
@@ -109,11 +109,11 @@ function drawConnectors() {
     {from:'card-council',   to:'card-director',  style:'solid',  color:'#a855f7'},
     {from:'card-director',  to:'card-risk',      style:'solid',  color:'#3b82f6'},
     {from:'card-director',  to:'card-indodax-real',  style:'solid',  color:'#ef4444'},
-    {from:'card-director',  to:'card-indodax-shadow', style:'solid',  color:'#64748b'},
+    {from:'card-director',  to:'card-indodax-balance', style:'solid',  color:'#64748b'},
     {from:'card-risk',      to:'card-phantom',   style:'dashed', color:'#a855f7'},
     {from:'card-risk',      to:'card-polymarket',style:'dashed', color:'#f97316'},
     {from:'card-indodax-real', to:'card-pnl-feedback', style:'dotted', color:'#ef4444'},
-    {from:'card-indodax-shadow',to:'card-pnl-feedback', style:'dotted', color:'#64748b'},
+    {from:'card-indodax-balance',to:'card-pnl-feedback', style:'dotted', color:'#64748b'},
     {from:'card-phantom',    to:'card-cashwait',  style:'dashed', color:'#a855f7'},
     {from:'card-polymarket', to:'card-cashwait',  style:'dashed', color:'#f97316'},
     {from:'card-pnl-feedback', to:'card-punishment', style:'dotted', color:'#22c55e'},
@@ -193,7 +193,7 @@ function drawConnectors() {
 
 /* ─── Agent Modal ────────────────────────────────────────── */
 const AGENT_META = {
-  operator:   { letter:'K', color:'blue',   name:'Kiki / Operator',       role:'Human In The Loop',     row: 1, isSm: false, desc:'The sovereign operator. Sets policy, approves live gate, monitors all agents. Controlled-live mode active on Batam node.', inputs:[], outputs:[], stateFile:null },
+  operator:   { letter:'K', color:'blue',   name:'Kiki / Operator',       role:'Human In The Loop',     row: 1, isSm: false, desc:'The sovereign operator. Sets policy, approves live gate, monitors all agents. LIVE_ONLY mode active on Batam node.', inputs:[], outputs:[], stateFile:null },
   council:    { letter:'Ω', color:'purple', name:'Sovereign Council',     role:'Governance Gate',       row: 1, isSm: false, desc:'High-level deliberation chamber. Aggregates and debates predictions, scanner data, and sentiment before approving order execution.', inputs:['strategy_scorecard.json', 'expected_value.json'], outputs:['council_decisions.jsonl'], stateFile:'council_decisions.jsonl' },
   director:   { letter:'D', color:'blue',   name:'Autonomous Director',   role:'Lead Coordinator',      row: 2, isSm: false, desc:'Core state orchestrator. Reads signal qualities and EV gates. Issues WAIT, APPROVE, or REJECT decisions based on rules.',  inputs:['signal_quality.json','expected_value.json','strategy_scorecard.json','punishment_state.json'], outputs:['autonomous_director.json'], stateFile:'autonomous_director.json' },
   risk:       { letter:'R', color:'red',    name:'RiskGate Shield',       role:'Drawdown Shield',       row: 2, isSm: false, desc:'Safety gate enforcing 1.5% maximum daily drawdown. Blocks all downstream order execution if drawdown is breached.', inputs:['portfolio_summary.json'], outputs:[], stateFile:'portfolio_summary.json' },
@@ -202,7 +202,7 @@ const AGENT_META = {
   ev:         { letter:'V', color:'yellow', name:'Expected Value Gate',   role:'EV Threshold Gate',     row: 3, isSm: true,  desc:'Evaluates candidate trades based on expected value (EV) after fees. Blocks execution if EV is negative or below threshold.', inputs:['signal_quality.json'], outputs:['expected_value.json'], stateFile:'expected_value.json' },
   scorecard:  { letter:'C', color:'purple', name:'Strategy Scorecard',     role:'Deliberation Score',    row: 3, isSm: true,  desc:'Grades strategies against current market regimes and recent trade outcomes. Submits composite scorecard to Council.', inputs:['signal_quality.json', 'expected_value.json'], outputs:['strategy_scorecard.json'], stateFile:'strategy_scorecard.json' },
   indodax_real: { letter:'IR', color:'red',  name:'Indodax Spot',         role:'Live Spot Venue',       row: 4, isSm: true,  desc:'Controlled-live exchange order placement with RiskGate and Capital Governor enforcement.', inputs:['autonomous_director.json'], outputs:['live_trades.json'], stateFile:null },
-  indodax_shadow: { letter:'IS', color:'gray', name:'Indodax Shadow',       role:'Shadow Ledger',         row: 4, isSm: true,  desc:'Shadow accounting for internal analysis only.', inputs:['autonomous_director.json'], outputs:['shadow_trades.json'], stateFile:'portfolio_summary.json' },
+  indodax_balance: { letter:'IB', color:'gray', name:'Indodax Balance',      role:'Balance Ledger',        row: 4, isSm: true,  desc:'Balance accounting for internal analysis only.', inputs:['autonomous_director.json'], outputs:['balance_trades.json'], stateFile:'portfolio_summary.json' },
   phantom:    { letter:'Φ', color:'purple', name:'Phantom Treasury',      role:'Solana / Web3 Capital',  row: 4, isSm: true,  desc:'Treasury and route visibility for Phantom multichain capital.', inputs:[], outputs:['phantom_scout.json'], stateFile:'phantom_scout.json' },
   polymarket: { letter:'M', color:'orange', name:'Polymarket',           role:'Prediction Market',     row: 4, isSm: true,  desc:'Prediction market control with guarded settlement-aware lifecycle.', inputs:[], outputs:['polymarket_state.json'], stateFile:'polymarket_state.json' },
   pnl_feedback: { letter:'F', color:'green', name:'PnL Feedback',          role:'Adaptive Learning',     row: 5, isSm: true,  desc:'Post-trade feedback analyzer. Reviews execution quality and adjusts expected value coefficients.', inputs:['shadow_trades.json', 'live_trades.json'], outputs:['pnl_feedback.json'], stateFile:null },
@@ -225,7 +225,7 @@ function openModal(agentId) {
   let status = '—', metric = '', decision = meta.desc, stale = false;
 
   if (agentId === 'operator') {
-    status = data.mode?.live_trading_enabled ? 'CONTROLLED-LIVE' : 'BLOCKED';
+    status = data.mode?.live_trading_enabled ? 'LIVE_ONLY' : 'BLOCKED';
     metric = data.mode?.live_trading_enabled ? 'live active' : 'orders blocked';
   } else if (agentId === 'council') {
     const c = data.council || {};
@@ -280,10 +280,10 @@ function openModal(agentId) {
     decision = data.mode?.live_trading_enabled
       ? '⚠ Live trading ACTIVE — real orders enabled.'
       : 'Real exchange orders muted. live_trading_enabled=false.';
-  } else if (agentId === 'indodax_shadow') {
-    status = 'SHADOW';
+  } else if (agentId === 'indodax_balance') {
+    status = 'BALANCE';
     metric = 'active';
-    decision = 'Shadow ledger only. Production route text intentionally hidden from the live dashboard.';
+    decision = 'Balance ledger only. Production route text intentionally hidden from the live dashboard.';
   } else if (agentId === 'phantom') {
     const d = runtime.phantom_scout || {};
     status = d.status || 'SCOUTING_ONLY';
@@ -334,7 +334,7 @@ function openModal(agentId) {
       <div class="modal-section">
         <div class="modal-section-label">Status</div>
         <div class="modal-kv"><span class="k">Status</span><strong>${esc(status)}</strong></div>
-        <div class="modal-kv"><span class="k">Mode</span><strong>${esc((data.mode||{}).trading_mode||'CONTROLLED-LIVE')}</strong></div>
+        <div class="modal-kv"><span class="k">Mode</span><strong>${esc((data.mode||{}).trading_mode||'LIVE_ONLY')}</strong></div>
         ${metric ? `<div class="modal-kv"><span class="k">Metric</span><span>${esc(metric)}</span></div>` : ''}
       </div>
       <div class="modal-section">
@@ -478,11 +478,27 @@ function freshnessLabel(age) {
   return `fresh (${Math.round(age)}s)`;
 }
 
+function badgeClassForStatus(status) {
+  const s = String(status || 'UNKNOWN').toUpperCase();
+  if (['OK', 'PASS', 'READY', 'LIVE_ONLY', 'ACTIVE', 'APPROVED', 'RECONCILED'].includes(s)) return 'badge badge--green';
+  if (['WAIT', 'CAUTION', 'LOCKED', 'BLOCKED', 'REJECT', 'DEGRADED', 'MUTED'].includes(s)) return 'badge badge--yellow';
+  if (['FAILED', 'ERROR', 'EMERGENCY', 'OFFLINE'].includes(s)) return 'badge badge--red';
+  return 'badge badge--ghost';
+}
+
+function renderKeyValue(label, value, cls = '') {
+  return `<div class="panel-kv"><span>${esc(label)}</span><strong class="${esc(cls)}">${esc(value)}</strong></div>`;
+}
+
+function renderListPanel(items, empty = '—') {
+  return items.length ? `<div class="panel-list">${items.join('')}</div>` : `<div class="panel-empty">${esc(empty)}</div>`;
+}
+
 /* ─── Render from API data ───────────────────────────────── */
 function render(data) {
   _lastData = data;
   const mode  = data.mode  || {};
-  const port  = data.portfolio || {};
+  const port  = data.portfolio_v6 || data.portfolio || {};
   const gates = data.gates || {};
   const venues= data.venues || {};
   const fresh = data.freshness || {};
@@ -497,15 +513,28 @@ function render(data) {
   // Top bar badges
   const modeBadge = el('mode-badge');
   if (modeBadge) {
-    modeBadge.textContent = (mode.trading_mode||'controlled-live').toUpperCase();
+    modeBadge.textContent = (mode.trading_mode||'LIVE_ONLY').toUpperCase();
     modeBadge.className = mode.live_trading_enabled ? 'badge badge--green' : 'badge badge--red';
   }
 
   const warn = data.warnings||[];
   const gsBadge = el('global-status');
   if (gsBadge) {
-    gsBadge.textContent = warn.length ? 'WARNING' : 'GREEN';
+    gsBadge.textContent = warn.length ? 'WARNING' : 'OK';
     gsBadge.className   = warn.length ? 'badge badge--yellow' : 'badge badge--green';
+  }
+  const warningBadge = el('warning-badge');
+  if (warningBadge) {
+    if (warn.length) {
+      warningBadge.classList.remove('hidden');
+      const warningText = String(warn[0]?.reason || warn[0]?.message || warn[0] || 'warning');
+      warningBadge.textContent = `⚠ ${warningText}`;
+      warningBadge.title = warningText;
+    } else {
+      warningBadge.classList.add('hidden');
+      warningBadge.textContent = '⚠ NO WARNING';
+      warningBadge.title = '';
+    }
   }
 
   // Freshness dot
@@ -556,7 +585,7 @@ function render(data) {
   el('card-ev')?.classList.toggle('is-stale', evAge>STALE_SECS);
 
   // Risk remaining
-  const riskRemaining = data.capital?.risk_remaining_idr || 0;
+  const riskRemaining = data.capital?.risk_remaining_idr || port.risk_remaining_idr || 0;
   setT('risk-remaining-status', `Rp ${Math.abs(riskRemaining).toLocaleString('id-ID')}`);
 
   // Phantom
@@ -887,6 +916,20 @@ function render(data) {
   const ts = new Date(data.timestamp||Date.now());
   setT('last-updated', ts.toLocaleTimeString('id-ID'));
 
+  // KPI strip
+  setT('kpi-total-equity', idr(port.total_equity_idr ?? port.total_balance_idr ?? port.combined_equity_idr ?? 0));
+  setT('kpi-total-equity-sub', freshnessLabel(data.live_truth?.age_s));
+  setT('kpi-net-pnl', idr(port.net_pnl_today_idr ?? port.daily_pnl_idr ?? 0));
+  setT('kpi-net-pnl-sub', pct(port.daily_pnl_pct ?? 0));
+  setT('kpi-risk-remaining', idr(port.risk_remaining_idr ?? data.capital?.risk_remaining_idr ?? 0));
+  setT('kpi-risk-remaining-sub', `cap ${port.daily_loss_cap_pct ?? data.capital?.max_daily_loss_pct ?? 1.5}%`);
+  setT('kpi-open-positions', String(getCount((data.live_truth?.data || {}).open_positions ?? port.open_positions ?? port.active_positions ?? [])));
+  setT('kpi-open-positions-sub', port.realized_pnl_today_idr != null ? `realized ${idr(port.realized_pnl_today_idr)}` : 'live');
+  setT('kpi-indodax', `${esc(venues.indodax_real?.status || '—')} · ${idr(venues.indodax_real?.equity_idr || 0)}`);
+  setT('kpi-indodax-sub', venues.indodax_real?.allow_orders ? 'orders on' : 'orders off');
+  setT('kpi-phantom', `${esc(venues.phantom?.status || '—')} · ${idr(venues.phantom?.total_value_idr || 0)}`);
+  setT('kpi-phantom-sub', venues.phantom?.allow_orders ? 'orders on' : 'orders off');
+
   // Logs — activity
   const events = (data.events || []).filter(e => !NOISE_RE.test(e.message||''));
   const allowTags = new Set(['BUY','BUY PENDING','SELL PENDING','BUY REJECTED','SELL REJECTED','SWAP','SELL PROFIT','SELL LOSS','STALE','COUNCIL REPORT']);
@@ -903,6 +946,9 @@ function render(data) {
   // Queue
   renderQueue(data);
 
+  // V6 panels
+  renderDashboardPanels(data);
+
   // Connect both engines by rendering visual status and selected agent boxes in canvas.js
   if (window.KiBotCanvas && typeof window.KiBotCanvas.render === 'function') {
     window.KiBotCanvas.render(data);
@@ -910,6 +956,234 @@ function render(data) {
 
   // Redraw connectors after render
   requestAnimationFrame(drawConnectors);
+}
+
+function renderDashboardPanels(data) {
+  const runtime = data.runtime || {};
+  const portfolio = data.portfolio_v6 || {};
+  const decision = data.decision || {};
+  const venues = data.venues || {};
+  const workflow = Array.isArray(data.workflow?.steps) ? data.workflow.steps : [];
+  const funnel = data.opportunity_funnel || {};
+  const ai = data.ai_system || {};
+  const orders = data.orders || {};
+  const logs = data.logs || {};
+  const debug = data.debug || {};
+  const liveTruth = data.live_truth?.data || data.live_truth || {};
+
+  const panelOverview = el('panel-overview');
+  if (panelOverview) {
+    panelOverview.innerHTML = `
+      <div class="panel-grid panel-grid--2">
+        <div class="panel-card">
+          <div class="panel-card__title">Runtime</div>
+          ${renderKeyValue('Mode', runtime.mode || 'LIVE_ONLY', 'mono')}
+          ${renderKeyValue('State', runtime.state || '—', badgeClassForStatus(runtime.state))}
+          ${renderKeyValue('Node', runtime.node || '—', 'mono')}
+          ${renderKeyValue('Freshness', freshnessLabel(runtime.freshness_s ?? 0), 'mono')}
+        </div>
+        <div class="panel-card">
+          <div class="panel-card__title">Portfolio</div>
+          ${renderKeyValue('Total Equity', idr(portfolio.total_equity_idr || 0))}
+          ${renderKeyValue('Starting Equity', idr(portfolio.starting_equity_idr || portfolio.start_total_equity_idr || 0))}
+          ${renderKeyValue('Net PnL Today', idr(portfolio.net_pnl_today_idr || 0))}
+          ${renderKeyValue('Risk Remaining', idr(portfolio.risk_remaining_idr || 0))}
+        </div>
+        <div class="panel-card">
+          <div class="panel-card__title">Decision</div>
+          ${renderKeyValue('Current Action', decision.current_action || 'WAIT', badgeClassForStatus(decision.current_action))}
+          ${renderKeyValue('Current Reason', decision.current_reason || '—', 'mono')}
+          ${renderKeyValue('Last Gate', decision.last_gate_passed || '—', 'mono')}
+          ${renderKeyValue('Last Rejection', (decision.last_rejection || {}).reason || decision.last_gate_failed || '—', 'mono')}
+        </div>
+        <div class="panel-card">
+          <div class="panel-card__title">Summary</div>
+          ${renderKeyValue('Open Positions', String(getCount(liveTruth.open_positions || [])))}
+          ${renderKeyValue('Dust Positions', String(getCount(liveTruth.dust_positions || [])))}
+          ${renderKeyValue('Blocked Pairs', String(getCount(liveTruth.blocked_pairs || [])))}
+          ${renderKeyValue('Risk State', liveTruth.risk_state || '—', badgeClassForStatus(liveTruth.risk_state))}
+        </div>
+      </div>`;
+  }
+
+  const panelWorkflow = el('panel-workflow');
+  if (panelWorkflow) {
+    const steps = workflow.map(step => `
+      <div class="panel-step">
+        <div>
+          <strong>${esc(step.name || step.label || 'STEP')}</strong>
+          <div class="panel-sub">${esc(step.reason || '—')}</div>
+        </div>
+        <div class="panel-step__meta">
+          <span class="${badgeClassForStatus(step.status)}">${esc(step.status || 'WAIT')}</span>
+          <small>${esc(freshnessLabel(step.freshness_s ?? 0))}</small>
+        </div>
+      </div>
+    `);
+    panelWorkflow.innerHTML = `
+      <div class="panel-grid panel-grid--2">
+        <div class="panel-card">
+          <div class="panel-card__title">Workflow Steps</div>
+          ${renderListPanel(steps, 'No workflow steps available')}
+        </div>
+        <div class="panel-card">
+          <div class="panel-card__title">Opportunity Funnel</div>
+          ${renderKeyValue('Scanned', String(funnel.scanned ?? 0))}
+          ${renderKeyValue('Candidates', String(funnel.candidates ?? 0))}
+          ${renderKeyValue('Approved', String(funnel.approved ?? 0))}
+          ${renderKeyValue('Executed', String(funnel.executed ?? 0))}
+        </div>
+      </div>`;
+  }
+
+  const panelVenues = el('panel-venues');
+  if (panelVenues) {
+    const row = (name, item) => `
+      <div class="panel-step">
+        <div>
+          <strong>${esc(name)}</strong>
+          <div class="panel-sub">${esc(item.reason || item.status_detail || '—')}</div>
+        </div>
+        <div class="panel-step__meta">
+          <span class="${badgeClassForStatus(item.status || item.mode)}">${esc(item.status || item.mode || '—')}</span>
+          <small>${esc(item.allow_orders ? 'allow_orders=YES' : 'allow_orders=NO')}</small>
+        </div>
+      </div>`;
+    panelVenues.innerHTML = `
+      <div class="panel-grid panel-grid--2">
+        <div class="panel-card">
+          <div class="panel-card__title">Venue Status</div>
+          ${row('Indodax', venues.indodax_real || {})}
+          ${row('Phantom', venues.phantom || {})}
+          ${row('Polymarket', venues.polymarket || {})}
+          ${row('Cash Wait', venues.cash_wait || {})}
+        </div>
+        <div class="panel-card">
+          <div class="panel-card__title">Phantom Treasury</div>
+          ${renderKeyValue('SOL', (venues.phantom?.sol_balance || 0).toFixed(4))}
+          ${renderKeyValue('USDC', (venues.phantom?.usdc_balance || 0).toFixed(2))}
+          ${renderKeyValue('Base IDRX', idr(venues.phantom?.base_idrx_balance || 0))}
+          ${renderKeyValue('Total Value', idr(venues.phantom?.total_value_idr || 0))}
+        </div>
+      </div>`;
+  }
+
+  const panelAI = el('panel-ai');
+  if (panelAI) {
+    panelAI.innerHTML = `
+      <div class="panel-grid panel-grid--2">
+        <div class="panel-card">
+          <div class="panel-card__title">AI System</div>
+          ${renderKeyValue('Status', ai.status || 'DEGRADED', badgeClassForStatus(ai.status))}
+          ${renderKeyValue('Active Components', String(ai.active_components ?? '—'))}
+          ${renderKeyValue('Locked/Conditional', String(ai.locked_or_conditional_components ?? '—'))}
+          ${renderKeyValue('Order Permission', ai.order_permission || 'DENIED', badgeClassForStatus(ai.order_permission))}
+          ${renderKeyValue('Override Permission', ai.override_permission || 'DENIED', badgeClassForStatus(ai.override_permission))}
+        </div>
+        <div class="panel-card">
+          <div class="panel-card__title">AI Trace</div>
+          ${renderKeyValue('Objective', data.ai?.objective || '—', 'mono')}
+          ${renderKeyValue('Best Action', data.ai?.best_action || '—', 'mono')}
+          ${renderKeyValue('Venue', data.ai?.venue || '—', 'mono')}
+          ${renderKeyValue('Reason', data.ai?.reason || '—', 'mono')}
+        </div>
+      </div>`;
+  }
+
+  const panelOrders = el('panel-orders');
+  if (panelOrders) {
+    const openOrders = Array.isArray(orders.open_orders) ? orders.open_orders : [];
+    const closedTrades = Array.isArray(orders.closed_trades) ? orders.closed_trades : [];
+    const rejected = Array.isArray(orders.rejected_candidates) ? orders.rejected_candidates : [];
+    const dust = Array.isArray(orders.dust_positions) ? orders.dust_positions : [];
+    panelOrders.innerHTML = `
+      <div class="panel-grid panel-grid--2">
+        <div class="panel-card">
+          <div class="panel-card__title">Open Orders</div>
+          ${renderListPanel(openOrders.map(o => `<div class="panel-step"><div><strong>${esc(o.pair || o.symbol || '—')}</strong><div class="panel-sub">${esc(o.state || o.status || 'OPEN')}</div></div><div class="panel-step__meta"><small>${esc(idr(o.budget_idr || o.cost_idr || 0))}</small></div></div>`), 'No open orders')}
+        </div>
+        <div class="panel-card">
+          <div class="panel-card__title">Closed Trades / Rejections / Dust</div>
+          ${renderKeyValue('Closed Trades', String(closedTrades.length))}
+          ${renderKeyValue('Rejected Candidates', String(rejected.length))}
+          ${renderKeyValue('Dust Positions', String(dust.length))}
+          ${renderKeyValue('Pending Orders', String(orders.pending_orders ?? 0))}
+        </div>
+      </div>`;
+  }
+
+  const panelLogs = el('panel-logs');
+  if (panelLogs) {
+    const activity = Array.isArray(logs.operator_activity) ? logs.operator_activity : [];
+    const tradeEvents = Array.isArray(logs.trade_events) ? logs.trade_events : [];
+    const exceptions = Array.isArray(logs.exceptions) ? logs.exceptions : (logs.exceptions ? [logs.exceptions] : []);
+    const technical = logs.technical || {};
+    panelLogs.innerHTML = `
+      <div class="panel-grid panel-grid--2">
+        <div class="panel-card">
+          <div class="panel-card__title">Operator Activity</div>
+          ${renderListPanel(activity.slice(0, 8).map(e => `<div class="panel-step"><div><strong>${esc(e.tag || 'EVENT')}</strong><div class="panel-sub">${esc(e.message || '—')}</div></div><div class="panel-step__meta"><small>${esc(e.time || '')}</small></div></div>`), 'No operator activity')}
+        </div>
+        <div class="panel-card">
+          <div class="panel-card__title">Trade Events</div>
+          ${renderListPanel(tradeEvents.slice(0, 8).map(e => `<div class="panel-step"><div><strong>${esc(e.tag || 'TRADE')}</strong><div class="panel-sub">${esc(e.message || '—')}</div></div><div class="panel-step__meta"><small>${esc(e.time || '')}</small></div></div>`), 'No trade events')}
+        </div>
+        <div class="panel-card">
+          <div class="panel-card__title">Exceptions</div>
+          ${renderListPanel(exceptions.slice(0, 5).map(e => `<div class="panel-step"><div><strong>${esc(e.event_type || e.type || 'EXCEPTION')}</strong><div class="panel-sub">${esc(e.message || e.reason || '—')}</div></div></div>`), 'No exceptions')}
+        </div>
+        <div class="panel-card">
+          <div class="panel-card__title">Technical</div>
+          ${renderKeyValue('Warnings', String((technical.warnings || []).length))}
+          ${renderKeyValue('Stale States', String((technical.stale_states || []).length))}
+          ${renderKeyValue('Missing States', String((technical.missing_states || []).length))}
+        </div>
+      </div>`;
+  }
+
+  const panelDebug = el('panel-debug');
+  if (panelDebug) {
+    const legacy = debug.legacy_debug || {};
+    panelDebug.innerHTML = `
+      <div class="panel-grid panel-grid--2">
+        <div class="panel-card">
+          <div class="panel-card__title">Debug Snapshot</div>
+          ${renderKeyValue('Runtime Freshness', freshnessLabel(runtime.freshness_s ?? 0))}
+          ${renderKeyValue('Live Truth Freshness', freshnessLabel(data.live_truth?.age_s ?? 0))}
+          ${renderKeyValue('Target Board Freshness', freshnessLabel(data.target_board_runtime?.age_s ?? 0))}
+          ${renderKeyValue('Server Telemetry Freshness', freshnessLabel(data.server_telemetry?.age_s ?? 0))}
+        </div>
+        <div class="panel-card">
+          <div class="panel-card__title">Legacy Debug (hidden source)</div>
+          ${renderKeyValue('Shadow Keys', String(Object.keys(legacy.shadow || {}).length))}
+          ${renderKeyValue('Paper Keys', String(Object.keys(legacy.paper || {}).length))}
+          ${renderKeyValue('Mock Keys', String(Object.keys(legacy.mock || {}).length))}
+          ${renderKeyValue('Canary Keys', String(Object.keys(legacy.canary || {}).length))}
+        </div>
+      </div>`;
+  }
+}
+
+function initDashboardTabs() {
+  const tabButtons = Array.from(document.querySelectorAll('.dash-tab'));
+  const panels = {
+    overview: el('panel-overview'),
+    workflow: el('panel-workflow'),
+    venues: el('panel-venues'),
+    ai: el('panel-ai'),
+    orders: el('panel-orders'),
+    logs: el('panel-logs'),
+    debug: el('panel-debug'),
+  };
+  const activate = (name) => {
+    tabButtons.forEach(btn => btn.classList.toggle('active', btn.dataset.panel === name));
+    Object.entries(panels).forEach(([key, node]) => {
+      if (!node) return;
+      node.classList.toggle('hidden', key !== name);
+    });
+  };
+  tabButtons.forEach(btn => btn.addEventListener('click', () => activate(btn.dataset.panel || 'overview')));
+  activate('overview');
 }
 
 /* ─── Dynamic Card Engine ───────────────────────────────── */
@@ -943,9 +1217,9 @@ function ensureAgentCardsCreated() {
         <span id="indodax-real-metric">—</span>
         <span id="indodax-metric" style="display:none"></span>
       `;
-    } else if (agentId === 'indodax_shadow') {
+    } else if (agentId === 'indodax_balance') {
       statusHtml = `
-        <span id="indodax-shadow-status">WAIT</span>
+        <span id="indodax-balance-status">WAIT</span>
         <span id="risk-remaining-status" style="display:none"></span>
       `;
   } else if (agentId === 'polymarket') {
@@ -1013,6 +1287,7 @@ document.addEventListener('DOMContentLoaded', () => {
   initCanvas();
   initModal();
   initTabs();
+  initDashboardTabs();
   poll();
   setInterval(poll, POLL_MS);
   window.addEventListener('resize', drawConnectors);
