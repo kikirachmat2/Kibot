@@ -106,7 +106,7 @@ async def main() -> int:
                 },
             )
 
-        quote_url = "https://quote-api.jup.ag/v6/quote?inputMint=So11111111111111111111111111111111111111112&outputMint=So11111111111111111111111111111111111111112&amount=1000&slippageBps=50"
+        quote_url = "https://quote-api.jup.ag/v6/quote?inputMint=So11111111111111111111111111111111111111112&outputMint=EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v&amount=1000000&slippageBps=50"
         jupiter_quote_ok, quote_payload = await _get_json(quote_url)
         if jupiter_quote_ok and keypair is not None:
             swap_url = "https://quote-api.jup.ag/v6/swap"
