@@ -20,6 +20,8 @@ class Component:
     runtime_role: str
     status: str
     evidence: str
+    can_place_order: bool = False
+    can_override_gate: bool = False
     notes: str = ""
 
 
@@ -84,6 +86,8 @@ def build_inventory() -> Dict[str, Any]:
                 "runtime_role": component.runtime_role,
                 "status": component.status,
                 "evidence": component.evidence,
+                "can_place_order": component.can_place_order,
+                "can_override_gate": component.can_override_gate,
                 "notes": component.notes,
             }
         )
@@ -105,6 +109,11 @@ def build_inventory() -> Dict[str, Any]:
             "bridge": "OFF",
             "withdrawal": "OFF",
             "paper_mock_canary_shadow": "DISABLED",
+        },
+        "ai_permissions": {
+            "can_place_order": False,
+            "can_override_gate": False,
+            "role": "advisory_only",
         },
         "state_snapshots": state,
     }

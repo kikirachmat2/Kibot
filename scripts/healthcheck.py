@@ -715,6 +715,45 @@ def check_json_states(state_dir):
     logger.info("✅ All state files are present, valid JSON, and fresh.")
 
 
+def check_runtime_assertions():
+    logger.info("Step 9/9: Running runtime assertion suite...")
+    import subprocess
+
+    assertions = [
+        ("scripts/assert_live_only_mode.py", "py"),
+        ("scripts/assert_no_paper_canary_shadow.py", "py"),
+        ("scripts/assert_github_main_only.sh", "sh"),
+        ("scripts/assert_live_truth_writer.py", "py"),
+        ("scripts/assert_ai_inventory_boot.py", "py"),
+        ("scripts/assert_dashboard_live_truth.py", "py"),
+        ("scripts/assert_website_ai_system_working.py", "py"),
+        ("scripts/assert_indodax_live_gate.py", "py"),
+        ("scripts/assert_indodax_runtime_autonomy.py", "py"),
+        ("scripts/diagnose_phantom_runtime.py", "py"),
+        ("scripts/assert_phantom_live_ready.py", "py"),
+        ("scripts/assert_phantom_runtime_autonomy.py", "py"),
+        ("scripts/assert_telegram_exception_only.py", "py"),
+    ]
+
+    for rel_path, kind in assertions:
+        path = PROJECT_ROOT / rel_path
+        if not path.exists():
+            logger.warning("⚠️ Assertion missing: %s", rel_path)
+            continue
+        cmd = [sys.executable, str(path)] if kind == "py" else ["bash", str(path)]
+        res = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+        output = (res.stdout or "").strip()
+        if output:
+            logger.info("%s => %s", rel_path, output.splitlines()[-1])
+        if rel_path.endswith("diagnose_phantom_runtime.py") and "OK:PHANTOM_LOCKED_MISSING_ENV" in output:
+            logger.warning("⚠️ Phantom is locked by missing env; continuing healthcheck.")
+            continue
+        if res.returncode != 0:
+            logger.error("❌ Runtime assertion failed: %s", output or rel_path)
+            safe_exit(39, f"Runtime assertion failed: {rel_path}: {output}")
+    logger.info("✅ Runtime assertion suite passed.")
+
+
 def check_scanner_service():
     logger.info("Step 8/8: Verifying systemd kibot-scanner service active status...")
     if sys.platform.startswith("linux"):
@@ -744,6 +783,7 @@ def main():
     check_no_legacy_modes()
     check_network_bindings()
     check_json_states(state_dir)
+    check_runtime_assertions()
     check_scanner_service()
     
     logger.info("==================================================")

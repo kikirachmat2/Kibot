@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -51,6 +52,13 @@ def build_live_truth() -> Dict[str, Any]:
         (governor.get("venues", {}) or {}).get("phantom", {}).get("equity_idr"),
         _safe_float(phantom.get("total_value_idr"), 0.0),
     )
+    phantom_enabled = str(os.getenv("KIBOT_PHANTOM_ENABLED", "true")).lower() in {"1", "true", "yes", "on"}
+    phantom_rpc = os.getenv("SOLANA_RPC_URL") or os.getenv("KIBOT_SOLANA_RPC_URL") or ""
+    phantom_key = os.getenv("PHANTOM_PRIVATE_KEY") or os.getenv("KIBOT_PHANTOM_PRIVATE_KEY") or ""
+    if not phantom_enabled or not phantom_rpc or not phantom_key:
+        phantom_status = "LOCKED_MISSING_ENV"
+    else:
+        phantom_status = str((governor.get("venues", {}) or {}).get("phantom", {}).get("status") or phantom.get("status") or "OK").upper()
     wallet_equity = indodax_equity + phantom_equity
     cash_idr = _safe_float(portfolio.get("idr_cash"), 0.0)
     realized = _safe_float(governor.get("daily_pnl_idr"), _safe_float(portfolio.get("realized_pnl_idr"), 0.0))

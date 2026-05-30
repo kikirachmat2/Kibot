@@ -770,6 +770,28 @@ function render(data) {
   setT('sys-service-health', servicesOnline ? `${servicesOnline} active` : '0 active');
   setT('sys-state-freshness', Object.keys(stateFreshness).length ? `${Object.values(stateFreshness).filter(v => v && v.fresh !== false).length}/${Object.keys(stateFreshness).length} fresh` : '—');
 
+  const aiSystem = data.ai_system || {};
+  const aiData = aiSystem.data || {};
+  const aiSummary = aiData.summary || {};
+  const aiStatusBadge = el('ai-system-status');
+  if (aiStatusBadge) {
+    aiStatusBadge.textContent = aiSystem.status || (aiSystem.fresh ? 'OK' : 'DEGRADED');
+    aiStatusBadge.className = 'badge ' + ((aiSystem.status || '').toUpperCase() === 'OK' ? 'badge--green' : 'badge--yellow');
+  }
+  setT('ai-system-active', aiSystem.active_components != null ? String(aiSystem.active_components) : String(aiSummary.active_components ?? '—'));
+  setT('ai-system-locked', aiSystem.locked_or_conditional_components != null ? String(aiSystem.locked_or_conditional_components) : String(aiSummary.locked_or_conditional_components ?? '—'));
+  const aiOrder = el('ai-system-order-permission');
+  if (aiOrder) {
+    aiOrder.textContent = aiSystem.order_permission || 'DENIED';
+    aiOrder.className = 'badge badge--red';
+  }
+  const aiOverride = el('ai-system-override-permission');
+  if (aiOverride) {
+    aiOverride.textContent = aiSystem.override_permission || 'DENIED';
+    aiOverride.className = 'badge badge--red';
+  }
+  setT('ai-system-last-check', aiSystem.last_check_at || aiData.updated_at || '—');
+
   function renderTopTargets(nodeId, emptyId, payload) {
     const node = el(nodeId);
     const empty = el(emptyId);

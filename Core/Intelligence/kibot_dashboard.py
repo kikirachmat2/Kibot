@@ -417,6 +417,11 @@ def _load_live_truth() -> Dict[str, Any]:
         return {}
 
 
+def _load_ai_inventory() -> Dict[str, Any]:
+    inventory = _read_json(STATE / "ai_system_inventory.json", {})
+    return inventory if isinstance(inventory, dict) else {}
+
+
 def _load_workflow_automation() -> Dict[str, Any]:
     return _read_json(STATE / "workflow_automation.json", {})
 
@@ -1021,6 +1026,7 @@ def _build_summary() -> Dict[str, Any]:
 
     summary["trade_history"] = _load_trade_history()
     summary["live_truth"] = _load_live_truth()
+    summary["ai_inventory"] = _load_ai_inventory()
 
     # ── §17.2 Last Signal (scanner output) ─────────
     try:
@@ -1245,6 +1251,7 @@ def _build_control_plane_payload() -> Dict[str, Any]:
     accounting_truth = summary_data.get("accounting_truth", {}) if isinstance(summary_data, dict) else {}
     pnl_reconciliation = summary_data.get("pnl_reconciliation", {}) if isinstance(summary_data, dict) else {}
     live_truth = summary_data.get("live_truth", {}) if isinstance(summary_data, dict) else {}
+    ai_inventory = summary_data.get("ai_inventory", {}) if isinstance(summary_data, dict) else {}
     
     # Build a live treasury snapshot first; venue-scoped permission is derived later.
     allow_new_live_orders = False
@@ -1783,6 +1790,20 @@ def _build_control_plane_payload() -> Dict[str, Any]:
             "data": live_truth,
             "age_s": _file_age_s(STATE / "live_truth.json"),
             "fresh": _file_age_s(STATE / "live_truth.json") >= 0 and _file_age_s(STATE / "live_truth.json") < 15,
+        },
+        "ai_system": {
+            "data": ai_inventory,
+            "age_s": _file_age_s(STATE / "ai_system_inventory.json"),
+            "fresh": _file_age_s(STATE / "ai_system_inventory.json") >= 0 and _file_age_s(STATE / "ai_system_inventory.json") < 90,
+            "status": "OK" if isinstance(ai_inventory, dict) and ai_inventory.get("summary") else "DEGRADED",
+            "inventory_file": "state/ai_system_inventory.json",
+            "total_components": int((ai_inventory.get("summary", {}) or {}).get("total_components", 0) or 0),
+            "active_components": int((ai_inventory.get("summary", {}) or {}).get("active_components", 0) or 0),
+            "locked_or_conditional_components": int((ai_inventory.get("summary", {}) or {}).get("locked_or_conditional_components", 0) or 0),
+            "order_permission": "DENIED",
+            "override_permission": "DENIED",
+            "role": "advisory_only",
+            "last_check_at": str(ai_inventory.get("updated_at") or ""),
         },
         "pnl_reconciliation": pnl_reconciliation,
         "capital": capital_block,
