@@ -21,7 +21,11 @@ def main() -> int:
 
     if warnings:
         first = warnings[0]
-        if not str(first.get("reason") or first.get("message") or "").strip():
+        if isinstance(first, dict):
+            warning_reason = str(first.get("reason") or first.get("message") or "").strip()
+        else:
+            warning_reason = str(first).strip()
+        if not warning_reason:
             print("FAIL:warning_missing_reason")
             return 1
 
