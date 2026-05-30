@@ -970,17 +970,47 @@ function renderDashboardPanels(data) {
   const logs = data.logs || {};
   const debug = data.debug || {};
   const liveTruth = data.live_truth?.data || data.live_truth || {};
+  const allowOrders = Boolean(data.mode?.allow_new_live_orders);
+  const whyWait = String(decision.current_reason || (allowOrders ? 'No blocker' : 'WAIT')).trim() || 'No blocker';
+  const nextAction = String(decision.current_action || workflow[0]?.name || 'SCAN').trim() || 'SCAN';
+  const nextActionDetail = String(decision.last_gate_failed || workflow[0]?.reason || decision.current_reason || 'Proceed to next deterministic step').trim();
 
   const panelOverview = el('panel-overview');
   if (panelOverview) {
     panelOverview.innerHTML = `
       <div class="panel-grid panel-grid--2">
-        <div class="panel-card">
-          <div class="panel-card__title">Runtime</div>
-          ${renderKeyValue('Mode', runtime.mode || 'LIVE_ONLY', 'mono')}
-          ${renderKeyValue('State', runtime.state || '—', badgeClassForStatus(runtime.state))}
-          ${renderKeyValue('Node', runtime.node || '—', 'mono')}
-          ${renderKeyValue('Freshness', freshnessLabel(runtime.freshness_s ?? 0), 'mono')}
+        <div class="panel-card panel-card--hero">
+          <div class="panel-card__title">Operator Summary</div>
+          <div class="panel-hero">
+            <div class="panel-hero__grid">
+              <div class="panel-hero__metric">
+                <span>Runtime</span>
+                <strong>${esc(runtime.mode || 'LIVE_ONLY')}</strong>
+                <small>${esc(runtime.state || '—')} · ${esc(runtime.node || 'Batam')}</small>
+              </div>
+              <div class="panel-hero__metric">
+                <span>Why WAIT?</span>
+                <strong>${esc(whyWait)}</strong>
+                <small>${allowOrders ? 'No blocker' : 'Gate blocked'}</small>
+              </div>
+              <div class="panel-hero__metric">
+                <span>Next Autonomous Action</span>
+                <strong>${esc(nextAction)}</strong>
+                <small>${esc(nextActionDetail)}</small>
+              </div>
+              <div class="panel-hero__metric">
+                <span>Freshness</span>
+                <strong>${esc(freshnessLabel(runtime.freshness_s ?? 0))}</strong>
+                <small>${esc(freshnessLabel(data.live_truth?.age_s ?? 0))} live truth</small>
+              </div>
+            </div>
+          </div>
+          <div class="panel-hero__chips">
+            <span class="${badgeClassForStatus(runtime.mode)}">${esc(runtime.mode || 'LIVE_ONLY')}</span>
+            <span class="${badgeClassForStatus(runtime.state)}">${esc(runtime.state || '—')}</span>
+            <span class="${badgeClassForStatus(allowOrders ? 'PASS' : 'REJECT')}">${allowOrders ? 'ALLOW ORDERS' : 'WAIT'}</span>
+            <span class="${badgeClassForStatus(liveTruth.risk_state)}">${esc(liveTruth.risk_state || '—')}</span>
+          </div>
         </div>
         <div class="panel-card">
           <div class="panel-card__title">Portfolio</div>
@@ -991,13 +1021,13 @@ function renderDashboardPanels(data) {
         </div>
         <div class="panel-card">
           <div class="panel-card__title">Decision</div>
-          ${renderKeyValue('Current Action', decision.current_action || 'WAIT', badgeClassForStatus(decision.current_action))}
-          ${renderKeyValue('Current Reason', decision.current_reason || '—', 'mono')}
+          ${renderKeyValue('Current Action', nextAction, badgeClassForStatus(nextAction))}
+          ${renderKeyValue('Current Reason', whyWait, 'mono')}
           ${renderKeyValue('Last Gate', decision.last_gate_passed || '—', 'mono')}
           ${renderKeyValue('Last Rejection', (decision.last_rejection || {}).reason || decision.last_gate_failed || '—', 'mono')}
         </div>
         <div class="panel-card">
-          <div class="panel-card__title">Summary</div>
+          <div class="panel-card__title">Truth Summary</div>
           ${renderKeyValue('Open Positions', String(getCount(liveTruth.open_positions || [])))}
           ${renderKeyValue('Dust Positions', String(getCount(liveTruth.dust_positions || [])))}
           ${renderKeyValue('Blocked Pairs', String(getCount(liveTruth.blocked_pairs || [])))}
