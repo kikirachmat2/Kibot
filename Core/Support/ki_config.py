@@ -2,6 +2,7 @@ import logging
 import os
 from pathlib import Path
 import pytz
+from Core.Support.runtime_mode_guard import LIVE_ONLY, normalize_runtime_mode
 
 def _load_sovereign_env():
     """Load and decrypt vaulted environment variables."""
@@ -85,12 +86,12 @@ class KiConfig:
     MIN_SIGNAL_PROBABILITY = 0.65     # Lowered to 65% for high-aggression
     SCALPING_TP_PERCENT = 1.0         # Increased for more room
     SCALPING_SL_PERCENT = 2.0         # Matches RiskGate SL
-    _RAW_TRADING_MODE = os.getenv("KIBOT_TRADING_MODE", "controlled-live").strip().lower()
-    TRADING_MODE = "controlled-live" if _RAW_TRADING_MODE in {"paper", "mock", "sim", "simulation", "live-canary", "canary", "view-only"} else _RAW_TRADING_MODE
-    LIVE_TRADING_ENABLED = _env_flag("KIBOT_LIVE_TRADING_ENABLED", "true" if TRADING_MODE == "controlled-live" else "false") or TRADING_MODE in {"controlled-live", "live", "real", "production"}
+    _RAW_TRADING_MODE = os.getenv("KIBOT_RUNTIME_MODE", os.getenv("KIBOT_TRADING_MODE", LIVE_ONLY)).strip().lower()
+    TRADING_MODE = normalize_runtime_mode(_RAW_TRADING_MODE)
+    LIVE_TRADING_ENABLED = _env_flag("KIBOT_LIVE_TRADING_ENABLED", "true" if TRADING_MODE == LIVE_ONLY else "false") or TRADING_MODE == LIVE_ONLY
     
     # --- LIVE CANARY GATE & CONTROLS ---
-    CANARY_LIVE_ENABLED = False if TRADING_MODE == "controlled-live" else _env_flag("KIBOT_CANARY_LIVE_ENABLED", "false")
+    CANARY_LIVE_ENABLED = False
     CANARY_EXCHANGE = os.getenv("KIBOT_CANARY_EXCHANGE", "INDODAX").strip().upper()
     CANARY_MAX_TRADE_IDR = float(os.getenv("KIBOT_CANARY_MAX_TRADE_IDR", "25000"))
     CANARY_MAX_DAILY_LOSS_IDR = float(os.getenv("KIBOT_CANARY_MAX_DAILY_LOSS_IDR", "25000"))
@@ -100,12 +101,12 @@ class KiConfig:
     CANARY_REQUIRE_COUNCIL_APPROVAL = _env_flag("KIBOT_CANARY_REQUIRE_COUNCIL_APPROVAL", "true")
     CANARY_REQUIRE_POSITIVE_EV = _env_flag("KIBOT_CANARY_REQUIRE_POSITIVE_EV", "true")
     CANARY_AUTO_ROLLBACK = _env_flag("KIBOT_CANARY_AUTO_ROLLBACK", "true")
-    LEGACY_TRADING_MODES_DISABLED = TRADING_MODE == "controlled-live"
+    LEGACY_TRADING_MODES_DISABLED = TRADING_MODE == LIVE_ONLY
 
     # --- WEB3 SAFETY GATES ---
     ENABLE_REAL_SWAP = _env_flag("KIBOT_ENABLE_REAL_SWAP", "false")
-    ENABLE_REAL_BRIDGE = _env_flag("KIBOT_ENABLE_REAL_BRIDGE", "true" if LIVE_TRADING_ENABLED else "false")
-    ENABLE_REAL_WITHDRAWAL = _env_flag("KIBOT_ENABLE_REAL_WITHDRAWAL", "true" if LIVE_TRADING_ENABLED else "false")
+    ENABLE_REAL_BRIDGE = False
+    ENABLE_REAL_WITHDRAWAL = False
     ENABLE_POLYMARKET_LIVE = _env_flag("KIBOT_ENABLE_POLYMARKET_LIVE", "false")
     
     # --- AI & OLLAMA GUARDRAILS ---

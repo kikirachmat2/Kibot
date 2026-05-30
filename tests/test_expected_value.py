@@ -60,8 +60,8 @@ class TestComputeEV:
     def test_batch_ev_stamps_approval_flag(self):
         # First candidate: high win rate + good R:R (2.5% win vs 0.8% loss)
         candidates = [
-            {"win_rate": 0.65, "avg_profit_pct": 0.025, "avg_loss_pct": 0.008},
-            {"win_rate": 0.25, "avg_profit_pct": 0.003, "avg_loss_pct": 0.02},
+            {"win_rate": 0.65, "avg_profit_pct": 0.025, "avg_loss_pct": 0.008, "historical_sample_size": 20},
+            {"win_rate": 0.25, "avg_profit_pct": 0.003, "avg_loss_pct": 0.02, "historical_sample_size": 20},
         ]
         results = batch_evaluate_ev(candidates)
         assert results[0]["ev_approved"] is True

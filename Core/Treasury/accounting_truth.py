@@ -9,6 +9,7 @@ ROOT = Path(__file__).resolve().parent.parent.parent
 STATE_DIR = ROOT / "state"
 GOVERNOR_FILE = STATE_DIR / "capital_governor.json"
 PHANTOM_FILE = STATE_DIR / "phantom_treasury.json"
+LIVE_TRUTH_FILE = STATE_DIR / "live_truth.json"
 
 
 def _read_json(path: Path, default: Any) -> Any:
@@ -40,6 +41,40 @@ def build_accounting_truth() -> Dict[str, Any]:
     The dashboard and reporting layers should use this as their one balance
     contract so holdings never appear to disappear while positions are open.
     """
+
+    live_truth = _read_json(LIVE_TRUTH_FILE, {})
+    if isinstance(live_truth, dict) and live_truth:
+        wallet_equity = _safe_float(live_truth.get("wallet_equity_idr"), 0.0)
+        cash_idr = _safe_float(live_truth.get("cash_idr"), 0.0)
+        net_pnl = _safe_float(live_truth.get("net_pnl_today_idr"), 0.0)
+        reset_total = max(0.0, wallet_equity - net_pnl)
+        return {
+            "updated_at": live_truth.get("updated_at", datetime.now(timezone.utc).isoformat()),
+            "source": "live_truth",
+            "live_total_equity_idr": wallet_equity,
+            "governor_fresh": True,
+            "date": str(live_truth.get("updated_at", "")).split("T", 1)[0],
+            "current_total_equity_idr": wallet_equity,
+            "total_balance_idr": wallet_equity,
+            "reset_total_balance_idr": reset_total,
+            "start_total_equity_idr": reset_total,
+            "daily_pnl_idr": net_pnl,
+            "combined_pnl_idr": net_pnl,
+            "daily_return_idr": net_pnl,
+            "daily_pnl_pct": 0.0,
+            "daily_return_pct": 0.0,
+            "indodax_equity_idr": _safe_float(live_truth.get("indodax_equity_idr"), 0.0),
+            "phantom_equity_idr": _safe_float(live_truth.get("phantom_equity_idr"), 0.0),
+            "in_flight_idr": 0.0,
+            "open_buy_order_reserve_idr": 0.0,
+            "components": {
+                "indodax": _safe_float(live_truth.get("indodax_equity_idr"), 0.0),
+                "phantom": _safe_float(live_truth.get("phantom_equity_idr"), 0.0),
+                "cash": cash_idr,
+            },
+            "capital_governor": {},
+            "phantom_treasury": live_truth,
+        }
 
     gov = _read_json(GOVERNOR_FILE, {})
     phantom = _read_json(PHANTOM_FILE, {})

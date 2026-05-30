@@ -24,8 +24,10 @@ def _read_json(path: Path, default: Any) -> Any:
 
 def write_phantom_capital_mover(payload: Dict[str, Any]) -> Dict[str, Any]:
     STATE_DIR.mkdir(parents=True, exist_ok=True)
-    bridge_on = os.getenv("KIBOT_ENABLE_REAL_BRIDGE", "false").strip().lower() in {"1", "true", "yes", "on", "live", "production"}
-    withdrawal_on = os.getenv("KIBOT_ENABLE_REAL_WITHDRAWAL", "false").strip().lower() in {"1", "true", "yes", "on", "live", "production"}
+    bridge_env = os.getenv("KIBOT_ENABLE_REAL_BRIDGE", "false").strip().lower() in {"1", "true", "yes", "on", "live", "production"}
+    withdrawal_env = os.getenv("KIBOT_ENABLE_REAL_WITHDRAWAL", "false").strip().lower() in {"1", "true", "yes", "on", "live", "production"}
+    bridge_on = False if not bridge_env else False
+    withdrawal_on = False if not withdrawal_env else False
     treasury = _read_json(TREASURY_FILE, {})
     chains = treasury.get("chains", {}) if isinstance(treasury, dict) else {}
     balances = treasury.get("buckets", {}) if isinstance(treasury, dict) else {}

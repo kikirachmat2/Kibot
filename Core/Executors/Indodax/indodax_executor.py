@@ -25,6 +25,9 @@ from Core.Exchange.indodax import IndodaxGateway
 from Core.risk_gate import RiskGate
 from Core.Support.ki_vault import load_sovereign_env
 from Core.sovereign_state import load_strategy, check_urgency
+from Core.Decision.deterministic_decision_gate import evaluate_live_trade
+from Core.Treasury.live_truth_manager import load_live_truth
+from Core.Intelligence.pair_quarantine import is_quarantined
 
 # ── Phase 5: Order lifecycle tracking ──
 try:
@@ -1757,6 +1760,45 @@ class IndodaxExecutor:
             )
             if not affordable:
                 logger.warning(f"🛡️ REJECTED (Balance-Aware): {afford_reason} for {symbol}")
+                return
+
+            runtime_truth = load_live_truth()
+            pair_key = str(signal.get("pair") or symbol or signal.get("symbol") or "").upper()
+            if not pair_key:
+                pair_key = str(symbol or signal.get("symbol") or "").upper()
+            gate_candidate = {
+                **signal,
+                "pair": pair_key,
+                "ev_analysis": signal.get("ev_analysis") or {"approved": float(signal.get("expected_net_pct") or 0.0) > 0, "ev_pct": float(signal.get("expected_net_pct") or 0.0)},
+                "pretrade_simulation": signal.get("pre_trade_simulation") or {},
+                "expected_net_edge_pct": float(signal.get("expected_net_pct") or signal.get("ev_pct") or 0.0),
+                "historical_sample_size": int(signal.get("historical_sample_size") or 0),
+                "spread_pct": float(signal.get("spread_pct") or 0.0),
+                "slippage_est_pct": float(signal.get("slippage_pct") or 0.0),
+                "exit_plan_valid": bool(signal.get("exit_plan")),
+                "pair_quarantine": "ACTIVE" if is_quarantined(pair_key) else "",
+                "max_spread_pct": float(indo_strat.get("max_spread_pct", 1.0) or 1.0),
+                "max_slippage_pct": float(os.getenv("KIBOT_MAX_SLIPPAGE_PCT", "1.2") or 1.2),
+                "min_net_edge_pct": float(os.getenv("KIBOT_MIN_NET_EDGE_PCT", "1.5") or 1.5),
+                "min_ev_sample_size": int(os.getenv("KIBOT_MIN_EV_SAMPLE_SIZE", "20") or 20),
+            }
+            gate_result = evaluate_live_trade(gate_candidate, runtime_state=runtime_truth)
+            signal["decision_gate"] = gate_result.to_dict()
+            if not gate_result.approved:
+                logger.warning(f"🛡️ REJECTED (DecisionGate): {gate_result.reason} for {symbol}")
+                _emit_trade_history("ENTRY_REJECTED", {
+                    "source": "indodax_executor",
+                    "venue": "indodax",
+                    "symbol": symbol,
+                    "pair": pair,
+                    "side": side.upper(),
+                    "status": "REJECTED",
+                    "reason": gate_result.reason,
+                    "price_idr": price,
+                    "amount_idr": budget,
+                    "trade_profile": "LEARNING_PROBE" if learning_probe else "STANDARD",
+                    "lifecycle": signal.get("lifecycle") or signal.get("pump_stage"),
+                })
                 return
 
             # Simulate the full buy-then-sell lifecycle against the live

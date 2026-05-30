@@ -19,6 +19,7 @@ from fastapi.staticfiles import StaticFiles
 
 from Core.Support.ki_config import PROJECT_ROOT, STATE_DIR, KiConfig
 from Core.Treasury.accounting_truth import build_accounting_truth
+from Core.Treasury.live_truth_manager import build_live_truth
 
 app = FastAPI(title="KiBot Sovereign Dashboard", version="3.4")
 
@@ -89,7 +90,7 @@ def _safe_int(value: Any, default: int = 0) -> int:
         return default
 
 
-_LEGACY_WORD_RE = re.compile(r"(paper|sim(?:ulation|ulated)?|mock|canary|view-only)", re.IGNORECASE)
+_LEGACY_WORD_RE = re.compile(r"(paper|sim(?:ulation|ulated)?|mock|canary|shadow|view-only)", re.IGNORECASE)
 
 
 def _scrub_legacy_payload(value: Any) -> Any:
@@ -406,6 +407,16 @@ def _load_ai_decision_trace() -> Dict[str, Any]:
     return _read_json(STATE / "ai_decision_trace.json", {})
 
 
+def _load_live_truth() -> Dict[str, Any]:
+    truth = _read_json(STATE / "live_truth.json", {})
+    if isinstance(truth, dict) and truth:
+        return truth
+    try:
+        return build_live_truth()
+    except Exception:
+        return {}
+
+
 def _load_workflow_automation() -> Dict[str, Any]:
     return _read_json(STATE / "workflow_automation.json", {})
 
@@ -539,6 +550,7 @@ def _build_portfolio(telemetry: Dict[str, Any]) -> Dict[str, Any]:
     portfolio = telemetry.get("portfolio") if isinstance(telemetry, dict) else {}
     portfolio = portfolio if isinstance(portfolio, dict) else {}
     accounting_truth = build_accounting_truth()
+    live_truth = _load_live_truth()
     polymarket_live = _load_polymarket_state()
     polymarket = portfolio.get("polymarket") if isinstance(portfolio.get("polymarket"), dict) else {}
     if polymarket_live:
@@ -585,13 +597,13 @@ def _build_portfolio(telemetry: Dict[str, Any]) -> Dict[str, Any]:
     # Canonical total balance is the combined live venue equity. The accounting
     # truth layer keeps the dashboard, governor, and daily PnL on the same
     # number even while positions remain open.
-    live_total_equity = indodax_equity + phantom_equity_idr
+    live_total_equity = _safe_float(live_truth.get("wallet_equity_idr"), indodax_equity + phantom_equity_idr)
     snapshot_total_equity = _safe_float(portfolio.get("combined_equity_idr"), _safe_float(portfolio.get("total_balance_idr"), 0.0))
 
-    realized_daily_pnl = _realized_daily_pnl_idr()
+    realized_daily_pnl = _safe_float(live_truth.get("realized_pnl_today_idr"), _realized_daily_pnl_idr())
     open_pnl = _active_trade_unrealized_pnl(active_positions)
     unrealized_daily_pnl = _safe_float(open_pnl.get("unrealized_pnl_idr"), 0.0)
-    live_daily_pnl = realized_daily_pnl + unrealized_daily_pnl + poly_daily_pnl_idr
+    live_daily_pnl = _safe_float(live_truth.get("net_pnl_today_idr"), realized_daily_pnl + unrealized_daily_pnl + poly_daily_pnl_idr)
     live_daily_pnl_pct = (live_daily_pnl / max(live_total_equity if live_total_equity > 0.0 else max(snapshot_total_equity, 1.0), 1.0)) * 100.0
 
     # Load Capital Governor reconciled data if available and fresh for today.
@@ -651,6 +663,7 @@ def _build_portfolio(telemetry: Dict[str, Any]) -> Dict[str, Any]:
         "daily_pnl_shadow_idr": daily_pnl_shadow_idr,
         "daily_pnl_source": "capital_governor" if governor_fresh_today else "live_portfolio",
         "live_trading_enabled": live_trading_enabled,
+        "live_truth": live_truth,
         "daily_pnl_pct": daily_pnl_pct,
         "daily_return_pct": daily_pnl_pct,
         "daily_color": daily_color,
@@ -1007,6 +1020,7 @@ def _build_summary() -> Dict[str, Any]:
         summary["order_tracker"] = {"today_summary": {}, "open_orders": []}
 
     summary["trade_history"] = _load_trade_history()
+    summary["live_truth"] = _load_live_truth()
 
     # ── §17.2 Last Signal (scanner output) ─────────
     try:
@@ -1230,6 +1244,7 @@ def _build_control_plane_payload() -> Dict[str, Any]:
     portfolio_live = summary_data.get("portfolio", {}) if isinstance(summary_data, dict) else {}
     accounting_truth = summary_data.get("accounting_truth", {}) if isinstance(summary_data, dict) else {}
     pnl_reconciliation = summary_data.get("pnl_reconciliation", {}) if isinstance(summary_data, dict) else {}
+    live_truth = summary_data.get("live_truth", {}) if isinstance(summary_data, dict) else {}
     
     # Build a live treasury snapshot first; venue-scoped permission is derived later.
     allow_new_live_orders = False
@@ -1349,7 +1364,7 @@ def _build_control_plane_payload() -> Dict[str, Any]:
 
     # 1. Mode config
     mode = {
-        "trading_mode": str(KiConfig.TRADING_MODE),
+        "trading_mode": "LIVE_ONLY" if str(KiConfig.TRADING_MODE).upper() == "LIVE_ONLY" else str(KiConfig.TRADING_MODE),
         "live_trading_enabled": bool(KiConfig.LIVE_TRADING_ENABLED),
         "legacy_modes_disabled": bool(KiConfig.LEGACY_TRADING_MODES_DISABLED),
         "real_swap_enabled": bool(KiConfig.ENABLE_REAL_SWAP),
@@ -1763,6 +1778,11 @@ def _build_control_plane_payload() -> Dict[str, Any]:
             "governor_daily_pnl_pct": _safe_float(portfolio.get("governor_daily_pnl_pct"), 0.0),
             "accounting_truth": accounting_truth,
             "max_daily_loss_pct": 1.5
+        },
+        "live_truth": {
+            "data": live_truth,
+            "age_s": _file_age_s(STATE / "live_truth.json"),
+            "fresh": _file_age_s(STATE / "live_truth.json") >= 0 and _file_age_s(STATE / "live_truth.json") < 15,
         },
         "pnl_reconciliation": pnl_reconciliation,
         "capital": capital_block,

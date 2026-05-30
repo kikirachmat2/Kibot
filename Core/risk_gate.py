@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Dict, Optional, Tuple
 
 from Core.Support.ki_config import WIB, KiConfig
+from Core.Support.runtime_mode_guard import assert_runtime_live_only
 
 logger = logging.getLogger("RiskGate")
 
@@ -146,6 +147,7 @@ class RiskGate:
         Validates a trade signal against sovereign risk parameters.
         V3.5: Strategy is to be situational. Limits are advisory, except for the 1.5% Hard Cap.
         """
+        assert_runtime_live_only()
         self._check_reset()
         today = _today_wib()
         

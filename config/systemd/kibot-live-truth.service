@@ -1,0 +1,20 @@
+[Unit]
+Description=KiBot Live Truth Writer
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/home/ubuntu/KiBot
+EnvironmentFile=/home/ubuntu/KiBot/.env
+ExecStart=/home/ubuntu/KiBot/.venv/bin/python /home/ubuntu/KiBot/scripts/run_live_truth_writer.py
+Restart=always
+RestartSec=5
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ProtectHome=false
+
+[Install]
+WantedBy=multi-user.target
+

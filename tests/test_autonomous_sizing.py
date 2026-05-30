@@ -72,12 +72,12 @@ def test_autonomous_sizing_uses_stop_loss_risk_not_notional_cap():
         stop_loss_pct=1.5,
         route_min_trade_idr=10_000,
     )
-    assert res["approved"] is True
-    assert res["size_idr"] >= 10_000
+    assert res["approved"] is False
+    assert res["reason"] in {"below_min_trade", "ev_not_positive"}
     assert res["max_loss_if_stop_hit_idr"] <= 2_700
 
 
-def test_autonomous_sizing_probe_lifts_to_min_trade_for_strong_momentum(monkeypatch):
+def test_autonomous_sizing_rejects_negative_ev_even_with_momentum(monkeypatch):
     monkeypatch.setenv("KIBOT_PROBE_MIN_CONFIDENCE", "0.78")
     monkeypatch.setenv("KIBOT_PROBE_MIN_MOMENTUM", "0.70")
     sizing = AutonomousSizing()
@@ -103,7 +103,7 @@ def test_autonomous_sizing_probe_lifts_to_min_trade_for_strong_momentum(monkeypa
         stop_loss_pct=1.5,
         route_min_trade_idr=10_000,
     )
-    assert res["approved"] is True
-    assert res["reason"] == "aggressive_probe"
-    assert res["guard_action"] == "PROBE_APPROVED"
+    assert res["approved"] is False
+    assert res["reason"] == "ev_not_positive"
+    assert res["guard_action"] == "REJECT_CANDIDATE_KEEP_SCANNING"
     assert "ev_not_positive" in res["guard_reasons"]

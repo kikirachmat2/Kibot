@@ -19,10 +19,10 @@ class AutonomousSizing:
         self.route_ceiling_idr = float(os.getenv("KIBOT_ROUTE_MAX_TRADE_IDR", "0") or 0)
         self.min_trade_idr = float(os.getenv("KIBOT_MIN_TRADE_IDR", "10000") or 10000)
         self.adaptive_profile = os.getenv("KIBOT_ADAPTIVE_GUARD_PROFILE", "BALANCED_PROBE").upper()
-        self.aggressive_probe_enabled = os.getenv("KIBOT_AGGRESSIVE_PROBE_ENABLED", "true").lower() == "true"
+        self.aggressive_probe_enabled = os.getenv("KIBOT_AGGRESSIVE_PROBE_ENABLED", "false").lower() == "true"
         self.probe_min_confidence = float(os.getenv("KIBOT_PROBE_MIN_CONFIDENCE", "0.78") or 0.78)
         self.probe_min_momentum = float(os.getenv("KIBOT_PROBE_MIN_MOMENTUM", "0.70") or 0.70)
-        self.probe_risk_fraction = float(os.getenv("KIBOT_PROBE_RISK_FRACTION", "0.30") or 0.30)
+        self.probe_risk_fraction = float(os.getenv("KIBOT_PROBE_RISK_FRACTION", "0.03") or 0.03)
 
     def _save(self, payload: Dict[str, Any]) -> None:
         STATE_DIR.mkdir(parents=True, exist_ok=True)
@@ -38,7 +38,7 @@ class AutonomousSizing:
         exposure_penalty = 1.0 if exposure_idr <= 0 else max(0.2, 1.0 - min(exposure_idr / max(route_bucket_idr, 1.0), 0.8))
         vol = max(0.15, min(1.0, 1.0 - (volatility_pct / 25.0)))
         base = (0.12 + 0.28 * conf + 0.18 * ev + 0.16 * liq + 0.10 * slip + 0.08 * risk + 0.08 * bucket + 0.04 * exposure_penalty + 0.04 * vol)
-        return max(0.0, min(0.35, base))
+        return max(0.0, min(0.05, base))
 
     def size(
         self,
@@ -70,7 +70,7 @@ class AutonomousSizing:
             hard_reasons.append("exit_unavailable")
         if available_balance_idr <= 0:
             hard_reasons.append("no_available_balance")
-        recovery_probe = daily_risk_remaining_idr <= 0 and self.aggressive_probe_enabled and confidence >= 0.78 and momentum_score >= 0.70
+        recovery_probe = False
 
         if hard_reasons:
             payload = {
@@ -112,7 +112,7 @@ class AutonomousSizing:
         if daily_risk_remaining_idr > 0:
             risk_notional_cap = daily_risk_remaining_idr * 0.90 / stop_loss_fraction
         else:
-            risk_notional_cap = max(available_balance_idr * 0.15, route_bucket_idr * 0.25, self.min_trade_idr * 1.5)
+            risk_notional_cap = 0.0
 
         quality_reasons = []
         if ev_pct <= 0:
@@ -131,9 +131,9 @@ class AutonomousSizing:
             and self.adaptive_profile != "CONSERVATIVE"
             and confidence >= self.probe_min_confidence
             and (momentum_ok or exit_grade_ok)
+            and ev_pct > 0
+            and daily_risk_remaining_idr > 0
         )
-        if recovery_probe:
-            probe_mode = True
 
         size_idr = min(
             available_balance_idr * 0.98,
@@ -159,12 +159,16 @@ class AutonomousSizing:
             if probe_cap >= effective_min_trade_idr:
                 size_idr = effective_min_trade_idr
 
-        if size_idr < effective_min_trade_idr and not recovery_probe:
+        if ev_pct <= 0:
+            approved = False
+            reason = "ev_not_positive"
+            size_idr = 0.0
+        elif size_idr < effective_min_trade_idr:
             approved = False
             reason = "below_min_trade"
         else:
             approved = True
-            reason = "recovery_probe" if recovery_probe else ("aggressive_probe" if probe_mode and quality_reasons else "approved")
+            reason = "aggressive_probe" if probe_mode and quality_reasons else "approved"
 
         payload = {
             "updated_at": datetime.now(timezone.utc).isoformat(),

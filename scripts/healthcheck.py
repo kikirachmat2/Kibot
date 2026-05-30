@@ -179,26 +179,30 @@ def check_live_trading_gates(KiConfig):
     import json
     from datetime import datetime
     
-    # 1. Enforce controlled-live mode environment flags
+    # 1. Enforce live-only mode environment flags
+    runtime_mode = str(os.getenv("KIBOT_RUNTIME_MODE", os.getenv("KIBOT_TRADING_MODE", "")).strip()).upper()
     live_trading_env = os.getenv("KIBOT_LIVE_TRADING_ENABLED", "false").lower() == "true"
-    if getattr(KiConfig, "TRADING_MODE", "") == "controlled-live" and bool(getattr(KiConfig, "LIVE_TRADING_ENABLED", False)):
-        # KiConfig normalizes controlled-live into live-enabled even when a
-        # stale legacy env flag says false. Treat the canonical runtime config
-        # as source of truth to avoid false kill-switch rollbacks.
+    if getattr(KiConfig, "LIVE_TRADING_ENABLED", False):
         live_trading_env = True
         os.environ["KIBOT_LIVE_TRADING_ENABLED"] = "true"
     canary_live_env = os.getenv("KIBOT_CANARY_LIVE_ENABLED", "false").lower() == "true"
+    withdrawal_env = os.getenv("KIBOT_WITHDRAWAL_ENABLED", "false").lower() == "true"
     
+    logger.info(f"KIBOT_RUNTIME_MODE in env: {runtime_mode}")
     logger.info(f"KIBOT_LIVE_TRADING_ENABLED in env: {live_trading_env}")
     logger.info(f"KIBOT_CANARY_LIVE_ENABLED in env: {canary_live_env}")
+    logger.info(f"KIBOT_WITHDRAWAL_ENABLED in env: {withdrawal_env}")
     
     if not live_trading_env:
-        logger.error("❌ CRITICAL: KIBOT_LIVE_TRADING_ENABLED must be True in controlled-live mode!")
-        safe_exit(30, "KIBOT_LIVE_TRADING_ENABLED must be True in controlled-live mode.")
+        logger.error("❌ CRITICAL: KIBOT_LIVE_TRADING_ENABLED must be True in LIVE_ONLY mode!")
+        safe_exit(30, "KIBOT_LIVE_TRADING_ENABLED must be True in LIVE_ONLY mode.")
         
     if canary_live_env:
-        logger.error("❌ CRITICAL: KIBOT_CANARY_LIVE_ENABLED must be False in controlled-live mode!")
-        safe_exit(31, "KIBOT_CANARY_LIVE_ENABLED must be False in controlled-live mode.")
+        logger.error("❌ CRITICAL: KIBOT_CANARY_LIVE_ENABLED must be False in LIVE_ONLY mode!")
+        safe_exit(31, "KIBOT_CANARY_LIVE_ENABLED must be False in LIVE_ONLY mode.")
+    if withdrawal_env:
+        logger.error("❌ CRITICAL: KIBOT_WITHDRAWAL_ENABLED must be False in LIVE_ONLY mode!")
+        safe_exit(31, "KIBOT_WITHDRAWAL_ENABLED must be False in LIVE_ONLY mode.")
         
     # 2. Assert environmental safety gates are True
     required_safety_gates = {
@@ -222,7 +226,8 @@ def check_live_trading_gates(KiConfig):
         WIB = timezone(timedelta(hours=7))
         
     today_wib = str(datetime.now(WIB).date())
-    anchor_file = PROJECT_ROOT / "state" / "daily_equity_anchor.json"
+    anchor_lock_file = PROJECT_ROOT / "state" / "daily_equity_anchor_lock.json"
+    anchor_file = anchor_lock_file if anchor_lock_file.exists() else PROJECT_ROOT / "state" / "daily_equity_anchor.json"
     
     logger.info(f"Checking daily drawdown anchor at {anchor_file} for date {today_wib}...")
     if not anchor_file.exists():

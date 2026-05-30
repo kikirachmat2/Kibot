@@ -25,6 +25,7 @@ EV_MIN_THRESHOLD: float = 0.003     # minimum EV (0.3%) to approve a trade
 MIN_RR_RATIO: float = 1.5           # minimum reward-to-risk
 MAX_KELLY_FRACTION: float = 0.25    # never risk more than 25% of bankroll even if Kelly says more
 KELLY_FLOOR: float = 0.01           # minimum Kelly fraction to bother entering
+MIN_SAMPLE_SIZE: int = 20
 
 
 @dataclass
@@ -131,10 +132,22 @@ def compute_ev(
 
 def ev_from_candidate(candidate: Dict[str, Any]) -> EVResult:
     """Convenience wrapper that reads standard candidate dict fields."""
+    sample_size = int(candidate.get("historical_sample_size", 0) or candidate.get("sample_size", 0) or 0)
+    if sample_size < MIN_SAMPLE_SIZE:
+        return EVResult(
+            approved=False,
+            ev_pct=-1.0,
+            kelly_fraction=0.0,
+            rr_ratio=0.0,
+            win_prob=float(candidate.get("win_rate", 0.0) or 0.0),
+            avg_win_pct=float(candidate.get("avg_profit_pct", 0.0) or 0.0),
+            avg_loss_pct=float(candidate.get("avg_loss_pct", 0.0) or 0.0),
+            rejection_reasons=[f"Historical sample size {sample_size} below minimum {MIN_SAMPLE_SIZE}"],
+        )
     return compute_ev(
-        win_prob=float(candidate.get("win_rate", 0.5)),
-        avg_win_pct=float(candidate.get("avg_profit_pct", 0.01)),
-        avg_loss_pct=float(candidate.get("avg_loss_pct", 0.01)),
+        win_prob=float(candidate.get("win_rate", 0.0)),
+        avg_win_pct=float(candidate.get("avg_profit_pct", 0.0)),
+        avg_loss_pct=float(candidate.get("avg_loss_pct", 0.0)),
         fee_pct=float(candidate.get("fee_pct", 0.003)),
         slippage_pct=float(candidate.get("slippage_pct", 0.001)),
     )

@@ -68,7 +68,7 @@ def score_candidate(
     ev = ev_analysis_dict or {}
     ev_approved = ev.get("approved", False)
     ev_pct = ev.get("ev_pct", 0.0)
-    ev_score = min(1.0, 0.5 + (ev_pct / 3.0)) if ev_approved else max(0.0, 0.3 + (ev_pct / 10.0))
+    ev_score = min(1.0, 0.5 + (ev_pct / 3.0)) if ev_approved else 0.0
     breakdown.append(f"ev({'ok' if ev_approved else 'no'},{ev_pct:.3f}%)={ev_score:.2f}")
 
     regime = (market_regime or "UNKNOWN").upper()
@@ -86,6 +86,9 @@ def score_candidate(
     if llm_advisory_score is not None:
         breakdown.append(f"llm={llm_delta:+.3f}")
 
+    if not ev_approved:
+        llm_delta = 0.0
+        breakdown.append("hard_reject_ev_not_approved")
     base = (_W_SIGNAL * signal_score + _W_EV * ev_score
             + _W_REGIME * regime_score - _W_PUNISHMENT * punishment_penalty)
     composite = max(0.0, min(1.0, base + llm_delta))
@@ -93,6 +96,8 @@ def score_candidate(
 
     if quarantine_active:
         verdict = ScorecardVerdict.REJECTED
+    elif not ev_approved:
+        verdict = ScorecardVerdict.REJECTED if composite < PAPER_THRESHOLD else ScorecardVerdict.PAPER_ONLY
     elif composite >= APPROVE_THRESHOLD:
         verdict = ScorecardVerdict.APPROVED
     elif composite >= PAPER_THRESHOLD:
