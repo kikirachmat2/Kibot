@@ -89,7 +89,11 @@ def build_live_truth() -> Dict[str, Any]:
                 open_positions.append(entry)
 
     indodax_status = str((governor.get("venues", {}) or {}).get("indodax", {}).get("status") or "OK").upper()
-    phantom_status = str((governor.get("venues", {}) or {}).get("phantom", {}).get("status") or "OK").upper()
+    phantom_governor_status = str((governor.get("venues", {}) or {}).get("phantom", {}).get("status") or "OK").upper()
+    if not phantom_enabled or not phantom_rpc or not phantom_key:
+        phantom_status = "LOCKED_MISSING_ENV"
+    else:
+        phantom_status = phantom_governor_status
     if indodax_status in {"BLOCKED_WITH_REASON", "DOWN", "ERROR", "LOCKED"} and phantom_status in {"BLOCKED_WITH_REASON", "DOWN", "ERROR", "LOCKED"}:
         risk_state = "EMERGENCY"
     elif indodax_status in {"BLOCKED_WITH_REASON", "DOWN", "ERROR", "LOCKED"} or phantom_status in {"BLOCKED_WITH_REASON", "DOWN", "ERROR", "LOCKED"}:
