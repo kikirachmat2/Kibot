@@ -64,6 +64,8 @@ def build_recovery_reset_plan(bundle: Dict[str, Any] | None = None) -> Dict[str,
         "max_round_trips": int(bundle.get("max_round_trips", threshold) or threshold),
         "max_micro_probes": int(bundle.get("max_micro_probes", micro) or micro),
         "scale_up": False,
+        "allow_scale_up": False,
+        "allow_micro_probe": False,
         "daily_loss_breached": bool(governor.get("daily_loss_breached", False)),
         "fill_quality_status": str(fill_quality.get("status") or ""),
         "net_growth_status": str(net_growth.get("status") or ""),
@@ -74,4 +76,3 @@ def build_recovery_reset_plan(bundle: Dict[str, Any] | None = None) -> Dict[str,
     RESET_FILE.parent.mkdir(parents=True, exist_ok=True)
     RESET_FILE.write_text(json.dumps(payload, indent=2, ensure_ascii=False), encoding="utf-8")
     return payload
-

@@ -61,7 +61,10 @@ def build_no_trade_forensics() -> Dict[str, Any]:
         if isinstance(item, dict)
     ).lower()
     if canonical_state in {"LOCKED", "EMERGENCY"}:
-        classification = "BROKEN_WAIT"
+        if any(str(item.get("source") or "").lower() == "capital_governor" for item in blockers):
+            classification = "HEALTHY_WAIT_LOCKED_BY_RISK"
+        else:
+            classification = "BROKEN_WAIT"
     elif "sol_balance_below_trade_min" in str(dispatcher.get("reason") or "").lower() or "trade_min" in str(dispatcher.get("reason") or "").lower():
         classification = "CAPITAL_BOTTLENECK"
     elif allow_new_orders and not blockers:

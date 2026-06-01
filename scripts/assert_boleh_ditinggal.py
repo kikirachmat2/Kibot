@@ -76,7 +76,7 @@ def main() -> int:
         and str(runtime.get("status") or "") in {"READY", "LOCKED_BY_RISK"}
         and str(repo_safety.get("status") or "") in {"SAFE", "WARN_RUNTIME_STATE_COMMITTED"}
         and str(policy.get("status") or "") in {"KEEP", "TIGHTEN"}
-        and str(no_trade.get("classification") or "") == "HEALTHY_WAIT"
+        and str(no_trade.get("classification") or "") in {"HEALTHY_WAIT", "HEALTHY_WAIT_LOCKED_BY_RISK"}
         and not bool((recovery.get("policy") or {}).get("allow_scale_up", True))
     )
 
