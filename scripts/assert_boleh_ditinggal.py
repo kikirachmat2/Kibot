@@ -69,6 +69,14 @@ def main() -> int:
     no_trade = _read_json(STATE / "no_trade_forensics.json", {})
     recovery = _read_json(STATE / "recovery_reset_plan.json", {})
 
+    recovery_allow_scale_up = (
+        bool((recovery.get("policy") or {}).get("allow_scale_up", True))
+        if isinstance(recovery.get("policy"), dict)
+        else bool(recovery.get("allow_scale_up", True))
+    )
+    if "allow_scale_up" in recovery and isinstance(recovery.get("allow_scale_up"), bool):
+        recovery_allow_scale_up = bool(recovery.get("allow_scale_up"))
+
     ready = (
         str(live_truth.get("runtime_mode") or "") == "LIVE_ONLY"
         and str(target_freshness.get("status") or "") == "FRESH"
@@ -77,7 +85,7 @@ def main() -> int:
         and str(repo_safety.get("status") or "") in {"SAFE", "WARN_RUNTIME_STATE_COMMITTED"}
         and str(policy.get("status") or "") in {"KEEP", "TIGHTEN"}
         and str(no_trade.get("classification") or "") in {"HEALTHY_WAIT", "HEALTHY_WAIT_LOCKED_BY_RISK"}
-        and not bool((recovery.get("policy") or {}).get("allow_scale_up", True))
+        and not recovery_allow_scale_up
     )
 
     if issues or not ready:

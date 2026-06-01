@@ -51,6 +51,7 @@ def build_no_trade_forensics() -> Dict[str, Any]:
         or "WAIT"
     )
     canonical_state = str(canonical.get("canonical_risk_state") or "UNKNOWN")
+    live_truth_state = str(live_truth.get("risk_state") or "").upper()
     allow_new_orders = bool(canonical.get("allow_new_orders", False))
     blockers = canonical.get("canonical_blockers") if isinstance(canonical.get("canonical_blockers"), list) else []
     advisories = canonical.get("advisory_warnings") if isinstance(canonical.get("advisory_warnings"), list) else []
@@ -60,8 +61,13 @@ def build_no_trade_forensics() -> Dict[str, Any]:
         for item in blockers
         if isinstance(item, dict)
     ).lower()
-    if canonical_state in {"LOCKED", "EMERGENCY"}:
+    stale_ai_only = bool(blockers) and all(
+        str(item.get("source") or "").lower() == "ai_patrol" for item in blockers if isinstance(item, dict)
+    )
+    if canonical_state in {"LOCKED", "EMERGENCY"} or live_truth_state in {"LOCKED", "EMERGENCY"}:
         if any(str(item.get("source") or "").lower() == "capital_governor" for item in blockers):
+            classification = "HEALTHY_WAIT_LOCKED_BY_RISK"
+        elif stale_ai_only:
             classification = "HEALTHY_WAIT_LOCKED_BY_RISK"
         else:
             classification = "BROKEN_WAIT"
