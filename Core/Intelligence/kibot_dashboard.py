@@ -18,6 +18,7 @@ from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
 from Core.Support.ki_config import PROJECT_ROOT, STATE_DIR, KiConfig
+from Core.Support.growth_audit import audit_daily_controls, audit_fill_quality, audit_net_growth, audit_phantom_non_movement, audit_strategy_symbol_normalization, build_critical_operator_questions
 from Core.Support.money_movement_audit import ai_support_audit, candidate_pipeline_audit, load_state_bundle, money_movement_status, server_support_audit, strategy_edge_audit
 from Core.Support.risk_truth_reconciler import reconcile_risk_truth
 from Core.Treasury.accounting_truth import build_accounting_truth
@@ -1103,11 +1104,23 @@ def _build_summary() -> Dict[str, Any]:
         summary["strategy_edge_audit"] = strategy_edge_audit(bundle)
         summary["ai_support_audit"] = ai_support_audit(bundle)
         summary["server_support_audit"] = server_support_audit(bundle)
+        summary["net_growth_audit"] = audit_net_growth(bundle)
+        summary["fill_quality_audit"] = audit_fill_quality(bundle)
+        summary["phantom_non_movement_audit"] = audit_phantom_non_movement(bundle)
+        summary["strategy_symbol_normalization_audit"] = audit_strategy_symbol_normalization(bundle)
+        summary["daily_controls_audit"] = audit_daily_controls(bundle)
+        summary["critical_operator_questions"] = build_critical_operator_questions(bundle)
     except Exception:
         summary["candidate_pipeline_audit"] = {}
         summary["strategy_edge_audit"] = {}
         summary["ai_support_audit"] = {}
         summary["server_support_audit"] = {}
+        summary["net_growth_audit"] = {}
+        summary["fill_quality_audit"] = {}
+        summary["phantom_non_movement_audit"] = {}
+        summary["strategy_symbol_normalization_audit"] = {}
+        summary["daily_controls_audit"] = {}
+        summary["critical_operator_questions"] = {}
     summary["indodax_top_targets"] = _load_indodax_top_targets()
     summary["phantom_top_targets"] = _load_phantom_top_targets()
     summary["ai_decision_trace"] = _load_ai_decision_trace()
@@ -2074,6 +2087,28 @@ def _build_control_plane_payload() -> Dict[str, Any]:
             "data": summary_data.get("server_support_audit", {}),
             "status": summary_data.get("server_support_audit", {}).get("server_support_status", ""),
             "services_ok": bool(summary_data.get("server_support_audit", {}).get("services_ok", False)),
+        },
+        "net_growth": {
+            "data": summary_data.get("net_growth_audit", {}),
+            "status": str((summary_data.get("net_growth_audit", {}) or {}).get("status") or ""),
+            "recommendation": str((summary_data.get("net_growth_audit", {}) or {}).get("recommendation") or ""),
+        },
+        "fill_quality": {
+            "data": summary_data.get("fill_quality_audit", {}),
+            "status": str((summary_data.get("fill_quality_audit", {}) or {}).get("status") or ""),
+        },
+        "phantom_non_movement": {
+            "data": summary_data.get("phantom_non_movement_audit", {}),
+            "classification": str((summary_data.get("phantom_non_movement_audit", {}) or {}).get("classification") or ""),
+            "reason": str((summary_data.get("phantom_non_movement_audit", {}) or {}).get("reason") or ""),
+        },
+        "strategy_symbol_normalization": {
+            "data": summary_data.get("strategy_symbol_normalization_audit", {}),
+            "recommendation": str(((summary_data.get("strategy_symbol_normalization_audit", {}) or {}).get("eden", {}) or {}).get("recommendation") or ""),
+        },
+        "daily_controls": {
+            "data": summary_data.get("daily_controls_audit", {}),
+            "recommendation": str((summary_data.get("daily_controls_audit", {}) or {}).get("recommendation") or ""),
         },
     })
     merged_data.update({

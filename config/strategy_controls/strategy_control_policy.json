@@ -1,0 +1,13 @@
+{
+  "disable_negative_edge_pairs": true,
+  "ignore_unknown_source_scale_up": true,
+  "require_verified_source_for_scale_up": true,
+  "micro_probe_insufficient_data_pairs": true,
+  "micro_probe_max_round_trips_per_pair_per_day": 1,
+  "max_indodax_round_trips_per_day": 8,
+  "max_micro_probe_round_trips_per_day": 2,
+  "min_net_growth_to_scale_up_idr": 1000,
+  "flat_churn_action": "REDUCE_FREQUENCY",
+  "losing_action": "LOCK_NEW_ENTRIES",
+  "phantom_zero_fill_action": "TRACE_PIPELINE"
+}

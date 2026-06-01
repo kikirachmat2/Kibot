@@ -330,22 +330,25 @@ def ai_support_audit(bundle: Dict[str, Any]) -> Dict[str, Any]:
 
 def server_support_audit(bundle: Dict[str, Any]) -> Dict[str, Any]:
     telemetry = bundle.get("server_telemetry", {})
+    no_trade = bundle.get("no_trade_forensics", {}) or {}
     services_ok = False
     try:
         res = subprocess.run(["systemctl", "is-active", "kibot-master", "kibot-scanner", "kibot-executor", "kibot-dashboard", "kibot-live-truth", "kibot-workflow-supervisor"], capture_output=True, text=True, timeout=20, check=False)
         services_ok = "active" in (res.stdout or "")
     except Exception:
         services_ok = False
-    status = "OK" if services_ok and telemetry else "WARN"
-    if not telemetry:
+    backups_ok = bool((STATE_DIR / "backup").exists() or (STATE_DIR.parent / "backups").exists())
+    stale_ok = not bool(no_trade.get("ignored_stale_blockers"))
+    status = "OK" if services_ok and telemetry and backups_ok and stale_ok else "WARN"
+    if not telemetry or not services_ok:
         status = "FAIL"
     return {
         "updated_at": datetime.now(timezone.utc).isoformat(),
         "server_support_status": status,
         "services_ok": services_ok,
         "telemetry": telemetry,
-        "stale_guards": bool((bundle.get("no_trade_forensics", {}) or {}).get("ignored_stale_blockers")),
-        "backups": bool((STATE_DIR / "backup").exists()),
+        "stale_guards": stale_ok,
+        "backups": backups_ok,
         "watchdog": True,
         "errors": [],
     }
