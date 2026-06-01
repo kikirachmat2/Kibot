@@ -6,6 +6,7 @@ import os
 from pathlib import Path
 
 from Core.Support.ki_config import KiConfig
+from Core.Support.runtime_mode_guard import normalize_runtime_mode
 
 ROOT = Path(__file__).resolve().parent.parent
 STATE = ROOT / "state"
@@ -22,7 +23,7 @@ def _read(path: Path) -> dict:
 
 
 def main() -> None:
-    runtime_mode = (os.getenv("KIBOT_RUNTIME_MODE") or os.getenv("KIBOT_TRADING_MODE") or getattr(KiConfig, "TRADING_MODE", "")).upper()
+    runtime_mode = normalize_runtime_mode(os.getenv("KIBOT_RUNTIME_MODE") or os.getenv("KIBOT_TRADING_MODE") or getattr(KiConfig, "TRADING_MODE", ""))
     if runtime_mode != "LIVE_ONLY":
         raise SystemExit(f"FAIL:runtime_mode={runtime_mode}")
     if not (os.getenv("KIBOT_LIVE_OPPORTUNITY_EXPANSION", "").strip().lower() == "true" or bool(getattr(KiConfig, "LIVE_OPPORTUNITY_EXPANSION", False))):
