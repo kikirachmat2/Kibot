@@ -49,3 +49,7 @@ SERVER_SCANNER/
 Shared/
 SHARED_INTELLIGENCE/
 scratch/
+
+# Explicit runtime sample allowlist
+!state_samples/
+!state_samples/*.example.json

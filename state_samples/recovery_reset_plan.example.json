@@ -1,18 +1,18 @@
 {
-  "updated_at": "2026-06-02T01:05:27.846033+07:00",
+  "updated_at": "2026-06-02T01:35:02.876432+07:00",
   "current_state": "CONSERVATIVE_RECOVERY",
   "next_reset_at": "2026-06-03T00:00:00+07:00",
   "timezone": "Asia/Jakarta",
   "current_day": "2026-06-02",
   "reset_hour": 0,
-  "seconds_until_reset": 82472,
+  "seconds_until_reset": 80697,
   "after_reset_mode": "CONSERVATIVE_RECOVERY",
   "max_round_trips": 3,
   "max_micro_probes": 1,
   "scale_up": false,
   "daily_loss_breached": false,
-  "fill_quality_status": "NO_CLOSED_ROUND_TRIPS",
-  "net_growth_status": "GROWING",
+  "fill_quality_status": "ACCOUNTING_REPAIR_REQUIRED",
+  "net_growth_status": "NO_CLOSED_ROUND_TRIPS",
   "policy": {
     "enabled": true,
     "activate_when": {
