@@ -72,6 +72,7 @@ def load_state_bundle(state_dir: Path | None = None) -> Dict[str, Any]:
     return {
         "live_truth": _read_json(state_dir / "live_truth.json", {}),
         "no_trade_forensics": _read_json(state_dir / "no_trade_forensics.json", {}),
+        "recovery_reset_plan": _read_json(state_dir / "recovery_reset_plan.json", {}),
         "opportunity_funnel": _read_json(state_dir / "opportunity_funnel.json", {}),
         "candidate_decisions": _read_jsonl(state_dir / "candidate_decisions.jsonl"),
         "orders": _collect_json_files(state_dir / "orders"),
