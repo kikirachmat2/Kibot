@@ -89,6 +89,12 @@ class KiConfig:
     _RAW_TRADING_MODE = os.getenv("KIBOT_RUNTIME_MODE", os.getenv("KIBOT_TRADING_MODE", LIVE_ONLY)).strip().lower()
     TRADING_MODE = normalize_runtime_mode(_RAW_TRADING_MODE)
     LIVE_TRADING_ENABLED = _env_flag("KIBOT_LIVE_TRADING_ENABLED", "true" if TRADING_MODE == LIVE_ONLY else "false") or TRADING_MODE == LIVE_ONLY
+    LIVE_OPPORTUNITY_EXPANSION = _env_flag("KIBOT_LIVE_OPPORTUNITY_EXPANSION", "true" if TRADING_MODE == LIVE_ONLY else "false")
+    FORCE_DAILY_PROFIT = _env_flag("KIBOT_FORCE_DAILY_PROFIT", "false")
+    DAILY_PROFIT_DEADLINE = _env_flag("KIBOT_DAILY_PROFIT_DEADLINE", "false")
+    MAX_DAILY_LOSS_IDR = float(os.getenv("KIBOT_MAX_DAILY_LOSS_IDR", "0") or 0)
+    MAX_CONSECUTIVE_LOSSES = int(os.getenv("KIBOT_MAX_CONSECUTIVE_LOSSES", "1") or 1)
+    MAX_TRADES_PER_DAY = int(os.getenv("KIBOT_MAX_TRADES_PER_DAY", "4") or 4)
     
     # --- LIVE CANARY GATE & CONTROLS ---
     CANARY_LIVE_ENABLED = False

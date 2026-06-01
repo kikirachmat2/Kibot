@@ -26,6 +26,7 @@ from Core.risk_gate import RiskGate
 from Core.Support.ki_vault import load_sovereign_env
 from Core.sovereign_state import load_strategy, check_urgency
 from Core.Decision.deterministic_decision_gate import evaluate_live_trade
+from Core.Decision.live_opportunity_tier import classify_live_opportunity
 from Core.Treasury.live_truth_manager import load_live_truth
 from Core.Intelligence.pair_quarantine import is_quarantined
 
@@ -1785,21 +1786,78 @@ class IndodaxExecutor:
             gate_result = evaluate_live_trade(gate_candidate, runtime_state=runtime_truth)
             signal["decision_gate"] = gate_result.to_dict()
             if not gate_result.approved:
-                logger.warning(f"🛡️ REJECTED (DecisionGate): {gate_result.reason} for {symbol}")
-                _emit_trade_history("ENTRY_REJECTED", {
-                    "source": "indodax_executor",
-                    "venue": "indodax",
-                    "symbol": symbol,
-                    "pair": pair,
-                    "side": side.upper(),
-                    "status": "REJECTED",
-                    "reason": gate_result.reason,
-                    "price_idr": price,
-                    "amount_idr": budget,
-                    "trade_profile": "LEARNING_PROBE" if learning_probe else "STANDARD",
-                    "lifecycle": signal.get("lifecycle") or signal.get("pump_stage"),
-                })
-                return
+                allow_micro_probe = (
+                    os.getenv("KIBOT_LIVE_OPPORTUNITY_EXPANSION", "false").strip().lower() == "true"
+                    and gate_result.reason in {"EV_NOT_APPROVED", "INSUFFICIENT_HISTORY"}
+                )
+                if allow_micro_probe:
+                    tier = classify_live_opportunity(
+                        {
+                            **gate_candidate,
+                            "size_idr": budget,
+                            "min_trade_idr": float(os.getenv("KIBOT_MICRO_PROBE_MIN_SIZE_IDR", "10000") or 10000),
+                            "dust_risk": bool(signal.get("dust_risk", False)),
+                        },
+                        ev=gate_candidate.get("ev_analysis") or {},
+                        sim=gate_candidate.get("pretrade_simulation") or {},
+                        risk={
+                            "daily_loss_breached": bool(runtime_truth.get("daily_loss_cap_breached"))
+                            or bool(runtime_truth.get("hard_stop")),
+                        },
+                        venue_state=runtime_truth,
+                        config={
+                            "micro_probe_enabled": True,
+                            "micro_probe_remaining_today": int(signal.get("micro_probe_remaining_today") or 1),
+                            "micro_probe_max_size_idr": float(os.getenv("KIBOT_MICRO_PROBE_MAX_SIZE_IDR", "15000") or 15000),
+                            "micro_probe_min_size_idr": float(os.getenv("KIBOT_MICRO_PROBE_MIN_SIZE_IDR", "10000") or 10000),
+                            "micro_probe_max_spread_pct": float(os.getenv("KIBOT_MICRO_PROBE_MAX_SPREAD_PCT", "0.6") or 0.6),
+                            "micro_probe_max_slippage_pct": float(os.getenv("KIBOT_MICRO_PROBE_MAX_SLIPPAGE_PCT", "0.8") or 0.8),
+                            "a_plus_min_ev_sample_size": int(os.getenv("KIBOT_A_PLUS_MIN_EV_SAMPLE_SIZE", "20") or 20),
+                            "a_plus_min_net_edge_pct": float(os.getenv("KIBOT_A_PLUS_MIN_NET_EDGE_PCT", "1.2") or 1.2),
+                            "max_spread_pct": float(indo_strat.get("max_spread_pct", 1.0) or 1.0),
+                            "max_slippage_pct": float(os.getenv("KIBOT_MAX_SLIPPAGE_PCT", "1.2") or 1.2),
+                            "min_trade_idr": float(os.getenv("KIBOT_MIN_TRADE_IDR", "10000") or 10000),
+                            "max_trade_idr": float(os.getenv("KIBOT_MICRO_PROBE_MAX_SIZE_IDR", "15000") or 15000),
+                        },
+                    )
+                    if tier.approved:
+                        signal["live_opportunity_tier"] = tier.to_dict()
+                        budget = float(tier.size_idr)
+                        signal["budget_idr"] = budget
+                        signal["trade_label"] = tier.label
+                        logger.info("🔬 LIVE OPPORTUNITY TIER %s approved for %s at Rp%.0f", tier.tier, symbol, budget)
+                    else:
+                        logger.warning(f"🛡️ REJECTED (DecisionGate): {gate_result.reason} for {symbol}")
+                        _emit_trade_history("ENTRY_REJECTED", {
+                            "source": "indodax_executor",
+                            "venue": "indodax",
+                            "symbol": symbol,
+                            "pair": pair,
+                            "side": side.upper(),
+                            "status": "REJECTED",
+                            "reason": gate_result.reason,
+                            "price_idr": price,
+                            "amount_idr": budget,
+                            "trade_profile": "LEARNING_PROBE" if learning_probe else "STANDARD",
+                            "lifecycle": signal.get("lifecycle") or signal.get("pump_stage"),
+                        })
+                        return
+                else:
+                    logger.warning(f"🛡️ REJECTED (DecisionGate): {gate_result.reason} for {symbol}")
+                    _emit_trade_history("ENTRY_REJECTED", {
+                        "source": "indodax_executor",
+                        "venue": "indodax",
+                        "symbol": symbol,
+                        "pair": pair,
+                        "side": side.upper(),
+                        "status": "REJECTED",
+                        "reason": gate_result.reason,
+                        "price_idr": price,
+                        "amount_idr": budget,
+                        "trade_profile": "LEARNING_PROBE" if learning_probe else "STANDARD",
+                        "lifecycle": signal.get("lifecycle") or signal.get("pump_stage"),
+                    })
+                    return
 
             # Simulate the full buy-then-sell lifecycle against the live
             # orderbook before spending real money. This blocks the exact

@@ -1,0 +1,28 @@
+{
+  "mode": "LIVE_ONLY",
+  "indodax": {
+    "profile": "INDODAX_LIQUID_MOMENTUM_ACTIVE",
+    "max_spread_pct": 0.8,
+    "min_trade_idr": 10000,
+    "allow_micro_probe": true,
+    "preferred_universe": ["BTC/IDR", "ETH/IDR", "SOL/IDR", "XRP/IDR", "BNB/IDR"],
+    "reject_low_exit_depth": true,
+    "reject_dust_risk": true
+  },
+  "phantom": {
+    "profile": "PHANTOM_ROUTE_SCOPED_ACTIVE",
+    "require_jupiter_quote": true,
+    "require_exit_quote": true,
+    "max_price_impact_pct": 1.0,
+    "max_slippage_bps": 100,
+    "allow_micro_probe": true,
+    "max_position_sol": 0.05
+  },
+  "daily": {
+    "max_daily_loss_idr": 2500,
+    "max_consecutive_losses": 1,
+    "max_trades_per_day": 4,
+    "green_day_protection": true,
+    "profit_giveback_limit_pct": 60
+  }
+}

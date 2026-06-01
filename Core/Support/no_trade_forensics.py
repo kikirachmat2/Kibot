@@ -82,6 +82,16 @@ def build_no_trade_forensics() -> Dict[str, Any]:
         "updated_at": datetime.now(timezone.utc).isoformat(),
         "classification": classification,
         "canonical_risk_state": canonical_state,
+        "movement_status": (
+            "LOCKED"
+            if canonical_state in {"LOCKED", "EMERGENCY"}
+            else ("MICRO_PROBE_ALLOWED" if any("micro" in str(item.get("reason") or "").lower() for item in advisories if isinstance(item, dict)) else ("ACTIVE" if allow_new_orders else "WAITING_FOR_A_PLUS"))
+        ),
+        "movement_reason": (
+            canonical.get("reason")
+            or no_trade_reason
+            or "movement determined by canonical risk truth"
+        ),
         "why_wait": no_trade_reason,
         "canonical_blockers": blockers,
         "advisory_warnings": advisories,
@@ -101,6 +111,13 @@ def build_no_trade_forensics() -> Dict[str, Any]:
             "indodax": len(target_boards.get("indodax", {}).get("top_targets", []) if isinstance(target_boards.get("indodax"), dict) else []),
             "phantom": len(target_boards.get("phantom", {}).get("top_targets", []) if isinstance(target_boards.get("phantom"), dict) else []),
         },
+        "micro_probe": {
+            "enabled": bool(_read_json("capital_governor.json", {}).get("micro_probe_enabled", False) or False),
+            "remaining_today": int(_read_json("capital_governor.json", {}).get("micro_probe_remaining_today", 0) or 0),
+            "last_probe": _read_json("capital_governor.json", {}).get("last_micro_probe", None),
+            "last_probe_result": _read_json("capital_governor.json", {}).get("last_micro_probe_result", None),
+        },
+        "trade_tiers_24h": _read_json("trade_tiers_24h.json", {"a_plus_seen": 0, "micro_probe_seen": 0, "micro_probe_approved": 0, "rejected": 0}),
         "next_action": str(workflow.get("current_best_action") or "WAIT"),
         "what_to_fix": "canonical risk truth reconciled; inspect only if canonical_blockers non-empty or stale state detected",
     }

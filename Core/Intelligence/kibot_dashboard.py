@@ -2026,6 +2026,8 @@ def _build_control_plane_payload() -> Dict[str, Any]:
             "data": summary_data.get("no_trade_forensics", {}),
             "age_s": _file_age_s(STATE / "no_trade_forensics.json"),
             "fresh": _file_age_s(STATE / "no_trade_forensics.json") >= 0 and _file_age_s(STATE / "no_trade_forensics.json") < 45,
+            "movement_status": str((summary_data.get("no_trade_forensics", {}) or {}).get("movement_status") or ""),
+            "movement_reason": str((summary_data.get("no_trade_forensics", {}) or {}).get("movement_reason") or ""),
         },
     })
     merged_data.update({
