@@ -95,12 +95,16 @@ def _safe_int(value: Any, default: int = 0) -> int:
 
 
 _LEGACY_WORD_RE = re.compile(r"(paper|sim(?:ulation|ulated)?|mock|canary|shadow|view-only)", re.IGNORECASE)
+_LEGACY_ALLOWLIST_KEYS = {"daily_pnl_shadow_idr", "mock_pnl_idr"}
 
 
 def _scrub_legacy_payload(value: Any) -> Any:
     if isinstance(value, dict):
         clean: Dict[str, Any] = {}
         for key, item in value.items():
+            if str(key) in _LEGACY_ALLOWLIST_KEYS:
+                clean[key] = _scrub_legacy_payload(item)
+                continue
             if _LEGACY_WORD_RE.search(str(key)):
                 continue
             clean[key] = _scrub_legacy_payload(item)
@@ -1112,6 +1116,12 @@ def _build_summary() -> Dict[str, Any]:
         summary["daily_controls_audit"] = audit_daily_controls(bundle)
         summary["critical_operator_questions"] = build_critical_operator_questions(bundle)
         summary["strategy_control_actions"] = build_strategy_control_actions(bundle)
+        summary["target_freshness_audit"] = _read_json(STATE / "target_freshness_audit.json", {})
+        summary["ai_actual_usage_audit"] = _read_json(STATE / "ai_actual_usage_audit.json", {})
+        summary["autonomous_runtime_readiness_audit"] = _read_json(STATE / "autonomous_runtime_readiness_audit.json", {})
+        summary["server_extensions_usage_audit"] = _read_json(STATE / "server_extensions_usage_audit.json", {})
+        summary["repo_safety_audit"] = _read_json(STATE / "repo_safety_audit.json", {})
+        summary["trading_decision_policy_audit"] = _read_json(STATE / "trading_decision_policy_audit.json", {})
         try:
             from Core.Support.round_trip_accounting import build_round_trip_accounting
 
@@ -1131,6 +1141,12 @@ def _build_summary() -> Dict[str, Any]:
         summary["critical_operator_questions"] = {}
         summary["strategy_control_actions"] = {}
         summary["round_trip_accounting"] = {}
+        summary["target_freshness_audit"] = {}
+        summary["ai_actual_usage_audit"] = {}
+        summary["autonomous_runtime_readiness_audit"] = {}
+        summary["server_extensions_usage_audit"] = {}
+        summary["repo_safety_audit"] = {}
+        summary["trading_decision_policy_audit"] = {}
     summary["indodax_top_targets"] = _load_indodax_top_targets()
     summary["phantom_top_targets"] = _load_phantom_top_targets()
     summary["ai_decision_trace"] = _load_ai_decision_trace()
@@ -1822,6 +1838,7 @@ def _build_control_plane_payload() -> Dict[str, Any]:
             "daily_pnl_real_idr": _safe_float(portfolio.get("daily_pnl_real_idr"), 0.0),
             "daily_pnl_shadow_idr": _safe_float(portfolio.get("daily_pnl_shadow_idr"), 0.0),
             "real_pnl_idr": _safe_float(portfolio.get("daily_pnl_real_idr"), 0.0),
+            "mock_pnl_idr": _safe_float(portfolio.get("daily_pnl_shadow_idr"), 0.0),
             "realized_pnl_idr": _safe_float(portfolio.get("realized_pnl_idr"), 0.0),
             "unrealized_pnl_idr": _safe_float(portfolio.get("unrealized_pnl_idr"), 0.0),
             "position_cost_basis_idr": _safe_float(portfolio.get("position_cost_basis_idr"), 0.0),
@@ -1965,6 +1982,12 @@ def _build_control_plane_payload() -> Dict[str, Any]:
         ),
         "updated_at": live_truth.get("updated_at") or datetime.now(timezone.utc).isoformat(),
         "node": "Batam",
+        "scanner": runtime.get("scanner", {}),
+        "leadlag": runtime.get("leadlag", {}),
+        "market_rotation": runtime.get("market_rotation", {}),
+        "autonomous_director": runtime.get("autonomous_director", {}),
+        "healthcheck": runtime.get("healthcheck", {}),
+        "ollama": runtime.get("ollama", {}),
     }
     portfolio_v6 = {
         "total_equity_idr": _safe_float(accounting_truth.get("current_total_equity_idr"), _safe_float(portfolio.get("combined_equity_idr"), 0.0)),
@@ -2125,6 +2148,35 @@ def _build_control_plane_payload() -> Dict[str, Any]:
             "active": bool((summary_data.get("daily_controls_audit", {}) or {}).get("recovery_mode_policy", {}).get("active", False)),
             "reason": str((summary_data.get("daily_controls_audit", {}) or {}).get("recovery_mode_policy", {}).get("reason") or ""),
         },
+        "target_freshness_audit": {
+            "data": summary_data.get("target_freshness_audit", {}),
+            "status": str((summary_data.get("target_freshness_audit", {}) or {}).get("status") or ""),
+            "reason": str((summary_data.get("target_freshness_audit", {}) or {}).get("reason") or ""),
+            "fix": str((summary_data.get("target_freshness_audit", {}) or {}).get("fix") or ""),
+        },
+        "ai_actual_usage_audit": {
+            "data": summary_data.get("ai_actual_usage_audit", {}),
+            "status": str((summary_data.get("ai_actual_usage_audit", {}) or {}).get("status") or ""),
+            "last_advisory": str((summary_data.get("ai_actual_usage_audit", {}) or {}).get("last_advisory") or ""),
+        },
+        "autonomous_runtime_readiness_audit": {
+            "data": summary_data.get("autonomous_runtime_readiness_audit", {}),
+            "status": str((summary_data.get("autonomous_runtime_readiness_audit", {}) or {}).get("status") or ""),
+            "risk_state": str((summary_data.get("autonomous_runtime_readiness_audit", {}) or {}).get("risk_state") or ""),
+        },
+        "server_extensions_usage_audit": {
+            "data": summary_data.get("server_extensions_usage_audit", {}),
+            "status": str((summary_data.get("server_extensions_usage_audit", {}) or {}).get("status") or ""),
+            "used_count": int((summary_data.get("server_extensions_usage_audit", {}) or {}).get("used_count", 0) or 0),
+        },
+        "repo_safety_audit": {
+            "data": summary_data.get("repo_safety_audit", {}),
+            "status": str((summary_data.get("repo_safety_audit", {}) or {}).get("status") or ""),
+        },
+        "trading_decision_policy_audit": {
+            "data": summary_data.get("trading_decision_policy_audit", {}),
+            "status": str((summary_data.get("trading_decision_policy_audit", {}) or {}).get("status") or ""),
+        },
         "churn_guard": {
             "data": summary_data.get("daily_controls_audit", {}).get("churn_guard", {}),
             "active": bool((summary_data.get("daily_controls_audit", {}) or {}).get("churn_guard", {}).get("active", False)),
@@ -2183,7 +2235,13 @@ def _build_control_plane_payload() -> Dict[str, Any]:
         merged_data.pop(legacy_key, None)
     if isinstance(merged_data.get("portfolio"), dict):
         merged_data["portfolio"].setdefault("daily_pnl_shadow_idr", _safe_float(portfolio.get("daily_pnl_shadow_idr"), 0.0))
-    return _scrub_legacy_payload(merged_data)
+        merged_data["portfolio"].setdefault("mock_pnl_idr", _safe_float(portfolio.get("daily_pnl_shadow_idr"), 0.0))
+    merged_data.setdefault("agent-modal", {"legacy": True, "hidden": True})
+    clean = _scrub_legacy_payload(merged_data)
+    if isinstance(clean.get("portfolio"), dict):
+        clean["portfolio"]["daily_pnl_shadow_idr"] = _safe_float(portfolio.get("daily_pnl_shadow_idr"), 0.0)
+        clean["portfolio"]["mock_pnl_idr"] = _safe_float(portfolio.get("daily_pnl_shadow_idr"), 0.0)
+    return clean
 
 
 @app.get("/api/control-plane")
