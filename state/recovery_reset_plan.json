@@ -1,0 +1,10 @@
+{
+  "current_state": "LOCKED_DAILY_LOSS",
+  "next_reset_at": "",
+  "after_reset_mode": "CONSERVATIVE_RECOVERY",
+  "max_round_trips": 3,
+  "max_micro_probes": 1,
+  "scale_up": false,
+  "allowed_actions": ["scan", "forensics", "exit_management", "safe_micro_probe_after_reset"],
+  "blocked_actions": ["scale_up", "unknown_source_scale_up", "negative_edge_pairs", "manual_force_buy"]
+}
