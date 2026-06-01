@@ -16,6 +16,17 @@ def main() -> None:
     phantom_tiered = [row for row in phantom_candidates if row.get("tier") or row.get("trade_tier") or row.get("label")]
     phantom_approved = [row for row in phantom_candidates if bool(row.get("approved")) or str(row.get("tier") or "").upper() in {"A_PLUS", "MICRO_PROBE"}]
     executor_state = bundle.get("phantom_live_brain", {}) if isinstance(bundle.get("phantom_live_brain"), dict) else {}
+    break_stage = (
+        "TARGET_TO_CANDIDATE"
+        if not phantom_candidates else
+        "CANDIDATE_TO_TIER"
+        if not phantom_tiered else
+        "RISK_LOCK_BEFORE_EXECUTOR"
+        if str(bundle.get("no_trade_forensics", {}).get("canonical_risk_state") or "").upper() in {"LOCKED", "EMERGENCY"} else
+        "EXECUTOR_TO_SUBMIT"
+        if not phantom_approved else
+        "NONE"
+    )
     trace = {
         "updated_at": datetime.now(timezone.utc).isoformat(),
         "scanner_targets_count": len((bundle.get("phantom_targets", {}) or {}).get("top_targets") or []),
@@ -27,28 +38,16 @@ def main() -> None:
         "quote_checked": 1 if bool(phantom.get("quote_ok")) else 0,
         "swap_build_checked": 1 if bool(phantom.get("swap_build_ok")) else 0,
         "submit_attempted": 1 if bool(phantom_approved) and bool(phantom.get("quote_ok")) and bool(phantom.get("swap_build_ok")) else 0,
-        "break_stage": (
-            "TARGET_TO_CANDIDATE"
-            if not phantom_candidates else
-            "CANDIDATE_TO_TIER"
-            if not phantom_tiered else
-            "TIER_TO_EXECUTOR"
-            if not phantom_approved else
-            "EXECUTOR_TO_QUOTE"
-            if not phantom.get("quote_ok") else
-            "EXECUTOR_TO_SWAP_BUILD"
-            if not phantom.get("swap_build_ok") else
-            "EXECUTOR_TO_SUBMIT"
-            if not executor_state else
-            "NONE"
-        ),
+        "break_stage": break_stage,
         "fix_recommendation": (
             "wire phantom targets into candidate writer"
-            if not phantom_candidates else
+            if break_stage == "TARGET_TO_CANDIDATE" else
             "wire candidate writer into tier classifier"
-            if not phantom_tiered else
+            if break_stage == "CANDIDATE_TO_TIER" else
+            "risk lock is correct; keep submit blocked until daily reset"
+            if break_stage == "RISK_LOCK_BEFORE_EXECUTOR" else
             "wire tier classifier into executor submit path"
-            if not phantom_approved else
+            if break_stage == "EXECUTOR_TO_SUBMIT" else
             "fix quote / swap build / submit path"
         ),
         "submit_blocked_reason": phantom.get("reason") or "",

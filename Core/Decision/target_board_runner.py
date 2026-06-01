@@ -5,6 +5,7 @@ import json
 import logging
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Any, Dict, List
 
 from Core.Decision.indodax_target_board import build_indodax_target_board
 from Core.Decision.phantom_target_board import build_phantom_target_board
@@ -26,6 +27,59 @@ def _read_json(path: Path, default):
     except Exception:
         pass
     return default
+
+
+def _normalize_phantom_candidate(target: Dict[str, Any]) -> Dict[str, Any]:
+    now = datetime.now(timezone.utc).isoformat()
+    return {
+        "updated_at": now,
+        "timestamp_wib": now,
+        "event_type": "CANDIDATE_STAGED",
+        "trade_event_type": "CANDIDATE_STAGED",
+        "venue": "phantom",
+        "route": str(target.get("route") or target.get("route_type") or target.get("chain") or "phantom").lower(),
+        "symbol": str(target.get("symbol") or target.get("asset") or target.get("market") or "").upper(),
+        "pair": str(target.get("symbol") or target.get("asset") or target.get("market") or "").upper(),
+        "tier": str(target.get("tier") or target.get("label") or "WATCH"),
+        "status": "STAGED",
+        "reason": str(target.get("reason") or target.get("recommended_action") or "staged_from_phantom_targets"),
+        "approved": bool(str(target.get("recommended_action") or "").upper() == "ENTER"),
+        "confidence": float(target.get("confidence") or 0.0),
+        "expected_net_edge_pct": float(target.get("expected_net_edge_pct") or 0.0),
+        "historical_sample_size": int(float(target.get("historical_sample_size") or 0)),
+        "source_proof_ok": bool(target.get("source_proof_ok", False)),
+        "min_sellable_pass": bool(target.get("exit_route_ok", False)),
+        "partial_tp_feasible": bool(target.get("exit_route_ok", False)),
+        "exit_depth_pass": bool(target.get("exit_route_ok", False)),
+        "simulation_verdict": "PASS" if bool(target.get("exit_route_ok", False)) and bool(target.get("source_proof_ok", False)) else "REJECT",
+        "max_spread_pct": float(target.get("max_spread_pct") or 1.0),
+        "max_slippage_pct": float(target.get("max_slippage_pct") or 1.2),
+        "pair_quarantine": "",
+        "exit_plan_valid": bool(target.get("exit_route_ok", False)),
+        "micro_probe_requested": True,
+        "scale_up_requested": False,
+    }
+
+
+def _write_candidate_decisions(phantom: dict) -> None:
+    candidate_path = STATE_DIR / "candidate_decisions.jsonl"
+    existing: List[Dict[str, Any]] = []
+    if candidate_path.exists():
+        for line in candidate_path.read_text(encoding="utf-8").splitlines():
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                payload = json.loads(line)
+                if isinstance(payload, dict):
+                    existing.append(payload)
+            except Exception:
+                continue
+    staged = [row for row in existing if str(row.get("venue") or "").lower() != "phantom"]
+    for target in phantom.get("top_targets", []) or []:
+        if isinstance(target, dict):
+            staged.append(_normalize_phantom_candidate(target))
+    candidate_path.write_text("\n".join(json.dumps(row, ensure_ascii=False) for row in staged) + ("\n" if staged else ""), encoding="utf-8")
 
 
 def _venue_engine_state(governor: dict, venue_key: str, source_status: str, source_reason: str) -> dict:
@@ -73,6 +127,7 @@ async def run_forever() -> None:
             ScannerExecutorContract().write_contract_state()
             write_phantom_capital_mover({})
             write_phantom_network_maximizer({})
+            _write_candidate_decisions(ph)
             governor = _read_json(STATE_DIR / "capital_governor.json", {})
             phantom_brain = _read_json(STATE_DIR / "phantom_live_brain.json", {})
             indodax_state = _venue_engine_state(

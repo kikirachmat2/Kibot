@@ -305,27 +305,42 @@ def audit_fill_quality(bundle: Dict[str, Any] | None = None) -> Dict[str, Any]:
     trade_rows = _in_window(_bundle_trade_rows(bundle))
     fill_rows = _fill_rows(trade_rows)
     round_trip_payload = build_round_trip_accounting(bundle)
+    canonical_closed = round_trip_payload.get("closed_round_trips", []) if isinstance(round_trip_payload, dict) else []
+    canonical_open = round_trip_payload.get("open_round_trips", []) if isinstance(round_trip_payload, dict) else []
+    canonical_stats = round_trip_payload.get("stats", {}) if isinstance(round_trip_payload, dict) else {}
     pair_counts = Counter(_normalize_pair(row.get("pair") or row.get("symbol")) for row in fill_rows)
     duplicates = sum(count - 1 for count in pair_counts.values() if count > 1)
     micro_probe = sum(1 for row in fill_rows if "MICRO" in str(row.get("tier") or row.get("label") or row.get("reason") or "").upper())
     a_plus = sum(1 for row in fill_rows if "A_PLUS" in str(row.get("tier") or row.get("label") or "").upper())
-    closed_round_trips = len(round_trip_payload.get("closed_round_trips", []) if isinstance(round_trip_payload, dict) else [])
-    open_round_trips = len(round_trip_payload.get("open_round_trips", []) if isinstance(round_trip_payload, dict) else [])
+    closed_round_trips = len(canonical_closed)
+    open_round_trips = len(canonical_open)
     avg_size = sum(_as_float(row.get("amount_idr") or row.get("budget_idr") or row.get("notional_idr"), 0.0) for row in fill_rows) / max(len(fill_rows), 1)
     avg_hold = 0.0
     fee_drag = sum(_as_float(row.get("fee_idr"), 0.0) for row in fill_rows)
     fee_drag_pct = (fee_drag / max(sum(_as_float(row.get("gross_realized_pnl_idr"), 0.0) for row in fill_rows) + fee_drag, 1.0)) * 100.0
     status = "CLEAN"
+    source_quality = "RAW_FILL_ONLY"
+    warning = ""
     if duplicates > 0 and len(fill_rows) > 0:
         status = "DUPLICATE_COUNTING"
     if micro_probe > len(fill_rows) * 0.5:
         status = "CHURN"
-    if closed_round_trips == 0:
-        status = "NO_CLOSED_ROUND_TRIPS" if len(fill_rows) > 0 else "INCOMPLETE_ACCOUNTING"
+    if closed_round_trips > 0:
+        source_quality = "CANONICAL_ROUND_TRIP"
+    if closed_round_trips > 0 and len(fill_rows) == 0:
+        status = "CANONICAL_ROUND_TRIP_AVAILABLE"
+        warning = "raw_fill_source_missing"
+        source_quality = "CANONICAL_ROUND_TRIP"
+    elif closed_round_trips == 0:
+        if len(fill_rows) > 0:
+            status = "NO_CLOSED_ROUND_TRIPS"
+        else:
+            status = "ACCOUNTING_REPAIR_REQUIRED"
+            source_quality = "INCOMPLETE"
     payload = {
         "updated_at": datetime.now(timezone.utc).isoformat(),
         "filled_count_24h_reported": len(fill_rows),
-        "real_fills_detected": len(fill_rows),
+        "real_fills_detected": len(fill_rows) if len(fill_rows) > 0 else closed_round_trips,
         "closed_round_trips": closed_round_trips,
         "open_round_trips": open_round_trips,
         "entries": sum(1 for row in fill_rows if str(row.get("side") or "").upper() == "BUY"),
@@ -339,9 +354,12 @@ def audit_fill_quality(bundle: Dict[str, Any] | None = None) -> Dict[str, Any]:
         "avg_net_pnl_idr": round(sum(_as_float(row.get("net_realized_pnl_idr"), 0.0) for row in fill_rows) / max(len(fill_rows), 1), 2),
         "fee_drag_pct": round(fee_drag_pct, 2),
         "status": status,
+        "source_quality": source_quality,
+        "warning": warning,
         "round_trip_accounting": round_trip_payload,
         "recovery_mode_policy": build_recovery_mode_policy(bundle),
         "churn_guard": evaluate_churn_guard(bundle),
+        "canonical_stats": canonical_stats,
     }
     (_ensure_state_dir() / "fill_quality_audit.json").write_text(json.dumps(payload, indent=2, ensure_ascii=False), encoding="utf-8")
     return payload

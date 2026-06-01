@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from typing import Any, Dict, List
 
 from Core.Support.churn_guard import evaluate_churn_guard
+from Core.Support.strategy_control_actions import build_strategy_control_actions
 
 
 @dataclass
@@ -84,6 +85,11 @@ def classify_live_opportunity(candidate: Dict[str, Any], ev: Dict[str, Any], sim
     micro_slippage = _float(config.get("micro_probe_max_slippage_pct"), 0.8)
     churn = evaluate_churn_guard({"net_growth_audit": config.get("net_growth_audit") or {}, "capital_governor": risk})
     flat_churn = str(churn.get("net_growth_status") or "").upper() == "FLAT_CHURN"
+    control_actions = build_strategy_control_actions({"strategy_edge_audit": config.get("strategy_edge_audit") or {}})
+    disabled_pairs = {str(p).upper() for p in control_actions.get("disabled_pairs", [])}
+    do_not_scale_pairs = {str(p).upper() for p in control_actions.get("do_not_scale_pairs", [])}
+    micro_probe_watchlist = {str(p).upper() for p in control_actions.get("micro_probe_pairs", [])}
+    pair = str(candidate.get("pair") or candidate.get("symbol") or "").upper()
 
     if not daily_loss_ok:
         constraints.append("daily_loss_breached")
@@ -97,6 +103,13 @@ def classify_live_opportunity(candidate: Dict[str, Any], ev: Dict[str, Any], sim
     if dust_risk:
         constraints.append("dust_risk")
         return LiveOpportunityTierResult("REJECT", False, "DUST_RISK", 0.0, constraints, "REJECT")
+    if pair in disabled_pairs:
+        constraints.append("PAIR_DISABLED_NEGATIVE_EDGE")
+        return LiveOpportunityTierResult("REJECT", False, "PAIR_DISABLED_NEGATIVE_EDGE", 0.0, constraints, "REJECT")
+    if pair in do_not_scale_pairs and expected_net_edge > 0 and sample_size < a_plus_min_sample:
+        constraints.append("UNKNOWN_SOURCE_SCALEUP_IGNORED")
+    if pair in micro_probe_watchlist and micro_enabled and micro_per_day_left <= 0:
+        constraints.append("MICRO_PROBE_WATCHLIST_LIMIT")
     if not sim_pass:
         constraints.append("simulation_failed")
         return LiveOpportunityTierResult("REJECT", False, "PRETRADE_SIM_FAILED", 0.0, constraints, "REJECT")
