@@ -32,6 +32,10 @@ def _safe_float(value: Any, default: float = 0.0) -> float:
 
 def _classify_wait(payload: Dict[str, Any], workflow: Dict[str, Any]) -> str:
     blockers = payload.get("blockers") if isinstance(payload.get("blockers"), list) else []
+    dispatcher_reason = str(workflow.get("dispatcher", {}).get("reason") or "").lower() if isinstance(workflow.get("dispatcher"), dict) else ""
+    allow_reason = str(workflow.get("money_truth", {}).get("allow_new_orders_reason") or "").lower() if isinstance(workflow.get("money_truth"), dict) else ""
+    if "sol_balance_below_trade_min" in dispatcher_reason or "trade_min" in dispatcher_reason or "sol_balance_below_trade_min" in allow_reason:
+        return "CAPITAL_BOTTLENECK"
     if blockers:
         reasons = " ".join(
             f"{str(item.get('source') or '')} {str(item.get('reason') or '')}"
