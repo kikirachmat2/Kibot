@@ -8,6 +8,7 @@ from typing import Any, Dict, Iterable, List, Tuple
 
 from Core.Support.ki_config import STATE_DIR
 from Core.Support.money_movement_audit import _as_float, _parse_dt, load_state_bundle
+from Core.Support.round_trip_accounting import build_round_trip_accounting
 
 
 def _read_json(path: Path, default: Any) -> Any:
@@ -184,10 +185,14 @@ def audit_net_growth(bundle: Dict[str, Any] | None = None) -> Dict[str, Any]:
     capital = bundle.get("capital_governor", {})
     accounting = bundle.get("accounting_truth", {})
     no_trade = bundle.get("no_trade_forensics", {})
+    round_trip_payload = build_round_trip_accounting(bundle)
+    round_trip_stats = round_trip_payload.get("stats", {}) if isinstance(round_trip_payload, dict) else {}
 
     trade_rows = _in_window(_bundle_trade_rows(bundle))
     fill_rows = _fill_rows(trade_rows)
     order_rows = _order_rows(trade_rows)
+    closed_round_trips = round_trip_payload.get("closed_round_trips", []) if isinstance(round_trip_payload, dict) else []
+    open_round_trips = round_trip_payload.get("open_round_trips", []) if isinstance(round_trip_payload, dict) else []
     fills_24h = len(fill_rows)
     orders_24h = len(order_rows)
     cancels_24h = sum(1 for row in order_rows if str(row.get("status") or "").upper() == "CANCELLED" or str(row.get("event_type") or "").upper() == "ORDER_CANCELLED")
@@ -198,30 +203,13 @@ def audit_net_growth(bundle: Dict[str, Any] | None = None) -> Dict[str, Any]:
         pair = _normalize_pair(row.get("pair") or row.get("symbol"))
         grouped[(venue, pair)].append(row)
 
-    round_trips = 0
-    gross_pnl = 0.0
-    net_pnl = 0.0
-    fees = 0.0
-    wins = 0
-    losses = 0
-    per_trip = []
-    for (venue, pair), items in grouped.items():
-        buys = [r for r in items if str(r.get("side") or "").upper() == "BUY"]
-        sells = [r for r in items if str(r.get("side") or "").upper() == "SELL"]
-        if not buys or not sells:
-            continue
-        round_trips += 1
-        pair_net = sum(_as_float(r.get("net_realized_pnl_idr"), _as_float(r.get("realized_pnl_idr"), 0.0)) for r in items)
-        pair_gross = sum(_as_float(r.get("gross_realized_pnl_idr"), 0.0) for r in items)
-        pair_fee = sum(_as_float(r.get("fee_idr"), 0.0) for r in items)
-        gross_pnl += pair_gross
-        net_pnl += pair_net
-        fees += pair_fee
-        if pair_net > 0:
-            wins += 1
-        else:
-            losses += 1
-        per_trip.append(pair_net)
+    round_trips = len(closed_round_trips)
+    gross_pnl = sum(_as_float(r.get("gross_pnl_idr"), 0.0) for r in closed_round_trips)
+    net_pnl = sum(_as_float(r.get("net_pnl_idr"), 0.0) for r in closed_round_trips)
+    fees = sum(_as_float(r.get("fees_idr"), 0.0) for r in closed_round_trips)
+    wins = sum(1 for r in closed_round_trips if _as_float(r.get("net_pnl_idr"), 0.0) > 0)
+    losses = sum(1 for r in closed_round_trips if _as_float(r.get("net_pnl_idr"), 0.0) <= 0)
+    per_trip = [_as_float(r.get("net_pnl_idr"), 0.0) for r in closed_round_trips]
 
     total_equity = _as_float((live_truth or {}).get("total_equity_idr"), _as_float(accounting.get("current_total_equity_idr"), 0.0))
     start_equity = _as_float((capital or {}).get("start_total_equity_idr"), _as_float(accounting.get("start_total_equity_idr"), total_equity))
@@ -239,7 +227,7 @@ def audit_net_growth(bundle: Dict[str, Any] | None = None) -> Dict[str, Any]:
     churn = False
     churn_reason = ""
     if round_trips == 0:
-        status = "INSUFFICIENT_DATA"
+        status = "NO_CLOSED_ROUND_TRIPS"
         churn_reason = "no_closed_round_trips"
     else:
         if net_pnl > 0 and net_pnl > fees + slippage_est + spread_cost_est:
@@ -301,6 +289,9 @@ def audit_net_growth(bundle: Dict[str, Any] | None = None) -> Dict[str, Any]:
         "is_churning": churn,
         "churn_reason": churn_reason,
         "recommendation": recommendation,
+        "round_trip_accounting": round_trip_payload,
+        "round_trip_stats": round_trip_stats,
+        "open_round_trips_24h": len(open_round_trips),
     }
     (state_dir / "net_growth_audit.json").write_text(json.dumps(payload, indent=2, ensure_ascii=False), encoding="utf-8")
     build_critical_operator_questions(bundle)
@@ -326,7 +317,7 @@ def audit_fill_quality(bundle: Dict[str, Any] | None = None) -> Dict[str, Any]:
     if micro_probe > len(fill_rows) * 0.5:
         status = "CHURN"
     if closed_round_trips == 0:
-        status = "INCOMPLETE_ACCOUNTING"
+        status = "NO_CLOSED_ROUND_TRIPS" if len(fill_rows) > 0 else "INCOMPLETE_ACCOUNTING"
     payload = {
         "updated_at": datetime.now(timezone.utc).isoformat(),
         "filled_count_24h_reported": len(fill_rows),
@@ -469,12 +460,12 @@ def assert_stale_guard_state(bundle: Dict[str, Any] | None = None) -> Dict[str, 
     scanner = _read_json(STATE_DIR / "scanner_runtime.json", {})
     executor = _read_json(STATE_DIR / "indodax_executor_state.json", {})
     ages = {
-        "live_truth": live_truth.get("updated_at"),
-        "workflow": workflow.get("updated_at"),
-        "scanner": scanner.get("updated_at"),
-        "executor": executor.get("updated_at"),
+        "live_truth": live_truth.get("updated_at") or live_truth.get("timestamp"),
+        "workflow": workflow.get("updated_at") or workflow.get("timestamp"),
+        "scanner": scanner.get("updated_at") or scanner.get("timestamp"),
+        "executor": executor.get("updated_at") or executor.get("timestamp"),
     }
-    fresh = all(bool(v) for v in ages.values())
+    fresh = bool(ages["live_truth"]) and bool(ages["workflow"]) and bool(ages["scanner"]) and bool(ages["executor"])
     payload = {
         "updated_at": datetime.now(timezone.utc).isoformat(),
         "fresh": fresh,

@@ -337,7 +337,17 @@ def server_support_audit(bundle: Dict[str, Any]) -> Dict[str, Any]:
         services_ok = "active" in (res.stdout or "")
     except Exception:
         services_ok = False
-    backups_ok = bool((STATE_DIR / "backup").exists() or (STATE_DIR.parent / "backups").exists())
+    backups_root = STATE_DIR.parent / "backups" / "state"
+    backups_ok = bool(backups_root.exists())
+    latest_backup_age_s = -1.0
+    if backups_ok:
+        try:
+            backups = sorted([p for p in backups_root.iterdir() if p.is_dir()], key=lambda p: p.stat().st_mtime, reverse=True)
+            if backups:
+                latest_backup_age_s = round(datetime.now(timezone.utc).timestamp() - backups[0].stat().st_mtime, 1)
+                backups_ok = latest_backup_age_s <= 21600.0
+        except Exception:
+            backups_ok = False
     stale_ok = not bool(no_trade.get("ignored_stale_blockers"))
     status = "OK" if services_ok and telemetry and backups_ok and stale_ok else "WARN"
     if not telemetry or not services_ok:
@@ -349,6 +359,7 @@ def server_support_audit(bundle: Dict[str, Any]) -> Dict[str, Any]:
         "telemetry": telemetry,
         "stale_guards": stale_ok,
         "backups": backups_ok,
+        "latest_backup_age_s": latest_backup_age_s,
         "watchdog": True,
         "errors": [],
     }

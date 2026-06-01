@@ -19,6 +19,7 @@ from fastapi.staticfiles import StaticFiles
 
 from Core.Support.ki_config import PROJECT_ROOT, STATE_DIR, KiConfig
 from Core.Support.growth_audit import audit_daily_controls, audit_fill_quality, audit_net_growth, audit_phantom_non_movement, audit_strategy_symbol_normalization, build_critical_operator_questions
+from Core.Support.strategy_control_actions import build_strategy_control_actions
 from Core.Support.money_movement_audit import ai_support_audit, candidate_pipeline_audit, load_state_bundle, money_movement_status, server_support_audit, strategy_edge_audit
 from Core.Support.risk_truth_reconciler import reconcile_risk_truth
 from Core.Treasury.accounting_truth import build_accounting_truth
@@ -1110,6 +1111,13 @@ def _build_summary() -> Dict[str, Any]:
         summary["strategy_symbol_normalization_audit"] = audit_strategy_symbol_normalization(bundle)
         summary["daily_controls_audit"] = audit_daily_controls(bundle)
         summary["critical_operator_questions"] = build_critical_operator_questions(bundle)
+        summary["strategy_control_actions"] = build_strategy_control_actions(bundle)
+        try:
+            from Core.Support.round_trip_accounting import build_round_trip_accounting
+
+            summary["round_trip_accounting"] = build_round_trip_accounting(bundle)
+        except Exception:
+            summary["round_trip_accounting"] = {}
     except Exception:
         summary["candidate_pipeline_audit"] = {}
         summary["strategy_edge_audit"] = {}
@@ -1121,6 +1129,8 @@ def _build_summary() -> Dict[str, Any]:
         summary["strategy_symbol_normalization_audit"] = {}
         summary["daily_controls_audit"] = {}
         summary["critical_operator_questions"] = {}
+        summary["strategy_control_actions"] = {}
+        summary["round_trip_accounting"] = {}
     summary["indodax_top_targets"] = _load_indodax_top_targets()
     summary["phantom_top_targets"] = _load_phantom_top_targets()
     summary["ai_decision_trace"] = _load_ai_decision_trace()
@@ -2109,6 +2119,16 @@ def _build_control_plane_payload() -> Dict[str, Any]:
         "daily_controls": {
             "data": summary_data.get("daily_controls_audit", {}),
             "recommendation": str((summary_data.get("daily_controls_audit", {}) or {}).get("recommendation") or ""),
+        },
+        "strategy_control_actions": {
+            "data": summary_data.get("strategy_control_actions", {}),
+            "disabled_pairs": (summary_data.get("strategy_control_actions", {}) or {}).get("disabled_pairs", []),
+            "do_not_scale_pairs": (summary_data.get("strategy_control_actions", {}) or {}).get("do_not_scale_pairs", []),
+            "micro_probe_pairs": (summary_data.get("strategy_control_actions", {}) or {}).get("micro_probe_pairs", []),
+        },
+        "round_trip_accounting": {
+            "data": summary_data.get("round_trip_accounting", {}),
+            "stats": (summary_data.get("round_trip_accounting", {}) or {}).get("stats", {}),
         },
     })
     merged_data.update({
