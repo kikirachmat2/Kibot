@@ -18,6 +18,7 @@ from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
 from Core.Support.ki_config import PROJECT_ROOT, STATE_DIR, KiConfig
+from Core.Support.money_movement_audit import ai_support_audit, candidate_pipeline_audit, load_state_bundle, money_movement_status, server_support_audit, strategy_edge_audit
 from Core.Support.risk_truth_reconciler import reconcile_risk_truth
 from Core.Treasury.accounting_truth import build_accounting_truth
 from Core.Treasury.live_truth_manager import build_live_truth
@@ -1091,6 +1092,22 @@ def _build_summary() -> Dict[str, Any]:
         )
     except Exception:
         summary["canonical_risk_truth"] = {}
+    try:
+        money_audit = money_movement_status(load_state_bundle())
+    except Exception:
+        money_audit = {}
+    summary["money_movement_audit"] = money_audit
+    try:
+        bundle = load_state_bundle()
+        summary["candidate_pipeline_audit"] = candidate_pipeline_audit(bundle)
+        summary["strategy_edge_audit"] = strategy_edge_audit(bundle)
+        summary["ai_support_audit"] = ai_support_audit(bundle)
+        summary["server_support_audit"] = server_support_audit(bundle)
+    except Exception:
+        summary["candidate_pipeline_audit"] = {}
+        summary["strategy_edge_audit"] = {}
+        summary["ai_support_audit"] = {}
+        summary["server_support_audit"] = {}
     summary["indodax_top_targets"] = _load_indodax_top_targets()
     summary["phantom_top_targets"] = _load_phantom_top_targets()
     summary["ai_decision_trace"] = _load_ai_decision_trace()
@@ -2028,6 +2045,35 @@ def _build_control_plane_payload() -> Dict[str, Any]:
             "fresh": _file_age_s(STATE / "no_trade_forensics.json") >= 0 and _file_age_s(STATE / "no_trade_forensics.json") < 45,
             "movement_status": str((summary_data.get("no_trade_forensics", {}) or {}).get("movement_status") or ""),
             "movement_reason": str((summary_data.get("no_trade_forensics", {}) or {}).get("movement_reason") or ""),
+        },
+        "money_movement": {
+            "data": summary_data.get("money_movement_audit", {}),
+            "status": str((summary_data.get("money_movement_audit", {}) or {}).get("money_movement_status") or ""),
+            "primary_reason": str((summary_data.get("money_movement_audit", {}) or {}).get("primary_reason") or ""),
+            "micro_probe_remaining": int((summary_data.get("no_trade_forensics", {}) or {}).get("micro_probe", {}).get("remaining_today", 0) or 0),
+            "last_balance_change_at": str((summary_data.get("money_movement_audit", {}) or {}).get("last_balance_change_at") or ""),
+            "hours_since_last_trade": (summary_data.get("money_movement_audit", {}) or {}).get("hours_since_last_trade", -1),
+            "next_action": str((summary_data.get("money_movement_audit", {}) or {}).get("recommended_action") or ""),
+        },
+        "candidate_pipeline": {
+            "data": summary_data.get("candidate_pipeline_audit", {}),
+            "indodax": summary_data.get("candidate_pipeline_audit", {}).get("indodax", {}),
+            "phantom": summary_data.get("candidate_pipeline_audit", {}).get("phantom", {}),
+        },
+        "strategy_edge_summary": {
+            "data": summary_data.get("strategy_edge_audit", {}),
+            "strategies": summary_data.get("strategy_edge_audit", {}).get("strategies", []),
+        },
+        "ai_support_health": {
+            "data": summary_data.get("ai_support_audit", {}),
+            "status": summary_data.get("ai_support_audit", {}).get("ai_health", ""),
+            "can_place_order": bool(summary_data.get("ai_support_audit", {}).get("can_place_order", False)),
+            "can_override_gate": bool(summary_data.get("ai_support_audit", {}).get("can_override_gate", False)),
+        },
+        "server_support_health": {
+            "data": summary_data.get("server_support_audit", {}),
+            "status": summary_data.get("server_support_audit", {}).get("server_support_status", ""),
+            "services_ok": bool(summary_data.get("server_support_audit", {}).get("services_ok", False)),
         },
     })
     merged_data.update({
