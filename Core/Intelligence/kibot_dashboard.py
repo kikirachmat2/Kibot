@@ -18,6 +18,7 @@ from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
 from Core.Support.ki_config import PROJECT_ROOT, STATE_DIR, KiConfig
+from Core.Support.risk_truth_reconciler import reconcile_risk_truth
 from Core.Treasury.accounting_truth import build_accounting_truth
 from Core.Treasury.live_truth_manager import build_live_truth
 
@@ -1078,6 +1079,18 @@ def _build_summary() -> Dict[str, Any]:
     summary["target_board_runtime"] = _load_target_board_runtime()
     summary["daily_reset"] = _read_json(STATE / "daily_reset_state.json", {})
     summary["workflow_automation"] = _load_workflow_automation()
+    summary["risk_state"] = _read_json(STATE / "risk_state.json", {})
+    summary["no_trade_forensics"] = _read_json(STATE / "no_trade_forensics.json", {})
+    try:
+        summary["canonical_risk_truth"] = reconcile_risk_truth(
+            summary.get("live_truth", {}),
+            summary.get("capital_governor", {}),
+            summary.get("risk_state", {}),
+            summary.get("ai_patrol", {}),
+            summary.get("workflow_automation", {}),
+        )
+    except Exception:
+        summary["canonical_risk_truth"] = {}
     summary["indodax_top_targets"] = _load_indodax_top_targets()
     summary["phantom_top_targets"] = _load_phantom_top_targets()
     summary["ai_decision_trace"] = _load_ai_decision_trace()
@@ -1984,6 +1997,36 @@ def _build_control_plane_payload() -> Dict[str, Any]:
         "orders": orders_v6,
         "logs": logs_v6,
         "debug": debug_v6,
+        "risk_truth": {
+            "data": summary_data.get("canonical_risk_truth", {}),
+            "age_s": min(
+                x for x in [
+                    _file_age_s(STATE / "live_truth.json"),
+                    _file_age_s(STATE / "capital_governor.json"),
+                    _file_age_s(STATE / "risk_state.json"),
+                    _file_age_s(STATE / "ai_patrol.json"),
+                    _file_age_s(STATE / "workflow_automation.json"),
+                ]
+                if x >= 0
+            )
+            if any(
+                x >= 0
+                for x in [
+                    _file_age_s(STATE / "live_truth.json"),
+                    _file_age_s(STATE / "capital_governor.json"),
+                    _file_age_s(STATE / "risk_state.json"),
+                    _file_age_s(STATE / "ai_patrol.json"),
+                    _file_age_s(STATE / "workflow_automation.json"),
+                ]
+            )
+            else -1.0,
+            "fresh": True if summary_data.get("canonical_risk_truth") else False,
+        },
+        "no_trade_forensics": {
+            "data": summary_data.get("no_trade_forensics", {}),
+            "age_s": _file_age_s(STATE / "no_trade_forensics.json"),
+            "fresh": _file_age_s(STATE / "no_trade_forensics.json") >= 0 and _file_age_s(STATE / "no_trade_forensics.json") < 45,
+        },
     })
     merged_data.update({
         "portfolio_v8": portfolio_v6,

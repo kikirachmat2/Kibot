@@ -14,6 +14,7 @@ import requests
 
 from Core.Support.ki_config import PROJECT_ROOT, STATE_DIR
 from Core.Support.no_trade_forensics import build_no_trade_forensics
+from Core.Support.risk_truth_reconciler import reconcile_risk_truth
 
 ROOT = Path(PROJECT_ROOT)
 STATE = Path(STATE_DIR)
@@ -261,6 +262,8 @@ def build_workflow_automation_state() -> dict[str, Any]:
     phantom_targets = _read_json(STATE / "phantom_top_targets.json", {})
     ai_patrol = _read_json(STATE / "ai_patrol.json", {})
     accounting = _read_json(STATE / "accounting_truth.json", {})
+    live_truth = _read_json(STATE / "live_truth.json", {})
+    risk_state = _read_json(STATE / "risk_state.json", {})
 
     services = _service_statuses()
     inactive_services = [name for name, info in services.items() if not info.get("active")]
@@ -274,6 +277,11 @@ def build_workflow_automation_state() -> dict[str, Any]:
     dispatcher_reason = _dispatcher_reason(dispatcher)
     telegram = _telegram_status()
     support_tools = _support_tools()
+    canonical_risk = reconcile_risk_truth(live_truth, governor, risk_state, ai_patrol, {
+        "overall_status": "",
+        "current_best_action": "",
+        "dispatcher": dispatcher,
+    })
 
     blockers: list[dict[str, Any]] = []
     if inactive_services:
@@ -287,7 +295,19 @@ def build_workflow_automation_state() -> dict[str, Any]:
     if not telegram.get("configured") or telegram.get("bot_api_ok") is False:
         blockers.append({"source": "telegram", "reason": telegram.get("reason") or "telegram_not_ready"})
     if isinstance(ai_patrol, dict) and ai_patrol.get("support_action") == "repair_runtime_blocker":
-        blockers.append({"source": "ai_patrol", "reason": "; ".join(ai_patrol.get("alerts", [])[:4]) or "runtime_patrol_alert"})
+        ai_patrol_reason = "; ".join(ai_patrol.get("alerts", [])[:4]) or "runtime_patrol_alert"
+        canonical_state = str(canonical_risk.get("canonical_risk_state") or "UNKNOWN").upper()
+        canonical_blockers = canonical_risk.get("canonical_blockers") if isinstance(canonical_risk.get("canonical_blockers"), list) else []
+        ignored_stale = canonical_risk.get("ignored_stale_blockers") if isinstance(canonical_risk.get("ignored_stale_blockers"), list) else []
+        if canonical_state in {"LOCKED", "EMERGENCY"} and canonical_blockers:
+            blockers.append({"source": "ai_patrol", "reason": ai_patrol_reason})
+        elif ignored_stale:
+            blockers.append({"source": "ai_patrol", "reason": f"stale_ignored:{ai_patrol_reason}"})
+        else:
+            blockers.append({"source": "ai_patrol", "reason": f"advisory:{ai_patrol_reason}"})
+    for item in canonical_risk.get("canonical_blockers", []) if isinstance(canonical_risk.get("canonical_blockers"), list) else []:
+        if isinstance(item, dict):
+            blockers.append({"source": f"canonical:{item.get('source')}", "reason": str(item.get("reason") or "")})
 
     remediation_plan = [
         _remediation_for(str(item.get("source") or ""), str(item.get("reason") or ""))
@@ -338,6 +358,9 @@ def build_workflow_automation_state() -> dict[str, Any]:
     if inactive_services:
         overall_status = "INFRA_BLOCKED"
         next_action = "restart inactive services and rerun workflow supervisor"
+    elif canonical_risk.get("canonical_risk_state") in {"LOCKED", "EMERGENCY"}:
+        overall_status = "TRADING_FLOW_BLOCKED_WITH_REASON"
+        next_action = canonical_risk.get("reason") or "inspect canonical risk truth"
     elif dispatcher_status.startswith("BLOCKED"):
         overall_status = "TRADING_FLOW_BLOCKED_WITH_REASON"
         next_action = remediation_plan[0]["action"] if remediation_plan else (dispatcher_reason or "inspect live_order_dispatcher")
@@ -379,6 +402,7 @@ def build_workflow_automation_state() -> dict[str, Any]:
         },
         "telegram": telegram,
         "support_tools": support_tools,
+        "canonical_risk": canonical_risk,
         "ai_patrol": {
             "support_action": ai_patrol.get("support_action") if isinstance(ai_patrol, dict) else "",
             "alerts": ai_patrol.get("alerts", []) if isinstance(ai_patrol, dict) else [],

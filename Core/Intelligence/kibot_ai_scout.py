@@ -24,6 +24,7 @@ import asyncio
 from Core.circuit_breaker import CircuitBreaker
 
 from Core.Support.ki_config import STATE_DIR
+from Core.Support.risk_truth_reconciler import reconcile_risk_truth
 from Core.Decision.script_adaptation_engine import ScriptAdaptationEngine
 from Core.Intelligence.defi_metrics_fetcher import DeFiMetricsFetcher
 
@@ -159,6 +160,7 @@ class WorldScout:
         return status
 
     def _runtime_semantics(self) -> Dict[str, Any]:
+        live_truth = self._read_state_json("live_truth.json")
         governor = self._read_state_json("capital_governor.json")
         dispatcher = self._read_state_json("live_order_dispatcher.json")
         indodax_targets = self._read_state_json("indodax_top_targets.json")
@@ -166,6 +168,15 @@ class WorldScout:
         indodax_scanner = self._read_state_json("indodax_scanner_state.json")
         order_tracker = self._read_state_json("order_tracker_state.json")
         active_trades = self._read_state_json("active_trades.json")
+        workflow = self._read_state_json("workflow_automation.json")
+        risk_state = self._read_state_json("risk_state.json")
+        canonical_risk = reconcile_risk_truth(
+            live_truth,
+            governor,
+            risk_state,
+            self._read_state_json("ai_patrol.json"),
+            workflow,
+        )
 
         allow_orders = bool(governor.get("allow_new_orders", False))
         allow_reason = str(governor.get("allow_new_orders_reason") or "").strip()
@@ -181,24 +192,51 @@ class WorldScout:
                     child_reasons.append(f"{key}:{child.get('reason')}")
             dispatcher_reason = "; ".join(child_reasons)
 
+        canonical_state = str(canonical_risk.get("canonical_risk_state") or "UNKNOWN").upper()
+        canonical_allow = bool(canonical_risk.get("allow_new_orders", allow_orders))
         semantic_alerts: List[str] = []
         blockers: List[Dict[str, Any]] = []
         if not allow_orders:
             reason = allow_reason or "capital_governor_orders_disabled"
-            semantic_alerts.append(f"orders_blocked:{reason}")
-            blockers.append({"source": "capital_governor", "reason": reason})
+            if canonical_allow and canonical_state not in {"LOCKED", "EMERGENCY"}:
+                semantic_alerts.append(f"orders_blocked_advisory:{reason}")
+            else:
+                semantic_alerts.append(f"orders_blocked:{reason}")
+                blockers.append({"source": "capital_governor", "reason": reason})
         if global_hard_stop:
             reason = str(governor.get("global_hard_stop_reason") or allow_reason or "global_hard_stop").strip()
-            semantic_alerts.append(f"global_hard_stop:{reason}")
-            blockers.append({"source": "capital_governor.global_hard_stop", "reason": reason})
+            if canonical_allow and canonical_state not in {"LOCKED", "EMERGENCY"}:
+                semantic_alerts.append(f"global_hard_stop_advisory:{reason}")
+            else:
+                semantic_alerts.append(f"global_hard_stop:{reason}")
+                blockers.append({"source": "capital_governor.global_hard_stop", "reason": reason})
         if daily_reset_pending:
             reason = str(governor.get("daily_reset_reason") or allow_reason or "daily_reset_pending").strip()
-            semantic_alerts.append(f"daily_reset_pending:{reason}")
-            blockers.append({"source": "capital_governor.daily_reset", "reason": reason})
+            if canonical_allow and canonical_state not in {"LOCKED", "EMERGENCY"}:
+                semantic_alerts.append(f"daily_reset_pending_advisory:{reason}")
+            else:
+                semantic_alerts.append(f"daily_reset_pending:{reason}")
+                blockers.append({"source": "capital_governor.daily_reset", "reason": reason})
         if dispatcher_status.upper().startswith("BLOCKED"):
             reason = dispatcher_reason or "dispatcher_blocked"
-            semantic_alerts.append(f"dispatcher_blocked:{reason}")
-            blockers.append({"source": "live_order_dispatcher", "reason": reason})
+            if canonical_allow and canonical_state not in {"LOCKED", "EMERGENCY"} and not allow_orders:
+                semantic_alerts.append(f"dispatcher_blocked_advisory:{reason}")
+            else:
+                semantic_alerts.append(f"dispatcher_blocked:{reason}")
+                blockers.append({"source": "live_order_dispatcher", "reason": reason})
+
+        canonical_blockers = canonical_risk.get("canonical_blockers") if isinstance(canonical_risk.get("canonical_blockers"), list) else []
+        if canonical_state in {"LOCKED", "EMERGENCY"}:
+            for item in canonical_blockers:
+                if isinstance(item, dict):
+                    blockers.append({"source": f"canonical:{item.get('source')}", "reason": str(item.get("reason") or "")})
+        else:
+            ignored = canonical_risk.get("ignored_stale_blockers") if isinstance(canonical_risk.get("ignored_stale_blockers"), list) else []
+            for item in ignored:
+                if isinstance(item, dict):
+                    semantic_alerts.append(
+                        f"ai_patrol_ignored:{str(item.get('source') or '')}:{str(item.get('reason') or '')}".strip(":")
+                    )
 
         target_count = self._count_targets(indodax_targets) + self._count_targets(phantom_targets)
         enter_targets = 0
@@ -235,6 +273,9 @@ class WorldScout:
             else 0,
             "blockers": blockers,
             "alerts": semantic_alerts,
+            "canonical_risk_state": canonical_state,
+            "canonical_allow_new_orders": bool(canonical_risk.get("allow_new_orders", allow_orders)),
+            "canonical_reason": str(canonical_risk.get("reason") or ""),
         }
 
     def _runtime_blocker_auto_repairable(self, semantics: Dict[str, Any]) -> bool:
@@ -335,27 +376,36 @@ class WorldScout:
             journal_alerts[svc] = matches[:8]
 
         alerts = []
+        hard_alerts = []
         for item in stale:
             alerts.append(f"{item['file']}:{item['reason']}")
+            hard_alerts.append(f"{item['file']}:{item['reason']}")
         for svc, info in services.items():
             if not info.get("active"):
                 alerts.append(f"{svc}:inactive")
+                hard_alerts.append(f"{svc}:inactive")
         if not gh_status.get("ok", False):
             alerts.append("gh_auth_unavailable")
+            hard_alerts.append("gh_auth_unavailable")
 
         runtime_semantics = self._runtime_semantics()
         telegram_status = self._telegram_runtime_status()
         for item in runtime_semantics.get("alerts", []):
             alerts.append(str(item))
+        for item in runtime_semantics.get("blockers", []):
+            if isinstance(item, dict):
+                hard_alerts.append(f"{item.get('source')}:{item.get('reason')}")
         if not telegram_status.get("configured"):
             alerts.append("telegram_config_missing")
+            hard_alerts.append("telegram_config_missing")
         elif telegram_status.get("bot_api_ok") is False:
             alerts.append(str(telegram_status.get("reason") or "telegram_bot_api_failed"))
+            hard_alerts.append(str(telegram_status.get("reason") or "telegram_bot_api_failed"))
 
         auto_repairable_runtime = self._runtime_blocker_auto_repairable(runtime_semantics)
         telegram_alert_sent = await self._notify_runtime_blockers(runtime_semantics, telegram_status)
         support_action = "continue"
-        if alerts:
+        if hard_alerts:
             support_action = "auto_repair_in_progress" if auto_repairable_runtime else "repair_runtime_blocker"
 
         payload = {
@@ -374,10 +424,12 @@ class WorldScout:
             "stale_files": stale,
             "journal_alerts": journal_alerts,
             "runtime_semantics": runtime_semantics,
+            "canonical_risk_state": runtime_semantics.get("canonical_risk_state", "UNKNOWN"),
             "auto_repairable_runtime_blocker": auto_repairable_runtime,
             "telegram": telegram_status,
             "telegram_alert_sent": telegram_alert_sent,
             "alerts": alerts[:20],
+            "hard_alerts": hard_alerts[:20],
             "support_action": support_action,
             "next_check_seconds": 300,
         }
