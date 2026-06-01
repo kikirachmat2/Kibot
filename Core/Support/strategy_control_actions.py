@@ -11,6 +11,7 @@ from Core.Support.round_trip_accounting import _normalize_symbol
 
 POLICY_FILE = Path("config/strategy_controls/strategy_control_policy.json")
 OUTPUT_FILE = STATE_DIR / "strategy_control_actions.json"
+ACTIVE_OUTPUT_FILE = STATE_DIR / "active_strategy_controls.json"
 
 
 def _read_json(path: Path, default: Any) -> Any:
@@ -59,9 +60,16 @@ def build_strategy_control_actions(bundle: Dict[str, Any] | None = None) -> Dict
         "disabled_pairs": sorted(set(disabled_pairs)),
         "do_not_scale_pairs": sorted(set(do_not_scale_pairs)),
         "micro_probe_pairs": sorted(set(micro_probe_pairs)),
+        "micro_probe_watchlist": sorted(set(micro_probe_pairs)),
+        "scale_up_allowed_pairs": [],
         "ignored_unknown_source_scaleups": sorted(set(ignored_unknown_source_scaleups)),
-        "reason": "verified negative edge or conflicted source",
+        "reason": {
+            "disabled_pairs": "verified negative edge or conflicted source",
+            "do_not_scale_pairs": "verified negative edge, insufficient data, or unknown source",
+            "micro_probe_watchlist": "insufficient data but execution-safe",
+            "scale_up_allowed_pairs": "no pair met scale-up threshold yet",
+        },
     }
     OUTPUT_FILE.write_text(json.dumps(payload, indent=2, ensure_ascii=False), encoding="utf-8")
+    ACTIVE_OUTPUT_FILE.write_text(json.dumps(payload, indent=2, ensure_ascii=False), encoding="utf-8")
     return payload
-

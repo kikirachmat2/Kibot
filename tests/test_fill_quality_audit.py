@@ -13,5 +13,4 @@ def test_fill_quality_counts_duplicates() -> None:
         }
     )
     assert result["filled_count_24h_reported"] == 2
-    assert result["status"] in {"CLEAN", "DUPLICATE_COUNTING", "CHURN", "INCOMPLETE_ACCOUNTING"}
-
+    assert result["status"] in {"CLEAN", "DUPLICATE_COUNTING", "CHURN", "INCOMPLETE_ACCOUNTING", "NO_CLOSED_ROUND_TRIPS"}

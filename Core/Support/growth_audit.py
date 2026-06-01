@@ -7,8 +7,10 @@ from pathlib import Path
 from typing import Any, Dict, Iterable, List, Tuple
 
 from Core.Support.ki_config import STATE_DIR
+from Core.Support.churn_guard import evaluate_churn_guard
 from Core.Support.money_movement_audit import _as_float, _parse_dt, load_state_bundle
 from Core.Support.round_trip_accounting import build_round_trip_accounting
+from Core.Support.recovery_mode_policy import build_recovery_mode_policy
 
 
 def _read_json(path: Path, default: Any) -> Any:
@@ -302,11 +304,13 @@ def audit_fill_quality(bundle: Dict[str, Any] | None = None) -> Dict[str, Any]:
     bundle = bundle or load_state_bundle()
     trade_rows = _in_window(_bundle_trade_rows(bundle))
     fill_rows = _fill_rows(trade_rows)
+    round_trip_payload = build_round_trip_accounting(bundle)
     pair_counts = Counter(_normalize_pair(row.get("pair") or row.get("symbol")) for row in fill_rows)
     duplicates = sum(count - 1 for count in pair_counts.values() if count > 1)
     micro_probe = sum(1 for row in fill_rows if "MICRO" in str(row.get("tier") or row.get("label") or row.get("reason") or "").upper())
     a_plus = sum(1 for row in fill_rows if "A_PLUS" in str(row.get("tier") or row.get("label") or "").upper())
-    closed_round_trips = len([row for row in fill_rows if str(row.get("side") or "").upper() == "SELL"])
+    closed_round_trips = len(round_trip_payload.get("closed_round_trips", []) if isinstance(round_trip_payload, dict) else [])
+    open_round_trips = len(round_trip_payload.get("open_round_trips", []) if isinstance(round_trip_payload, dict) else [])
     avg_size = sum(_as_float(row.get("amount_idr") or row.get("budget_idr") or row.get("notional_idr"), 0.0) for row in fill_rows) / max(len(fill_rows), 1)
     avg_hold = 0.0
     fee_drag = sum(_as_float(row.get("fee_idr"), 0.0) for row in fill_rows)
@@ -323,6 +327,7 @@ def audit_fill_quality(bundle: Dict[str, Any] | None = None) -> Dict[str, Any]:
         "filled_count_24h_reported": len(fill_rows),
         "real_fills_detected": len(fill_rows),
         "closed_round_trips": closed_round_trips,
+        "open_round_trips": open_round_trips,
         "entries": sum(1 for row in fill_rows if str(row.get("side") or "").upper() == "BUY"),
         "exits": sum(1 for row in fill_rows if str(row.get("side") or "").upper() == "SELL"),
         "partial_fills": sum(1 for row in fill_rows if "PARTIAL" in str(row.get("status") or "").upper()),
@@ -334,6 +339,9 @@ def audit_fill_quality(bundle: Dict[str, Any] | None = None) -> Dict[str, Any]:
         "avg_net_pnl_idr": round(sum(_as_float(row.get("net_realized_pnl_idr"), 0.0) for row in fill_rows) / max(len(fill_rows), 1), 2),
         "fee_drag_pct": round(fee_drag_pct, 2),
         "status": status,
+        "round_trip_accounting": round_trip_payload,
+        "recovery_mode_policy": build_recovery_mode_policy(bundle),
+        "churn_guard": evaluate_churn_guard(bundle),
     }
     (_ensure_state_dir() / "fill_quality_audit.json").write_text(json.dumps(payload, indent=2, ensure_ascii=False), encoding="utf-8")
     return payload
@@ -433,6 +441,8 @@ def audit_daily_controls(bundle: Dict[str, Any] | None = None) -> Dict[str, Any]
     capital = bundle.get("capital_governor", {})
     no_trade = bundle.get("no_trade_forensics", {})
     controls = bundle.get("workflow", {})
+    recovery = build_recovery_mode_policy(bundle)
+    churn = evaluate_churn_guard(bundle)
     payload = {
         "updated_at": datetime.now(timezone.utc).isoformat(),
         "daily_loss_cap": _as_float(capital.get("max_daily_loss_idr"), 0.0),
@@ -448,6 +458,8 @@ def audit_daily_controls(bundle: Dict[str, Any] | None = None) -> Dict[str, Any]
         "raw": {
             "controls_status": str(controls.get("overall_status") or ""),
         },
+        "recovery_mode_policy": recovery,
+        "churn_guard": churn,
     }
     (_ensure_state_dir() / "daily_controls_audit.json").write_text(json.dumps(payload, indent=2, ensure_ascii=False), encoding="utf-8")
     return payload

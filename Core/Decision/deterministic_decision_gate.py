@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any, Dict, List
 
+from Core.Support.churn_guard import evaluate_churn_guard
 from Core.Support.runtime_mode_guard import assert_runtime_live_only
 
 
@@ -31,6 +32,7 @@ def evaluate_live_trade(candidate: Dict[str, Any], *, runtime_state: Dict[str, A
     runtime_state = runtime_state or {}
     hard_rejects: List[str] = []
     advisory: List[str] = []
+    churn = evaluate_churn_guard(runtime_state)
 
     if str(runtime_state.get("risk_state") or "").upper() in {"EMERGENCY", "LOCKED"}:
         hard_rejects.append("RISK_LOCKED")
@@ -68,6 +70,11 @@ def evaluate_live_trade(candidate: Dict[str, Any], *, runtime_state: Dict[str, A
         hard_rejects.append("SLIPPAGE_TOO_HIGH")
     if not bool(candidate.get("exit_plan_valid", True)):
         hard_rejects.append("NO_VALID_EXIT_PLAN")
+    if churn.get("active") and str(churn.get("net_growth_status") or "").upper() == "FLAT_CHURN":
+        if bool(candidate.get("scale_up_requested", False)) or str(candidate.get("trade_profile") or "").upper() in {"A_PLUS", "LIVE_A_PLUS", "SCALE_UP"}:
+            hard_rejects.append("CHURN_SCALE_UP_DISABLED")
+        if bool(candidate.get("micro_probe_requested", False)):
+            hard_rejects.append("CHURN_MICRO_PROBE_DISABLED")
 
     if float(candidate.get("confidence") or 0.0) < 0.5:
         advisory.append("LOW_CONFIDENCE")
@@ -97,4 +104,3 @@ def evaluate_live_trade(candidate: Dict[str, Any], *, runtime_state: Dict[str, A
             "simulation_verdict": sim.get("simulation_verdict"),
         },
     )
-

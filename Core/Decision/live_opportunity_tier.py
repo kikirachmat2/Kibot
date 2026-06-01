@@ -3,6 +3,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Dict, List
 
+from Core.Support.churn_guard import evaluate_churn_guard
+
 
 @dataclass
 class LiveOpportunityTierResult:
@@ -80,6 +82,8 @@ def classify_live_opportunity(candidate: Dict[str, Any], ev: Dict[str, Any], sim
     a_plus_min_edge = _float(config.get("a_plus_min_net_edge_pct"), 1.2)
     micro_spread = _float(config.get("micro_probe_max_spread_pct"), 0.6)
     micro_slippage = _float(config.get("micro_probe_max_slippage_pct"), 0.8)
+    churn = evaluate_churn_guard({"net_growth_audit": config.get("net_growth_audit") or {}, "capital_governor": risk})
+    flat_churn = str(churn.get("net_growth_status") or "").upper() == "FLAT_CHURN"
 
     if not daily_loss_ok:
         constraints.append("daily_loss_breached")
@@ -123,7 +127,7 @@ def classify_live_opportunity(candidate: Dict[str, Any], ev: Dict[str, Any], sim
         reason = "A_PLUS_APPROVED"
         return LiveOpportunityTierResult(tier, approved, reason, round(size_idr, 2), constraints, label)
 
-    if micro_enabled and micro_per_day_left > 0:
+    if micro_enabled and micro_per_day_left > 0 and not flat_churn:
         if expected_net_edge > 0 and sample_size < a_plus_min_sample and spread <= micro_spread and slippage <= micro_slippage and min_sellable and exit_depth and exit_plan_valid:
             tier = "MICRO_PROBE"
             approved = True

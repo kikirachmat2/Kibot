@@ -1,0 +1,25 @@
+{
+  "enabled": true,
+  "activate_when": {
+    "net_growth_status": ["FLAT_CHURN", "LOSING"],
+    "daily_loss_breached": true,
+    "profit_factor_below": 1.0
+  },
+  "actions": {
+    "lock_new_indodax_entries_until_next_daily_reset": true,
+    "allow_exit_management": true,
+    "allow_accounting_repair": true,
+    "allow_phantom_pipeline_trace": true,
+    "allow_micro_probe": false,
+    "disable_scale_up": true,
+    "disable_unknown_source_scale_up": true,
+    "disable_negative_edge_pairs": true,
+    "reduce_trade_frequency": true
+  },
+  "unlock_conditions": {
+    "daily_reset_done": true,
+    "net_growth_status_not_in": ["LOSING"],
+    "fill_quality_not": "ACCOUNTING_ERROR",
+    "closed_round_trip_accounting_ok": true
+  }
+}

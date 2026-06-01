@@ -2120,6 +2120,16 @@ def _build_control_plane_payload() -> Dict[str, Any]:
             "data": summary_data.get("daily_controls_audit", {}),
             "recommendation": str((summary_data.get("daily_controls_audit", {}) or {}).get("recommendation") or ""),
         },
+        "recovery_mode": {
+            "data": summary_data.get("daily_controls_audit", {}).get("recovery_mode_policy", {}),
+            "active": bool((summary_data.get("daily_controls_audit", {}) or {}).get("recovery_mode_policy", {}).get("active", False)),
+            "reason": str((summary_data.get("daily_controls_audit", {}) or {}).get("recovery_mode_policy", {}).get("reason") or ""),
+        },
+        "churn_guard": {
+            "data": summary_data.get("daily_controls_audit", {}).get("churn_guard", {}),
+            "active": bool((summary_data.get("daily_controls_audit", {}) or {}).get("churn_guard", {}).get("active", False)),
+            "reason": str((summary_data.get("daily_controls_audit", {}) or {}).get("churn_guard", {}).get("reason") or ""),
+        },
         "strategy_control_actions": {
             "data": summary_data.get("strategy_control_actions", {}),
             "disabled_pairs": (summary_data.get("strategy_control_actions", {}) or {}).get("disabled_pairs", []),
@@ -2129,6 +2139,9 @@ def _build_control_plane_payload() -> Dict[str, Any]:
         "round_trip_accounting": {
             "data": summary_data.get("round_trip_accounting", {}),
             "stats": (summary_data.get("round_trip_accounting", {}) or {}).get("stats", {}),
+        },
+        "active_strategy_controls": {
+            "data": _read_json(STATE_DIR / "active_strategy_controls.json", {}),
         },
     })
     merged_data.update({
