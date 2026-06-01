@@ -1004,6 +1004,7 @@ class SovereignCouncil:
             venue = "indodax"
             reason = "no approved candidate"
             confidence = 0.0
+            evidence_bundle: Dict[str, Any] = {}
             if isinstance(evaluation, dict):
                 if evaluation.get("live_forward"):
                     best_action = "ENTER"

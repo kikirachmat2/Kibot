@@ -106,7 +106,7 @@ def build_live_truth() -> Dict[str, Any]:
                 "amount": amount,
                 "entry_price": entry_price,
                 "value_idr": value_idr,
-                "status": str(trade.get("status") or trade.get("state") or "OPEN"),
+                "status": "DUST_UNSELLABLE" if 0.0 < value_idr < 10_000 else str(trade.get("status") or trade.get("state") or "OPEN"),
                 "reason": str(trade.get("reason") or trade.get("exit_blocked_reason") or ""),
             }
             if value_idr > 0 and value_idr < 10000:

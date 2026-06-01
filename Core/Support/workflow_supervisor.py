@@ -13,6 +13,7 @@ from typing import Any
 import requests
 
 from Core.Support.ki_config import PROJECT_ROOT, STATE_DIR
+from Core.Support.no_trade_forensics import build_no_trade_forensics
 
 ROOT = Path(PROJECT_ROOT)
 STATE = Path(STATE_DIR)
@@ -495,6 +496,10 @@ async def run_once() -> dict[str, Any]:
     else:
         payload["auto_repair"] = auto_repair
     payload["telegram_alert_sent"] = await notify_if_needed(payload)
+    try:
+        payload["no_trade_forensics"] = build_no_trade_forensics()
+    except Exception as exc:
+        payload["no_trade_forensics"] = {"classification": "BROKEN_WAIT", "why_wait": str(exc)}
     _write_json(STATE_FILE, payload)
     return payload
 

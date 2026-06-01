@@ -2,6 +2,7 @@ import asyncio
 import logging
 import json
 import os
+import time
 from pathlib import Path
 from typing import Dict, Any, Optional
 
@@ -12,6 +13,7 @@ logger = logging.getLogger("PhantomTreasury")
 STATE_DIR = Path(__file__).resolve().parent.parent.parent / "state"
 PHANTOM_STATE_FILE = STATE_DIR / "phantom_treasury.json"
 PHANTOM_RECONCILIATION_FILE = STATE_DIR / "TREASURY_RECONCILIATION_REQUIRED"
+PHANTOM_RPC_HEALTH_FILE = STATE_DIR / "phantom_rpc_health.json"
 USD_IDR_RATE = 16000.0  # Manifesto standard conversion rate
 
 class PhantomTreasury:
@@ -70,6 +72,14 @@ class PhantomTreasury:
         self.idrx_token_address = os.getenv("IDRX_BASE_TOKEN_ADDRESS", "").strip()
         self.expected_from_user_idr = float(os.getenv("PHANTOM_EXPECTED_IDRX_IDR", "30074") or 30074)
         self.force_live_base_reconciliation = os.getenv("PHANTOM_FORCE_LIVE_BASE_RECONCILIATION", "1").strip().lower() in {"1", "true", "yes", "on"}
+        self._rpc_rate_limit_cooldown_s = int(os.getenv("PHANTOM_RPC_RATE_LIMIT_COOLDOWN_S", "120") or 120)
+        self._rpc_health: Dict[str, Any] = {
+            "status": "UNKNOWN",
+            "reason": "",
+            "last_error_at": 0.0,
+            "cooldown_until": 0.0,
+            "last_method": "",
+        }
         
         # Default bucket percentages
         self.bucket_percentages = {
@@ -131,6 +141,8 @@ class PhantomTreasury:
                     "chains": self.chains,
                     "reconciliation": self.reconciliation,
                 }, f, indent=4)
+            with open(PHANTOM_RPC_HEALTH_FILE, "w") as f:
+                json.dump(self._rpc_health, f, indent=2)
         except Exception as e:
             logger.error(f"❌ Failed to save Phantom Treasury state: {e}")
 
@@ -138,6 +150,11 @@ class PhantomTreasury:
         if not self.base_rpc_url:
             return {}
         import aiohttp
+
+        now = time.time()
+        cooldown_until = float(self._rpc_health.get("cooldown_until") or 0.0)
+        if cooldown_until and now < cooldown_until:
+            return {}
 
         payload = {"jsonrpc": "2.0", "method": method, "params": params, "id": 1}
         async with aiohttp.ClientSession() as session:
@@ -150,14 +167,40 @@ class PhantomTreasury:
                 ) as resp:
                     if resp.status == 200:
                         try:
+                            self._rpc_health = {
+                                "status": "OK",
+                                "reason": "",
+                                "last_error_at": 0.0,
+                                "cooldown_until": 0.0,
+                                "last_method": method,
+                            }
                             return await resp.json()
                         except Exception:
                             return {}
                     if resp.status != 429:
+                        self._rpc_health = {
+                            "status": "BLOCKED_BY_RPC",
+                            "reason": f"http_{resp.status}",
+                            "last_error_at": time.time(),
+                            "cooldown_until": time.time() + self._rpc_rate_limit_cooldown_s,
+                            "last_method": method,
+                        }
                         logger.error("❌ Base RPC returned error status: %s", resp.status)
                         return {}
                 await asyncio.sleep(0.5 * (attempt + 1))
-        logger.error("❌ Base RPC rate-limited after retries for method %s", method)
+        now = time.time()
+        self._rpc_health = {
+            "status": "BLOCKED_BY_RPC",
+            "reason": "rate_limited",
+            "last_error_at": now,
+            "cooldown_until": now + self._rpc_rate_limit_cooldown_s,
+            "last_method": method,
+        }
+        if not self._rpc_health.get("cooldown_until") or now >= float(self._rpc_health.get("cooldown_until") or 0.0):
+            logger.error("❌ Base RPC rate-limited after retries for method %s", method)
+        else:
+            logger.warning("⚠️ Base RPC rate-limited for method %s; cooling down %.0fs", method, float(self._rpc_health.get("cooldown_until") or 0.0) - now)
+        self.save()
         return {}
 
     async def _erc20_call(self, selector: str) -> str:
@@ -214,13 +257,13 @@ class PhantomTreasury:
             result_hex = await self._erc20_call("0x70a08231")
             self.base_raw_balance = result_hex
             if result_hex in ("0x", "", None):
-                self.base_status = "MISMATCH"
+                self.base_status = "BLOCKED_BY_RPC"
                 return 0.0
             try:
                 raw_value = int(result_hex, 16) if str(result_hex).startswith("0x") else int(result_hex)
             except ValueError:
                 logger.error("❌ Failed to parse hex balance: %s", result_hex)
-                self.base_status = "MISMATCH"
+                self.base_status = "BLOCKED_BY_RPC"
                 return 0.0
 
             decimals = self.base_idrx_decimals if self.base_idrx_decimals > 0 else 2
@@ -230,7 +273,15 @@ class PhantomTreasury:
             return normalized
         except Exception as e:
             logger.error("❌ Exception fetching Base IDRX balance: %s", e)
-            self.base_status = "MISMATCH"
+            self._rpc_health = {
+                "status": "BLOCKED_BY_RPC",
+                "reason": str(e),
+                "last_error_at": time.time(),
+                "cooldown_until": time.time() + self._rpc_rate_limit_cooldown_s,
+                "last_method": "eth_call",
+            }
+            self.base_status = "BLOCKED_BY_RPC"
+            self.save()
             return 0.0
 
     def _evaluate_reconciliation(self, actual_value_idr: float) -> None:
@@ -244,6 +295,8 @@ class PhantomTreasury:
             reason = "missing Base / EVM configuration"
         elif not self.base_rpc_ok:
             reason = "Base RPC unavailable"
+        elif self._rpc_health.get("status") == "BLOCKED_BY_RPC":
+            reason = f"Base RPC cooldown: {self._rpc_health.get('reason') or 'rate_limited'}"
         elif not matches:
             reason = f"wallet value mismatch: expected ~Rp{expected:,.0f}, actual Rp{actual_value_idr:,.0f}"
 
