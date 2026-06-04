@@ -198,8 +198,22 @@ def build_phantom_target_board() -> Dict[str, Any]:
         candidate["min_profitable_trade_idr"] = float(fee_state.get("min_profitable_trade_idr", 0.0) or 0.0)
         if candidate.get("reason") == "no_quote":
             candidate["reason"] = ""
+        route_requires_quote = candidate["route"] in {
+            "solana_jupiter",
+            "pumpfun_jupiter",
+            "pumpfun_native",
+            "solana_meme",
+            "base_swap",
+            "future_web3",
+        }
         if not route["source_proof_ok"]:
             reason = "source_proof_missing"
+        elif route_requires_quote and not bool(candidate.get("quote_ok", False)):
+            reason = "quote_not_verified"
+            advisory_notes.append("quote_not_verified")
+        elif route_requires_quote and not bool(candidate.get("exit_route_ok", False)):
+            reason = "exit_route_not_verified"
+            advisory_notes.append("exit_route_not_verified")
         elif not route_exit_ready:
             if route["route"] in {"solana_jupiter", "pumpfun_jupiter", "pumpfun_native", "base_swap", "polymarket", "future_web3"}:
                 advisory_notes.append("no_exit_route")
@@ -213,7 +227,7 @@ def build_phantom_target_board() -> Dict[str, Any]:
         if reason:
             candidate["executor_status"] = "BLOCKED_WITH_REASON"
             candidate["reason"] = reason
-            if reason.startswith("gas_") or reason == "no_exit_route":
+            if reason.startswith("gas_") or reason in {"no_exit_route", "quote_not_verified", "exit_route_not_verified"}:
                 candidate["recommended_action"] = "WATCH"
             else:
                 candidate["recommended_action"] = "REJECT" if reason not in {"manual_transfer_required"} else "MANUAL_TRANSFER_REQUIRED"
