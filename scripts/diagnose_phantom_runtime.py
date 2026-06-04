@@ -15,6 +15,18 @@ ROOT = Path(__file__).resolve().parent.parent
 STATE = ROOT / "state" / "live_truth.json"
 
 
+def _hydrate_dotenv() -> None:
+    try:
+        from dotenv import load_dotenv
+
+        load_dotenv(ROOT / ".env", override=False)
+    except Exception:
+        return
+
+
+_hydrate_dotenv()
+
+
 def _mask_url(url: str) -> str:
     if not url:
         return ""
