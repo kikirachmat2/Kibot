@@ -81,6 +81,8 @@ def _running_python_processes() -> list[dict]:
     for line in raw.splitlines()[1:]:
         if "KiBot" not in line and "Core." not in line and "Core/" not in line and "MasterNode.py" not in line:
             continue
+        if "audit_runtime_topology.py" in line or "bash -c cd /home/ubuntu/KiBot" in line:
+            continue
         parts = line.split(maxsplit=6)
         if len(parts) < 7:
             continue
