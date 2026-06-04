@@ -5,9 +5,11 @@ import fcntl
 import hashlib
 import json
 import os
+import re
 import time
 import uuid
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Optional
 
@@ -15,6 +17,13 @@ import requests
 
 ROOT = Path(__file__).resolve().parent.parent.parent
 TELEGRAM_STATE_FILE = ROOT / "state" / "telegram_throttle.json"
+TELEGRAM_OUTBOX_FILE = ROOT / "state" / "telegram_outbox.jsonl"
+
+_SECRET_PATTERNS = [
+    re.compile(r"(bot)[0-9]{6,}:[A-Za-z0-9_-]{20,}", re.IGNORECASE),
+    re.compile(r"([A-Za-z0-9_-]{24,}\.[A-Za-z0-9_-]{6,}\.[A-Za-z0-9_-]{20,})"),
+    re.compile(r"(?i)(api[_-]?key|secret|token|private[_-]?key|seed|password)\s*[:=]\s*([^\s,;]+)"),
+]
 
 
 def _env_int(name: str, default: int) -> int:
@@ -30,6 +39,62 @@ def _normalize_message(message: Any) -> str:
     if len(text) > max_chars:
         text = text[: max_chars - 20].rstrip() + "\n...[truncated]"
     return text
+
+
+def _sanitize_for_audit(value: Any, *, max_chars: int = 700) -> str:
+    text = str(value or "")
+    for pattern in _SECRET_PATTERNS:
+        text = pattern.sub(lambda m: f"{m.group(1)}=SECRET_FOUND_REDACTED" if len(m.groups()) >= 2 else "SECRET_FOUND_REDACTED", text)
+    text = text.replace(os.getenv("KIBOT_TELEGRAM_TOKEN", "") or "\0", "SECRET_FOUND_REDACTED")
+    text = text.replace(os.getenv("TELEGRAM_BOT_TOKEN", "") or "\0", "SECRET_FOUND_REDACTED")
+    if len(text) > max_chars:
+        text = text[: max_chars - 20].rstrip() + "\n...[truncated]"
+    return text
+
+
+def _outbox_file() -> Path:
+    raw = os.getenv("KIBOT_TELEGRAM_OUTBOX_FILE")
+    return Path(raw) if raw else TELEGRAM_OUTBOX_FILE
+
+
+def _append_outbox_event(
+    *,
+    status: str,
+    channel: str,
+    message: Any,
+    message_hash: str = "",
+    incident_key: Optional[str] = None,
+    reason: str = "",
+    error: str = "",
+    parse_mode: Optional[str] = None,
+    http_status: Optional[int] = None,
+) -> None:
+    """Append a sanitized Telegram audit event for AI/operator forensics."""
+    if str(os.getenv("KIBOT_TELEGRAM_OUTBOX_ENABLED", "true")).lower() in {"0", "false", "no", "off"}:
+        return
+    path = _outbox_file()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    payload = {
+        "ts": datetime.now(timezone.utc).isoformat(),
+        "status": str(status or "unknown").lower(),
+        "channel": str(channel or "default"),
+        "incident_key": str(incident_key or ""),
+        "message_hash": str(message_hash or ""),
+        "message_preview": _sanitize_for_audit(message),
+        "reason": _sanitize_for_audit(reason, max_chars=300),
+        "error": _sanitize_for_audit(error, max_chars=300),
+        "parse_mode": parse_mode,
+    }
+    if http_status is not None:
+        payload["http_status"] = int(http_status)
+    with path.open("a+", encoding="utf-8") as fh:
+        fcntl.flock(fh, fcntl.LOCK_EX)
+        try:
+            fh.write(json.dumps(payload, ensure_ascii=False, sort_keys=True) + "\n")
+            fh.flush()
+            os.fsync(fh.fileno())
+        finally:
+            fcntl.flock(fh, fcntl.LOCK_UN)
 
 
 @dataclass(frozen=True)
@@ -262,13 +327,25 @@ def telegram_send(
     """Send a throttled Telegram message with duplicate suppression."""
     token = token or os.getenv("KIBOT_TELEGRAM_TOKEN")
     chat_id = chat_id or os.getenv("KIBOT_TELEGRAM_CHAT_ID")
+    normalized = _normalize_message(message)
+    channel_name = (channel or "default").strip() or "default"
+    audit_hash = hashlib.sha256(f"{channel_name}|{normalized}".encode("utf-8")).hexdigest()
     if not token or not chat_id:
+        _append_outbox_event(
+            status="disabled",
+            channel=channel_name,
+            incident_key=incident_key,
+            message=normalized,
+            message_hash=audit_hash,
+            reason="telegram_credentials_missing",
+            parse_mode=parse_mode,
+        )
         return False
 
     throttle = get_telegram_throttle()
     allowed, reservation, reason = throttle.claim(
-        message,
-        channel=channel,
+        normalized,
+        channel=channel_name,
         incident_key=incident_key,
         parse_mode=parse_mode,
         min_interval_sec=min_interval_sec,
@@ -279,9 +356,18 @@ def telegram_send(
     )
     if not allowed or not reservation:
         print(f"[TELEGRAM][THROTTLED] {reason}", flush=True)
+        _append_outbox_event(
+            status="throttled",
+            channel=channel_name,
+            incident_key=incident_key,
+            message=normalized,
+            message_hash=audit_hash,
+            reason=reason,
+            parse_mode=parse_mode,
+        )
         return False
 
-    text = _normalize_message(message)
+    text = normalized
     url = f"https://api.telegram.org/bot{token}/sendMessage"
     payload = {"chat_id": chat_id, "text": text}
     if parse_mode:
@@ -291,6 +377,15 @@ def telegram_send(
         resp = requests.post(url, json=payload, timeout=timeout_sec)
         if 200 <= resp.status_code < 300:
             throttle.commit(reservation)
+            _append_outbox_event(
+                status="sent",
+                channel=channel_name,
+                incident_key=incident_key,
+                message=text,
+                message_hash=reservation.message_hash,
+                parse_mode=parse_mode,
+                http_status=resp.status_code,
+            )
             return True
 
         if resp.status_code == 400 and parse_mode:
@@ -299,11 +394,40 @@ def telegram_send(
             resp = requests.post(url, json=fallback, timeout=timeout_sec)
             if 200 <= resp.status_code < 300:
                 throttle.commit(reservation)
+                _append_outbox_event(
+                    status="sent",
+                    channel=channel_name,
+                    incident_key=incident_key,
+                    message=text,
+                    message_hash=reservation.message_hash,
+                    reason="sent_without_parse_mode_fallback",
+                    parse_mode=None,
+                    http_status=resp.status_code,
+                )
                 return True
 
         print(f"[TELEGRAM][ERROR] HTTP {resp.status_code}: {resp.text[:500]}", flush=True)
+        _append_outbox_event(
+            status="failed",
+            channel=channel_name,
+            incident_key=incident_key,
+            message=text,
+            message_hash=reservation.message_hash,
+            error=f"http_{resp.status_code}",
+            parse_mode=parse_mode,
+            http_status=resp.status_code,
+        )
     except Exception as exc:
         print(f"[TELEGRAM][ERROR] {exc}", flush=True)
+        _append_outbox_event(
+            status="failed",
+            channel=channel_name,
+            incident_key=incident_key,
+            message=text,
+            message_hash=reservation.message_hash,
+            error=str(exc),
+            parse_mode=parse_mode,
+        )
 
     throttle.release(reservation)
     return False
