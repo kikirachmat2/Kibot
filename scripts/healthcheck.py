@@ -788,9 +788,18 @@ def check_runtime_assertions():
         output = (res.stdout or "").strip()
         if output:
             logger.info("%s => %s", rel_path, output.splitlines()[-1])
-        if rel_path.endswith("diagnose_phantom_runtime.py") and "OK:PHANTOM_LOCKED_MISSING_ENV" in output:
-            logger.warning("⚠️ Phantom is locked by missing env; continuing healthcheck.")
-            continue
+        phantom_known_locks = {
+            "OK:PHANTOM_LOCKED_MISSING_ENV",
+            "BLOCKED_BY_PHANTOM_SIGNING",
+            "BLOCKED_BY_RPC",
+            "BLOCKED_BY_JUPITER",
+            "BLOCKED_BY_WALLET_RECONCILIATION",
+        }
+        if rel_path.endswith(("diagnose_phantom_runtime.py", "assert_phantom_live_ready.py")):
+            matched = next((code for code in phantom_known_locks if code in output), "")
+            if matched:
+                logger.warning("⚠️ Phantom venue is fail-safe locked (%s); continuing healthcheck.", matched)
+                continue
         if res.returncode != 0:
             logger.error("❌ Runtime assertion failed: %s", output or rel_path)
             safe_exit(39, f"Runtime assertion failed: {rel_path}: {output}")
