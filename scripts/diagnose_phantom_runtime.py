@@ -168,6 +168,8 @@ async def main() -> int:
         diagnosis = "BLOCKED_BY_RPC"
     elif not jupiter_quote_ok:
         diagnosis = "BLOCKED_BY_JUPITER"
+    elif not jupiter_swap_ok:
+        diagnosis = "BLOCKED_BY_JUPITER"
     elif not wallet_ok:
         diagnosis = "BLOCKED_BY_WALLET_RECONCILIATION"
     else:
