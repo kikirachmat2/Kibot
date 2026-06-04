@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import json
-from pathlib import Path
+from datetime import datetime, timezone
 
 from tests._script_loader import load_script_module
 
@@ -11,10 +11,11 @@ def test_target_freshness_audit_fresh(tmp_path, monkeypatch):
     monkeypatch.setattr(mod, "STATE_DIR", tmp_path)
     monkeypatch.setattr(mod, "OUT_FILE", tmp_path / "target_freshness_audit.json")
     monkeypatch.setattr(mod, "HISTORY_FILE", tmp_path / "target_freshness_history.json")
-    (tmp_path / "indodax_top_targets.json").write_text(json.dumps({"updated_at": "2026-06-02T00:00:00+00:00", "top_targets": [{"symbol": "AAA/IDR"}]}), encoding="utf-8")
-    (tmp_path / "phantom_top_targets.json").write_text(json.dumps({"updated_at": "2026-06-02T00:00:00+00:00", "top_targets": [{"symbol": "BBB"}]}), encoding="utf-8")
-    (tmp_path / "target_board_runtime.json").write_text(json.dumps({"updated_at": "2026-06-02T00:00:00Z"}), encoding="utf-8")
-    (tmp_path / "candidate_decisions.jsonl").write_text(json.dumps({"updated_at": "2026-06-02T00:00:00Z"}) + "\n", encoding="utf-8")
+    now = datetime.now(timezone.utc).isoformat()
+    (tmp_path / "indodax_top_targets.json").write_text(json.dumps({"updated_at": now, "top_targets": [{"symbol": "AAA/IDR"}]}), encoding="utf-8")
+    (tmp_path / "phantom_top_targets.json").write_text(json.dumps({"updated_at": now, "top_targets": [{"symbol": "BBB"}]}), encoding="utf-8")
+    (tmp_path / "target_board_runtime.json").write_text(json.dumps({"updated_at": now}), encoding="utf-8")
+    (tmp_path / "candidate_decisions.jsonl").write_text(json.dumps({"updated_at": now}) + "\n", encoding="utf-8")
 
     payload = mod.build_target_freshness_audit()
     assert payload["status"] == "FRESH"

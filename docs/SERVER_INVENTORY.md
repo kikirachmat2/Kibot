@@ -33,6 +33,16 @@ PYTHONPATH=. python scripts/audit_runtime_topology.py
 
 The command writes `state/runtime_topology_audit.json` and flags unmanaged KiBot processes, inactive core services, and noisy optional route services.
 
+Runtime truth/anchor audit command:
+
+```bash
+PYTHONPATH=. python scripts/assert_anchor_contract.py
+```
+
+Healthchecks are read-only by default. `scripts/healthcheck.py` will not create `state/KILL_SWITCH`
+or mutate `.env` unless `KIBOT_HEALTHCHECK_ALLOW_ROLLBACK=true` is explicitly set. A stale
+`state/daily_equity_anchor_lock.json` must not override a current `state/daily_equity_anchor.json`.
+
 ---
 
 ## 1. Host Identity & Hardware Profile

@@ -149,11 +149,21 @@ class BridgeRouter:
         amount_coin = (amount_idr / price_idr) * 0.998 # Approximate amount after 0.2% trading fee
         
         if not is_live:
-            self.transition_to("guarded_approved", "Running in guarded mode (real bridge or withdrawal is disabled)")
-            logger.warning(f"🧪 GUARDED MODE: Skipping actual market buy and withdrawal for {coin.upper()}.")
-            telegram_send(f"🧪 *GUARDED BRIDGE INITIATED*\nBot guarded buy and withdrawal of `{amount_coin:.4f} {coin.upper()}` to `{destination_address}` on {network}.\nFee Paid: ~Rp {fee_idr:,.0f}")
-            self.transition_to("executed", f"Guarded bridge of {amount_coin:.4f} {coin.upper()}")
-            return True
+            disabled = []
+            if not KiConfig.LIVE_TRADING_ENABLED:
+                disabled.append("live_trading")
+            if not KiConfig.ENABLE_REAL_BRIDGE:
+                disabled.append("real_bridge")
+            if not KiConfig.ENABLE_REAL_WITHDRAWAL:
+                disabled.append("real_withdrawal")
+            reason = "bridge_or_withdrawal_disabled:" + ",".join(disabled or ["unknown"])
+            self.transition_to("blocked", reason)
+            logger.warning(
+                "🛡️ GUARDED MODE: Real bridge not executed for %s. Disabled gates: %s",
+                coin.upper(),
+                ", ".join(disabled or ["unknown"]),
+            )
+            return False
 
         # Real Live Mode execution
         try:

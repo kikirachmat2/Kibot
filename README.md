@@ -147,6 +147,9 @@ Real-money execution is not the default path. The runtime must pass the explicit
 - Keep README, inventory, and strategy docs updated when server state or runtime behavior changes.
 - Never commit secrets, `.env` files, decrypted vault material, private keys, or exchange credentials.
 - Prefer sparse, deduplicated notifications over noisy alert loops.
+- Treat healthchecks as read-only by default. Emergency rollback/KILL_SWITCH creation requires
+  `KIBOT_HEALTHCHECK_ALLOW_ROLLBACK=true`; otherwise use assertions such as
+  `scripts/assert_anchor_contract.py` to report runtime drift without mutating production.
 - Document any change that affects live trading, Telegram behavior, or server health.
 
 ---

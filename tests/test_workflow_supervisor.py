@@ -1,5 +1,6 @@
 import json
 import asyncio
+from datetime import datetime, timezone
 from pathlib import Path
 
 from Core.Support import workflow_supervisor
@@ -7,6 +8,16 @@ from Core.Support import workflow_supervisor
 
 def _write(path: Path, data: dict):
     path.write_text(json.dumps(data), encoding="utf-8")
+
+
+def _fresh_live_truth() -> dict:
+    return {
+        "updated_at": datetime.now(timezone.utc).isoformat(),
+        "runtime_mode": "LIVE_ONLY",
+        "risk_state": "OK",
+        "total_equity_idr": 100000,
+        "net_pnl_today_idr": 0,
+    }
 
 
 def test_workflow_supervisor_explains_dispatcher_block(tmp_path, monkeypatch):
@@ -72,6 +83,7 @@ def test_workflow_supervisor_ready_when_dispatcher_active(tmp_path, monkeypatch)
     _write(tmp_path / "live_order_dispatcher.json", {"status": "ACTIVE"})
     _write(tmp_path / "indodax_top_targets.json", {"top_targets": [{"recommended_action": "ENTER"}]})
     _write(tmp_path / "phantom_top_targets.json", {"top_targets": []})
+    _write(tmp_path / "live_truth.json", _fresh_live_truth())
 
     state = workflow_supervisor.build_workflow_automation_state()
 
@@ -98,6 +110,7 @@ def test_workflow_supervisor_remediates_rollover_pending(tmp_path, monkeypatch):
     _write(tmp_path / "live_order_dispatcher.json", {"status": "BLOCKED_WITH_REASON", "reason": reason})
     _write(tmp_path / "indodax_top_targets.json", {"top_targets": [{"recommended_action": "ENTER"}]})
     _write(tmp_path / "phantom_top_targets.json", {"top_targets": []})
+    _write(tmp_path / "live_truth.json", _fresh_live_truth())
 
     state = workflow_supervisor.build_workflow_automation_state()
 

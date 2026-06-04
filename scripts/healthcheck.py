@@ -56,6 +56,15 @@ logging.basicConfig(
 logger = logging.getLogger("Healthcheck")
 
 def trigger_rollback(reason: str):
+    allow_rollback = os.getenv("KIBOT_HEALTHCHECK_ALLOW_ROLLBACK", "false").lower() == "true"
+    if not allow_rollback:
+        logger.warning(
+            "🚨 HEALTHCHECK FAILED: %s. Rollback suppressed because "
+            "KIBOT_HEALTHCHECK_ALLOW_ROLLBACK is not true.",
+            reason,
+        )
+        return
+
     logger.warning(f"🚨 HEALTHCHECK FAILED: {reason}. Triggering automated rollback...")
     import subprocess
     rollback_script = PROJECT_ROOT / "scripts" / "rollback.py"
@@ -182,7 +191,7 @@ def check_live_trading_gates(KiConfig):
     # 1. Enforce live-only mode environment flags
     runtime_mode = str(os.getenv("KIBOT_RUNTIME_MODE", os.getenv("KIBOT_TRADING_MODE", "")).strip()).upper()
     live_trading_env = os.getenv("KIBOT_LIVE_TRADING_ENABLED", "false").lower() == "true"
-    if getattr(KiConfig, "LIVE_TRADING_ENABLED", False):
+    if getattr(KiConfig, "LIVE_TRADING_ENABLED", False) is True:
         live_trading_env = True
         os.environ["KIBOT_LIVE_TRADING_ENABLED"] = "true"
     canary_live_env = os.getenv("KIBOT_CANARY_LIVE_ENABLED", "false").lower() == "true"
@@ -227,17 +236,50 @@ def check_live_trading_gates(KiConfig):
         
     today_wib = str(datetime.now(WIB).date())
     anchor_lock_file = PROJECT_ROOT / "state" / "daily_equity_anchor_lock.json"
-    anchor_file = anchor_lock_file if anchor_lock_file.exists() else PROJECT_ROOT / "state" / "daily_equity_anchor.json"
+    primary_anchor_file = PROJECT_ROOT / "state" / "daily_equity_anchor.json"
+
+    def _read_anchor(path: Path) -> dict:
+        if not path.exists():
+            return {}
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+            return data if isinstance(data, dict) else {}
+        except Exception as exc:
+            logger.error("❌ CRITICAL: Failed to read %s: %s", path.name, exc)
+            safe_exit(33, f"Failed to read {path.name}: {exc}")
+        return {}
+
+    primary_anchor = _read_anchor(primary_anchor_file)
+    lock_anchor = _read_anchor(anchor_lock_file)
+    primary_current = primary_anchor.get("date") == today_wib
+    lock_current = lock_anchor.get("date") == today_wib
+
+    if lock_anchor and not lock_current and primary_current:
+        logger.warning(
+            "⚠️ Ignoring stale daily_equity_anchor_lock.json date=%s because daily_equity_anchor.json is current for %s.",
+            lock_anchor.get("date"),
+            today_wib,
+        )
+
+    if lock_current:
+        anchor_file = anchor_lock_file
+        anchor_data = lock_anchor
+    elif primary_anchor:
+        anchor_file = primary_anchor_file
+        anchor_data = primary_anchor
+    elif lock_anchor:
+        anchor_file = anchor_lock_file
+        anchor_data = lock_anchor
+    else:
+        anchor_file = primary_anchor_file
+        anchor_data = {}
     
     logger.info(f"Checking daily drawdown anchor at {anchor_file} for date {today_wib}...")
-    if not anchor_file.exists():
+    if not anchor_data:
         logger.error("❌ CRITICAL: daily_equity_anchor.json is missing!")
         safe_exit(33, "daily_equity_anchor.json is missing!")
         
     try:
-        with open(anchor_file, "r") as f:
-            anchor_data = json.load(f)
-            
         anchor_date = anchor_data.get("date")
         max_loss_pct = float(anchor_data.get("max_daily_loss_pct", 0.0))
         

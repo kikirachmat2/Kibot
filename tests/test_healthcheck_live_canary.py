@@ -36,7 +36,7 @@ def test_healthcheck_live_trading_enabled_error(mock_state_dir):
         mock_exit.side_effect = SystemExit
         with pytest.raises(SystemExit):
             check_live_trading_gates(MagicMock())
-        mock_exit.assert_called_with(30, "KIBOT_LIVE_TRADING_ENABLED must be True in controlled-live mode.")
+        mock_exit.assert_called_with(30, "KIBOT_LIVE_TRADING_ENABLED must be True in LIVE_ONLY mode.")
 
 def test_healthcheck_canary_disabled_error(mock_state_dir):
     # KIBOT_CANARY_LIVE_ENABLED=true should fail with code 31
@@ -49,7 +49,7 @@ def test_healthcheck_canary_disabled_error(mock_state_dir):
         mock_exit.side_effect = SystemExit
         with pytest.raises(SystemExit):
             check_live_trading_gates(MagicMock())
-        mock_exit.assert_called_with(31, "KIBOT_CANARY_LIVE_ENABLED must be False in controlled-live mode.")
+        mock_exit.assert_called_with(31, "KIBOT_CANARY_LIVE_ENABLED must be False in LIVE_ONLY mode.")
 
 def test_healthcheck_missing_safety_gates(mock_state_dir):
     # Missing any required safety gate (e.g. KIBOT_BLOCK_TRADE_IF_EV_NEGATIVE=false) should fail with code 32

@@ -37,7 +37,7 @@ async def test_canary_kill_switch():
             kill_switch_path.unlink()
 
 @pytest.mark.anyio
-async def test_canary_budget_limit():
+async def test_canary_budget_limit_cannot_bypass_decision_gate():
     executor = IndodaxExecutor()
     executor.active_trades = {}
     executor.reservations = {}
@@ -71,9 +71,8 @@ async def test_canary_budget_limit():
         mock_trade.return_value = {"success": 1, "return": {"filled_rp": 25000.0, "filled_coin": 2.5, "price": 10000.0}}
         await executor.process_signal(signal)
         
-        # Verify it respects CANARY constraints by clamping to CANARY_MAX_TRADE_IDR (Rp 25,000)
-        called_args, called_kwargs = mock_trade.call_args
-        assert called_kwargs.get("amount_idr") == 25000.0
+        # Legacy canary sizing must not bypass the live-only deterministic gate.
+        mock_trade.assert_not_called()
 
 @pytest.mark.anyio
 async def test_canary_council_mandate_requirement():
