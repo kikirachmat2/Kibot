@@ -88,7 +88,7 @@ class KiConfig:
     SCALPING_SL_PERCENT = 2.0         # Matches RiskGate SL
     _RAW_TRADING_MODE = os.getenv("KIBOT_RUNTIME_MODE", os.getenv("KIBOT_TRADING_MODE", LIVE_ONLY)).strip().lower()
     TRADING_MODE = normalize_runtime_mode(_RAW_TRADING_MODE)
-    LIVE_TRADING_ENABLED = _env_flag("KIBOT_LIVE_TRADING_ENABLED", "true" if TRADING_MODE == LIVE_ONLY else "false") or TRADING_MODE == LIVE_ONLY
+    LIVE_TRADING_ENABLED = _env_flag("KIBOT_LIVE_TRADING_ENABLED", "true" if TRADING_MODE == LIVE_ONLY else "false")
     LIVE_OPPORTUNITY_EXPANSION = _env_flag("KIBOT_LIVE_OPPORTUNITY_EXPANSION", "true" if TRADING_MODE == LIVE_ONLY else "false")
     FORCE_DAILY_PROFIT = _env_flag("KIBOT_FORCE_DAILY_PROFIT", "false")
     DAILY_PROFIT_DEADLINE = _env_flag("KIBOT_DAILY_PROFIT_DEADLINE", "false")
