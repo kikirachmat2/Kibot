@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 from datetime import datetime, timezone
 from pathlib import Path
@@ -114,11 +115,12 @@ def main() -> None:
     ]
     inactive_core = [s for s in service_rows if s["category"] == "CORE" and s["active_state"] != "active"]
     noisy_optional = []
+    error_window_min = max(1, int(float(os.getenv("KIBOT_TOPOLOGY_ERROR_WINDOW_MIN", "2") or 2)))
     for svc in sorted(OPTIONAL_ROUTE_SERVICES):
-        recent = _run(["journalctl", "-u", svc, "--since", "10 minutes ago", "--no-pager"])
+        recent = _run(["journalctl", "-u", svc, "--since", f"{error_window_min} minutes ago", "--no-pager"])
         error_count = sum(1 for line in recent.splitlines() if any(token in line.lower() for token in ("error", "traceback", "exception", "failed")))
         if error_count:
-            noisy_optional.append({"service": svc, "error_lines_10m": error_count})
+            noisy_optional.append({"service": svc, f"error_lines_{error_window_min}m": error_count})
 
     status = "OK"
     if unmanaged or inactive_core:
