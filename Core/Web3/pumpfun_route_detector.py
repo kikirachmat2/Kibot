@@ -197,9 +197,22 @@ class PumpfunRouteDetector:
         _write_json(ROUTE_STATE_FILE, state)
         return state
 
-    async def detect_best_effort(self, mint: str, pair_hint: Dict[str, Any] | None = None) -> Dict[str, Any]:
+    async def detect_best_effort(
+        self,
+        mint: str,
+        pair_hint: Dict[str, Any] | None = None,
+        *,
+        trade_size_idr: float | None = None,
+        balance_snapshot: Dict[str, Any] | None = None,
+        **_kwargs: Any,
+    ) -> Dict[str, Any]:
         try:
-            return await self.detect(mint, pair_hint=pair_hint)
+            return await self.detect(
+                mint,
+                pair_hint=pair_hint,
+                trade_size_idr=trade_size_idr,
+                balance_snapshot=balance_snapshot,
+            )
         except Exception as exc:
             state = self._blank_state()
             state.update(
