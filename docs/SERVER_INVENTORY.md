@@ -4,6 +4,37 @@ This document serves as the official, comprehensive runtime audit and inventory 
 
 ---
 
+## 0. Current Runtime Topology Contract
+
+Updated: 2026-06-05 WIB / 2026-06-04 UTC.
+
+Batam must be treated as a systemd-managed production runtime. Any KiBot Python process that is not owned by the current systemd service set is considered a ghost process and must be stopped or investigated before trusting dashboard state.
+
+Canonical core services:
+
+| Category | Services | Rule |
+| :--- | :--- | :--- |
+| Core truth/control | `kibot-live-truth`, `kibot-capital-governor`, `kibot-scanner`, `kibot-target-board`, `kibot-autonomous-brain`, `kibot-indodax-director`, `kibot-phantom-brain`, `kibot-live-dispatcher`, `kibot-executor`, `kibot-dashboard` | Keep active. These form the money truth, scanner, decision, dispatch, execution, and UI path. |
+| Support/observability | `kibot-ai-scout`, `kibot-daily-reset`, `kibot-janitor`, `kibot-master`, `kibot-scanner-health`, `kibot-telemetry`, `kibot-workflow-supervisor` | Keep active only while quiet and non-blocking. They must not override deterministic trade gates. |
+| Optional route runners | `kibot-base`, `kibot-pumpfun`, `kibot-future-web3`, `kibot-executor-polymarket`, `kibot-web3-exit` | Allowed to scan/prepare routes, but noisy or broken runners must be locked/disabled instead of polluting live state. |
+
+Recent cleanup:
+
+* Removed an unmanaged duplicate `python -m Core.Decision.daily_reset_coordinator` process that had been running outside systemd since May 27, 2026.
+* Restarted the active service set so running processes use the same code as GitHub main.
+* Fixed Pumpfun route detector signature drift that caused `kibot-pumpfun` to throw `unexpected keyword argument 'trade_size_idr'` every loop.
+* Fixed Phantom target board semantics so a target with `quote_ok=false` or `exit_route_ok=false` is `WATCH` with a reason, not a false `ENTER`.
+
+Operator/AI audit command:
+
+```bash
+PYTHONPATH=. python scripts/audit_runtime_topology.py
+```
+
+The command writes `state/runtime_topology_audit.json` and flags unmanaged KiBot processes, inactive core services, and noisy optional route services.
+
+---
+
 ## 1. Host Identity & Hardware Profile
 
 *   **Hostname:** `BrainSystem`
