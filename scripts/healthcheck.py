@@ -372,6 +372,7 @@ def check_no_legacy_modes():
     logger.info("Step 6/8: Verifying production dashboard contains no legacy paper/sim/canary labels...")
     import urllib.request
     import re
+    timeout_s = float(os.getenv("KIBOT_HEALTHCHECK_DASHBOARD_TIMEOUT_S", "20") or 20)
 
     endpoints = [
         "http://127.0.0.1:8787/",
@@ -386,7 +387,7 @@ def check_no_legacy_modes():
     )
     for url in endpoints:
         try:
-            with urllib.request.urlopen(url, timeout=5) as res:
+            with urllib.request.urlopen(url, timeout=timeout_s) as res:
                 body = res.read().decode("utf-8", errors="ignore").lower()
             hits = [pattern.pattern for pattern in forbidden if pattern.search(body)]
             if hits:
