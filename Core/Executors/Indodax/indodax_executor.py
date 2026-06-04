@@ -1620,6 +1620,9 @@ class IndodaxExecutor:
         
         symbol = signal.get("symbol", "UNKNOWN")
         side = signal.get("side", "BUY")
+        pair = str(signal.get("pair") or symbol).lower().replace("/", "_")
+        if "_" not in pair:
+            pair = f"{pair}_idr"
         price = float(signal.get("price", 0))
         live_price, live_price_meta = await self._resolve_live_entry_price(symbol, price)
         if live_price > 0:
@@ -1763,6 +1766,61 @@ class IndodaxExecutor:
                 logger.warning(f"🛡️ REJECTED (Balance-Aware): {afford_reason} for {symbol}")
                 return
 
+            # Build the live orderbook simulation before the deterministic gate.
+            # The gate is still hard, but it should evaluate real simulation data
+            # instead of failing on an empty placeholder.
+            if _ORDER_TRACKER_AVAILABLE and side.lower() == "buy":
+                try:
+                    signal["max_spread_pct"] = float(indo_strat.get("max_spread_pct", 1.2) or 1.2)
+                    if sizing.get("probe_mode") and float(signal.get("confidence") or 0.0) >= float(os.getenv("KIBOT_PROBE_MIN_CONFIDENCE", "0.78") or 0.78):
+                        signal["max_spread_pct"] = max(
+                            float(signal["max_spread_pct"]),
+                            float(os.getenv("KIBOT_PROBE_MAX_SPREAD_PCT", "1.2") or 1.2),
+                        )
+                    simulation = await simulate_indodax_entry(
+                        self.indodax,
+                        symbol=symbol,
+                        price=price,
+                        budget_idr=budget,
+                        signal=signal,
+                        fee_roundtrip_pct=fee_roundtrip_pct,
+                    )
+                    log_pre_trade_simulation(simulation)
+                    verdict = str(simulation.get("simulation_verdict") or "REJECT").upper()
+                    if verdict == "REDUCE_SIZE":
+                        reduced_budget = max(float(simulation.get("min_base_idr", 10_000) or 10_000), min(budget * 0.65, budget))
+                        reduced_budget = min(reduced_budget, current_balance * 0.99)
+                        retry = await simulate_indodax_entry(
+                            self.indodax,
+                            symbol=symbol,
+                            price=price,
+                            budget_idr=reduced_budget,
+                            signal=signal,
+                            fee_roundtrip_pct=fee_roundtrip_pct,
+                        )
+                        log_pre_trade_simulation({**retry, "retry_after_reduce": True})
+                        if str(retry.get("simulation_verdict") or "REJECT").upper() == "PASS":
+                            budget = reduced_budget
+                            signal["budget_idr"] = budget
+                            simulation = retry
+                            logger.info(f"🧮 PRE-TRADE SIM: reduced {symbol} budget to Rp{budget:,.0f}")
+                        else:
+                            logger.warning(
+                                f"🛡️ REJECTED (PreTradeSim): reduce retry failed for {symbol}: "
+                                f"{retry.get('reasons')}"
+                            )
+                            return
+                    elif verdict != "PASS":
+                        logger.warning(
+                            f"🛡️ REJECTED (PreTradeSim): {symbol} verdict={verdict} "
+                            f"reasons={simulation.get('reasons')}"
+                        )
+                        return
+                    signal["pre_trade_simulation"] = simulation
+                except Exception as sim_err:
+                    logger.warning(f"🛡️ REJECTED (PreTradeSim error): {symbol} {sim_err}")
+                    return
+
             runtime_truth = load_live_truth()
             pair_key = str(signal.get("pair") or symbol or signal.get("symbol") or "").upper()
             if not pair_key:
@@ -1859,62 +1917,6 @@ class IndodaxExecutor:
                     })
                     return
 
-            # Simulate the full buy-then-sell lifecycle against the live
-            # orderbook before spending real money. This blocks the exact
-            # failure mode that hurt the account: buying tiny/stuck books that
-            # cannot be exited cleanly after fees and minimum-order rules.
-            if _ORDER_TRACKER_AVAILABLE and side.lower() == "buy":
-                try:
-                    signal["max_spread_pct"] = float(indo_strat.get("max_spread_pct", 1.2) or 1.2)
-                    if sizing.get("probe_mode") and float(signal.get("confidence") or 0.0) >= float(os.getenv("KIBOT_PROBE_MIN_CONFIDENCE", "0.78") or 0.78):
-                        signal["max_spread_pct"] = max(
-                            float(signal["max_spread_pct"]),
-                            float(os.getenv("KIBOT_PROBE_MAX_SPREAD_PCT", "1.2") or 1.2),
-                        )
-                    simulation = await simulate_indodax_entry(
-                        self.indodax,
-                        symbol=symbol,
-                        price=price,
-                        budget_idr=budget,
-                        signal=signal,
-                        fee_roundtrip_pct=fee_roundtrip_pct,
-                    )
-                    log_pre_trade_simulation(simulation)
-                    verdict = str(simulation.get("simulation_verdict") or "REJECT").upper()
-                    if verdict == "REDUCE_SIZE":
-                        reduced_budget = max(float(simulation.get("min_base_idr", 10_000) or 10_000), min(budget * 0.65, budget))
-                        reduced_budget = min(reduced_budget, current_balance * 0.99)
-                        retry = await simulate_indodax_entry(
-                            self.indodax,
-                            symbol=symbol,
-                            price=price,
-                            budget_idr=reduced_budget,
-                            signal=signal,
-                            fee_roundtrip_pct=fee_roundtrip_pct,
-                        )
-                        log_pre_trade_simulation({**retry, "retry_after_reduce": True})
-                        if str(retry.get("simulation_verdict") or "REJECT").upper() == "PASS":
-                            budget = reduced_budget
-                            signal["budget_idr"] = budget
-                            simulation = retry
-                            logger.info(f"🧮 PRE-TRADE SIM: reduced {symbol} budget to Rp{budget:,.0f}")
-                        else:
-                            logger.warning(
-                                f"🛡️ REJECTED (PreTradeSim): reduce retry failed for {symbol}: "
-                                f"{retry.get('reasons')}"
-                            )
-                            return
-                    elif verdict != "PASS":
-                        logger.warning(
-                            f"🛡️ REJECTED (PreTradeSim): {symbol} verdict={verdict} "
-                            f"reasons={simulation.get('reasons')}"
-                        )
-                        return
-                    signal["pre_trade_simulation"] = simulation
-                except Exception as sim_err:
-                    logger.warning(f"🛡️ REJECTED (PreTradeSim error): {symbol} {sim_err}")
-                    return
-            
             is_valid, reason = self.risk.validate_signal(signal, current_balance, total_slots)
             if not is_valid:
                 logger.warning(f"🛡️ REJECTED: {reason} for {symbol}.")
