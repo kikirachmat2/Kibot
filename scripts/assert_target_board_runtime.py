@@ -11,7 +11,7 @@ def main() -> int:
         print("target_board_runtime_missing")
         return 1
     payload = json.loads(p.read_text(encoding="utf-8"))
-    if payload.get("indodax_count", 0) <= 0 and payload.get("phantom_count", 0) <= 0:
+    if payload.get("indodax_count", 0) <= 0:
         print("target_board_empty")
         return 1
     print("ASSERT_TARGET_BOARD_RUNTIME_OK")

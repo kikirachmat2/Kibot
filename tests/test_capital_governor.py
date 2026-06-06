@@ -125,9 +125,9 @@ async def test_capital_governor_drawdown_enforcement(monkeypatch, tmp_path):
         
         # Reconcile capital
         gov_data = await governor.reconcile_governor()
-        # total_equity = 100k + (5 * 16000) = 180,000 IDR
-        assert gov_data["current_total_equity_idr"] == 180000.0
-        assert gov_data["total_balance_idr"] == 180000.0
+        # Indodax-only total_equity = Indodax cash only; retired Phantom is excluded.
+        assert gov_data["current_total_equity_idr"] == 100000.0
+        assert gov_data["total_balance_idr"] == 100000.0
         assert gov_data["combined_pnl_idr"] == gov_data["daily_pnl_idr"]
         assert gov_data["reset_total_balance_idr"] == gov_data["start_total_equity_idr"]
         
@@ -239,15 +239,15 @@ async def test_capital_governor_flows_and_hardenings(monkeypatch, tmp_path):
         governor.start_total_equity_idr = 0.0
         
         gov_data = await governor.reconcile_governor()
-        # total_equity = 200k + (5 * 16000) = 280,000 IDR
-        assert gov_data["current_total_equity_idr"] == 280000.0
-        # start_total_equity = 280,000 IDR
+        # Indodax-only total_equity = 200,000 IDR
+        assert gov_data["current_total_equity_idr"] == 200000.0
+        # start_total_equity = 200,000 IDR
         # external_deposits_today = 10,000 IDR
         # external_withdrawals_today = 5,000 IDR
         # PnL should be adjusted: current - start - deposits + withdrawals
-        # 280,000 - 280,000 - 10,000 + 5,000 = -5,000 IDR
+        # 200,000 - 200,000 - 10,000 + 5,000 = -5,000 IDR
         assert gov_data["daily_pnl_idr"] == -5000.0
-        assert gov_data["daily_pnl_pct"] == (-5000.0 / 280000.0 * 100.0)
+        assert gov_data["daily_pnl_pct"] == (-5000.0 / 200000.0 * 100.0)
         assert gov_data["status"] == "BLOCKED_WITH_REASON"
         assert gov_data["allow_new_orders"] is False
         
@@ -330,16 +330,16 @@ async def test_capital_governor_manual_reset(monkeypatch, tmp_path):
         governor.start_total_equity_idr = 0.0
         
         gov_data = await governor.reconcile_governor()
-        # current_total_equity = 200k + 80k = 280,000 IDR
-        assert gov_data["current_total_equity_idr"] == 280000.0
-        # start_total_equity = 280,000 IDR
-        # daily_pnl_idr = 280,000 - 280,000 - 20,000 = -20,000 IDR
+        # Indodax-only current_total_equity = 200,000 IDR
+        assert gov_data["current_total_equity_idr"] == 200000.0
+        # start_total_equity = 200,000 IDR
+        # daily_pnl_idr = 200,000 - 200,000 - 20,000 = -20,000 IDR
         assert gov_data["daily_pnl_idr"] == -20000.0
         
         # Now trigger manual pnl reset
         governor.manual_pnl_reset()
         
-        assert governor.start_total_equity_idr == 280000.0
+        assert governor.start_total_equity_idr == 200000.0
         assert governor.reset_deposits_offset == 20000.0
         assert governor.daily_pnl_idr == 0.0
         assert governor.daily_pnl_pct == 0.0
@@ -411,6 +411,6 @@ async def test_capital_governor_includes_open_buy_reserve(monkeypatch, tmp_path)
 
         gov_data = await governor.reconcile_governor()
 
-        # 75k cash + 25k reserved order + 80k Phantom equity = 180k total.
-        assert gov_data["current_total_equity_idr"] == 180000.0
+        # 75k cash + 25k reserved order; retired Phantom is excluded.
+        assert gov_data["current_total_equity_idr"] == 100000.0
         assert gov_data["open_buy_order_reserve_idr"] == 25000.0

@@ -49,13 +49,15 @@ def test_control_plane_payload_structure():
     # 3. Venue command performance cards
     assert "venues" in data
     venues = data["venues"]
-    for venue_key in ["indodax_real", "phantom", "polymarket", "cash_wait"]:
+    for venue_key in ["indodax_real", "cash_wait"]:
         assert venue_key in venues
         v = venues[venue_key]
         assert "venue" in v
         assert "mode" in v
         assert "status" in v
         assert "reason" in v
+    assert "phantom" not in venues
+    assert "polymarket" not in venues
     assert "indodax_shadow" not in venues
 
     # 4. Intelligence Gate Stack

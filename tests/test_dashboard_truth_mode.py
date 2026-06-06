@@ -8,4 +8,4 @@ def test_dashboard_control_plane_has_web3_truth_blocks():
     assert "web3_exit" in payload
     assert "allow_new_live_orders" in payload["mode"]
     assert "reason" in payload["venues"]["indodax_real"]
-    assert "reason" in payload["venues"]["phantom"]
+    assert "phantom" not in payload["venues"]

@@ -8,11 +8,9 @@ from pathlib import Path
 from typing import Any, Dict, List
 
 from Core.Decision.indodax_target_board import build_indodax_target_board
-from Core.Decision.phantom_target_board import build_phantom_target_board
-from Core.Treasury.phantom_capital_mover import write_phantom_capital_mover
-from Core.Treasury.phantom_network_maximizer import write_phantom_network_maximizer
 from Core.Decision.engine_independence import write_engine_independence
 from Core.Scanner.scanner_executor_contract import ScannerExecutorContract
+from Core.Support.ki_config import KiConfig
 
 logger = logging.getLogger("TargetBoardRunner")
 STATE_DIR = Path(__file__).resolve().parent.parent.parent / "state"
@@ -111,9 +109,10 @@ def _write_runtime(indodax: dict, phantom: dict, error: str = "") -> None:
         "updated_at": __import__("datetime").datetime.utcnow().isoformat() + "Z",
         "loop_interval_seconds": 5,
         "indodax_updated": bool(indodax),
-        "phantom_updated": bool(phantom),
+        "phantom_updated": False,
         "indodax_count": len(indodax.get("top_targets", []) or []),
-        "phantom_count": len(phantom.get("top_targets", []) or []),
+        "phantom_count": 0,
+        "platform_mode": "INDODAX_ONLY" if KiConfig.INDODAX_ONLY else "MULTI_VENUE",
         "errors": {"last_error": error} if error else {},
     }
     STATE_FILE.write_text(__import__("json").dumps(payload, indent=2, ensure_ascii=False), encoding="utf-8")
@@ -123,30 +122,36 @@ async def run_forever() -> None:
     while True:
         try:
             indo = build_indodax_target_board()
-            ph = build_phantom_target_board()
+            ph = {}
             ScannerExecutorContract().write_contract_state()
-            write_phantom_capital_mover({})
-            write_phantom_network_maximizer({})
-            _write_candidate_decisions(ph)
+            if not KiConfig.INDODAX_ONLY:
+                from Core.Decision.phantom_target_board import build_phantom_target_board
+                from Core.Treasury.phantom_capital_mover import write_phantom_capital_mover
+                from Core.Treasury.phantom_network_maximizer import write_phantom_network_maximizer
+
+                ph = build_phantom_target_board()
+                write_phantom_capital_mover({})
+                write_phantom_network_maximizer({})
+                _write_candidate_decisions(ph)
             governor = _read_json(STATE_DIR / "capital_governor.json", {})
-            phantom_brain = _read_json(STATE_DIR / "phantom_live_brain.json", {})
             indodax_state = _venue_engine_state(
                 governor,
                 "indodax",
                 str(indo.get("source_status") or "NO_DATA").upper(),
                 str(indo.get("why_empty") or indo.get("no_data_reason") or ""),
             )
-            phantom_state = _venue_engine_state(
-                governor,
-                "phantom",
-                str(ph.get("source_status") or "NO_DATA").upper(),
-                str(ph.get("why_empty") or ph.get("no_data_reason") or phantom_brain.get("fatal_blocker") or ""),
-            )
+            phantom_state = {
+                "status": "REMOVED_BY_OPERATOR",
+                "scanner": "REMOVED_BY_OPERATOR",
+                "executor": "REMOVED_BY_OPERATOR",
+                "allow_orders": False,
+                "reason": "operator_removed_compromised_wallet_use_indodax_only",
+            }
             write_engine_independence({
                 "indodax_engine": indodax_state,
                 "phantom_engine": phantom_state,
-                "bridge": "ON" if str(governor.get("bridge", "ON")).upper() == "ON" else "OFF",
-                "withdrawal": "ON" if str(governor.get("withdrawal", "ON")).upper() == "ON" else "OFF",
+                "bridge": "OFF",
+                "withdrawal": "OFF",
             })
             _write_runtime(indo, ph, "")
         except Exception as exc:  # pragma: no cover

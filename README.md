@@ -9,6 +9,20 @@ KiBot is an experimental open-source framework for building and operating autono
 
 ---
 
+## Current Operator Runtime
+
+KiBot is currently configured as **Indodax-only**.
+
+- Canonical executable venue: Indodax.
+- Retired venues: Phantom/Solana/Web3/Pump.fun/Base/Polymarket.
+- Runtime flag: `KIBOT_INDODAX_ONLY=true`.
+- Phantom wallet keys must not be used by runtime services.
+- Dashboard and PnL truth must exclude retired Phantom/Web3 balances.
+
+See [`docs/INDODAX_ONLY_RUNTIME.md`](./docs/INDODAX_ONLY_RUNTIME.md).
+
+---
+
 ## Why KiBot exists
 
 Autonomous agents are powerful, but high-stakes automation needs more than a script that reacts to signals. KiBot is built around the idea that autonomous systems should be inspectable, bounded, and recoverable.
@@ -28,14 +42,12 @@ The project focuses on:
 
 ### Market scanning
 
-KiBot includes scanner modules for Indodax, Polymarket, and cross-source lead-lag context. Scanner output is deduplicated, structured, and routed as evidence for downstream decisioning.
+KiBot includes scanner modules for Indodax and Binance-to-Indodax lead-lag context. Scanner output is deduplicated, structured, and routed as evidence for downstream decisioning.
 
 Highlights include:
 
 - Indodax small-cap pump and continuation detection.
 - Binance-to-Indodax lead-lag monitoring.
-- Polymarket opportunity scanning.
-- Universal lead-lag context signals.
 - Anti tick-trap filtering for low-quality pump setups.
 
 ### AI-assisted decisioning

@@ -9,7 +9,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List
 
-from Core.Support.ki_config import PROJECT_ROOT, STATE_DIR
+from Core.Support.ki_config import KiConfig, PROJECT_ROOT, STATE_DIR
 from Core.Support.runtime_mode_guard import LIVE_ONLY, assert_runtime_live_only
 
 LIVE_TRUTH_FILE = STATE_DIR / "live_truth.json"
@@ -65,7 +65,6 @@ def build_live_truth() -> Dict[str, Any]:
     assert_runtime_live_only()
     governor = _read_json(STATE_DIR / "capital_governor.json", {})
     portfolio = _read_json(STATE_DIR / "portfolio_summary.json", {})
-    phantom = _read_json(STATE_DIR / "phantom_treasury.json", {})
     active_trades = _read_json(STATE_DIR / "active_trades.json", {})
     order_tracker = _read_json(STATE_DIR / "orders" / "_index.json", {})
     pnl_recon = _read_json(STATE_DIR / "pnl_reconciliation.json", {})
@@ -74,17 +73,8 @@ def build_live_truth() -> Dict[str, Any]:
         (governor.get("venues", {}) or {}).get("indodax", {}).get("equity_idr"),
         _safe_float(portfolio.get("equity_idr"), 0.0),
     )
-    phantom_equity = _safe_float(
-        (governor.get("venues", {}) or {}).get("phantom", {}).get("equity_idr"),
-        _safe_float(phantom.get("total_value_idr"), 0.0),
-    )
-    phantom_enabled = str(os.getenv("KIBOT_PHANTOM_ENABLED", "true")).lower() in {"1", "true", "yes", "on"}
-    phantom_rpc = os.getenv("SOLANA_RPC_URL") or os.getenv("KIBOT_SOLANA_RPC_URL") or ""
-    phantom_key = os.getenv("PHANTOM_PRIVATE_KEY") or os.getenv("KIBOT_PHANTOM_PRIVATE_KEY") or ""
-    if not phantom_enabled or not phantom_rpc or not phantom_key:
-        phantom_status = "LOCKED_MISSING_ENV"
-    else:
-        phantom_status = str((governor.get("venues", {}) or {}).get("phantom", {}).get("status") or phantom.get("status") or "OK").upper()
+    phantom_equity = 0.0
+    phantom_status = "REMOVED_BY_OPERATOR"
     wallet_equity = indodax_equity + phantom_equity
     cash_idr = _safe_float(portfolio.get("idr_cash"), 0.0)
     realized = _safe_float(governor.get("daily_pnl_idr"), _safe_float(portfolio.get("realized_pnl_idr"), 0.0))
@@ -115,14 +105,7 @@ def build_live_truth() -> Dict[str, Any]:
                 open_positions.append(entry)
 
     indodax_status = str((governor.get("venues", {}) or {}).get("indodax", {}).get("status") or "OK").upper()
-    phantom_governor_status = str((governor.get("venues", {}) or {}).get("phantom", {}).get("status") or "OK").upper()
-    if not phantom_enabled or not phantom_rpc or not phantom_key:
-        phantom_status = "LOCKED_MISSING_ENV"
-    else:
-        phantom_status = _probe_phantom_status() if phantom_governor_status in {"RECONCILED", "LIVE_READY", "OK", "BLOCKED_WITH_REASON"} else phantom_governor_status
-    if indodax_status in {"BLOCKED_WITH_REASON", "DOWN", "ERROR", "LOCKED"} and phantom_status in {"BLOCKED_WITH_REASON", "DOWN", "ERROR", "LOCKED"}:
-        risk_state = "EMERGENCY"
-    elif indodax_status in {"BLOCKED_WITH_REASON", "DOWN", "ERROR", "LOCKED"} or phantom_status in {"BLOCKED_WITH_REASON", "DOWN", "ERROR", "LOCKED"}:
+    if indodax_status in {"BLOCKED_WITH_REASON", "DOWN", "ERROR", "LOCKED"}:
         risk_state = "LOCKED"
     else:
         risk_state = "OK"
@@ -135,6 +118,7 @@ def build_live_truth() -> Dict[str, Any]:
 
     payload = {
         "runtime_mode": "LIVE_ONLY",
+        "platform_mode": "INDODAX_ONLY" if KiConfig.INDODAX_ONLY else "MULTI_VENUE",
         "updated_at": _today_iso(),
         "wallet_equity_idr": wallet_equity,
         "cash_idr": cash_idr,
@@ -147,16 +131,7 @@ def build_live_truth() -> Dict[str, Any]:
             "open_positions": open_positions,
             "last_error": None,
         },
-        "phantom": {
-            "enabled": True,
-            "status": phantom_status,
-            "equity_idr": phantom_equity,
-            "sol_balance": _safe_float((phantom.get("balances") or {}).get("sol"), 0.0) if isinstance(phantom, dict) else 0.0,
-            "open_positions": _read_json(STATE_DIR / "phantom_positions.json", []),
-            "last_error": None,
-        },
         "indodax_equity_idr": indodax_equity,
-        "phantom_equity_idr": phantom_equity,
         "realized_pnl_today_idr": realized,
         "unrealized_pnl_idr": unrealized,
         "fees_today_idr": fees,
@@ -167,7 +142,16 @@ def build_live_truth() -> Dict[str, Any]:
         "risk_state": risk_state,
         "venue_locks": {
             "indodax": indodax_status,
-            "phantom": phantom_status,
+        },
+        "retired_venues": {
+            "phantom": {
+                "status": phantom_status,
+                "enabled": False,
+                "reason": "operator_removed_compromised_wallet_use_indodax_only",
+            },
+            "solana": {"status": "REMOVED_BY_OPERATOR", "enabled": False},
+            "web3": {"status": "REMOVED_BY_OPERATOR", "enabled": False},
+            "polymarket": {"status": "REMOVED_BY_OPERATOR", "enabled": False},
         },
         "last_trade": _read_json(STATE_DIR / "last_trade.json", {}),
         "last_error": _read_json(STATE_DIR / "last_error.json", {}).get("error"),

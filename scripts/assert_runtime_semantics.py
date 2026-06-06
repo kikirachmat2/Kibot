@@ -58,7 +58,6 @@ def main() -> int:
     governor = _read_json("capital_governor.json")
     dispatcher = _read_json("live_order_dispatcher.json")
     indodax_targets = _read_json("indodax_top_targets.json")
-    phantom_targets = _read_json("phantom_top_targets.json")
     indodax_scanner = _read_json("indodax_scanner_state.json")
     ai_patrol = _read_json("ai_patrol.json")
 
@@ -88,14 +87,14 @@ def main() -> int:
         dispatcher_reason = str(dispatcher.get("reason") or "").strip()
         if not dispatcher_reason:
             child_reasons = []
-            for key in ("indodax", "phantom"):
+            for key in ("indodax",):
                 child = dispatcher.get(key)
                 if isinstance(child, dict) and child.get("reason"):
                     child_reasons.append(f"{key}:{child.get('reason')}")
             dispatcher_reason = "; ".join(child_reasons)
         blockers.append("dispatcher_blocked:" + (dispatcher_reason or "unknown"))
 
-    target_count = _count_targets(indodax_targets) + _count_targets(phantom_targets)
+    target_count = _count_targets(indodax_targets)
     if target_count > 0 and not allow_orders:
         blockers.append(f"{target_count}_targets_visible_but_orders_blocked")
 
@@ -123,7 +122,6 @@ def main() -> int:
     for name in (
         "capital_governor.json",
         "indodax_top_targets.json",
-        "phantom_top_targets.json",
         "ai_patrol.json",
     ):
         age = _age_s(name)

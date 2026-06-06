@@ -39,7 +39,7 @@ def _hydrate_env_from_dotenv() -> None:
             key, value = line.split("=", 1)
             key = key.strip()
             value = value.strip()
-            if key:
+            if key and key not in os.environ:
                 os.environ[key] = value
     except Exception:
         return
@@ -487,17 +487,18 @@ def check_json_states(state_dir):
     logger.info("Step 8/8: Auditing state JSON freshness and validity...")
     import time
     import json
+    indodax_only = os.getenv("KIBOT_INDODAX_ONLY", "true").lower() in {"1", "true", "yes", "on"}
     
     required_states = [
         "leadlag_alpha.json",
         "scanner_runtime.json",
-        "phantom_scout.json",
         "market_rotation.json",
         "punishment_state.json",
         "expected_value.json",
-        "web3_opportunities.json",
         "ai_decision_trace.json",
     ]
+    if not indodax_only:
+        required_states.extend(["phantom_scout.json", "web3_opportunities.json"])
     
     is_bootstrap_allowed = (
         os.getenv("KIBOT_HEALTHCHECK_ALLOW_BOOTSTRAP", "false").lower() == "true" or
@@ -549,7 +550,7 @@ def check_json_states(state_dir):
                     elif state_file == "phantom_scout.json":
                         default_data = {"active_rpc": "https://api.mainnet-beta.solana.com", "failed_rpcs": []}
                     elif state_file == "market_rotation.json":
-                        default_data = {"allocations_pct": {"Indodax": 25.0, "Polymarket": 25.0, "Phantom": 25.0, "CASH_WAIT": 25.0}}
+                        default_data = {"allocations_pct": {"Indodax": 85.0, "CASH_WAIT": 15.0}}
                     elif state_file == "punishment_state.json":
                         default_data = {"schema_version": 1, "status": "idle", "records": {}, "quarantined": []}
                     elif state_file == "expected_value.json":
@@ -742,9 +743,12 @@ def check_json_states(state_dir):
                     except Exception:
                         pass
                         
-                    if consecutive_empty_leadlag >= 3:
+                    require_leadlag = os.getenv("KIBOT_HEALTHCHECK_REQUIRE_LEADLAG_OPPORTUNITIES", "false").lower() == "true"
+                    if require_leadlag and consecutive_empty_leadlag >= 3:
                         logger.error("❌ CRITICAL STATE ERROR: Lead-Lag alpha engine is enabled, but opportunities array is consecutively empty for 3 checks!")
                         safe_exit(17, "Lead-Lag alpha engine is enabled, but opportunities array is consecutively empty for 3 checks!")
+                    if consecutive_empty_leadlag >= 3:
+                        logger.warning("⚠️ Lead-Lag opportunities remain empty; treating as no-edge state, not service failure.")
  
         except json.JSONDecodeError as jde:
             logger.error(f"❌ CRITICAL STATE ERROR: {state_file} has invalid JSON syntax: {jde}")
@@ -761,10 +765,12 @@ def check_json_states(state_dir):
 def check_runtime_assertions():
     logger.info("Step 9/9: Running runtime assertion suite...")
     import subprocess
+    indodax_only = os.getenv("KIBOT_INDODAX_ONLY", "true").lower() in {"1", "true", "yes", "on"}
 
     assertions = [
         ("scripts/assert_live_only_mode.py", "py"),
         ("scripts/assert_no_paper_canary_shadow.py", "py"),
+        ("scripts/assert_indodax_only_runtime.py", "py"),
         ("scripts/assert_github_main_only.sh", "sh"),
         ("scripts/assert_live_truth_writer.py", "py"),
         ("scripts/assert_ai_inventory_boot.py", "py"),
@@ -772,11 +778,14 @@ def check_runtime_assertions():
         ("scripts/assert_website_ai_system_working.py", "py"),
         ("scripts/assert_indodax_live_gate.py", "py"),
         ("scripts/assert_indodax_runtime_autonomy.py", "py"),
-        ("scripts/diagnose_phantom_runtime.py", "py"),
-        ("scripts/assert_phantom_live_ready.py", "py"),
-        ("scripts/assert_phantom_runtime_autonomy.py", "py"),
         ("scripts/assert_telegram_exception_only.py", "py"),
     ]
+    if not indodax_only:
+        assertions.extend([
+            ("scripts/diagnose_phantom_runtime.py", "py"),
+            ("scripts/assert_phantom_live_ready.py", "py"),
+            ("scripts/assert_phantom_runtime_autonomy.py", "py"),
+        ])
 
     for rel_path, kind in assertions:
         path = PROJECT_ROOT / rel_path

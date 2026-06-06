@@ -15,6 +15,7 @@ from datetime import datetime, timezone
 from typing import List, Dict, Any, Sequence
 from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor
+from Core.Support.ki_config import KiConfig
 
 logger = logging.getLogger("KiBotScanner")
 
@@ -45,7 +46,7 @@ class ScannerEngine:
         self.poly_interval_s = int(os.getenv("POLY_SCAN_INTERVAL_S", "30"))
         self.scanners: List[Any] = list(scanners or self._build_scanners())
         self.direct_indodax_dispatch = os.getenv("KIBOT_SCANNER_DIRECT_INDODAX", "0").strip().lower() in {"1", "true", "yes", "on"}
-        self.direct_polymarket_dispatch = os.getenv("KIBOT_SCANNER_DIRECT_POLYMARKET", "0").strip().lower() in {"1", "true", "yes", "on"}
+        self.direct_polymarket_dispatch = False if KiConfig.INDODAX_ONLY else os.getenv("KIBOT_SCANNER_DIRECT_POLYMARKET", "0").strip().lower() in {"1", "true", "yes", "on"}
         
         # Now centralized on localhost (Batam Internal)
         self.target_host = "127.0.0.1"
@@ -80,13 +81,13 @@ class ScannerEngine:
         else:
             self.rotation_engine = None
 
-        if Web3OpportunityScanner is not None:
+        if Web3OpportunityScanner is not None and KiConfig.SCANNER_ENABLE_WEB3:
             self.web3_scanner = Web3OpportunityScanner()
             logger.info("✅ Web3 Opportunity Scanner initialized in HFT Scanner.")
         else:
             self.web3_scanner = None
 
-        if MarketWideWaveScanner is not None:
+        if MarketWideWaveScanner is not None and not KiConfig.INDODAX_ONLY:
             self.market_wide_scanner = MarketWideWaveScanner()
             logger.info("✅ Market-Wide Wave Scanner initialized in HFT Scanner.")
         else:
@@ -162,12 +163,18 @@ class ScannerEngine:
             except Exception as fallback_exc:
                 logger.error(f"⚠️ Failed to build fallback Indodax scanner: {fallback_exc}")
             
+        if KiConfig.INDODAX_ONLY:
+            return scanners
+
         try:
             from Core.Scanner.ki_polymarket_full_scanner import PolymarketFullScanner
             scanners.append(PolymarketFullScanner())
             logger.info("✅ Polymarket Full Scanner integrated.")
         except Exception as e:
             logger.error(f"⚠️ Failed to build Polymarket scanner: {e}")
+
+        if not KiConfig.SCANNER_ENABLE_UNIVERSAL:
+            return scanners
 
         try:
             from Core.Scanner.ki_universal_leadlag_scanner import UniversalLeadLagScanner

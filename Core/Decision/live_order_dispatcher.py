@@ -11,7 +11,6 @@ from typing import Any, Dict, List, Optional
 
 from Core.Support.ki_config import KiConfig
 from Core.Support.ki_utils import sign_payload
-from Core.Web3.web3_fee_intelligence import build_fee_intelligence
 
 ROOT = Path(__file__).resolve().parent.parent.parent
 STATE_DIR = ROOT / "state"
@@ -34,7 +33,7 @@ def _write_state(payload: Dict[str, Any]) -> Dict[str, Any]:
         "status": "ACTIVE",
         "live_trading_enabled": bool(KiConfig.LIVE_TRADING_ENABLED),
         "indodax": {},
-        "phantom": {},
+        "retired_venues": {"phantom": "REMOVED_BY_OPERATOR"} if KiConfig.INDODAX_ONLY else {},
         "errors": {},
         "next_check_seconds": float(os.getenv("KIBOT_LIVE_DISPATCH_INTERVAL_SEC", "3") or 3),
     }
@@ -106,7 +105,7 @@ class LiveOrderDispatcher:
     def __init__(self) -> None:
         self.interval_seconds = float(os.getenv("KIBOT_LIVE_DISPATCH_INTERVAL_SEC", "3") or 3)
         self.symbol_cooldown_seconds = float(os.getenv("KIBOT_DISPATCH_SYMBOL_COOLDOWN_SEC", "180") or 180)
-        self.phantom_cooldown_seconds = float(os.getenv("KIBOT_PHANTOM_DISPATCH_ROUTE_COOLDOWN_SEC", "240") or 240)
+        self.phantom_cooldown_seconds = 0.0
         self.leadlag_aggressive_mode = os.getenv("KIBOT_INDO_BINANCE_LEADLAG_AGGRESSIVE_DISPATCH", "true").strip().lower() in {"1", "true", "yes", "on"}
         self.leadlag_min_gap_pct = float(os.getenv("KIBOT_INDO_BINANCE_LEADLAG_DISPATCH_MIN_GAP_PCT", "0.15") or 0.15)
         self.leadlag_min_lag_sec = float(os.getenv("KIBOT_INDO_BINANCE_LEADLAG_DISPATCH_MIN_LAG_SEC", "0.5") or 0.5)
@@ -262,6 +261,12 @@ class LiveOrderDispatcher:
         }
 
     async def dispatch_phantom_once(self) -> Dict[str, Any]:
+        if KiConfig.INDODAX_ONLY:
+            return {
+                "status": "REMOVED_BY_OPERATOR",
+                "reason": "operator_removed_compromised_wallet_use_indodax_only",
+                "allow_orders": False,
+            }
         if not KiConfig.LIVE_TRADING_ENABLED:
             return {"status": "BLOCKED_WITH_REASON", "reason": "live_trading_disabled"}
         if not KiConfig.ENABLE_REAL_SWAP:
@@ -306,6 +311,8 @@ class LiveOrderDispatcher:
             router = PhantomRouter()
             if not router.private_key:
                 return {"status": "BLOCKED_WITH_REASON", "reason": "phantom_signer_missing"}
+            from Core.Web3.web3_fee_intelligence import build_fee_intelligence
+
             fee_state = build_fee_intelligence(
                 route,
                 trade_size_idr=float(amount_sol) * float(os.getenv("SOL_USD_RATE", "170") or 170) * float(os.getenv("USD_IDR_RATE", "16000") or 16000),
@@ -363,16 +370,22 @@ class LiveOrderDispatcher:
 
     async def tick(self) -> Dict[str, Any]:
         indodax = self.dispatch_indodax_once()
-        try:
-            phantom = await self.dispatch_phantom_once()
-        except Exception as exc:
-            phantom = {"status": "BLOCKED_WITH_REASON", "reason": f"phantom_dispatch_error:{exc}"}
+        if KiConfig.INDODAX_ONLY:
+            phantom = {
+                "status": "REMOVED_BY_OPERATOR",
+                "reason": "operator_removed_compromised_wallet_use_indodax_only",
+                "allow_orders": False,
+            }
+        else:
+            try:
+                phantom = await self.dispatch_phantom_once()
+            except Exception as exc:
+                phantom = {"status": "BLOCKED_WITH_REASON", "reason": f"phantom_dispatch_error:{exc}"}
         return _write_state({
-            "status": "ACTIVE" if indodax.get("status") != "BLOCKED_WITH_REASON" or phantom.get("status") != "BLOCKED_WITH_REASON" else "BLOCKED_WITH_REASON",
+            "status": "ACTIVE" if indodax.get("status") != "BLOCKED_WITH_REASON" else "BLOCKED_WITH_REASON",
             "indodax": indodax,
-            "phantom": phantom,
+            "retired_venues": {"phantom": phantom},
             "indodax_cooldowns": self._cooldowns("indodax_cooldowns"),
-            "phantom_cooldowns": self._cooldowns("phantom_cooldowns"),
         })
 
     async def run_forever(self) -> None:

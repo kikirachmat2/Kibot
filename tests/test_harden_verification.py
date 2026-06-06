@@ -212,7 +212,6 @@ async def test_healthcheck_audits(tmp_path):
     required_states = [
         "leadlag_alpha.json",
         "scanner_runtime.json",
-        "phantom_scout.json",
         "market_rotation.json"
     ]
     for state_file in required_states:

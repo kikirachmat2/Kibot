@@ -11,10 +11,10 @@ def main() -> int:
     except Exception as exc:
         print(f"control_plane_unreachable:{exc}")
         return 1
-    if "server_telemetry" not in payload or "indodax_top_targets" not in payload or "phantom_top_targets" not in payload:
+    if "server_telemetry" not in payload or "indodax_top_targets" not in payload:
         print("missing_freshness_wrappers")
         return 1
-    for key in ("server_telemetry", "indodax_top_targets", "phantom_top_targets"):
+    for key in ("server_telemetry", "indodax_top_targets"):
         node = payload.get(key, {})
         if not isinstance(node, dict) or "age_s" not in node or "fresh" not in node:
             print(f"missing_freshness_fields:{key}")

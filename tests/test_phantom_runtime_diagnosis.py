@@ -13,5 +13,9 @@ def test_live_truth_phantom_status_can_be_locked():
     if not path.exists():
         return
     data = json.loads(path.read_text(encoding="utf-8"))
-    phantom = data.get("phantom", {})
-    assert "status" in phantom
+    if data.get("platform_mode") == "INDODAX_ONLY":
+        retired = data.get("retired_venues", {})
+        assert retired.get("phantom", {}).get("status") == "REMOVED_BY_OPERATOR"
+    else:
+        phantom = data.get("phantom", {})
+        assert "status" in phantom

@@ -10,11 +10,12 @@ def test_live_truth_manager_writes_schema():
     payload = build_live_truth()
     assert payload["runtime_mode"] == "LIVE_ONLY"
     assert "updated_at" in payload
-    assert "indodax" in payload and "phantom" in payload
+    assert "indodax" in payload
+    assert "phantom" not in payload
+    assert payload.get("platform_mode") == "INDODAX_ONLY"
     state = Path("state/live_truth.json")
     assert state.exists()
     loaded = load_live_truth()
     assert isinstance(loaded, dict)
     assert loaded.get("runtime_mode") == "LIVE_ONLY"
     json.loads(state.read_text(encoding="utf-8"))
-

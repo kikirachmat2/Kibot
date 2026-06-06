@@ -88,6 +88,7 @@ class KiConfig:
     SCALPING_SL_PERCENT = 2.0         # Matches RiskGate SL
     _RAW_TRADING_MODE = os.getenv("KIBOT_RUNTIME_MODE", os.getenv("KIBOT_TRADING_MODE", LIVE_ONLY)).strip().lower()
     TRADING_MODE = normalize_runtime_mode(_RAW_TRADING_MODE)
+    INDODAX_ONLY = _env_flag("KIBOT_INDODAX_ONLY", "true")
     LIVE_TRADING_ENABLED = _env_flag("KIBOT_LIVE_TRADING_ENABLED", "true" if TRADING_MODE == LIVE_ONLY else "false")
     LIVE_OPPORTUNITY_EXPANSION = _env_flag("KIBOT_LIVE_OPPORTUNITY_EXPANSION", "true" if TRADING_MODE == LIVE_ONLY else "false")
     FORCE_DAILY_PROFIT = _env_flag("KIBOT_FORCE_DAILY_PROFIT", "false")
@@ -110,10 +111,14 @@ class KiConfig:
     LEGACY_TRADING_MODES_DISABLED = TRADING_MODE == LIVE_ONLY
 
     # --- WEB3 SAFETY GATES ---
-    ENABLE_REAL_SWAP = _env_flag("KIBOT_ENABLE_REAL_SWAP", "false")
+    PHANTOM_ENABLED = False if INDODAX_ONLY else _env_flag("KIBOT_PHANTOM_ENABLED", "false")
+    ENABLE_REAL_SWAP = False if INDODAX_ONLY else _env_flag("KIBOT_ENABLE_REAL_SWAP", "false")
     ENABLE_REAL_BRIDGE = False
     ENABLE_REAL_WITHDRAWAL = False
-    ENABLE_POLYMARKET_LIVE = _env_flag("KIBOT_ENABLE_POLYMARKET_LIVE", "false")
+    ENABLE_POLYMARKET_LIVE = False if INDODAX_ONLY else _env_flag("KIBOT_ENABLE_POLYMARKET_LIVE", "false")
+    SCANNER_ENABLE_POLYMARKET = False if INDODAX_ONLY else _env_flag("KIBOT_SCANNER_ENABLE_POLYMARKET", "false")
+    SCANNER_ENABLE_WEB3 = False if INDODAX_ONLY else _env_flag("KIBOT_SCANNER_ENABLE_WEB3", "false")
+    SCANNER_ENABLE_UNIVERSAL = False if INDODAX_ONLY else _env_flag("KIBOT_SCANNER_ENABLE_UNIVERSAL", "false")
     
     # --- AI & OLLAMA GUARDRAILS ---
     LLM_ENABLED = _env_flag("KIBOT_LLM_ENABLED", "true")
