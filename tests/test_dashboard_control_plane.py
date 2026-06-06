@@ -15,6 +15,14 @@ from Core.Support.ki_config import KiConfig, STATE_DIR, WIB
 client = TestClient(app)
 
 
+def test_dashboard_home_does_not_load_live_js_twice():
+    response = client.get("/")
+    assert response.status_code == 200
+    html = response.text
+    assert html.count("/static/live.js") == 1
+    assert "/static/live.js?v=5.0" not in html
+
+
 def test_control_plane_payload_structure():
     """Verify that /api/control-plane returns the correct sci-fi console structure."""
     response = client.get("/api/control-plane")

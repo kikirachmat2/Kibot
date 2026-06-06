@@ -1132,11 +1132,16 @@ async def home() -> HTMLResponse:
                 '  <link rel="stylesheet" href="/static/style.css?v=5.0" />\n</head>',
                 1,
             )
-        if "canvas.js" not in html or "live.js" not in html:
+        if "canvas.js" not in html:
             html = html.replace(
                 "</body>",
-                '  <script src="/static/canvas.js?v=5.0"></script>\n'
-                '  <script src="/static/live.js?v=5.0"></script>\n</body>',
+                '  <script src="/static/canvas.js?v=5.0"></script>\n</body>',
+                1,
+            )
+        if "live.js" not in html:
+            html = html.replace(
+                "</body>",
+                '  <script src="/static/live.js?v=8.0"></script>\n</body>',
                 1,
             )
         return HTMLResponse(html)
