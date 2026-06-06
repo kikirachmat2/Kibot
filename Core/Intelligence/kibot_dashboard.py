@@ -38,6 +38,8 @@ async def add_security_headers(request, call_next):
     response.headers["Expires"] = "0"
     response.headers["Content-Security-Policy"] = (
         "default-src 'self' 'unsafe-inline' 'unsafe-eval' data:; "
+        "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
+        "font-src 'self' data: https://fonts.gstatic.com; "
         "connect-src 'self' ws: wss:; "
         "img-src 'self' data:;"
     )
