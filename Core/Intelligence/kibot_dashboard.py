@@ -485,16 +485,14 @@ def _build_portfolio(telemetry: Dict[str, Any]) -> Dict[str, Any]:
     live_truth = _load_live_truth()
 
     active_positions = _normalize_list(portfolio.get("active_positions") or portfolio.get("positions") or [], limit=10)
-    indodax_equity = _safe_float(portfolio.get("equity_idr"), _safe_float(live_truth.get("indodax_equity_idr"), 0.0))
+    indodax_equity = _safe_float(live_truth.get("indodax_equity_idr"), _safe_float(portfolio.get("equity_idr"), 0.0))
     idr_cash = _safe_float(
-        portfolio.get("idr_cash"),
-        _safe_float(live_truth.get("cash_idr"), _safe_float(live_truth.get("liquid_cash_idr"), indodax_equity)),
+        live_truth.get("cash_idr"),
+        _safe_float(portfolio.get("idr_cash"), _safe_float(live_truth.get("liquid_cash_idr"), indodax_equity)),
     )
-    if idr_cash <= 0.0 and _safe_float(live_truth.get("cash_idr"), 0.0) > 0.0:
-        idr_cash = _safe_float(live_truth.get("cash_idr"), 0.0)
     coin_holdings = _safe_float(
-        portfolio.get("coin_holdings_idr"),
-        _safe_float(live_truth.get("held_coin_value_idr"), _safe_float(live_truth.get("coin_holdings_idr"), 0.0)),
+        live_truth.get("held_coin_value_idr"),
+        _safe_float(live_truth.get("coin_holdings_idr"), _safe_float(portfolio.get("coin_holdings_idr"), 0.0)),
     )
     refreshed_positions = []
     refreshed_holdings = 0.0
@@ -1749,12 +1747,12 @@ def _build_control_plane_payload() -> Dict[str, Any]:
     portfolio_v6 = {
         "total_equity_idr": _safe_float(accounting_truth.get("current_total_equity_idr"), _safe_float(portfolio.get("combined_equity_idr"), 0.0)),
         "starting_equity_idr": _safe_float(accounting_truth.get("reset_total_balance_idr"), _safe_float(portfolio.get("reset_total_balance_idr"), 0.0)),
-        "cash_idr": _safe_float(portfolio.get("idr_cash"), _safe_float(live_truth.get("cash_idr"), 0.0)),
-        "liquid_cash_idr": _safe_float(portfolio.get("idr_cash"), _safe_float(live_truth.get("liquid_cash_idr"), _safe_float(live_truth.get("cash_idr"), 0.0))),
-        "held_coin_value_idr": _safe_float(portfolio.get("coin_holdings_idr"), _safe_float(live_truth.get("held_coin_value_idr"), 0.0)),
-        "coin_holdings_idr": _safe_float(portfolio.get("coin_holdings_idr"), _safe_float(live_truth.get("coin_holdings_idr"), 0.0)),
-        "open_buy_order_reserve_idr": _safe_float(portfolio.get("open_buy_order_reserve_idr"), _safe_float(live_truth.get("open_buy_order_reserve_idr"), 0.0)),
-        "dust_value_idr": _safe_float(portfolio.get("dust_value_idr"), _safe_float(live_truth.get("dust_value_idr"), 0.0)),
+        "cash_idr": _safe_float(live_truth.get("cash_idr"), _safe_float(portfolio.get("idr_cash"), 0.0)),
+        "liquid_cash_idr": _safe_float(live_truth.get("liquid_cash_idr"), _safe_float(live_truth.get("cash_idr"), _safe_float(portfolio.get("idr_cash"), 0.0))),
+        "held_coin_value_idr": _safe_float(live_truth.get("held_coin_value_idr"), _safe_float(portfolio.get("coin_holdings_idr"), 0.0)),
+        "coin_holdings_idr": _safe_float(live_truth.get("coin_holdings_idr"), _safe_float(portfolio.get("coin_holdings_idr"), 0.0)),
+        "open_buy_order_reserve_idr": _safe_float(live_truth.get("open_buy_order_reserve_idr"), _safe_float(portfolio.get("open_buy_order_reserve_idr"), 0.0)),
+        "dust_value_idr": _safe_float(live_truth.get("dust_value_idr"), _safe_float(portfolio.get("dust_value_idr"), 0.0)),
         "realized_pnl_today_idr": _safe_float(portfolio.get("realized_pnl_idr"), _safe_float(accounting_truth.get("daily_pnl_idr"), 0.0)),
         "unrealized_pnl_idr": _safe_float(portfolio.get("unrealized_pnl_idr"), 0.0),
         "fees_today_idr": _safe_float(portfolio.get("fees_today_idr"), _safe_float(live_truth.get("fees_today_idr"), 0.0)),
