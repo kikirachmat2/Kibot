@@ -168,6 +168,7 @@ class KiBotMaster:
                 
                 portfolio_snapshot = await self.aggregator._get_portfolio_snapshot()
                 current_idr = float(portfolio_snapshot.get("idr_cash", 0.0) or 0.0)
+                held_coin_value_idr = float(portfolio_snapshot.get("coin_value_idr", portfolio_snapshot.get("active_value_idr", 0.0)) or 0.0)
                 combined_equity_idr = float(portfolio_snapshot.get("combined_equity_idr", 0.0) or 0.0)
                 pnl_idr = float(portfolio_snapshot.get("daily_pnl_idr", 0.0) or 0.0)
                 pnl_pct = float(portfolio_snapshot.get("daily_pnl_pct", 0.0) or 0.0)
@@ -178,7 +179,7 @@ class KiBotMaster:
                     self._pnl_session_start_balance = max(combined_equity_idr - pnl_idr, 1.0)
                     logger.info(
                         f"💼 Session baseline set to Rp{self._pnl_session_start_balance:,.0f} "
-                        f"(IDR Rp{current_idr:,.0f} + USDC ${usdc_balance:.2f})"
+                        f"(cash Rp{current_idr:,.0f} + held coin Rp{held_coin_value_idr:,.0f})"
                     )
 
                 daily_state = {
@@ -188,7 +189,7 @@ class KiBotMaster:
                     "reason": daily_state.get("reason") or "mark_to_market_pnl",
                 }
                 logger.info(
-                    f"💰 [PNL-5M] IDR Rp{current_idr:,.0f} | USDC ${usdc_balance:.2f} | "
+                    f"💰 [PNL-5M] cash Rp{current_idr:,.0f} | held coin Rp{held_coin_value_idr:,.0f} | "
                     f"Combined Rp{combined_equity_idr:,.0f} | PnL Rp{pnl_idr:+,.0f} ({pnl_pct:+.2f}%) | "
                     f"State {green_color}"
                 )

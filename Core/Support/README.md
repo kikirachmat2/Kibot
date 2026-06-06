@@ -16,7 +16,7 @@ Configuration, utilities, health guards, and vault helpers.
 - **Configuration**: `ki_config.py` and `dynamic_config.py`.
 - **Utilities**: Shared helper functions, storage helpers, and vault management.
 - **Health Guards**: `sovereign_janitor.py`, `sovereign_disk_cleaner.py`.
-- **Operator Tools**: `generate_wallet.py`, `ki_vault_cli.py`, `populate_intelligence.py`, `kibotctl tools`.
+- **Operator Tools**: `ki_vault_cli.py`, `populate_intelligence.py`, `kibotctl tools`.
 - **Search bootstrap**: `install_ai_deps.sh` now installs `ddgs` alongside the legacy DuckDuckGo package for compatibility.
 
 ## Layout Notes
