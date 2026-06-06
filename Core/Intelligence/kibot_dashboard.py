@@ -1605,8 +1605,15 @@ def _build_control_plane_payload() -> Dict[str, Any]:
 
     decisions = _read_recent_decisions(15)
 
-    # Merge complete summary_data at the root level for total backward-compatibility
-    merged_data = {**summary_data}
+    def _limited_list(value: Any, limit: int = 50) -> List[Any]:
+        if isinstance(value, list):
+            return value[:limit]
+        return []
+
+    # Keep the browser payload intentionally small.  The previous implementation
+    # merged every summary/audit/log field into /api/control-plane, which made the
+    # command center fetch tens of MB before it could render.
+    merged_data: Dict[str, Any] = {}
     merged_data.update({
         "timestamp": datetime.now(timezone.utc).isoformat(),
         "freshness": {
@@ -1674,13 +1681,26 @@ def _build_control_plane_payload() -> Dict[str, Any]:
             "role": "advisory_only",
             "last_check_at": str(ai_inventory.get("updated_at") or ""),
         },
-        "pnl_reconciliation": pnl_reconciliation,
+        "generated_at": summary_data.get("generated_at"),
+        "generated_at_wib": summary_data.get("generated_at_wib"),
+        "accounting_truth": accounting_truth,
+        "pnl_reconciliation": {
+            "realized_pnl_idr": pnl_reconciliation.get("realized_pnl_idr") if isinstance(pnl_reconciliation, dict) else 0,
+            "unrealized_pnl_idr": pnl_reconciliation.get("unrealized_pnl_idr") if isinstance(pnl_reconciliation, dict) else 0,
+            "fees_idr": pnl_reconciliation.get("fees_idr") if isinstance(pnl_reconciliation, dict) else 0,
+            "net_pnl_idr": pnl_reconciliation.get("net_pnl_idr") if isinstance(pnl_reconciliation, dict) else 0,
+            "what_if_checks": _limited_list(pnl_reconciliation.get("what_if_checks", []) if isinstance(pnl_reconciliation, dict) else [], 10),
+        },
+        "strategy": summary_data.get("strategy", {}),
+        "council": summary_data.get("council", {}),
+        "services": summary_data.get("services", {}),
         "capital": capital_block,
         "venues": venues,
         "scanner_executor_contract": summary_data.get("scanner_executor_contract", {}),
         "scanner_coverage": summary_data.get("scanner_coverage", {}),
         "engine_independence": summary_data.get("engine_independence", {}),
         "indodax_no_idle": summary_data.get("indodax_no_idle", {}),
+        "autonomous_sizing": summary_data.get("autonomous_sizing", {}),
         "deadline_pressure": summary_data.get("deadline_pressure", {}),
         "server_telemetry": {
             "data": summary_data.get("server_telemetry", {}),
@@ -1711,6 +1731,13 @@ def _build_control_plane_payload() -> Dict[str, Any]:
             "data": summary_data.get("indodax_top_targets", {}),
             "age_s": _file_age_s(STATE / "indodax_top_targets.json"),
             "fresh": _file_age_s(STATE / "indodax_top_targets.json") >= 0 and _file_age_s(STATE / "indodax_top_targets.json") < 15,
+        },
+        "top_targets": {
+            "indodax": {
+                "data": summary_data.get("indodax_top_targets", {}),
+                "age_s": _file_age_s(STATE / "indodax_top_targets.json"),
+                "fresh": _file_age_s(STATE / "indodax_top_targets.json") >= 0 and _file_age_s(STATE / "indodax_top_targets.json") < 15,
+            },
         },
         "live_order_dispatcher": {
             "data": summary_data.get("live_order_dispatcher", {}),
@@ -1794,15 +1821,15 @@ def _build_control_plane_payload() -> Dict[str, Any]:
         "executed": len(summary_data.get("trade_history", {}).get("recent_activity", []) or []),
     }
     orders_v6 = {
-        "open_orders": summary_data.get("order_tracker", {}).get("open_orders", []) if isinstance(summary_data.get("order_tracker"), dict) else [],
+        "open_orders": _limited_list(summary_data.get("order_tracker", {}).get("open_orders", []) if isinstance(summary_data.get("order_tracker"), dict) else [], 25),
         "pending_orders": capital_block.get("pending_orders_count", 0),
-        "closed_trades": summary_data.get("trade_history", {}).get("closed_trades", []) if isinstance(summary_data.get("trade_history"), dict) else [],
-        "rejected_candidates": summary_data.get("scanner_candidates", {}).get("rejected", []) if isinstance(summary_data.get("scanner_candidates"), dict) else [],
-        "dust_positions": live_truth.get("dust_positions", portfolio.get("dust_positions", [])),
+        "closed_trades": _limited_list(summary_data.get("trade_history", {}).get("closed_trades", []) if isinstance(summary_data.get("trade_history"), dict) else [], 50),
+        "rejected_candidates": _limited_list(summary_data.get("scanner_candidates", {}).get("rejected", []) if isinstance(summary_data.get("scanner_candidates"), dict) else [], 50),
+        "dust_positions": _limited_list(live_truth.get("dust_positions", portfolio.get("dust_positions", [])), 50),
     }
     logs_v6 = {
         "operator_activity": decisions[:10],
-        "trade_events": summary_data.get("trade_history", {}).get("recent_activity", [])[:10] if isinstance(summary_data.get("trade_history"), dict) else [],
+        "trade_events": _limited_list(summary_data.get("trade_history", {}).get("recent_activity", []) if isinstance(summary_data.get("trade_history"), dict) else [], 10),
         "exceptions": _read_json(STATE / "last_error.json", {}),
         "technical": {"warnings": warnings, "stale_states": stale_states, "missing_states": missing_states},
     }
@@ -1858,7 +1885,6 @@ def _build_control_plane_payload() -> Dict[str, Any]:
             "movement_reason": str((summary_data.get("no_trade_forensics", {}) or {}).get("movement_reason") or ""),
         },
         "money_movement": {
-            "data": summary_data.get("money_movement_audit", {}),
             "status": str((summary_data.get("money_movement_audit", {}) or {}).get("money_movement_status") or ""),
             "primary_reason": str((summary_data.get("money_movement_audit", {}) or {}).get("primary_reason") or ""),
             "micro_probe_remaining": int((summary_data.get("no_trade_forensics", {}) or {}).get("micro_probe", {}).get("remaining_today", 0) or 0),
@@ -1886,12 +1912,10 @@ def _build_control_plane_payload() -> Dict[str, Any]:
             "services_ok": bool(summary_data.get("server_support_audit", {}).get("services_ok", False)),
         },
         "net_growth": {
-            "data": summary_data.get("net_growth_audit", {}),
             "status": str((summary_data.get("net_growth_audit", {}) or {}).get("status") or ""),
             "recommendation": str((summary_data.get("net_growth_audit", {}) or {}).get("recommendation") or ""),
         },
         "fill_quality": {
-            "data": summary_data.get("fill_quality_audit", {}),
             "status": str((summary_data.get("fill_quality_audit", {}) or {}).get("status") or ""),
         },
         "strategy_symbol_normalization": {
@@ -1908,32 +1932,26 @@ def _build_control_plane_payload() -> Dict[str, Any]:
             "reason": str((summary_data.get("daily_controls_audit", {}) or {}).get("recovery_mode_policy", {}).get("reason") or ""),
         },
         "target_freshness_audit": {
-            "data": summary_data.get("target_freshness_audit", {}),
             "status": str((summary_data.get("target_freshness_audit", {}) or {}).get("status") or ""),
             "reason": str((summary_data.get("target_freshness_audit", {}) or {}).get("reason") or ""),
             "fix": str((summary_data.get("target_freshness_audit", {}) or {}).get("fix") or ""),
         },
         "ai_actual_usage_audit": {
-            "data": summary_data.get("ai_actual_usage_audit", {}),
             "status": str((summary_data.get("ai_actual_usage_audit", {}) or {}).get("status") or ""),
             "last_advisory": str((summary_data.get("ai_actual_usage_audit", {}) or {}).get("last_advisory") or ""),
         },
         "autonomous_runtime_readiness_audit": {
-            "data": summary_data.get("autonomous_runtime_readiness_audit", {}),
             "status": str((summary_data.get("autonomous_runtime_readiness_audit", {}) or {}).get("status") or ""),
             "risk_state": str((summary_data.get("autonomous_runtime_readiness_audit", {}) or {}).get("risk_state") or ""),
         },
         "server_extensions_usage_audit": {
-            "data": summary_data.get("server_extensions_usage_audit", {}),
             "status": str((summary_data.get("server_extensions_usage_audit", {}) or {}).get("status") or ""),
             "used_count": int((summary_data.get("server_extensions_usage_audit", {}) or {}).get("used_count", 0) or 0),
         },
         "repo_safety_audit": {
-            "data": summary_data.get("repo_safety_audit", {}),
             "status": str((summary_data.get("repo_safety_audit", {}) or {}).get("status") or ""),
         },
         "trading_decision_policy_audit": {
-            "data": summary_data.get("trading_decision_policy_audit", {}),
             "status": str((summary_data.get("trading_decision_policy_audit", {}) or {}).get("status") or ""),
         },
         "churn_guard": {
@@ -1948,7 +1966,6 @@ def _build_control_plane_payload() -> Dict[str, Any]:
             "micro_probe_pairs": (summary_data.get("strategy_control_actions", {}) or {}).get("micro_probe_pairs", []),
         },
         "round_trip_accounting": {
-            "data": summary_data.get("round_trip_accounting", {}),
             "stats": (summary_data.get("round_trip_accounting", {}) or {}).get("stats", {}),
         },
         "active_strategy_controls": {

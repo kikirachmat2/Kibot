@@ -89,9 +89,12 @@ function initCanvas() {
     fitCanvas();
   });
 
-  el('btn-zoom-in').onclick  = () => { cs.scale = Math.min(SCALE_MAX, cs.scale+SCALE_STEP); applyTransform(true); };
-  el('btn-zoom-out').onclick = () => { cs.scale = Math.max(SCALE_MIN, cs.scale-SCALE_STEP); applyTransform(true); };
-  el('btn-fit').onclick      = fitCanvas;
+  const zoomIn = el('btn-zoom-in');
+  const zoomOut = el('btn-zoom-out');
+  const fit = el('btn-fit');
+  if (zoomIn) zoomIn.onclick  = () => { cs.scale = Math.min(SCALE_MAX, cs.scale+SCALE_STEP); applyTransform(true); };
+  if (zoomOut) zoomOut.onclick = () => { cs.scale = Math.max(SCALE_MIN, cs.scale-SCALE_STEP); applyTransform(true); };
+  if (fit) fit.onclick = fitCanvas;
 }
 
 /* ─── SVG Connectors ─────────────────────────────────────── */
@@ -1180,7 +1183,10 @@ async function poll() {
 }
 
 /* ─── Init ───────────────────────────────────────────────── */
-document.addEventListener('DOMContentLoaded', () => {
+let _booted = false;
+function bootDashboard() {
+  if (_booted) return;
+  _booted = true;
   const syncBadge = (id) => {
     const node = el(id);
     if (node && (node.textContent === 'OFF' || node.textContent === 'ON' || node.textContent === '—')) {
@@ -1199,4 +1205,13 @@ document.addEventListener('DOMContentLoaded', () => {
   poll();
   setInterval(poll, POLL_MS);
   window.addEventListener('resize', drawConnectors);
-});
+}
+
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', bootDashboard, { once: true });
+  // The script is loaded at the end of <body>, so a body-ready fallback prevents
+  // an external resource from leaving the command center blank indefinitely.
+  setTimeout(() => { if (document.body) bootDashboard(); }, 0);
+} else {
+  bootDashboard();
+}

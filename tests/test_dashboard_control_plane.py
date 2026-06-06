@@ -98,6 +98,14 @@ def test_control_plane_payload_structure():
     assert "daily_reset" in data
 
 
+def test_control_plane_payload_stays_browser_sized():
+    """The live command center must not fetch raw audit/log archives to render."""
+    payload = _build_control_plane_payload()
+    raw = json.dumps(payload, ensure_ascii=False).encode("utf-8")
+
+    assert len(raw) < 1_000_000
+
+
 def test_zero_secret_leak(monkeypatch):
     """Ensure no raw secrets or private keys are leaked in the dashboard payload."""
     monkeypatch.setenv("KIBOT_SECRET_KEY", "super_secret_value_12345")
