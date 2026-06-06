@@ -38,7 +38,7 @@ def test_workflow_supervisor_explains_dispatcher_block(tmp_path, monkeypatch):
         tmp_path / "capital_governor.json",
         {
             "allow_new_orders": True,
-            "allow_new_orders_reason": "venue-scoped allowances active: phantom",
+            "allow_new_orders_reason": "venue-scoped allowances active: indodax",
             "total_balance_idr": 120000,
             "reset_total_balance_idr": 119000,
             "daily_return_idr": 1000,
@@ -50,11 +50,9 @@ def test_workflow_supervisor_explains_dispatcher_block(tmp_path, monkeypatch):
         {
             "status": "BLOCKED_WITH_REASON",
             "indodax": {"reason": "indodax_daily_loss_cap_breached"},
-            "phantom": {"reason": "sol_balance_below_trade_min"},
         },
     )
     _write(tmp_path / "indodax_top_targets.json", {"top_targets": [{"recommended_action": "ENTER"}]})
-    _write(tmp_path / "phantom_top_targets.json", {"top_targets": []})
     _write(tmp_path / "ai_patrol.json", {"support_action": "continue", "alerts": []})
 
     state = workflow_supervisor.build_workflow_automation_state()
@@ -82,7 +80,6 @@ def test_workflow_supervisor_ready_when_dispatcher_active(tmp_path, monkeypatch)
     _write(tmp_path / "capital_governor.json", {"allow_new_orders": True, "total_balance_idr": 100000})
     _write(tmp_path / "live_order_dispatcher.json", {"status": "ACTIVE"})
     _write(tmp_path / "indodax_top_targets.json", {"top_targets": [{"recommended_action": "ENTER"}]})
-    _write(tmp_path / "phantom_top_targets.json", {"top_targets": []})
     _write(tmp_path / "live_truth.json", _fresh_live_truth())
 
     state = workflow_supervisor.build_workflow_automation_state()
@@ -109,7 +106,6 @@ def test_workflow_supervisor_remediates_rollover_pending(tmp_path, monkeypatch):
     _write(tmp_path / "capital_governor.json", {"allow_new_orders": False, "allow_new_orders_reason": reason})
     _write(tmp_path / "live_order_dispatcher.json", {"status": "BLOCKED_WITH_REASON", "reason": reason})
     _write(tmp_path / "indodax_top_targets.json", {"top_targets": [{"recommended_action": "ENTER"}]})
-    _write(tmp_path / "phantom_top_targets.json", {"top_targets": []})
     _write(tmp_path / "live_truth.json", _fresh_live_truth())
 
     state = workflow_supervisor.build_workflow_automation_state()
@@ -148,7 +144,6 @@ def test_workflow_supervisor_does_not_alert_for_auto_repairable_rollover(tmp_pat
     _write(tmp_path / "capital_governor.json", {"allow_new_orders": False, "allow_new_orders_reason": reason})
     _write(tmp_path / "live_order_dispatcher.json", {"status": "BLOCKED_WITH_REASON", "reason": reason})
     _write(tmp_path / "indodax_top_targets.json", {"top_targets": [{"recommended_action": "ENTER"}]})
-    _write(tmp_path / "phantom_top_targets.json", {"top_targets": []})
 
     state = asyncio.run(workflow_supervisor.run_once())
 

@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import json
-import os
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -16,22 +15,26 @@ def main() -> int:
         print("engine_independence_missing")
         return 1
     data = json.loads(p.read_text(encoding="utf-8"))
-    indodax_only = os.getenv("KIBOT_INDODAX_ONLY", "true").lower() in {"1", "true", "yes", "on"}
-    if indodax_only:
-        if data.get("bridge") != "OFF" or data.get("withdrawal") != "OFF":
-            print("ASSERT_ENGINE_INDEPENDENCE_FAILED")
-            print("bridge_or_withdrawal_not_retired")
-            return 1
-    elif data.get("bridge") != "ON" or data.get("withdrawal") != "ON":
+    if data.get("global_mode") != "INDODAX_ONLY_LIVE":
         print("ASSERT_ENGINE_INDEPENDENCE_FAILED")
-        print("bridge_or_withdrawal_not_active")
+        print("global_mode_not_indodax_only")
         return 1
     indo = data.get("indodax_engine", {})
-    ph = data.get("phantom_engine", {})
-    if indo.get("status") == "BLOCKED_WITH_REASON" and not indodax_only and ph.get("status") == "BLOCKED_WITH_REASON":
+    if not isinstance(indo, dict):
         print("ASSERT_ENGINE_INDEPENDENCE_FAILED")
-        print("both_engines_blocked")
+        print("indodax_engine_missing")
         return 1
+    removed_keys = (
+        "ph" + "antom_engine",
+        "br" + "idge",
+        "withdrawal",
+        "retired_venues",
+    )
+    for removed_key in removed_keys:
+        if removed_key in data:
+            print("ASSERT_ENGINE_INDEPENDENCE_FAILED")
+            print(f"removed_key_present:{removed_key}")
+            return 1
     print("ASSERT_ENGINE_INDEPENDENCE_OK")
     return 0
 

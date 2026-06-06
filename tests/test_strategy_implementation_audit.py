@@ -6,5 +6,4 @@ def test_strategy_audit_exists():
     assert path.exists()
     text = path.read_text(encoding="utf-8")
     assert "Strategy Implementation Audit" in text
-    assert "Web3 exit daemon" in text
-
+    assert "Indodax executor" in text

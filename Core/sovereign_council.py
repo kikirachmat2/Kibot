@@ -12,7 +12,6 @@ from Core.Intelligence.market_heatmap import load_heatmap
 from Core.Intelligence.probability_engine import estimate_green_probability
 from Core.Intelligence.decision_journal import log_council_decision
 from Core.Intelligence.exit_plan import build_exit_plan
-from Core.Intelligence.strategy.polymarket_intelligence import PolymarketIntelligenceEngine
 
 logger = logging.getLogger("SovereignCouncil")
 
@@ -56,7 +55,6 @@ class SovereignCouncil:
         
         # Load environment
         load_sovereign_env()
-        self.polymarket_engine = PolymarketIntelligenceEngine(coordinator=query_ai)
 
     async def _query_ai_guarded(self, role: str, payload: Dict[str, Any], *, timeout: float = 18.0) -> Dict[str, Any]:
         """Bound AI calls so one slow provider cannot freeze the trading loop."""
@@ -127,13 +125,11 @@ class SovereignCouncil:
 
     def _portfolio_context(self, signals_context: Dict[str, Any]) -> Dict[str, Any]:
         portfolio = dict(signals_context.get("portfolio_state") or {})
-        polymarket = dict(signals_context.get("polymarket_state") or portfolio.get("polymarket") or {})
         open_positions = list(portfolio.get("active_positions") or [])
-        open_bets = list(polymarket.get("active_bets") or polymarket.get("active_positions") or [])
         combined_equity_idr = float(portfolio.get("combined_equity_idr") or 0.0)
         indodax_equity_idr = float(portfolio.get("equity_idr") or 0.0)
-        if combined_equity_idr <= 0 and (indodax_equity_idr > 0 or polymarket):
-            combined_equity_idr = indodax_equity_idr + float(polymarket.get("equity_idr") or 0.0)
+        if combined_equity_idr <= 0 and indodax_equity_idr > 0:
+            combined_equity_idr = indodax_equity_idr
         daily_pnl_idr = float(portfolio.get("daily_pnl_idr") or portfolio.get("pnl_idr") or 0.0)
         daily_pnl_pct = float(portfolio.get("daily_pnl_pct") or portfolio.get("return_pct") or 0.0)
         if daily_pnl_pct == 0.0 and combined_equity_idr > 0 and daily_pnl_idr:
@@ -154,7 +150,6 @@ class SovereignCouncil:
         }
         return {
             "portfolio": portfolio,
-            "polymarket": polymarket,
             "combined_equity_idr": combined_equity_idr,
             "indodax_equity_idr": indodax_equity_idr,
             "daily_pnl_idr": daily_pnl_idr,
@@ -162,9 +157,9 @@ class SovereignCouncil:
             "green_state": green_state,
             "daily_state": daily_state,
             "open_positions": open_positions,
-            "open_bets": open_bets,
+            "open_bets": [],
             "position_symbols": position_symbols,
-            "has_positions": bool(open_positions or open_bets),
+            "has_positions": bool(open_positions),
         }
 
     def _normalize_signal_key(self, value: Any) -> str:
@@ -563,18 +558,6 @@ class SovereignCouncil:
         })
         return base
 
-    def _sanitize_polymarket_strategy(self, candidate: Dict[str, Any], current: Dict[str, Any]) -> Dict[str, Any]:
-        base = dict(current.get("polymarket", {}) if isinstance(current.get("polymarket"), dict) else {})
-        if isinstance(candidate, dict):
-            base.update(candidate)
-        base.update({
-            "strategy": str(base.get("strategy") or "CONTROLLED_AGGRESSIVE"),
-            "min_liquidity_usd": max(500.0, float(base.get("min_liquidity_usd", 500) or 500)),
-            "min_confidence": max(0.70, min(float(base.get("min_confidence", 0.78) or 0.78), 0.92)),
-            "max_bet_usd": float(base.get("max_bet_usd", 0) or 0),
-        })
-        return base
-
     async def _build_trade_evidence(self, signals_context: Dict[str, Any]) -> Dict[str, Any]:
         signals = list(signals_context.get("signals") or [])
         targets = []
@@ -826,12 +809,8 @@ class SovereignCouncil:
         whatif_snapshot = self._load_whatif_snapshot()
         portfolio_ctx = self._portfolio_context(market_snapshot)
 
-        # [NEW V3.1] Forensic and Cross-Market Intelligence
+        # [NEW V3.1] Forensic intelligence
         whale_intel = await self._query_ai_guarded("WHALE_WATCHER", {"orderbook_snapshot": market_snapshot.get("indodax")}, timeout=12)
-        bridge_alpha = await self._query_ai_guarded("CROSS_BRIDGE_STRATEGIST", {
-            "indodax_data": market_snapshot.get("indodax"),
-            "poly_data": market_snapshot.get("polymarket")
-        }, timeout=12)
 
         # 3. Final Strategic Decision (Strategy Dean)
         current = load_strategy()
@@ -870,7 +849,6 @@ class SovereignCouncil:
             "current_strategy": current,
             "sentiment": sentiment,
             "whale_intel": whale_intel,
-            "bridge_alpha": bridge_alpha,
             "whatif_snapshot": whatif_snapshot,
             "daily_state": runtime_daily_state,
             "recent_pnl": pnl_history,
@@ -927,7 +905,6 @@ class SovereignCouncil:
                 "version": "3.0.0",
                 "global_mode": raw_mode,
                 "indodax": self._sanitize_indodax_strategy(dean_res.get("indodax", {}), current),
-                "polymarket": self._sanitize_polymarket_strategy(dean_res.get("polymarket", {}), current),
                 "antagonist_view": antagonist_view,
                 "possibility_view": possibility_view,
                 "deadline_pressure": deadline_pressure,
@@ -1104,7 +1081,6 @@ class SovereignCouncil:
             "evidence_bundle": evidence_bundle,
             "today_trade_activity": today_trade_activity,
             "portfolio_state": portfolio_ctx.get("portfolio", {}),
-            "polymarket_state": portfolio_ctx.get("polymarket", {}),
             "daily_state": portfolio_ctx.get("daily_state", {}),
             "daily_context": daily_context,
             "market_heatmap": heatmap,
@@ -1170,7 +1146,7 @@ class SovereignCouncil:
         if str(decision.get("action") or "NONE").upper() not in {"BUY", "SELL"}:
             candidates = [
                 s for s in list(signals_context.get("signals") or [])
-                if isinstance(s, dict) and str(s.get("exchange") or "INDODAX").upper() in {"INDODAX", "POLYMARKET"}
+                if isinstance(s, dict) and str(s.get("exchange") or "INDODAX").upper() == "INDODAX"
             ]
             candidates.sort(
                 key=lambda s: float(s.get("opportunity_score") or s.get("confidence") or 0.0),
@@ -1275,7 +1251,6 @@ class SovereignCouncil:
         decision["confidence_floor"] = confidence_floor
         decision["today_trade_activity"] = today_trade_activity
         decision["portfolio_state"] = portfolio_ctx.get("portfolio", {})
-        decision["polymarket_state"] = portfolio_ctx.get("polymarket", {})
         decision["daily_context"] = daily_context
         decision["market_heatmap"] = {
             "market_breadth": heatmap.get("market_breadth"),
@@ -1322,34 +1297,6 @@ class SovereignCouncil:
         decision["deadline_pressure"] = deadline_pressure
         decision["deadline_mode"] = decision.get("deadline_mode") or daily_context.get("deadline_mode")
         
-        # 4. Event-market Intelligence Integration (G-003)
-        # Resolution-risk logic is valid for Polymarket/event markets only.
-        # Do not apply event wording/resolution vetoes to Indodax pump signals;
-        # those are handled by scanner lifecycle, liquidity, risk gate, and the
-        # fast+deep Council contract above.
-        market_type = str(source_signal.get("market_type", "")).lower()
-        exchange = str(source_signal.get("exchange", "")).upper()
-        is_event_market = (
-            market_type in {"polymarket", "event", "event_probability", "prediction_market"}
-            or exchange == "POLYMARKET"
-        )
-
-        if is_event_market:
-            logger.info(f"🔮 Triggering Event Intelligence Engine for {source_signal.get('symbol')}")
-            intel = await self.polymarket_engine.analyze_market(source_signal)
-            decision["market_intelligence"] = {
-                "edge": intel.edge,
-                "confidence": intel.confidence,
-                "liquidity_score": intel.liquidity_score,
-                "resolution_risk": intel.resolution_risk,
-                "recommendation": intel.recommendation
-            }
-            # [STRICT V3.3] Event Resolution Risk Veto
-            if intel.recommendation == "AVOID" or intel.resolution_risk > 0.70:
-                decision["status"] = "WAIT"
-                decision["action"] = "NONE"
-                decision["wait_reason"] = f"Intelligence Engine Veto: High Resolution Risk ({intel.resolution_risk:.2f})"
-
         if antagonist_view and isinstance(antagonist_view, dict):
             decision["antagonist_view"] = antagonist_view
             best_alt_action = str(antagonist_view.get("best_alternative_action") or "NONE").upper()

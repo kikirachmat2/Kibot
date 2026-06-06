@@ -40,16 +40,7 @@ def main() -> int:
     if str(_flag("KIBOT_INDODAX_ONLY", "true")).lower() not in {"1", "true", "yes", "on"}:
         failures.append("KIBOT_INDODAX_ONLY_not_true")
 
-    for key in (
-        "KIBOT_PHANTOM_ENABLED",
-        "KIBOT_ENABLE_REAL_SWAP",
-        "KIBOT_ENABLE_REAL_BRIDGE",
-        "KIBOT_ENABLE_REAL_WITHDRAWAL",
-        "KIBOT_WITHDRAWAL_ENABLED",
-        "KIBOT_ENABLE_POLYMARKET_LIVE",
-        "KIBOT_SCANNER_ENABLE_WEB3",
-        "KIBOT_SCANNER_ENABLE_POLYMARKET",
-    ):
+    for key in ("KIBOT_WITHDRAWAL_ENABLED",):
         if str(_flag(key, "false")).lower() in {"1", "true", "yes", "on"}:
             failures.append(f"{key}_must_be_false")
 
@@ -57,24 +48,17 @@ def main() -> int:
     if live_truth:
         if live_truth.get("platform_mode") != "INDODAX_ONLY":
             failures.append(f"live_truth_platform={live_truth.get('platform_mode')}")
-        if live_truth.get("phantom") not in (None, {}, []):
-            failures.append("live_truth_has_active_phantom_key")
-        retired = live_truth.get("retired_venues", {}) if isinstance(live_truth.get("retired_venues"), dict) else {}
-        phantom = retired.get("phantom", {}) if isinstance(retired.get("phantom"), dict) else {}
-        if phantom and phantom.get("status") != "REMOVED_BY_OPERATOR":
-            failures.append(f"live_truth_phantom_not_removed:{phantom.get('status')}")
+        if live_truth.get("retired_venues") not in (None, {}, []):
+            failures.append("live_truth_has_retired_venues_key")
 
     governor = _read_json(STATE / "capital_governor.json", {})
     venues = governor.get("venues", {}) if isinstance(governor, dict) else {}
-    phantom_venue = venues.get("phantom") if isinstance(venues, dict) else None
-    if isinstance(phantom_venue, dict) and phantom_venue.get("allow_orders"):
-        failures.append("capital_governor_allows_phantom")
-    if governor and governor.get("allow_phantom_orders"):
-        failures.append("capital_governor_allow_phantom_orders_true")
+    if isinstance(venues, dict) and len(set(venues.keys()) - {"indodax"}) > 0:
+        failures.append("capital_governor_has_removed_venue")
 
     dispatcher = _read_json(STATE / "live_order_dispatcher.json", {})
-    if dispatcher and isinstance(dispatcher.get("phantom"), dict):
-        failures.append("dispatcher_has_active_phantom_key")
+    if dispatcher and dispatcher.get("retired_venues"):
+        failures.append("dispatcher_has_retired_venues_key")
     if failures:
         print("FAIL:INDODAX_ONLY_RUNTIME " + ",".join(failures))
         return 1

@@ -44,12 +44,6 @@ DEFAULT_STRATEGY = {
         "reject_tick_traps": True,
         "min_price_levels_24h": 8,
         "max_tick_size_pct": 3.0,
-    },
-    "polymarket": {
-        "min_liquidity_usd": 500,
-        "max_bet_usd": 0,                 # 0 means "Use available USDC balance"
-        "min_confidence": 0.78,
-        "risk_limit": "AGGRESSIVE"
     }
 }
 

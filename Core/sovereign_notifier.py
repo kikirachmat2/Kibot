@@ -223,21 +223,6 @@ class SovereignNotifier:
         else:
             asset_str = "• No active positions"
 
-        # 4. Polymarket Financials
-        poly = data.get("polymarket", {}) or portfolio.get("polymarket", {})
-        poly_equity = poly.get("equity_idr", 0)
-        poly_ret = poly.get("return_pct", 0.0)
-        poly_pnl = poly.get("pnl_idr", 0)
-        poly_wl = poly.get("wl_ratio", "0W / 0L")
-
-        p_active = poly.get("active_positions", [])
-        poly_asset_str = ""
-        if p_active:
-            for pos in p_active:
-                poly_asset_str += f"• {pos.get('market', '???')[:20]}: {pos.get('outcome', '???')}\n"
-        else:
-            poly_asset_str = "• No active bets"
-
         template = f"""🤖 KiBot Sovereign
 🕒 {now_wib} WIB
 
@@ -269,22 +254,6 @@ class SovereignNotifier:
 
 📦 Asset Holdings:
 {asset_str}
-
-━━━━━━━━━━━━━━━━━━━━━━
-🔮 POLYMARKET
-
-💰 Total Saldo : Rp {poly_equity:,.0f}
-{get_fin_emoji(poly_ret)} Return      : {poly_ret:+.2f}%
-{get_fin_emoji(poly_pnl)} PnL         : Rp {poly_pnl:,.0f}
-{get_fin_emoji(poly_wl)} Trade W/L   : {poly_wl}
-
-📂 Portofolio:
-{get_fin_emoji(poly.get('pnl_today', 0))} • PnL Today : {poly.get('pnl_today', '+0.00%')}
-{get_fin_emoji(poly.get('pnl_7d', 0))} • PnL 7d    : {poly.get('pnl_7d', '+0.00%')}
-{get_fin_emoji(poly.get('pnl_30d', 0))} • PnL 30d   : {poly.get('pnl_30d', '+0.00%')}
-
-📦 Asset Holdings:
-{poly_asset_str}
 ━━━━━━━━━━━━━━━━━━━━━━"""
         return template
 

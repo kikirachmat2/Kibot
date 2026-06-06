@@ -8,10 +8,7 @@ from pathlib import Path
 from typing import Any, Dict
 
 from Core.Decision.indodax_target_board import build_indodax_target_board
-from Core.Decision.phantom_target_board import build_phantom_target_board
 from Core.Decision.engine_independence import write_engine_independence
-from Core.Treasury.phantom_capital_mover import write_phantom_capital_mover
-from Core.Treasury.phantom_network_maximizer import write_phantom_network_maximizer
 from Core.Scanner.scanner_health import write_scanner_health
 from Core.Scanner.scanner_executor_contract import ScannerExecutorContract
 from Core.Support.ki_config import KiConfig
@@ -52,9 +49,6 @@ def _fresh(path: Path, max_age_s: float = 600.0) -> bool:
 
 def build_final_claim() -> Dict[str, Any]:
     write_engine_independence({})
-    if not KiConfig.INDODAX_ONLY:
-        write_phantom_capital_mover({})
-        write_phantom_network_maximizer({})
     ai_review_path = STATE / "ai_strategy_review.json"
     ai_review_path.write_text(
         json.dumps({
@@ -70,7 +64,6 @@ def build_final_claim() -> Dict[str, Any]:
         encoding="utf-8",
     )
     indodax = build_indodax_target_board()
-    phantom = build_phantom_target_board() if not KiConfig.INDODAX_ONLY else {"top_targets": [], "status": "REMOVED_BY_OPERATOR"}
     ScannerExecutorContract().write_contract_state()
     scanner_health = write_scanner_health(_read("scanner_executor_contract.json", {}))
     telemetry = write_server_telemetry({})
@@ -85,15 +78,6 @@ def build_final_claim() -> Dict[str, Any]:
             "kibot-dashboard",
             "kibot-cloudflared",
         ]
-    if not KiConfig.INDODAX_ONLY:
-        service_names.extend([
-            "kibot-phantom-brain",
-            "kibot-pumpfun",
-            "kibot-base",
-            "kibot-future-web3",
-            "kibot-executor-polymarket",
-            "kibot-web3-exit",
-        ])
     services = {name: _svc(name) for name in service_names}
     service_active = all(v["active"] == "active" for v in services.values())
     service_missing = [k for k, v in services.items() if v["active"] != "active"]
@@ -119,8 +103,6 @@ def build_final_claim() -> Dict[str, Any]:
         claim_blocker = f"stale_or_missing_states:{','.join(missing)}"
     elif not indodax.get("top_targets"):
         claim_blocker = indodax.get("why_empty") or "indodax_top_targets_empty"
-    elif not KiConfig.INDODAX_ONLY and not phantom.get("top_targets"):
-        claim_blocker = phantom.get("why_empty") or "phantom_top_targets_empty"
     claim = {
         "updated_at": datetime.now(timezone.utc).isoformat(),
         "git_commit": subprocess.run(["git", "rev-parse", "HEAD"], capture_output=True, text=True, timeout=8).stdout.strip(),
@@ -128,8 +110,7 @@ def build_final_claim() -> Dict[str, Any]:
         "services_active": services,
         "states_fresh": states,
         "indodax_engine": _read("engine_independence.json", {}),
-        "phantom_engine": {"status": "REMOVED_BY_OPERATOR"} if KiConfig.INDODAX_ONLY else _read("phantom_capital_mover.json", {}),
-        "top_targets": {"indodax_count": len(indodax.get("top_targets", [])), "phantom_count": 0 if KiConfig.INDODAX_ONLY else len(phantom.get("top_targets", []))},
+        "top_targets": {"indodax_count": len(indodax.get("top_targets", []))},
         "dashboard": {
             "healthz": "http://127.0.0.1:8787/api/healthz",
             "control_plane": "http://127.0.0.1:8787/api/control-plane",

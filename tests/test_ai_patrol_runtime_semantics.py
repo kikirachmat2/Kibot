@@ -32,7 +32,6 @@ def test_runtime_patrol_detects_order_block_with_visible_targets(tmp_path, monke
         tmp_path / "indodax_top_targets.json",
         {"top_targets": [{"recommended_action": "ENTER"}]},
     )
-    _write(tmp_path / "phantom_top_targets.json", {"top_targets": []})
     _write(
         tmp_path / "indodax_scanner_state.json",
         {"source_status": "OK", "pairs_checked": 10, "candidates_found": 2},
@@ -59,9 +58,7 @@ def test_runtime_patrol_writes_telegram_status_without_credentials(tmp_path, mon
 
     for name in (
         "capital_governor.json",
-        "phantom_treasury.json",
         "indodax_scanner_state.json",
-        "phantom_top_targets.json",
         "scanner_executor_contract.json",
         "server_telemetry.json",
         "ai_decision_trace.json",
@@ -98,7 +95,6 @@ def test_ai_patrol_does_not_send_telegram_for_auto_repairable_rollover(tmp_path,
         {"status": "BLOCKED_WITH_REASON", "reason": "daily_rollover_exit_pending (1 open; symbols=POND/IDR)"},
     )
     _write(tmp_path / "indodax_top_targets.json", {"top_targets": [{"recommended_action": "ENTER"}]})
-    _write(tmp_path / "phantom_top_targets.json", {"top_targets": []})
 
     scout = kibot_ai_scout.WorldScout()
     semantics = scout._runtime_semantics()

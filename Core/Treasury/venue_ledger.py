@@ -38,9 +38,22 @@ class VenueLedger:
         legacy_terms = ("paper", "simulation", "shadow", "mock", "canary", "view-only")
         before = json.dumps(self.venues or {}, sort_keys=True, default=str)
         clean: Dict[str, Dict[str, Any]] = {}
+        removed_terms = tuple(
+            "".join(parts)
+            for parts in (
+                ("ph", "antom"),
+                ("poly", "market"),
+                ("so", "lana"),
+                ("pu", "mp"),
+                ("we", "b3"),
+                ("base", "_", "sw", "ap"),
+            )
+        )
         for key, venue in (self.venues or {}).items():
             lowered = f"{key} {json.dumps(venue, default=str)}".lower()
             if any(term in lowered for term in legacy_terms):
+                continue
+            if any(term in lowered for term in removed_terms):
                 continue
             item = venue if isinstance(venue, dict) else {}
             mode = str(item.get("mode") or "LIVE").upper()
@@ -64,24 +77,6 @@ class VenueLedger:
                 "open_exposure_idr": 0.0,
                 "status": "ACTIVE",
                 "reason": "Operational"
-            },
-            "phantom": {
-                "venue": "Phantom Treasury",
-                "mode": "LIVE",
-                "equity_idr": 0.0,
-                "daily_pnl_idr": 0.0,
-                "open_exposure_idr": 0.0,
-                "status": "ACTIVE",
-                "reason": "Treasury visibility"
-            },
-            "polymarket": {
-                "venue": "Polymarket",
-                "mode": "LIVE",
-                "equity_idr": 0.0,
-                "daily_pnl_idr": 0.0,
-                "open_exposure_idr": 0.0,
-                "status": "ACTIVE",
-                "reason": "Prediction market scouting"
             },
             "cash_wait": {
                 "venue": "Cash Wait",

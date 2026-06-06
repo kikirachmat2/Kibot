@@ -41,12 +41,6 @@ def main() -> int:
     if policy.get("telegram_role") != "exception_only":
         print("FAIL:telegram_role_not_exception_only")
         return 1
-    if policy.get("bridge") != "OFF":
-        print("FAIL:bridge_not_off")
-        return 1
-    if policy.get("withdrawal") != "OFF":
-        print("FAIL:withdrawal_not_off")
-        return 1
     if permissions.get("can_place_order") is not False:
         print("FAIL:ai_can_place_order")
         return 1

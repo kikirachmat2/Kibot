@@ -57,18 +57,14 @@ class RuntimeGuardStatus:
     runtime_mode: str
     live_trading_enabled: bool
     withdrawal_enabled: bool
-    bridge_enabled: bool
 
 
 def read_runtime_guard_status() -> RuntimeGuardStatus:
     mode = normalize_runtime_mode(os.getenv("KIBOT_RUNTIME_MODE", os.getenv("KIBOT_TRADING_MODE", "")))
     live_trading = _flag("KIBOT_LIVE_TRADING_ENABLED", "true" if mode == LIVE_ONLY else "false")
     withdrawal = _flag("KIBOT_WITHDRAWAL_ENABLED", "false")
-    bridge = _flag("KIBOT_ENABLE_REAL_BRIDGE", "false")
     return RuntimeGuardStatus(
         runtime_mode=mode,
         live_trading_enabled=live_trading,
         withdrawal_enabled=withdrawal,
-        bridge_enabled=bridge,
     )
-

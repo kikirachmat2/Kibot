@@ -72,7 +72,7 @@ def reconcile_pnl_state(write: bool = True) -> Dict[str, Any]:
     reset_withdrawals_offset = _safe_float(gov.get("reset_withdrawals_offset"), 0.0)
     # CapitalGovernor persists external_deposits_today/external_withdrawals_today
     # after reset offsets are already applied. Re-applying offsets here creates a
-    # phantom PnL drift that can make the dashboard disagree with the hard stop.
+    # synthetic PnL drift that can make the dashboard disagree with the hard stop.
     adjusted_external_deposits = external_deposits
     adjusted_external_withdrawals = external_withdrawals
 

@@ -11,7 +11,7 @@ def test_source_proof_validate_happy_path():
         raw_id="abc",
         symbol="ABC",
         address_or_mint="abc123",
-        chain="solana",
+        chain="indodax",
     )
     assert SourceProof.validate(proof)
 
@@ -24,6 +24,6 @@ def test_source_proof_rejects_invalid_placeholder():
         raw_id="abc",
         symbol="ABC",
         address_or_mint="fake_placeholder",
-        chain="solana",
+        chain="indodax",
     )
     assert not SourceProof.validate(proof)

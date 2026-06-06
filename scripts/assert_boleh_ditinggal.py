@@ -51,7 +51,6 @@ def main() -> int:
         "server_extensions": "scripts/audit_server_extensions_usage.py",
         "repo_safety": "scripts/audit_repo_safety.py",
         "trading_policy": "scripts/audit_trading_decision_policy.py",
-        "phantom_handoff": "scripts/assert_phantom_handoff_pipeline.py",
         "recovery_unlock": "scripts/assert_recovery_unlock_safety.py",
     }
     for key, script in scripts.items():

@@ -15,7 +15,7 @@ It should be:
 ## Non-Goals
 - No live order entry.
 - No withdrawal.
-- No bridge execution.
+- No external wallet or chain execution.
 - No secret display.
 - No profit guarantee messaging.
 
@@ -30,7 +30,6 @@ It should be:
 
 2. Venues
    - Indodax status
-   - Phantom status
    - per-venue equity
    - lock reason if any
 
@@ -90,7 +89,7 @@ The app should read the same canonical truth used by the web dashboard:
 ## Operator Copy
 Safe copy examples:
 - “Autonomous LIVE_ONLY runtime. Can trade when deterministic gates pass. No profit guarantee.”
-- “Locked because Phantom env is missing.”
+- “Locked because Indodax/API state is stale.”
 - “Waiting for deterministic gate.”
 
 Avoid:

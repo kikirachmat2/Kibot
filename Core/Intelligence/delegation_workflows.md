@@ -15,8 +15,6 @@ Dokumen ini menjelaskan pola delegasi kerja KiBot Sovereign agar council, scanne
 ### 1. Signal Discovery
 Input:
 - Scanner Indodax
-- Scanner Polymarket
-- Universal lead-lag scanner
 
 Output:
 - Sinyal HMAC-signed
@@ -148,4 +146,4 @@ Aturan:
 - Jangan ubah live gate jadi implicit.
 - Kalau state runtime berubah, update README dan inventory.
 - Kalau workflow baru ditambah, catat stage dan syaratnya.
-
+- Runtime ini Indodax-only. Jangan menghidupkan ulang route wallet eksternal, prediction market, atau chain lain.

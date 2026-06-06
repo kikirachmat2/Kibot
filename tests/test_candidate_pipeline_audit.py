@@ -10,10 +10,8 @@ def test_candidate_pipeline_detects_gate_bottleneck() -> None:
             "orders": [],
             "trade_history": [],
             "indodax_targets": {"top_targets": [{"symbol": "BTC/IDR"}]},
-            "phantom_targets": {"top_targets": []},
             "server_telemetry": {"cpu": 1},
         }
     )
     assert result["indodax"]["bottleneck"] in {"GATE", "SCANNER", "SIZE", "EXECUTOR", "NONE"}
     assert "indodax" in result
-

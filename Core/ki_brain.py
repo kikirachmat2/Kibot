@@ -165,7 +165,6 @@ class BrainManager:
         self.ddg_ttl_sec = int(os.getenv("KIBOT_BRAIN_DDG_TTL_SEC", "3600"))
         self.finnhub_ttl_sec = int(os.getenv("KIBOT_BRAIN_FINNHUB_TTL_SEC", "900"))
         self.gemini_ttl_sec = int(os.getenv("KIBOT_BRAIN_GEMINI_TTL_SEC", "7200"))
-        self.polymarket_ttl_sec = int(os.getenv("KIBOT_BRAIN_POLYMARKET_TTL_SEC", "90"))
         self.world_model_ttl_sec = int(os.getenv("KIBOT_BRAIN_WORLD_MODEL_TTL_SEC", "600"))
         self.coingecko_ttl_sec = int(os.getenv("KIBOT_BRAIN_COINGECKO_TTL_SEC", "900"))
         self.gdelt_ttl_sec = int(os.getenv("KIBOT_BRAIN_GDELT_TTL_SEC", "1800"))
@@ -187,7 +186,6 @@ class BrainManager:
         self.search_lang = os.getenv("KIBOT_BRAIN_SEARCH_LANG", "id")
         self.x_lang = os.getenv("KIBOT_BRAIN_X_LANG", "en")
         self.gemini_model = os.getenv("KIBOT_BRAIN_GEMINI_MODEL", os.getenv("GEMINI_MODEL", "gemini-2.0-flash-lite"))
-        self.polymarket_state_url = os.getenv("KIBOT_POLYMARKET_STATE_URL", "").strip()
         self._pair_cache: Dict[str, Dict[str, Any]] = {}
         self._provider_cache: Dict[str, Dict[str, Any]] = {}
         self._indodax_pairs_cache: Dict[str, str] = {}
@@ -556,15 +554,14 @@ class BrainManager:
         # Parallel fetch for core pulse components
         tasks = [
             self._get_market_pulse_async(symbols),
-            self._get_polymarket_snapshot_async(),
             self._get_fear_greed_index_async(),
             self._get_binance_funding_rate_async(),
             self._get_stablecoin_flow_async(),
         ]
         
-        market_pulse, polymarket_snapshot, fear_greed, funding_rate, stablecoin_flow = await asyncio.gather(*tasks)
+        market_pulse, fear_greed, funding_rate, stablecoin_flow = await asyncio.gather(*tasks)
         
-        world_model = self._build_world_model(symbols, market_pulse, polymarket_snapshot, context)
+        world_model = self._build_world_model(symbols, market_pulse, context)
         
         snapshot = {
             "checked_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
@@ -586,7 +583,6 @@ class BrainManager:
             },
             "daily_target": self._daily_target_snapshot(context),
             "market_pulse": market_pulse,
-            "polymarket": polymarket_snapshot,
             "fear_greed": fear_greed,
             "funding_rate": funding_rate,
             "stablecoin_flow": stablecoin_flow,
@@ -649,17 +645,14 @@ class BrainManager:
                 logger.info("[KiBrain] Initiating Sovereign World Model Refresh...")
                 pairs = list(self._indodax_pairs_cache.keys())[:10]
                 pulse = await self._get_market_pulse_async(pairs)
-                poly = await self._get_polymarket_snapshot_async()
-                
                 # We need a context for building the world model and calling the critic
                 context = {"daily_pnl_pct": 0.0} # Default or placeholder
-                world_model = self._build_world_model(pairs, pulse, poly, context)
+                world_model = self._build_world_model(pairs, pulse, context)
                 critic = await self._get_ai_critic_async(pairs, pulse, world_model, context)
                 
                 self._last_snapshot = {
                     "updated_at": time.time(),
                     "market_pulse": pulse,
-                    "polymarket": poly,
                     "world_model": world_model,
                     "ai_critic": critic
                 }
@@ -689,16 +682,6 @@ class BrainManager:
         # ... logic to dedupe and sentiment check ...
         return {"risk_bias": "MIXED", "top_headlines": top_headlines[:5]}
 
-    async def _get_polymarket_snapshot_async(self) -> Dict[str, Any]:
-        if not self.polymarket_state_url:
-            return {}
-
-        async def loader() -> Dict[str, Any]:
-            payload = await self._request_json_async(self.polymarket_state_url)
-            return payload if isinstance(payload, dict) else {}
-
-        return await self._cached_payload_async("polymarket_state", self.polymarket_ttl_sec, loader)
-
     async def _get_ai_critic_async(
         self,
         symbols: Sequence[str],
@@ -713,8 +696,6 @@ class BrainManager:
         cache_key = f"ai_critic:{risk_bias}:{daily_pnl}:{'-'.join(list(symbols)[:3])}"
         
         daily_target = self._daily_target_snapshot(context)
-        polymarket = await self._get_polymarket_snapshot_async()
-        
         critic_context = {
             "watch_symbols": list(symbols)[:3],
             "market_pulse": {
@@ -747,33 +728,6 @@ class BrainManager:
                 "trading_allowed": (context.get("capital_profile") or {}).get("trading_allowed"),
                 "max_position_idr": (context.get("capital_profile") or {}).get("max_position_idr"),
                 "daily_loss_limit_pct": (context.get("capital_profile") or {}).get("daily_loss_limit_pct"),
-            },
-            "polymarket": {
-                "ready": polymarket.get("ready"),
-                "analysis_ready": polymarket.get("analysis_ready"),
-                "execution_enabled": polymarket.get("execution_enabled"),
-                "blocked": (polymarket.get("geoblock") or {}).get("blocked") if isinstance(polymarket.get("geoblock"), dict) else None,
-                "country": (polymarket.get("geoblock") or {}).get("country") if isinstance(polymarket.get("geoblock"), dict) else None,
-                "top_opportunities": [
-                    {
-                        "slug": item.get("slug"),
-                        "spread": item.get("spread"),
-                        "liquidity": item.get("liquidity"),
-                    }
-                    for item in list(polymarket.get("top_opportunities") or [])[:3]
-                    if isinstance(item, dict)
-                ],
-                "maker_candidates": [
-                    {
-                        "slug": item.get("slug"),
-                        "maker_score": item.get("maker_score"),
-                        "execution_style": item.get("execution_style"),
-                    }
-                    for item in list(polymarket.get("maker_candidates") or [])[:2]
-                    if isinstance(item, dict)
-                ],
-                "cross_market_bias": polymarket.get("cross_market_bias") if isinstance(polymarket.get("cross_market_bias"), dict) else {},
-                "ops_alerts": list(polymarket.get("ops_alerts") or [])[:3],
             },
             "world_model": self._world_model_for_prompt(world_model),
         }
@@ -818,7 +772,6 @@ class BrainManager:
                                     f"- market_pulse: {json.dumps(critic_context.get('market_pulse'), ensure_ascii=False)}\n"
                                     f"- daily_target: {json.dumps(critic_context.get('daily_target'), ensure_ascii=False)}\n"
                                     f"- capital_profile: {json.dumps(critic_context.get('capital_profile'), ensure_ascii=False)}\n"
-                                    f"- polymarket: {json.dumps(critic_context.get('polymarket'), ensure_ascii=False)}\n"
                                     f"- world_model: {json.dumps(critic_context.get('world_model'), ensure_ascii=False)}\n"
                                     "Rules:\n"
                                     "- Be extremely strict. Reject signals if Analyst and Technician disagree.\n"
@@ -1011,7 +964,6 @@ class BrainManager:
         daily_pnl = f"{self._safe_float(context.get('daily_pnl_pct')):.4f}"
         cache_key = f"ai_critic:{risk_bias}:{daily_pnl}:{'-'.join(list(symbols)[:3])}"
         daily_target = self._daily_target_snapshot(context)
-        polymarket = self._get_polymarket_snapshot()
         critic_context = {
             "watch_symbols": list(symbols)[:3],
             "market_pulse": {
@@ -1044,33 +996,6 @@ class BrainManager:
                 "trading_allowed": (context.get("capital_profile") or {}).get("trading_allowed"),
                 "max_position_idr": (context.get("capital_profile") or {}).get("max_position_idr"),
                 "daily_loss_limit_pct": (context.get("capital_profile") or {}).get("daily_loss_limit_pct"),
-            },
-            "polymarket": {
-                "ready": polymarket.get("ready"),
-                "analysis_ready": polymarket.get("analysis_ready"),
-                "execution_enabled": polymarket.get("execution_enabled"),
-                "blocked": (polymarket.get("geoblock") or {}).get("blocked") if isinstance(polymarket.get("geoblock"), dict) else None,
-                "country": (polymarket.get("geoblock") or {}).get("country") if isinstance(polymarket.get("geoblock"), dict) else None,
-                "top_opportunities": [
-                    {
-                        "slug": item.get("slug"),
-                        "spread": item.get("spread"),
-                        "liquidity": item.get("liquidity"),
-                    }
-                    for item in list(polymarket.get("top_opportunities") or [])[:3]
-                    if isinstance(item, dict)
-                ],
-                "maker_candidates": [
-                    {
-                        "slug": item.get("slug"),
-                        "maker_score": item.get("maker_score"),
-                        "execution_style": item.get("execution_style"),
-                    }
-                    for item in list(polymarket.get("maker_candidates") or [])[:2]
-                    if isinstance(item, dict)
-                ],
-                "cross_market_bias": polymarket.get("cross_market_bias") if isinstance(polymarket.get("cross_market_bias"), dict) else {},
-                "ops_alerts": list(polymarket.get("ops_alerts") or [])[:3],
             },
             "world_model": self._world_model_for_prompt(world_model),
         }
@@ -1113,7 +1038,6 @@ class BrainManager:
                                     f"- market_pulse: {json.dumps(critic_context.get('market_pulse'), ensure_ascii=False)}\n"
                                     f"- daily_target: {json.dumps(critic_context.get('daily_target'), ensure_ascii=False)}\n"
                                     f"- capital_profile: {json.dumps(critic_context.get('capital_profile'), ensure_ascii=False)}\n"
-                                    f"- polymarket: {json.dumps(critic_context.get('polymarket'), ensure_ascii=False)}\n"
                                     f"- world_model: {json.dumps(critic_context.get('world_model'), ensure_ascii=False)}\n"
                                     "Rules:\n"
                                     "- Be extremely strict. Reject signals if Analyst and Technician disagree.\n"
@@ -1266,7 +1190,7 @@ class BrainManager:
         def loader() -> Dict[str, Any]:
             query = os.getenv(
                 "KIBOT_BRAIN_X_QUERY",
-                "(bitcoin OR btc OR ethereum OR eth OR solana OR sol OR xrp OR doge OR altcoin OR memecoin) "
+                "(bitcoin OR btc OR ethereum OR eth OR xrp OR doge OR altcoin OR memecoin) "
                 "(etf OR inflow OR outflow OR listing OR launch OR exploit OR hack OR regulation) "
                 "-is:retweet -is:reply",
             )
@@ -1313,7 +1237,7 @@ class BrainManager:
                 params={
                     "query": os.getenv(
                         "KIBOT_BRAIN_GDELT_QUERY",
-                        '("bitcoin" OR "ethereum" OR "solana" OR "altcoin" OR "crypto") '
+                        '("bitcoin" OR "ethereum" OR "altcoin" OR "crypto") '
                         '("etf" OR "listing" OR "regulation" OR "exploit" OR "hack" OR "treasury")',
                     ),
                     "mode": "ArtList",
@@ -1422,7 +1346,6 @@ class BrainManager:
         self,
         symbols: Sequence[str],
         market_pulse: Dict[str, Any],
-        polymarket: Dict[str, Any],
         context: Dict[str, Any],
     ) -> Dict[str, Any]:
         if not self.world_model_enabled:
@@ -1460,7 +1383,6 @@ class BrainManager:
                 source_names.add("stablecoin_flow")
 
             source_weight_map = {
-                "polymarket": 0.24,
                 "finnhub": 0.18,
                 "coingecko": 0.14,
                 "funding_rate": 0.12,
@@ -1479,7 +1401,7 @@ class BrainManager:
             source_weight_score = round(min(1.0, sum(source_weights.values())), 4)
             source_category_scores = {
                 "market_execution": round(
-                    sum(source_weights.get(name, 0.0) for name in ("polymarket", "coingecko", "finnhub")),
+                    sum(source_weights.get(name, 0.0) for name in ("coingecko", "finnhub")),
                     4,
                 ),
                 "news_research": round(
@@ -1600,24 +1522,6 @@ class BrainManager:
                     }
                 )
 
-            for item in list(polymarket.get("alpha_candidates") or [])[:3]:
-                if not isinstance(item, dict):
-                    continue
-                pair = str(item.get("mapped_pair") or "").lower().strip()
-                if not pair:
-                    continue
-                score = 0.56 + (self._safe_float(item.get("alpha_score")) * 0.28) + (self._safe_float(item.get("signal_score")) * 0.12)
-                register_opportunity(
-                    {
-                        "pair": pair,
-                        "symbol": str(item.get("asset") or "").upper().strip(),
-                        "kind": "polymarket_alpha",
-                        "score": min(0.92, round(score, 4)),
-                        "thesis": f"Polymarket bias {str(item.get('direction') or 'mixed').lower()} feeding cross-market signal",
-                        "budget_hint_idr": float(capital_profile.get("max_position_idr") or 0.0),
-                    }
-                )
-
             opportunities = sorted(
                 opportunity_map.values(),
                 key=lambda item: self._safe_float(item.get("score")),
@@ -1698,17 +1602,6 @@ class BrainManager:
                         "assets": [],
                     }
                 )
-            for alert in list(polymarket.get("ops_alerts") or [])[:3]:
-                text = str(alert or "").strip()
-                if not text:
-                    continue
-                risk_register.append(
-                    {
-                        "severity": "WARNING" if "low" in text.lower() else "INFO",
-                        "summary": text[:160],
-                        "assets": [],
-                    }
-                )
             ollama_status = provider_status.get("ollama") if isinstance(provider_status.get("ollama"), dict) else {}
             if ollama_status and not bool(ollama_status.get("available", True)):
                 risk_register.append(
@@ -1779,8 +1672,6 @@ class BrainManager:
                     "trading_allowed": bool(capital_profile.get("trading_allowed", True)),
                     "free_cash_idr": round(free_cash_idr, 2),
                     "provider_count": len(source_names),
-                    "polymarket_ready": bool(polymarket.get("ready")),
-                    "analysis_ready": bool(polymarket.get("analysis_ready")),
                 },
                 "micro_capital_plan": {
                     "allow_exploration": allow_exploration,
@@ -1991,16 +1882,6 @@ class BrainManager:
             }
 
         return self._cached_payload("stablecoin_flow", self.stablecoin_flow_ttl_sec, loader)
-
-    def _get_polymarket_snapshot(self) -> Dict[str, Any]:
-        if not self.polymarket_state_url:
-            return {}
-
-        def loader() -> Dict[str, Any]:
-            payload = self._request_json(self.polymarket_state_url)
-            return payload if isinstance(payload, dict) else {}
-
-        return self._cached_payload("polymarket_state", self.polymarket_ttl_sec, loader)
 
     def _provider_status(self) -> Dict[str, Dict[str, Any]]:
         out: Dict[str, Dict[str, Any]] = {}

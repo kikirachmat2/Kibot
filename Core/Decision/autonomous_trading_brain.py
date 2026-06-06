@@ -37,15 +37,11 @@ def write_autonomous_trading_brain(payload: Dict[str, Any]) -> Dict[str, Any]:
 
 def build_autonomous_trading_brain() -> Dict[str, Any]:
     from Core.Decision.indodax_target_board import build_indodax_target_board
-    from Core.Decision.phantom_target_board import build_phantom_target_board
     from Core.Decision.deadline_profit_enforcer import DeadlineProfitEnforcer
-    from Core.Treasury.phantom_network_maximizer import write_phantom_network_maximizer
     from Core.Trading.autonomous_sizing import AutonomousSizing
 
     indo = build_indodax_target_board()
-    phantom = build_phantom_target_board()
     capital_governor = {}
-    fee_state = {}
     pnl_reconciliation = {}
     try:
         gov_path = Path(__file__).resolve().parent.parent.parent / "state" / "capital_governor.json"
@@ -53,12 +49,6 @@ def build_autonomous_trading_brain() -> Dict[str, Any]:
             capital_governor = json.loads(gov_path.read_text(encoding="utf-8"))
     except Exception:
         capital_governor = {}
-    try:
-        fee_path = Path(__file__).resolve().parent.parent.parent / "state" / "web3_fee_state.json"
-        if fee_path.exists():
-            fee_state = json.loads(fee_path.read_text(encoding="utf-8"))
-    except Exception:
-        fee_state = {}
     try:
         from Core.Treasury.pnl_reconciliation import reconcile_pnl_state
 
@@ -84,7 +74,7 @@ def build_autonomous_trading_brain() -> Dict[str, Any]:
         )
 
     def _venue_state(engine: str) -> Dict[str, Any]:
-        key = "indodax" if engine == "indodax" else "phantom"
+        key = "indodax"
         state = venue_states.get(key, {}) if isinstance(venue_states, dict) else {}
         return state if isinstance(state, dict) else {}
 
@@ -105,7 +95,6 @@ def build_autonomous_trading_brain() -> Dict[str, Any]:
         trading_pnl_idr,
         int((indo.get("minutes_to_midnight") or 60)),
     )
-    write_phantom_network_maximizer({})
 
     if global_hard_stop:
         reason = global_hard_stop_reason or str(deadline.get("reason") or "global_hard_stop")
@@ -151,23 +140,16 @@ def build_autonomous_trading_brain() -> Dict[str, Any]:
     posture = "SEARCHING"
 
     indo_targets = list(indo.get("top_targets") or [])
-    phantom_targets = list(phantom.get("top_targets") or [])
     venue_blockers = []
     if indo_targets and not _venue_allowed("indodax"):
         venue_blockers.append(f"indodax:{_venue_reason('indodax') or 'indodax_orders_blocked'}")
-    if phantom_targets and not _venue_allowed("phantom"):
-        venue_blockers.append(f"phantom:{_venue_reason('phantom') or 'phantom_orders_blocked'}")
 
     priority_candidates = []
     if _venue_allowed("indodax"):
         priority_candidates.extend(("indodax", c) for c in indo_targets if _candidate_is_enter(c))
-    if _venue_allowed("phantom"):
-        priority_candidates.extend(("phantom", c) for c in phantom_targets if _candidate_is_enter(c))
     if not priority_candidates:
         if _venue_allowed("indodax"):
             priority_candidates.extend(("indodax", c) for c in indo_targets if _candidate_is_liveable(c))
-        if _venue_allowed("phantom"):
-            priority_candidates.extend(("phantom", c) for c in phantom_targets if _candidate_is_liveable(c))
 
     if priority_candidates:
         selected_engine, selected_candidate = max(
@@ -187,7 +169,6 @@ def build_autonomous_trading_brain() -> Dict[str, Any]:
             s for s in [
                 "low_confidence" if float(selected_candidate.get("wave_score") or selected_candidate.get("entry_score") or 0) < 5 else "",
                 "deadline_pressure" if str(deadline.get("stage") or "") in {"PRESSURE", "AGGRESSIVE_SEARCH", "CLOSING_WINDOW"} else "",
-                "gas_fee_unaffordable" if isinstance(fee_state, dict) and str(fee_state.get("route") or "") == str(selected_candidate.get("route") or "") and not bool(fee_state.get("gas_affordable", True)) else "",
             ] if s
         ]
     else:
@@ -195,15 +176,10 @@ def build_autonomous_trading_brain() -> Dict[str, Any]:
             fatal_blockers = venue_blockers
             reason = "; ".join(venue_blockers)
         else:
-            reason = str(indo.get("why_not_trading") or phantom.get("why_empty") or deadline.get("reason") or "scan_more")
+            reason = str(indo.get("why_not_trading") or deadline.get("reason") or "scan_more")
 
     if selected_engine == "indodax":
         venue_state = _venue_state("indodax")
-        venue_cap = float(venue_state.get("daily_loss_cap_idr", max_daily_loss_idr) or max_daily_loss_idr)
-        venue_pnl = float(venue_state.get("daily_pnl_idr", trading_pnl_idr) or trading_pnl_idr)
-        daily_risk_remaining_idr = max(0.0, venue_cap + venue_pnl)
-    elif selected_engine == "phantom":
-        venue_state = _venue_state("phantom")
         venue_cap = float(venue_state.get("daily_loss_cap_idr", max_daily_loss_idr) or max_daily_loss_idr)
         venue_pnl = float(venue_state.get("daily_pnl_idr", trading_pnl_idr) or trading_pnl_idr)
         daily_risk_remaining_idr = max(0.0, venue_cap + venue_pnl)
@@ -217,14 +193,6 @@ def build_autonomous_trading_brain() -> Dict[str, Any]:
         sizing_balance = float(indo.get("capital_idr") or governor_total_equity or 0.0)
         sizing_bucket = float(indo.get("capital_idr") or governor_total_equity or 0.0)
         sizing_exit_available = True
-    elif selected_engine == "phantom":
-        sizing_route = str(selected_candidate.get("route") or "indodax")
-        sizing_liquidity = float(selected_candidate.get("volume_or_liquidity") or 0.0)
-        sizing_confidence = float(selected_candidate.get("wave_score") or 0.0) / 100.0
-        sizing_ev = float(selected_candidate.get("wave_score") or 0.0)
-        sizing_balance = float(phantom.get("available_balances", {}).get("solana_sol_idr") or 0.0)
-        sizing_bucket = float(phantom.get("available_balances", {}).get("solana_sol_idr") or 0.0)
-        sizing_exit_available = bool(selected_candidate.get("exit_route_ok", True))
     else:
         sizing_route = ""
         sizing_liquidity = 0.0
@@ -238,7 +206,6 @@ def build_autonomous_trading_brain() -> Dict[str, Any]:
         governor_total_equity,
         sizing_balance,
         float(indo.get("capital_idr") or 0.0),
-        float(phantom.get("available_balances", {}).get("solana_sol_idr") or 0.0),
         1.0,
     )
     sizing = AutonomousSizing().size(
@@ -269,7 +236,6 @@ def build_autonomous_trading_brain() -> Dict[str, Any]:
         "fatal_blockers": fatal_blockers,
         "advisory_signals": advisory_signals,
         "what_if_checks": pnl_reconciliation.get("what_if_checks", []) if isinstance(pnl_reconciliation, dict) else [],
-        "fee_intelligence": fee_state,
         "reason": reason,
         "next_action": "ENTER" if selected_candidate and sizing.get("approved", False) else "SCAN_MORE",
         "next_check_seconds": 5,

@@ -475,17 +475,11 @@ class CapitalGovernor:
     The central coordinator of KiBot's capital distribution, target allocations,
     and the global 1.5% daily drawdown cap.
     """
-    def __init__(self, indodax_gateway=None, phantom_router=None):
+    def __init__(self, indodax_gateway=None, _removed_wallet_router=None):
         self.indodax = indodax_gateway
-        self.phantom_router = None if KiConfig.INDODAX_ONLY else phantom_router
         
         # Initialize internal modules
         self.ledger = VenueLedger()
-        self.phantom_treasury = None
-        if not KiConfig.INDODAX_ONLY:
-            from Core.Treasury.phantom_treasury import PhantomTreasury
-
-            self.phantom_treasury = PhantomTreasury(phantom_router)
         self.policy = AllocationPolicy()
         
         # Core metrics
@@ -497,11 +491,8 @@ class CapitalGovernor:
         self.trading_pnl_idr = 0.0
         self.trading_pnl_pct = 0.0
         self.start_indodax_equity_idr = 0.0
-        self.start_phantom_equity_idr = 0.0
         self.indodax_daily_pnl_idr = 0.0
         self.indodax_daily_pnl_pct = 0.0
-        self.phantom_daily_pnl_idr = 0.0
-        self.phantom_daily_pnl_pct = 0.0
         self.external_deposits_today = 0.0
         self.external_withdrawals_today = 0.0
         self.reset_deposits_offset = 0.0
@@ -510,6 +501,8 @@ class CapitalGovernor:
         self.last_reset_date = _today_wib()
         self.pending_daily_reset = False
         self.daily_reset_reason = ""
+        self.venue_states: Dict[str, Any] = {}
+        self.targets_snapshot: Dict[str, Any] = {}
         
         self._load_governor_state()
 
@@ -580,11 +573,8 @@ class CapitalGovernor:
                     self.trading_pnl_idr = float(data.get("trading_pnl_idr", self.daily_pnl_idr))
                     self.trading_pnl_pct = float(data.get("trading_pnl_pct", self.daily_pnl_pct))
                     self.start_indodax_equity_idr = float(data.get("start_indodax_equity_idr", 0.0))
-                    self.start_phantom_equity_idr = float(data.get("start_phantom_equity_idr", 0.0))
                     self.indodax_daily_pnl_idr = float(data.get("indodax_daily_pnl_idr", 0.0))
                     self.indodax_daily_pnl_pct = float(data.get("indodax_daily_pnl_pct", 0.0))
-                    self.phantom_daily_pnl_idr = float(data.get("phantom_daily_pnl_idr", 0.0))
-                    self.phantom_daily_pnl_pct = float(data.get("phantom_daily_pnl_pct", 0.0))
                     self.external_deposits_today = float(data.get("external_deposits_today", 0.0))
                     self.external_withdrawals_today = float(data.get("external_withdrawals_today", 0.0))
                     self.reset_deposits_offset = float(data.get("reset_deposits_offset", 0.0))
@@ -598,6 +588,49 @@ class CapitalGovernor:
                             else ""
                         )
                     ).strip()
+                    raw_venues = data.get("venues", {}) if isinstance(data.get("venues", {}), dict) else {}
+                    raw_indodax = raw_venues.get("indodax", {}) if isinstance(raw_venues.get("indodax", {}), dict) else {}
+                    self.venue_states = {"indodax": raw_indodax} if raw_indodax else {}
+                    raw_targets = data.get("targets", {}) if isinstance(data.get("targets", {}), dict) else {}
+                    self.targets_snapshot = raw_targets
+                    if len(set(raw_venues.keys()) - {"indodax"}) > 0 or any(
+                        key not in {
+                            "date",
+                            "start_total_equity_idr",
+                            "reset_total_balance_idr",
+                            "max_daily_loss_pct",
+                            "max_daily_loss_idr",
+                            "current_total_equity_idr",
+                            "total_balance_idr",
+                            "daily_pnl_idr",
+                            "combined_pnl_idr",
+                            "daily_return_idr",
+                            "daily_pnl_pct",
+                            "daily_return_pct",
+                            "trading_pnl_idr",
+                            "trading_pnl_pct",
+                            "start_indodax_equity_idr",
+                            "indodax_daily_pnl_idr",
+                            "indodax_daily_pnl_pct",
+                            "external_deposits_today",
+                            "external_withdrawals_today",
+                            "reset_deposits_offset",
+                            "reset_withdrawals_offset",
+                            "daily_reset_pending",
+                            "daily_reset_reason",
+                            "locked_inventory_count",
+                            "locked_inventory_symbols",
+                            "status",
+                            "global_hard_stop",
+                            "allow_new_orders",
+                            "allow_new_orders_reason",
+                            "allow_indodax_orders",
+                            "venues",
+                            "targets",
+                        }
+                        for key in data.keys()
+                    ):
+                        self.save()
             except Exception as e:
                 logger.error(f"❌ Failed to load Capital Governor state: {e}")
         else:
@@ -635,15 +668,7 @@ class CapitalGovernor:
             base_reason = str(getattr(self, "allow_new_orders_reason", ""))
             venues_snapshot = getattr(self, "venue_states", {}) if isinstance(getattr(self, "venue_states", {}), dict) else {}
             indodax_snapshot = venues_snapshot.get("indodax", {}) if isinstance(venues_snapshot.get("indodax", {}), dict) else {}
-            phantom_snapshot = venues_snapshot.get("phantom", {}) if isinstance(venues_snapshot.get("phantom", {}), dict) else {}
             allow_indodax_orders = bool(indodax_snapshot.get("allow_orders", allow_new_orders))
-            allow_phantom_orders = False if KiConfig.INDODAX_ONLY else bool(phantom_snapshot.get("allow_orders", allow_new_orders))
-            phantom_retired = {
-                "status": "REMOVED_BY_OPERATOR",
-                "enabled": False,
-                "reason": "operator_removed_compromised_wallet_use_indodax_only",
-                "total_value_idr": 0.0,
-            }
             reasons = [reason for reason in [
                 base_reason,
                 (
@@ -671,11 +696,8 @@ class CapitalGovernor:
                     "trading_pnl_idr": self.trading_pnl_idr,
                     "trading_pnl_pct": self.trading_pnl_pct,
                     "start_indodax_equity_idr": self.start_indodax_equity_idr,
-                    "start_phantom_equity_idr": self.start_phantom_equity_idr,
                     "indodax_daily_pnl_idr": self.indodax_daily_pnl_idr,
                     "indodax_daily_pnl_pct": self.indodax_daily_pnl_pct,
-                    "phantom_daily_pnl_idr": self.phantom_daily_pnl_idr,
-                    "phantom_daily_pnl_pct": self.phantom_daily_pnl_pct,
                     "external_deposits_today": self.external_deposits_today,
                     "external_withdrawals_today": self.external_withdrawals_today,
                     "reset_deposits_offset": self.reset_deposits_offset,
@@ -689,13 +711,8 @@ class CapitalGovernor:
                     "allow_new_orders": allow_new_orders,
                     "allow_new_orders_reason": allow_reason,
                     "allow_indodax_orders": allow_indodax_orders,
-                    "allow_phantom_orders": allow_phantom_orders,
                     "venues": venues_snapshot,
                     "targets": getattr(self, "targets_snapshot", {}),
-                    "bridge": "OFF" if KiConfig.INDODAX_ONLY else getattr(self, "bridge", "OFF"),
-                    "withdrawal": "OFF" if KiConfig.INDODAX_ONLY else getattr(self, "withdrawal", "OFF"),
-                    "retired_venues": {"phantom": phantom_retired} if KiConfig.INDODAX_ONLY else getattr(self, "retired_venues", {}),
-                    "phantom_details": phantom_retired if KiConfig.INDODAX_ONLY else getattr(self, "phantom_details_snapshot", {}),
                 }, f, indent=4)
             self._write_daily_anchor()
         except Exception as e:
@@ -728,39 +745,6 @@ class CapitalGovernor:
         except Exception as e:
             logger.error(f"Error reading treasury_transfers.jsonl: {e}")
         return deposits, withdrawals
-
-    def _read_in_flight_transfers(self, date_str: str, phantom_equity_idr: float) -> float:
-        """
-        Read state/treasury_transfers.jsonl and calculate the total in-flight internal transfer amount
-        destined for Phantom that is not yet reflected in its balance.
-        """
-        transfers_file = STATE_DIR / "treasury_transfers.jsonl"
-        in_flight = 0.0
-        if not transfers_file.exists():
-            return 0.0
-        try:
-            with open(transfers_file, "r") as f:
-                for line in f:
-                    line = line.strip()
-                    if not line:
-                        continue
-                    try:
-                        tx = json.loads(line)
-                        if tx.get("date") == date_str:
-                            txtype = tx.get("type", "").strip().lower()
-                            if txtype == "internal":
-                                to_venue = tx.get("to_venue", "").strip().lower()
-                                amount = float(tx.get("amount_idr", 0.0))
-                                if to_venue == "phantom":
-                                    # If the on-chain phantom balance is less than this transfer amount,
-                                    # the difference is considered in-flight (in-transit).
-                                    if phantom_equity_idr < amount:
-                                        in_flight += (amount - phantom_equity_idr)
-                    except Exception as e:
-                        logger.error(f"Error parsing transfer line: {e}")
-        except Exception as e:
-            logger.error(f"Error reading treasury_transfers.jsonl: {e}")
-        return in_flight
 
     async def _read_indodax_coin_holdings_from_active_trades(self) -> float:
         """
@@ -895,15 +879,12 @@ class CapitalGovernor:
         self.start_total_equity_idr = self.current_total_equity_idr
         self.max_daily_loss_idr = self.current_total_equity_idr * (KiConfig.MAX_DAILY_LOSS_PERCENT / 100.0)
         self.start_indodax_equity_idr = 0.0
-        self.start_phantom_equity_idr = 0.0
         self.reset_deposits_offset = raw_deposits
         self.reset_withdrawals_offset = raw_withdrawals
         self.daily_pnl_idr = 0.0
         self.daily_pnl_pct = 0.0
         self.indodax_daily_pnl_idr = 0.0
         self.indodax_daily_pnl_pct = 0.0
-        self.phantom_daily_pnl_idr = 0.0
-        self.phantom_daily_pnl_pct = 0.0
         self.external_deposits_today = 0.0
         self.external_withdrawals_today = 0.0
         self.pending_daily_reset = False
@@ -919,21 +900,7 @@ class CapitalGovernor:
         """
         self.status = "UNRECONCILED"
         try:
-            # 1. Phantom/Web3 is intentionally retired for this operator.
-            # Do not read wallet keys, RPCs, or Phantom state in Indodax-only mode.
-            if KiConfig.INDODAX_ONLY:
-                phantom_summary: Dict[str, Any] = {
-                    "status": "REMOVED_BY_OPERATOR",
-                    "reason": "operator_removed_compromised_wallet_use_indodax_only",
-                    "total_value_idr": 0.0,
-                }
-                phantom_equity_idr = 0.0
-            else:
-                await self.phantom_treasury.reconcile_balances()
-                phantom_summary = self.phantom_treasury.get_summary()
-                phantom_equity_idr = phantom_summary.get("total_value_idr", 0.0)
-            
-            # 2. Reconcile Indodax balance
+            # 1. Reconcile Indodax balance
             indodax_real_balance = 0.0
             indodax_coin_holdings_idr = 0.0
             if self.indodax:
@@ -981,18 +948,10 @@ class CapitalGovernor:
             if shadow_ledger:
                 indodax_shadow_balance = shadow_ledger.get("equity_idr", 1000000.0)
 
-            # 3. Calculate Total Consolidated Equity
-            # Controlled-live mode takes actual Indodax cash + mark-to-market coin holdings
+            # 2. Calculate Total Consolidated Equity
+            # Live mode takes actual Indodax cash + mark-to-market coin holdings
             # + any pending buy reserve that is already part of the exchange account value.
             indodax_live_equity = indodax_real_balance + indodax_coin_holdings_idr
-            phantom_reconciliation = phantom_summary.get("reconciliation", {}) if isinstance(phantom_summary, dict) else {}
-            phantom_ready = bool(phantom_equity_idr > 0.0)
-            phantom_status = str(phantom_summary.get("status") or "").upper() if isinstance(phantom_summary, dict) else ""
-            if phantom_status in {"OK", "SCOUTING", "DEGRADED"} and phantom_equity_idr > 0.0:
-                phantom_ready = True
-            elif phantom_status in {"OK", "SCOUTING"} and bool(phantom_reconciliation.get("matches_user_wallet")):
-                phantom_ready = True
-
             daily_reset_state = _load_daily_reset_state()
             daily_reset_status = str(daily_reset_state.get("status") or "").upper().strip()
             daily_reset_current_mode = str(daily_reset_state.get("current_global_mode") or "").upper().strip()
@@ -1016,8 +975,7 @@ class CapitalGovernor:
                 if self.daily_reset_reason in {"", "daily_rollover_exit_pending"}:
                     self.daily_reset_reason = ""
             
-            # Read in-flight internal transfers destined for Phantom
-            in_flight_idr = 0.0 if KiConfig.INDODAX_ONLY else self._read_in_flight_transfers(self.last_reset_date, phantom_equity_idr)
+            in_flight_idr = 0.0
             pending_buy_reserve_idr = _pending_buy_order_reserve_idr()
             primary_indodax_balance = (
                 indodax_live_equity + pending_buy_reserve_idr
@@ -1028,39 +986,16 @@ class CapitalGovernor:
             # Venue-specific anchors keep one venue's drawdown from blocking the others.
             if self.start_indodax_equity_idr <= 0.0:
                 self.start_indodax_equity_idr = float(primary_indodax_balance or 0.0)
-            if KiConfig.INDODAX_ONLY:
-                self.start_phantom_equity_idr = 0.0
-            elif self.start_phantom_equity_idr <= 0.0:
-                self.start_phantom_equity_idr = float(phantom_equity_idr or 0.0)
-
-            venue_anchor_sum = self.start_indodax_equity_idr + self.start_phantom_equity_idr
-            if (not KiConfig.INDODAX_ONLY
-                and
-                self.start_total_equity_idr > 0.0
-                and venue_anchor_sum > 0.0
-                and abs(venue_anchor_sum - self.start_total_equity_idr) > max(1000.0, self.start_total_equity_idr * 0.05)
-            ):
-                current_split_total = max(primary_indodax_balance + phantom_equity_idr, 1.0)
-                self.start_indodax_equity_idr = self.start_total_equity_idr * (primary_indodax_balance / current_split_total)
-                self.start_phantom_equity_idr = self.start_total_equity_idr * (phantom_equity_idr / current_split_total)
             if self.start_indodax_equity_idr <= 0.0:
                 self.start_indodax_equity_idr = float(primary_indodax_balance or 0.0)
-            if KiConfig.INDODAX_ONLY:
-                self.start_phantom_equity_idr = 0.0
-            elif self.start_phantom_equity_idr <= 0.0:
-                self.start_phantom_equity_idr = float(phantom_equity_idr or 0.0)
 
             indodax_daily_loss_cap_idr = self.start_indodax_equity_idr * (KiConfig.MAX_DAILY_LOSS_PERCENT / 100.0)
-            phantom_daily_loss_cap_idr = 0.0 if KiConfig.INDODAX_ONLY else self.start_phantom_equity_idr * (KiConfig.MAX_DAILY_LOSS_PERCENT / 100.0)
             self.indodax_daily_pnl_idr = primary_indodax_balance - self.start_indodax_equity_idr
-            self.phantom_daily_pnl_idr = phantom_equity_idr - self.start_phantom_equity_idr
             self.indodax_daily_pnl_pct = (self.indodax_daily_pnl_idr / max(self.start_indodax_equity_idr, 1.0)) * 100.0
-            self.phantom_daily_pnl_pct = (self.phantom_daily_pnl_idr / max(self.start_phantom_equity_idr, 1.0)) * 100.0
 
             # Total equity in Indodax-only mode must be exactly Indodax cash +
-            # held coin mark-to-market + pending buy reserve. Retired Phantom
-            # balances are intentionally excluded from PnL/risk decisions.
-            self.current_total_equity_idr = primary_indodax_balance + phantom_equity_idr + in_flight_idr
+            # held coin mark-to-market + pending buy reserve.
+            self.current_total_equity_idr = primary_indodax_balance + in_flight_idr
             
             # Check and initialize today's start anchor if needed
             await self.check_daily_reset(self.current_total_equity_idr)
@@ -1087,17 +1022,13 @@ class CapitalGovernor:
                 
             indodax_ready = primary_indodax_balance > 0
             self.status = "RECONCILED" if indodax_ready else "DEGRADED"
-            if not KiConfig.INDODAX_ONLY and not phantom_ready:
-                logger.warning("⚠️ Phantom treasury not yet reconciled; live Phantom routes remain venue-scoped.")
             
             # 4. Compute target allocation split
-            targets = {"indodax": 0.85, "reserve": 0.15} if KiConfig.INDODAX_ONLY else self.policy.compute_targets(phantom_equity_idr)
+            targets = self.policy.compute_targets()
             
             # 5. Sync to Venue Ledger
             self.ledger.update_venue("indodax_real", equity_idr=primary_indodax_balance)
             self.ledger.update_venue("indodax_shadow", equity_idr=indodax_shadow_balance)
-            if not KiConfig.INDODAX_ONLY:
-                self.ledger.update_venue("phantom", equity_idr=phantom_equity_idr)
             self.ledger.update_venue("cash_wait", equity_idr=self.current_total_equity_idr * targets.get("reserve", 0.20))
 
             global_hard_stop = bool(
@@ -1106,9 +1037,7 @@ class CapitalGovernor:
             daily_reset_block = bool(getattr(self, "pending_daily_reset", False))
 
             indodax_local_allow = bool(indodax_ready and self.indodax_daily_pnl_idr > -indodax_daily_loss_cap_idr)
-            phantom_local_allow = False if KiConfig.INDODAX_ONLY else bool(phantom_ready and self.phantom_daily_pnl_idr > -phantom_daily_loss_cap_idr)
             indodax_allow_orders = bool(indodax_local_allow and not global_hard_stop and not daily_reset_block)
-            phantom_allow_orders = False if KiConfig.INDODAX_ONLY else bool(phantom_local_allow and not global_hard_stop and not daily_reset_block)
 
             indodax_reason = ""
             if not indodax_ready:
@@ -1126,27 +1055,6 @@ class CapitalGovernor:
                     f"({self.indodax_daily_pnl_idr:.2f} < -{indodax_daily_loss_cap_idr:.2f})"
                 )
 
-            phantom_reason = "REMOVED_BY_OPERATOR" if KiConfig.INDODAX_ONLY else ""
-            if KiConfig.INDODAX_ONLY:
-                pass
-            elif not phantom_ready:
-                if phantom_equity_idr > 0.0:
-                    phantom_reason = "phantom_reconciliation_degraded"
-                else:
-                    phantom_reason = "phantom_balance_unavailable"
-            elif daily_reset_block:
-                phantom_reason = self.daily_reset_reason or "daily_rollover_exit_pending"
-            elif global_hard_stop:
-                phantom_reason = (
-                    "global_daily_loss_cap_breached "
-                    f"({self.daily_pnl_idr:.2f} <= -{self.max_daily_loss_idr:.2f})"
-                )
-            elif not phantom_allow_orders:
-                phantom_reason = (
-                    "phantom_daily_loss_cap_breached "
-                    f"({self.phantom_daily_pnl_idr:.2f} < -{phantom_daily_loss_cap_idr:.2f})"
-                )
-
             allow_new_orders = bool(indodax_allow_orders)
             if global_hard_stop or daily_reset_block:
                 allow_new_orders = False
@@ -1161,15 +1069,11 @@ class CapitalGovernor:
                 ready_bits = []
                 if indodax_allow_orders:
                     ready_bits.append("indodax")
-                if phantom_allow_orders:
-                    ready_bits.append("phantom")
                 allow_reason = "venue-scoped allowances active: " + ", ".join(ready_bits)
             else:
                 blocked_bits = []
                 if indodax_reason:
                     blocked_bits.append(f"indodax={indodax_reason}")
-                if not KiConfig.INDODAX_ONLY and phantom_reason:
-                    blocked_bits.append(f"phantom={phantom_reason}")
                 allow_reason = "; ".join(blocked_bits) or "no venue ready for orders"
             self.status = "BLOCKED_WITH_REASON" if (global_hard_stop or daily_reset_block) else ("RECONCILED" if allow_new_orders else "DEGRADED")
             
@@ -1215,17 +1119,12 @@ class CapitalGovernor:
                     },
                 },
                 "allow_indodax_orders": indodax_allow_orders,
-                "allow_phantom_orders": False,
-                "bridge": "OFF",
-                "withdrawal": "OFF",
                 "targets": targets,
-                "retired_venues": {"phantom": phantom_summary},
             }
             self.allow_new_orders = allow_new_orders
             self.allow_new_orders_reason = allow_reason
             self.venue_states = payload.get("venues", {})
             self.targets_snapshot = targets
-            self.phantom_details_snapshot = phantom_summary
             self.save()
             return payload
         except Exception as e:
@@ -1258,14 +1157,7 @@ if __name__ == "__main__":
             logger.error(f"Failed to import/instantiate IndodaxGateway: {e}")
             indodax = None
             
-        try:
-            from Core.Exchange.phantom_router import PhantomRouter
-            phantom_router = PhantomRouter()
-        except Exception as e:
-            logger.error(f"Failed to import/instantiate PhantomRouter: {e}")
-            phantom_router = None
-            
-        gov = CapitalGovernor(indodax, phantom_router)
+        gov = CapitalGovernor(indodax, None)
         
         if reset_only:
             logger.info("Executing initial reconciliation to get current consolidated equity...")

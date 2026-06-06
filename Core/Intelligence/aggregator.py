@@ -1,4 +1,3 @@
-import os
 import sys
 from pathlib import Path
 ROOT_DIR = Path(__file__).resolve().parent.parent.parent
@@ -6,7 +5,6 @@ if str(ROOT_DIR) not in sys.path:
     sys.path.insert(0, str(ROOT_DIR))
 
 import json
-import httpx
 import inspect
 
 from pathlib import Path
@@ -248,15 +246,6 @@ class CouncilDataAggregator:
             "active_positions": [],
             "combined_equity_idr": 0.0,
             "source": "live",
-            "polymarket": {
-                "usdc_balance": 0.0,
-                "equity_idr": 0.0,
-                "pnl_idr": 0.0,
-                "daily_pnl_usd": 0.0,
-                "daily_pnl_idr": 0.0,
-                "active_positions": [],
-                "active_bets": [],
-            },
         }
 
         idr_cash = 0.0
@@ -317,38 +306,8 @@ class CouncilDataAggregator:
         except Exception as e:
             print(f"ERROR [Aggregator]: Indodax balance fetch failed: {e}")
 
-        phantom_state = self._load_state_json("phantom_treasury.json", {})
-        phantom_equity_idr = 0.0
-        if isinstance(phantom_state, dict):
-            phantom_equity_idr = _safe_float(
-                phantom_state.get("total_value_idr"),
-                _safe_float(phantom_state.get("chains", {}).get("base", {}).get("value_idr"), 0.0),
-            )
-
-        poly_state = {}
-        try:
-            async with httpx.AsyncClient(timeout=3.0) as client:
-                resp = await client.get("http://127.0.0.1:11600/api/state")
-                if resp.status_code == 200:
-                    poly_state = resp.json() or {}
-        except Exception:
-            poly_state = {}
-
-        if not poly_state:
-            try:
-                poly_state = dict(self.master.last_state.get("polymarket", {}) or {})
-            except Exception:
-                poly_state = {}
-
-        usdc_balance = float(poly_state.get("usdc_balance", 0) or 0)
-        usd_idr_rate = float(os.getenv("USD_IDR_RATE", "16000"))
-        poly_daily_pnl_usd = float(poly_state.get("daily_pnl_usd", 0) or 0)
-        poly_daily_pnl_idr = poly_daily_pnl_usd * usd_idr_rate
-        poly_equity_idr = usdc_balance * usd_idr_rate
-        active_bets = list(poly_state.get("active_bets") or poly_state.get("top_opportunities") or [])
-
         accounting_truth = build_accounting_truth()
-        live_total_equity_idr = float(idr_balance + phantom_equity_idr)
+        live_total_equity_idr = float(idr_balance)
         combined_equity_idr = float(accounting_truth.get("current_total_equity_idr", live_total_equity_idr) or 0.0)
         realized_daily_pnl_idr = self._realized_daily_pnl_idr()
         open_pnl = self._active_trade_unrealized_pnl(active_positions)
@@ -412,7 +371,6 @@ class CouncilDataAggregator:
             "reset_total_balance_idr": reset_total_balance_idr,
             "start_total_equity_idr": reset_total_balance_idr,
             "open_buy_order_reserve_idr": open_buy_order_reserve_idr,
-            "phantom_equity_idr": phantom_equity_idr,
             "accounting_truth": {
                 **accounting_truth,
                 "current_total_equity_idr": total_balance_idr,
@@ -426,15 +384,6 @@ class CouncilDataAggregator:
                 "daily_return_pct": daily_pnl_pct,
                 "live_total_equity_idr": live_total_equity_idr,
                 "governor_fresh_today": governor_fresh_today,
-            },
-            "polymarket": {
-                "usdc_balance": usdc_balance,
-                "equity_idr": poly_equity_idr,
-                "pnl_idr": poly_daily_pnl_idr,
-                "daily_pnl_usd": poly_daily_pnl_usd,
-                "daily_pnl_idr": poly_daily_pnl_idr,
-                "active_positions": active_bets[:5],
-                "active_bets": active_bets[:5],
             },
         })
         return snapshot

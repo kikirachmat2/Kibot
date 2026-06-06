@@ -37,7 +37,6 @@ def build_strategy_control_actions(bundle: Dict[str, Any] | None = None) -> Dict
         pair = _normalize_symbol(row.get("strategy") or row.get("pair") or "")
         status = str(row.get("status") or "").upper()
         recommendation = str(row.get("recommendation") or "").upper()
-        venue = str(row.get("venue") or "unknown").lower()
         source = str(row.get("source") or row.get("source_quality") or "").lower()
         if status in {"NEGATIVE_EDGE", "CONFLICTED_EDGE"} or recommendation == "DISABLE":
             if pair:
@@ -50,10 +49,6 @@ def build_strategy_control_actions(bundle: Dict[str, Any] | None = None) -> Dict
             ignored_unknown_source_scaleups.append(pair)
             if pair not in do_not_scale_pairs:
                 do_not_scale_pairs.append(pair)
-        if venue == "phantom" and "0" in str(row.get("filled_count") or row.get("sample_size") or ""):
-            if pair and pair not in do_not_scale_pairs:
-                do_not_scale_pairs.append(pair)
-
     payload = {
         "updated_at": datetime.now(timezone.utc).isoformat(),
         "policy": policy,

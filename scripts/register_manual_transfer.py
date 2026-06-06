@@ -16,8 +16,8 @@ def main():
     parser.add_argument("--type", choices=["deposit", "withdrawal", "internal"], required=True, help="Type of transfer")
     parser.add_argument("--amount", type=float, required=True, help="Amount in IDR")
     parser.add_argument("--description", required=True, help="Short description of the transfer")
-    parser.add_argument("--from-venue", help="Source venue (e.g. indodax, bank, phantom)")
-    parser.add_argument("--to-venue", help="Destination venue (e.g. indodax, bank, phantom)")
+    parser.add_argument("--from-venue", help="Source venue (e.g. indodax, bank)")
+    parser.add_argument("--to-venue", help="Destination venue (e.g. indodax, bank)")
 
     args = parser.parse_args()
 

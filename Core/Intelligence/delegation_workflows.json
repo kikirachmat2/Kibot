@@ -5,7 +5,7 @@
     {
       "name": "signal_discovery",
       "owner": "scanner",
-      "inputs": ["indodax_scanner", "polymarket_scanner", "universal_scanner"],
+      "inputs": ["indodax_scanner"],
       "outputs": ["hmac_signed_signals", "stage_metadata"],
       "constraints": ["dedupe_by_uid", "proxy_structural_fallback", "no_noise_forwarding"]
     },

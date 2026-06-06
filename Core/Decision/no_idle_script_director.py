@@ -33,10 +33,7 @@ class NoIdleScriptDirector:
             defaults = {
                 "last_active_time": time.time(),
                 "scanners_heartbeat": {
-                    "solana_trending": time.time(),
-                    "pumpfun": time.time(),
                     "indodax": time.time(),
-                    "polymarket": time.time()
                 },
                 "idle_threshold_sec": 300,
                 "status": "HEALTHY",

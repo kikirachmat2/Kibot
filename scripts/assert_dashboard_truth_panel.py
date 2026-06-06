@@ -10,7 +10,7 @@ def main() -> int:
     except Exception as exc:
         print(f"control_plane_unreachable:{exc}")
         return 1
-    for needle in ("indodax_top_targets", "phantom_top_targets", "system_truth", "server_telemetry"):
+    for needle in ("indodax_top_targets", "system_truth", "server_telemetry"):
         if needle not in raw:
             print(f"dashboard_panel_missing:{needle}")
             return 1

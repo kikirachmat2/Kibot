@@ -12,20 +12,23 @@ REQUIRED = [
     "indodax_scanner_state.json",
     "indodax_no_idle.json",
     "indodax_top_targets.json",
-    "phantom_treasury.json",
-    "phantom_capital_mover.json",
-    "phantom_network_maximizer.json",
-    "phantom_top_targets.json",
     "deadline_profit_enforcer.json",
     "scanner_executor_contract.json",
     "scanner_health.json",
     "server_telemetry.json",
+]
+
+AI_REVIEW_ALTERNATIVES = [
     "ai_strategy_review.json",
+    "agent_self_critique.json",
+    "ai_system_inventory.json",
 ]
 
 
 def main() -> int:
     missing = [name for name in REQUIRED if not (STATE / name).exists()]
+    if not any((STATE / name).exists() for name in AI_REVIEW_ALTERNATIVES):
+        missing.append("ai_review_state")
     if missing:
         print(f"missing_state_files:{','.join(missing)}")
         return 1
@@ -44,6 +47,22 @@ def main() -> int:
         age = time.time() - path.stat().st_mtime
         if age > 900:
             stale.append(name)
+    review_candidates = [name for name in AI_REVIEW_ALTERNATIVES if (STATE / name).exists()]
+    review_fresh = False
+    for name in review_candidates:
+        try:
+            payload = json.loads((STATE / name).read_text(encoding="utf-8"))
+        except Exception:
+            bad.append(name)
+            continue
+        if not isinstance(payload, dict):
+            bad.append(name)
+            continue
+        age = time.time() - (STATE / name).stat().st_mtime
+        if age <= 900:
+            review_fresh = True
+    if review_candidates and not review_fresh:
+        stale.append("ai_review_state")
     if bad:
         print(f"invalid_state_files:{','.join(bad)}")
         return 1

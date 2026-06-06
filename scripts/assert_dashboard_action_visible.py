@@ -9,7 +9,7 @@ STATE = ROOT / "state"
 
 
 def main() -> int:
-    for name in ["autonomous_trading_brain.json", "indodax_live_brain.json", "phantom_live_brain.json"]:
+    for name in ["autonomous_trading_brain.json", "indodax_live_brain.json"]:
         p = STATE / name
         if not p.exists():
             print("ASSERT_DASHBOARD_ACTION_VISIBLE_FAILED")

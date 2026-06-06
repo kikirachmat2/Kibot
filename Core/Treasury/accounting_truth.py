@@ -8,7 +8,6 @@ from typing import Any, Dict
 ROOT = Path(__file__).resolve().parent.parent.parent
 STATE_DIR = ROOT / "state"
 GOVERNOR_FILE = STATE_DIR / "capital_governor.json"
-PHANTOM_FILE = STATE_DIR / "phantom_treasury.json"
 LIVE_TRUTH_FILE = STATE_DIR / "live_truth.json"
 
 
@@ -36,7 +35,7 @@ def build_accounting_truth() -> Dict[str, Any]:
     Priority order:
     1. Fresh governor state.
     2. Governor state even if stale, when it still exposes current totals.
-    3. Live venue fallback assembled from Indodax + Phantom treasury.
+    3. Indodax-only venue fallback.
 
     The dashboard and reporting layers should use this as their one balance
     contract so holdings never appear to disappear while positions are open.
@@ -64,20 +63,16 @@ def build_accounting_truth() -> Dict[str, Any]:
             "daily_pnl_pct": 0.0,
             "daily_return_pct": 0.0,
             "indodax_equity_idr": _safe_float(live_truth.get("indodax_equity_idr"), 0.0),
-            "phantom_equity_idr": _safe_float(live_truth.get("phantom_equity_idr"), 0.0),
             "in_flight_idr": 0.0,
             "open_buy_order_reserve_idr": 0.0,
             "components": {
                 "indodax": _safe_float(live_truth.get("indodax_equity_idr"), 0.0),
-                "phantom": _safe_float(live_truth.get("phantom_equity_idr"), 0.0),
                 "cash": cash_idr,
             },
             "capital_governor": {},
-            "phantom_treasury": live_truth,
         }
 
     gov = _read_json(GOVERNOR_FILE, {})
-    phantom = _read_json(PHANTOM_FILE, {})
     today = datetime.now(timezone.utc).astimezone().date().isoformat()
     gov_date = str(gov.get("date") or "").strip()
     governor_fresh = bool(gov and gov_date == today)
@@ -86,17 +81,10 @@ def build_accounting_truth() -> Dict[str, Any]:
         (gov.get("venues", {}) or {}).get("indodax", {}).get("equity_idr"),
         _safe_float(gov.get("current_indodax_equity_idr"), 0.0),
     )
-    phantom_equity = _safe_float(
-        (gov.get("venues", {}) or {}).get("phantom", {}).get("equity_idr"),
-        _safe_float(
-            phantom.get("total_value_idr"),
-            _safe_float(phantom.get("chains", {}).get("base", {}).get("value_idr"), 0.0),
-        ),
-    )
     in_flight_idr = _safe_float(gov.get("in_flight_idr"), 0.0)
     open_buy_order_reserve_idr = _safe_float(gov.get("open_buy_order_reserve_idr"), 0.0)
 
-    live_total_equity_idr = indodax_equity + phantom_equity + in_flight_idr
+    live_total_equity_idr = indodax_equity + in_flight_idr
     current_total_equity_idr = _safe_float(gov.get("current_total_equity_idr"), 0.0)
     if not governor_fresh or current_total_equity_idr <= 0.0:
         current_total_equity_idr = live_total_equity_idr
@@ -134,15 +122,12 @@ def build_accounting_truth() -> Dict[str, Any]:
         "daily_pnl_pct": daily_pnl_pct,
         "daily_return_pct": daily_pnl_pct,
         "indodax_equity_idr": indodax_equity,
-        "phantom_equity_idr": phantom_equity,
         "in_flight_idr": in_flight_idr,
         "open_buy_order_reserve_idr": open_buy_order_reserve_idr,
         "components": {
             "indodax": indodax_equity,
-            "phantom": phantom_equity,
             "in_flight": in_flight_idr,
             "open_buy_order_reserve": open_buy_order_reserve_idr,
         },
         "capital_governor": gov,
-        "phantom_treasury": phantom,
     }

@@ -17,11 +17,7 @@ def test_dashboard_activity_feed_prefers_trade_history_events():
             }
         },
         "council": {"decision_state": "WAIT", "confidence": 0.5},
-        "mode": {
-            "live_trading_enabled": True,
-            "real_bridge_enabled": True,
-            "real_swap_enabled": True,
-        },
+        "mode": {"live_trading_enabled": True},
         "portfolio": {
             "combined_equity_idr": 1000,
             "realized_pnl_idr": 10,

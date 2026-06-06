@@ -78,13 +78,11 @@ def _target_age(board: Dict[str, Any], state_file: Path) -> float:
 
 def build_target_freshness_audit() -> Dict[str, Any]:
     indodax_path = STATE_DIR / "indodax_top_targets.json"
-    phantom_path = STATE_DIR / "phantom_top_targets.json"
     scanner_runtime_path = STATE_DIR / "target_board_runtime.json"
     candidate_path = STATE_DIR / "candidate_decisions.jsonl"
     dashboard_path = STATE_DIR / "control_plane.json"
 
     indodax = _read_json(indodax_path, {})
-    phantom = _read_json(phantom_path, {})
     scanner_runtime = _read_json(scanner_runtime_path, {})
     dashboard = _read_json(dashboard_path, {})
     candidate_rows: List[dict] = []
@@ -106,7 +104,6 @@ def build_target_freshness_audit() -> Dict[str, Any]:
         latest_candidate_age_s = _target_age(latest_candidate, candidate_path)
 
     indodax_age_s = _target_age(indodax if isinstance(indodax, dict) else {}, indodax_path)
-    phantom_age_s = _target_age(phantom if isinstance(phantom, dict) else {}, phantom_path)
     scanner_runtime_age_s = _target_age(scanner_runtime if isinstance(scanner_runtime, dict) else {}, scanner_runtime_path)
     dashboard_target = (dashboard.get("target_board_runtime") or dashboard.get("target_board") or {}) if isinstance(dashboard, dict) else {}
     dashboard_target_age_s = _safe_float(dashboard_target.get("age_s"), _file_age_s(dashboard_path))
@@ -115,7 +112,6 @@ def build_target_freshness_audit() -> Dict[str, Any]:
     history = _read_json(HISTORY_FILE, [])
     current_fingerprint = {
         "indodax": _fingerprint(indodax.get("top_targets", []) if isinstance(indodax, dict) else []),
-        "phantom": _fingerprint(phantom.get("top_targets", []) if isinstance(phantom, dict) else []),
     }
     if isinstance(history, list) and history:
         last = history[-1] if isinstance(history[-1], dict) else {}
@@ -132,8 +128,6 @@ def build_target_freshness_audit() -> Dict[str, Any]:
     stale_reasons = []
     if indodax_age_s > stale_threshold_s:
         stale_reasons.append("indodax_target_stale")
-    if phantom_age_s > stale_threshold_s:
-        stale_reasons.append("phantom_target_stale")
     if scanner_runtime_age_s > stale_threshold_s:
         stale_reasons.append("scanner_runtime_stale")
     if dashboard_target_age_s > stale_threshold_s:
@@ -145,7 +139,7 @@ def build_target_freshness_audit() -> Dict[str, Any]:
         status = "DASHBOARD_STALE_BINDING"
         reason = "dashboard reading stale target state"
         fix = "rebind dashboard to target board freshness and refresh writer"
-    elif stale_reasons and (indodax_age_s > stale_threshold_s or phantom_age_s > stale_threshold_s or scanner_runtime_age_s > stale_threshold_s):
+    elif stale_reasons and (indodax_age_s > stale_threshold_s or scanner_runtime_age_s > stale_threshold_s):
         status = "SCANNER_NOT_WRITING"
         reason = ";".join(stale_reasons)
         fix = "restart or repair scanner/target board writer"
@@ -162,7 +156,6 @@ def build_target_freshness_audit() -> Dict[str, Any]:
         "updated_at": datetime.now(timezone.utc).isoformat(),
         "status": status,
         "indodax_target_age_s": indodax_age_s,
-        "phantom_target_age_s": phantom_age_s,
         "scanner_runtime_age_s": scanner_runtime_age_s,
         "latest_candidate_age_s": latest_candidate_age_s,
         "dashboard_target_age_s": dashboard_target_age_s,
@@ -173,7 +166,6 @@ def build_target_freshness_audit() -> Dict[str, Any]:
         "stale_threshold_s": stale_threshold_s,
         "sources": {
             "indodax": indodax.get("source_status") if isinstance(indodax, dict) else "",
-            "phantom": phantom.get("source_status") if isinstance(phantom, dict) else "",
             "scanner_runtime": scanner_runtime,
         },
     }

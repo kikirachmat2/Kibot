@@ -13,7 +13,6 @@ from typing import Any
 import requests
 
 from Core.Support.ki_config import PROJECT_ROOT, STATE_DIR
-from Core.Support.ki_config import KiConfig
 from Core.Support.no_trade_forensics import build_no_trade_forensics
 from Core.Support.risk_truth_reconciler import reconcile_risk_truth
 
@@ -36,8 +35,6 @@ CRITICAL_SERVICES = [
     "kibot-ai-scout",
     "kibot-dashboard",
 ]
-if not KiConfig.INDODAX_ONLY:
-    CRITICAL_SERVICES.append("kibot-phantom-brain")
 
 
 def _read_json(path: Path, default: Any) -> Any:
@@ -231,12 +228,6 @@ def _remediation_for(source: str, reason: str) -> dict[str, Any]:
             "owner": "capital-governor + risk-gate",
             "reason": "daily hard loss cap protects remaining capital",
         }
-    if "sol_balance_below_trade_min" in normalized:
-        return {
-            "action": "IGNORE_RETIRED_PHANTOM_ROUTE",
-            "owner": "workflow-supervisor",
-            "reason": "Phantom/Solana was removed by operator; only Indodax is canonical.",
-        }
     if "inactive_services" in normalized:
         return {
             "action": "RESTART_INACTIVE_SERVICE",
@@ -261,7 +252,6 @@ def build_workflow_automation_state() -> dict[str, Any]:
     governor = _read_json(STATE / "capital_governor.json", {})
     dispatcher = _read_json(STATE / "live_order_dispatcher.json", {})
     indodax_targets = _read_json(STATE / "indodax_top_targets.json", {})
-    phantom_targets = {} if KiConfig.INDODAX_ONLY else _read_json(STATE / "phantom_top_targets.json", {})
     ai_patrol = _read_json(STATE / "ai_patrol.json", {})
     accounting = _read_json(STATE / "accounting_truth.json", {})
     live_truth = _read_json(STATE / "live_truth.json", {})
@@ -270,7 +260,6 @@ def build_workflow_automation_state() -> dict[str, Any]:
     services = _service_statuses()
     inactive_services = [name for name, info in services.items() if not info.get("active")]
     indodax_count = _target_count(indodax_targets)
-    phantom_count = _target_count(phantom_targets)
     enter_targets = _enter_count(indodax_targets)
 
     allow_orders = bool(governor.get("allow_new_orders", False))
@@ -320,8 +309,6 @@ def build_workflow_automation_state() -> dict[str, Any]:
     scanner_fresh = (
         _age_s(STATE / "indodax_top_targets.json") >= 0
         and _age_s(STATE / "indodax_top_targets.json") < 20
-        and _age_s(STATE / "phantom_top_targets.json") >= 0
-        and _age_s(STATE / "phantom_top_targets.json") < 20
     )
 
     workflow_steps = [
@@ -332,7 +319,7 @@ def build_workflow_automation_state() -> dict[str, Any]:
         },
         {
             "step": "scanner_and_targets",
-            "status": "ACTIVE" if scanner_fresh and indodax_count + phantom_count > 0 else "BLOCKED_WITH_REASON",
+            "status": "ACTIVE" if scanner_fresh and indodax_count > 0 else "BLOCKED_WITH_REASON",
             "reason": f"indodax_targets={indodax_count}, fresh={scanner_fresh}",
         },
         {
@@ -394,7 +381,6 @@ def build_workflow_automation_state() -> dict[str, Any]:
         },
         "target_summary": {
             "indodax_count": indodax_count,
-            "phantom_count": 0,
             "enter_targets": enter_targets,
             "scanner_fresh": scanner_fresh,
         },

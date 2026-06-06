@@ -5,7 +5,7 @@ import json
 from datetime import datetime, timezone
 from pathlib import Path
 
-from Core.Support.growth_audit import audit_daily_controls, audit_fill_quality, audit_net_growth, audit_phantom_non_movement, audit_strategy_symbol_normalization, build_critical_operator_questions
+from Core.Support.growth_audit import audit_daily_controls, audit_fill_quality, audit_net_growth, audit_strategy_symbol_normalization, build_critical_operator_questions
 from Core.Support.money_movement_audit import load_state_bundle
 
 
@@ -13,7 +13,6 @@ def main() -> None:
     bundle = load_state_bundle()
     net = audit_net_growth(bundle)
     fill = audit_fill_quality(bundle)
-    phantom = audit_phantom_non_movement(bundle)
     strat = audit_strategy_symbol_normalization(bundle)
     daily = audit_daily_controls(bundle)
     crit = build_critical_operator_questions(bundle)
@@ -23,13 +22,11 @@ def main() -> None:
         "bukti_server": [
             f"net_growth={net.get('status')}",
             f"fill_quality={fill.get('status')}",
-            f"phantom={phantom.get('classification')}",
             f"strategy={strat.get('eden', {}).get('recommendation')}",
             f"daily_controls={daily.get('recommendation')}",
         ],
         "apakah_sistem_cuma_bergerak_tapi_tidak_tumbuh": net.get("status") not in {"GROWING"},
         "apakah_indodax_overtrade": fill.get("status") in {"CHURN", "DUPLICATE_COUNTING"},
-        "apakah_phantom_pipeline_putus": phantom.get("approved_count_24h", 0) == 0,
         "apakah_strategy_edge_valid": strat.get("eden", {}).get("reliable", False) and strat.get("eden", {}).get("recommendation") != "DISABLE",
         "apakah_daily_controls_menghambat": daily.get("recommendation") == "TIGHTEN",
         "apakah_modal_minimum_order_jadi_masalah": "below_min_trade" in str((bundle.get("autonomous_sizing", {}) or {}).get("reason") or ""),

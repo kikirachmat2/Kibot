@@ -162,7 +162,6 @@ def audit_log_redaction():
         # Verify that printing config values hides secret parameters or they aren't plain logged
         # A safe system must never log private keys, mnemonics, or API keys in debug dumps.
         secrets_to_check = [
-            os.getenv("SOLANA_PRIVATE_KEY"),
             os.getenv("TELEGRAM_BOT_TOKEN"),
             os.getenv("INDODAX_API_KEY"),
             os.getenv("INDODAX_SECRET_KEY")
@@ -411,10 +410,8 @@ def check_network_bindings():
     target_ports = {
         9998: "Indodax UDP Listener",
         9999: "Batam UDP Listener/Janitor",
-        9990: "Polymarket UDP Listener",
         9991: "Council Signal Listener",
         8787: "Dashboard TCP Service",
-        11600: "Polymarket State API"
     }
 
     try:
@@ -497,8 +494,6 @@ def check_json_states(state_dir):
         "expected_value.json",
         "ai_decision_trace.json",
     ]
-    if not indodax_only:
-        required_states.extend(["phantom_scout.json", "web3_opportunities.json"])
     
     is_bootstrap_allowed = (
         os.getenv("KIBOT_HEALTHCHECK_ALLOW_BOOTSTRAP", "false").lower() == "true" or
@@ -518,28 +513,19 @@ def check_json_states(state_dir):
     max_ages = {
         "scanner_runtime.json": 90.0,
         "leadlag_alpha.json": 90.0,
-        "phantom_scout.json": 300.0,
         "market_rotation.json": 90.0,
         "punishment_state.json": 31536000.0,
         "expected_value.json": 31536000.0,
-        "web3_opportunities.json": 300.0,
         "ai_decision_trace.json": 120.0,
     }
     
     for state_file in required_states:
-        # Check if phantom_scout.json is required
-        if state_file == "phantom_scout.json":
-            phantom_enabled = os.getenv("KIBOT_PHANTOM_SCOUT_ENABLED", "false").lower() == "true"
-            if not phantom_enabled:
-                logger.info("Skipping phantom_scout.json check because KIBOT_PHANTOM_SCOUT_ENABLED is false.")
-                continue
- 
         file_path = Path(state_dir) / state_file
         logger.info(f"Auditing state file: {file_path}")
         
         # Self-healing / bootstrapping capability
         if not file_path.exists():
-            if is_bootstrap_allowed or state_file in {"web3_opportunities.json", "ai_decision_trace.json"}:
+            if is_bootstrap_allowed or state_file in {"ai_decision_trace.json"}:
                 logger.info(f"State file {state_file} missing. Bootstrapping with default secure config...")
                 try:
                     default_data = {}
@@ -547,16 +533,12 @@ def check_json_states(state_dir):
                         default_data = {"qualified_signals": [], "opportunities": [], "last_run_timestamp": time.time()}
                     elif state_file == "scanner_runtime.json":
                         default_data = {"current_interval": 2.0, "mode": "NORMAL", "telemetry": {"cpu_percent": 0.0}}
-                    elif state_file == "phantom_scout.json":
-                        default_data = {"active_rpc": "https://api.mainnet-beta.solana.com", "failed_rpcs": []}
                     elif state_file == "market_rotation.json":
                         default_data = {"allocations_pct": {"Indodax": 85.0, "CASH_WAIT": 15.0}}
                     elif state_file == "punishment_state.json":
                         default_data = {"schema_version": 1, "status": "idle", "records": {}, "quarantined": []}
                     elif state_file == "expected_value.json":
                         default_data = {"schema_version": 1, "status": "idle", "strategies": {}}
-                    elif state_file == "web3_opportunities.json":
-                        default_data = {"updated_at": "", "best_opportunities": [], "rejected": [], "routes": {"solana": {}, "base": {}, "polymarket": {}, "future_web3": {}}}
                     elif state_file == "ai_decision_trace.json":
                         default_data = {"updated_at": "", "objective": "maximize_risk_adjusted_profit_for_boss", "market_summary": "", "best_action": "WAIT", "venue": "indodax", "reason": "bootstrap", "confidence": 0.0, "risk_status": "UNKNOWN", "next_check_seconds": 60}
                     
@@ -618,47 +600,6 @@ def check_json_states(state_dir):
                 else:
                     logger.error(f"❌ CRITICAL STATE ERROR: expected_value.json has an invalid type: {type(data)}")
                     safe_exit(19, f"expected_value.json has an invalid type: {type(data)}")
-
-            if state_file == "web3_opportunities.json":
-                if isinstance(data, dict):
-                    required_keys = {"updated_at", "best_opportunities", "rejected", "routes"}
-                    missing_keys = required_keys - set(data.keys())
-                    if missing_keys:
-                        logger.error(f"❌ CRITICAL STATE ERROR: web3_opportunities.json is missing required schema keys: {missing_keys}")
-                        safe_exit(20, f"web3_opportunities.json is missing required schema keys: {missing_keys}")
-                else:
-                    logger.error(f"❌ CRITICAL STATE ERROR: web3_opportunities.json has an invalid type: {type(data)}")
-                    safe_exit(20, f"web3_opportunities.json has an invalid type: {type(data)}")
-
-                positions_file = Path(state_dir) / "web3_positions.json"
-                if positions_file.exists():
-                    try:
-                        positions = json.loads(positions_file.read_text())
-                    except Exception:
-                        positions = []
-                    if positions:
-                        exit_state = Path(state_dir) / "web3_exit_state.json"
-                        if not exit_state.exists():
-                            logger.error("❌ CRITICAL STATE ERROR: web3_positions.json exists but web3_exit_state.json is missing.")
-                            safe_exit(21, "web3_positions.json exists but web3_exit_state.json is missing.")
-
-                pumpfun_route = Path(state_dir) / "pumpfun_route_state.json"
-                if pumpfun_route.exists():
-                    try:
-                        pump_state = json.loads(pumpfun_route.read_text())
-                    except Exception as exc:
-                        logger.error(f"❌ CRITICAL STATE ERROR: pumpfun_route_state.json is invalid JSON: {exc}")
-                        safe_exit(23, f"pumpfun_route_state.json is invalid JSON: {exc}")
-                    if isinstance(pump_state, dict):
-                        required_keys = {"updated_at", "mint", "route_type", "buy_route_available", "sell_route_available", "jupiter_quote", "pumpfun_curve", "reason"}
-                        missing_keys = required_keys - set(pump_state.keys())
-                        if missing_keys:
-                            logger.error(f"❌ CRITICAL STATE ERROR: pumpfun_route_state.json is missing required schema keys: {missing_keys}")
-                            safe_exit(23, f"pumpfun_route_state.json is missing required schema keys: {missing_keys}")
-                        if os.getenv("PUMPFUN_NATIVE_EXECUTOR_ENABLED", "false").lower() == "true":
-                            native_state = Path(state_dir) / "pumpfun_native_executor_state.json"
-                            if not native_state.exists():
-                                logger.warning("⚠️ Pump.fun native executor enabled but native state is missing; continuing in guarded mode.")
 
             if state_file == "ai_decision_trace.json":
                 required_keys = {"updated_at", "objective", "market_summary", "best_action", "venue", "reason", "confidence", "risk_status", "next_check_seconds"}
@@ -780,13 +721,6 @@ def check_runtime_assertions():
         ("scripts/assert_indodax_runtime_autonomy.py", "py"),
         ("scripts/assert_telegram_exception_only.py", "py"),
     ]
-    if not indodax_only:
-        assertions.extend([
-            ("scripts/diagnose_phantom_runtime.py", "py"),
-            ("scripts/assert_phantom_live_ready.py", "py"),
-            ("scripts/assert_phantom_runtime_autonomy.py", "py"),
-        ])
-
     for rel_path, kind in assertions:
         path = PROJECT_ROOT / rel_path
         if not path.exists():
@@ -797,18 +731,6 @@ def check_runtime_assertions():
         output = (res.stdout or "").strip()
         if output:
             logger.info("%s => %s", rel_path, output.splitlines()[-1])
-        phantom_known_locks = {
-            "OK:PHANTOM_LOCKED_MISSING_ENV",
-            "BLOCKED_BY_PHANTOM_SIGNING",
-            "BLOCKED_BY_RPC",
-            "BLOCKED_BY_JUPITER",
-            "BLOCKED_BY_WALLET_RECONCILIATION",
-        }
-        if rel_path.endswith(("diagnose_phantom_runtime.py", "assert_phantom_live_ready.py")):
-            matched = next((code for code in phantom_known_locks if code in output), "")
-            if matched:
-                logger.warning("⚠️ Phantom venue is fail-safe locked (%s); continuing healthcheck.", matched)
-                continue
         if res.returncode != 0:
             logger.error("❌ Runtime assertion failed: %s", output or rel_path)
             safe_exit(39, f"Runtime assertion failed: {rel_path}: {output}")

@@ -79,8 +79,7 @@ def collect_server_telemetry() -> Dict[str, Any]:
 
     services = {name: _service_state(name) for name in [
         "kibot-capital-governor", "kibot-indodax-director", "kibot-scanner", "kibot-scanner-health",
-        "kibot-executor", "kibot-pumpfun", "kibot-base", "kibot-future-web3", "kibot-executor-polymarket",
-        "kibot-web3-exit", "kibot-ai-scout", "kibot-dashboard", "kibot-cloudflared", "redis-server", "ollama"
+        "kibot-executor", "kibot-ai-scout", "kibot-dashboard", "kibot-cloudflared", "redis-server", "ollama"
     ]}
     return {
         "updated_at": datetime.now(timezone.utc).isoformat(),

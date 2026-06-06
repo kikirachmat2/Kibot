@@ -2,14 +2,12 @@ from __future__ import annotations
 
 import json
 import os
-import subprocess
-import sys
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List
 
-from Core.Support.ki_config import KiConfig, PROJECT_ROOT, STATE_DIR
+from Core.Support.ki_config import KiConfig, STATE_DIR
 from Core.Support.runtime_mode_guard import LIVE_ONLY, assert_runtime_live_only
 
 LIVE_TRUTH_FILE = STATE_DIR / "live_truth.json"
@@ -37,30 +35,6 @@ def _today_iso() -> str:
     return datetime.now(timezone.utc).astimezone().isoformat()
 
 
-def _probe_phantom_status() -> str:
-    script = PROJECT_ROOT / "scripts" / "diagnose_phantom_runtime.py"
-    if not script.exists():
-        return "BLOCKED_WITH_REASON"
-    try:
-        res = subprocess.run([sys.executable, str(script)], capture_output=True, text=True, check=False)
-        tail = (res.stdout or "").strip().splitlines()[-1] if (res.stdout or "").strip() else ""
-        if tail.startswith("OK:PHANTOM_LIVE_READY"):
-            return "OK"
-        if tail.startswith("OK:PHANTOM_LOCKED_MISSING_ENV"):
-            return "LOCKED_MISSING_ENV"
-        if tail.startswith("BLOCKED_BY_PHANTOM_SIGNING"):
-            return "BLOCKED_BY_PHANTOM_SIGNING"
-        if tail.startswith("BLOCKED_BY_RPC"):
-            return "BLOCKED_BY_RPC"
-        if tail.startswith("BLOCKED_BY_JUPITER"):
-            return "BLOCKED_BY_JUPITER"
-        if tail.startswith("BLOCKED_BY_WALLET_RECONCILIATION"):
-            return "BLOCKED_BY_WALLET_RECONCILIATION"
-    except Exception:
-        return "BLOCKED_WITH_REASON"
-    return "BLOCKED_WITH_REASON"
-
-
 def build_live_truth() -> Dict[str, Any]:
     assert_runtime_live_only()
     governor = _read_json(STATE_DIR / "capital_governor.json", {})
@@ -73,9 +47,7 @@ def build_live_truth() -> Dict[str, Any]:
         (governor.get("venues", {}) or {}).get("indodax", {}).get("equity_idr"),
         _safe_float(portfolio.get("equity_idr"), 0.0),
     )
-    phantom_equity = 0.0
-    phantom_status = "REMOVED_BY_OPERATOR"
-    wallet_equity = indodax_equity + phantom_equity
+    wallet_equity = indodax_equity
     cash_idr = _safe_float(portfolio.get("idr_cash"), 0.0)
     realized = _safe_float(governor.get("daily_pnl_idr"), _safe_float(portfolio.get("realized_pnl_idr"), 0.0))
     unrealized = _safe_float(portfolio.get("unrealized_pnl_idr"), 0.0)
@@ -142,16 +114,6 @@ def build_live_truth() -> Dict[str, Any]:
         "risk_state": risk_state,
         "venue_locks": {
             "indodax": indodax_status,
-        },
-        "retired_venues": {
-            "phantom": {
-                "status": phantom_status,
-                "enabled": False,
-                "reason": "operator_removed_compromised_wallet_use_indodax_only",
-            },
-            "solana": {"status": "REMOVED_BY_OPERATOR", "enabled": False},
-            "web3": {"status": "REMOVED_BY_OPERATOR", "enabled": False},
-            "polymarket": {"status": "REMOVED_BY_OPERATOR", "enabled": False},
         },
         "last_trade": _read_json(STATE_DIR / "last_trade.json", {}),
         "last_error": _read_json(STATE_DIR / "last_error.json", {}).get("error"),

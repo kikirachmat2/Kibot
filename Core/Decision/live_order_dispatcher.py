@@ -33,7 +33,6 @@ def _write_state(payload: Dict[str, Any]) -> Dict[str, Any]:
         "status": "ACTIVE",
         "live_trading_enabled": bool(KiConfig.LIVE_TRADING_ENABLED),
         "indodax": {},
-        "retired_venues": {"phantom": "REMOVED_BY_OPERATOR"} if KiConfig.INDODAX_ONLY else {},
         "errors": {},
         "next_check_seconds": float(os.getenv("KIBOT_LIVE_DISPATCH_INTERVAL_SEC", "3") or 3),
     }
@@ -97,15 +96,13 @@ def _capital_governor_block() -> Dict[str, Any]:
 class LiveOrderDispatcher:
     """Dispatches autonomous runtime decisions into real executors.
 
-    The brains/target boards decide and rank. This dispatcher is the missing
-    hot handoff: it signs HMAC payloads for the Indodax UDP executor and calls
-    Phantom route executors when a same-chain target is actionable.
+    The brains/target boards decide and rank. This dispatcher signs HMAC
+    payloads for the Indodax UDP executor.
     """
 
     def __init__(self) -> None:
         self.interval_seconds = float(os.getenv("KIBOT_LIVE_DISPATCH_INTERVAL_SEC", "3") or 3)
         self.symbol_cooldown_seconds = float(os.getenv("KIBOT_DISPATCH_SYMBOL_COOLDOWN_SEC", "180") or 180)
-        self.phantom_cooldown_seconds = 0.0
         self.leadlag_aggressive_mode = os.getenv("KIBOT_INDO_BINANCE_LEADLAG_AGGRESSIVE_DISPATCH", "true").strip().lower() in {"1", "true", "yes", "on"}
         self.leadlag_min_gap_pct = float(os.getenv("KIBOT_INDO_BINANCE_LEADLAG_DISPATCH_MIN_GAP_PCT", "0.15") or 0.15)
         self.leadlag_min_lag_sec = float(os.getenv("KIBOT_INDO_BINANCE_LEADLAG_DISPATCH_MIN_LAG_SEC", "0.5") or 0.5)
@@ -260,131 +257,11 @@ class LiveOrderDispatcher:
             "executor": f"udp://{self.host}:{self.port}",
         }
 
-    async def dispatch_phantom_once(self) -> Dict[str, Any]:
-        if KiConfig.INDODAX_ONLY:
-            return {
-                "status": "REMOVED_BY_OPERATOR",
-                "reason": "operator_removed_compromised_wallet_use_indodax_only",
-                "allow_orders": False,
-            }
-        if not KiConfig.LIVE_TRADING_ENABLED:
-            return {"status": "BLOCKED_WITH_REASON", "reason": "live_trading_disabled"}
-        if not KiConfig.ENABLE_REAL_SWAP:
-            return {"status": "BLOCKED_WITH_REASON", "reason": "real_swap_disabled"}
-        governor_block = _capital_governor_block()
-        if governor_block.get("blocked"):
-            return {
-                "status": "BLOCKED_WITH_REASON",
-                "reason": str(governor_block.get("reason") or "capital_governor_orders_blocked"),
-                "capital_governor": governor_block.get("state", {}),
-            }
-        board = _read_json(STATE_DIR / "phantom_top_targets.json", {})
-        targets = board.get("top_targets", []) if isinstance(board, dict) else []
-        if not isinstance(targets, list):
-            return {"status": "SCAN_NEXT", "reason": "phantom_targets_missing"}
-        treasury = _read_json(STATE_DIR / "phantom_treasury.json", {})
-        sol_balance = float(treasury.get("sol_balance") or treasury.get("balances", {}).get("sol") or 0.0)
-        amount_sol = max(0.0, min(sol_balance * 0.35, sol_balance - float(os.getenv("WEB3_SOL_RESERVE", "0.003") or 0.003)))
-        min_sol = float(os.getenv("WEB3_MIN_SOL_TRADE", "0.0") or 0.0)
-        if sol_balance <= 0:
-            return {"status": "BLOCKED_WITH_REASON", "reason": "no_solana_balance", "sol_balance": sol_balance}
-        if amount_sol <= 0:
-            amount_sol = max(0.0, sol_balance * 0.10)
-
-        for candidate in targets:
-            if not isinstance(candidate, dict):
-                continue
-            route = str(candidate.get("route") or "").lower()
-            mint = str(candidate.get("mint_or_market") or "").strip()
-            key = f"{route}:{mint}"
-            if not mint or len(mint) < 32:
-                if route not in {"polymarket", "base_swap", "future_web3"}:
-                    continue
-            if str(candidate.get("recommended_action") or "").upper() != "ENTER":
-                if route not in {"polymarket", "base_swap", "future_web3"}:
-                    continue
-            if self._in_cooldown("phantom_cooldowns", key, self.phantom_cooldown_seconds):
-                continue
-
-            from Core.Exchange.phantom_router import PhantomRouter
-
-            router = PhantomRouter()
-            if not router.private_key:
-                return {"status": "BLOCKED_WITH_REASON", "reason": "phantom_signer_missing"}
-            from Core.Web3.web3_fee_intelligence import build_fee_intelligence
-
-            fee_state = build_fee_intelligence(
-                route,
-                trade_size_idr=float(amount_sol) * float(os.getenv("SOL_USD_RATE", "170") or 170) * float(os.getenv("USD_IDR_RATE", "16000") or 16000),
-                balance_snapshot=treasury,
-                route_context={"source": "live_order_dispatcher", "route": route},
-            )
-            if not fee_state.get("gas_affordable", True):
-                return {
-                    "status": "BLOCKED_WITH_REASON",
-                    "reason": str(fee_state.get("gas_reason") or "gas_fee_unaffordable"),
-                    "fee_intelligence": fee_state,
-                }
-            if route in {"solana_jupiter", "pumpfun_jupiter", "pumpfun_native", "solana_meme"}:
-                slippage_bps = int(float(os.getenv("WEB3_MEME_SLIPPAGE_BPS", "1500") or 1500))
-                ok = await router.snipe_meme_coin(mint, amount_sol, slippage_bps=slippage_bps)
-                if ok:
-                    self._mark_sent("phantom_cooldowns", key)
-                return {
-                    "status": "DISPATCHED" if ok else "BLOCKED_WITH_REASON",
-                    "route": route,
-                    "mint": mint,
-                    "amount_sol": amount_sol,
-                    "candidate": candidate,
-                    "reason": "submitted_to_phantom_router" if ok else "phantom_router_rejected",
-                    "fee_intelligence": fee_state,
-                }
-            if route == "polymarket":
-                market_id = str(candidate.get("market_id") or candidate.get("mint_or_market") or candidate.get("market") or mint or "").strip()
-                outcome = str(candidate.get("outcome") or candidate.get("direction") or candidate.get("side") or "YES").strip().upper()
-                amount_usdc = float(candidate.get("amount_usdc") or candidate.get("size_usdc") or candidate.get("size") or 0.0)
-                if amount_usdc <= 0:
-                    amount_usdc = max(0.0, amount_sol * float(os.getenv("SOL_USD_RATE", "170") or 170.0))
-                ok = await router.execute_polymarket_trade(market_id, outcome, amount_usdc)
-                if ok:
-                    self._mark_sent("phantom_cooldowns", key)
-                return {
-                    "status": "DISPATCHED" if ok else "BLOCKED_WITH_REASON",
-                    "route": route,
-                    "market_id": market_id,
-                    "outcome": outcome,
-                    "amount_usdc": amount_usdc,
-                    "candidate": candidate,
-                    "reason": "submitted_to_polymarket_router" if ok else "polymarket_router_rejected",
-                    "fee_intelligence": fee_state,
-                }
-            if route in {"base_swap", "future_web3"}:
-                return {
-                    "status": "SCAN_NEXT",
-                    "route": route,
-                    "candidate": candidate,
-                    "reason": f"{route}_route_visible_but_no_low_latency_dispatch_path",
-                    "fee_intelligence": fee_state,
-                }
-        return {"status": "SCAN_NEXT", "reason": "no_same_chain_phantom_enter_candidate"}
-
     async def tick(self) -> Dict[str, Any]:
         indodax = self.dispatch_indodax_once()
-        if KiConfig.INDODAX_ONLY:
-            phantom = {
-                "status": "REMOVED_BY_OPERATOR",
-                "reason": "operator_removed_compromised_wallet_use_indodax_only",
-                "allow_orders": False,
-            }
-        else:
-            try:
-                phantom = await self.dispatch_phantom_once()
-            except Exception as exc:
-                phantom = {"status": "BLOCKED_WITH_REASON", "reason": f"phantom_dispatch_error:{exc}"}
         return _write_state({
             "status": "ACTIVE" if indodax.get("status") != "BLOCKED_WITH_REASON" else "BLOCKED_WITH_REASON",
             "indodax": indodax,
-            "retired_venues": {"phantom": phantom},
             "indodax_cooldowns": self._cooldowns("indodax_cooldowns"),
         })
 

@@ -23,7 +23,7 @@ def main() -> int:
             page.goto(URL, wait_until="networkidle", timeout=15000)
             page.screenshot(path=str(out_path), full_page=True)
             text = page.locator("body").inner_text()
-            for needle in ("LIVE_ONLY", "AI System", "Indodax", "Phantom"):
+            for needle in ("LIVE_ONLY", "AI System", "Indodax"):
                 if needle not in text:
                     print(f"FAIL:missing_text:{needle}")
                     return 1

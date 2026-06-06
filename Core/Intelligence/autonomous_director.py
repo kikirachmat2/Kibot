@@ -121,7 +121,7 @@ class AutonomousDirector:
             best_candidate_now=approved[0] if approved else (rejected[0] if rejected else {}),
             why_not_trading="no candidate approved" if not approved else "",
             next_action="SCAN" if not approved else "ENTER",
-            routes_checked_this_cycle=["indodax", "phantom", "web3", "polymarket", "base", "future_web3"],
+            routes_checked_this_cycle=["indodax"],
             approved_candidates=len(approved),
             rejected_candidates=len(rejected),
             posture="ENTERING" if approved else "ACTIVE_SEARCHING",

@@ -108,25 +108,6 @@ const AGENTS = {
       return "active";
     }
   },
-  phantom: {
-    label: "Phantom Treasury",
-    service: "kibot-scanner",
-    runtime: "systemd: kibot-scanner",
-    copy: "Treasury and route visibility for Phantom multichain capital.",
-    metric(summary) {
-      return "live route";
-    }
-  },
-  polymarket: {
-    label: "Polymarket",
-    service: "kibot-executor-polymarket",
-    runtime: "systemd: kibot-executor-polymarket",
-    copy: "Prediction market control with guarded settlement-aware lifecycle.",
-    metric(summary) {
-      const poly = summary?.venues?.polymarket || {};
-      return poly.usdc_balance != null ? `$${Number(poly.usdc_balance).toFixed(2)}` : "live route";
-    }
-  },
   pnl_feedback: {
     label: "PnL Feedback",
     service: "kibot-janitor",

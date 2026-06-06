@@ -9,7 +9,6 @@ import Core.Decision.daily_reset_coordinator as daily_reset_coordinator
 import Core.sovereign_state as sovereign_state
 import Core.Treasury.capital_governor as capital_module
 import Core.Treasury.venue_ledger as ledger_module
-import Core.Treasury.phantom_treasury as phantom_module
 
 from Core.Support.ki_config import WIB
 from Core.Treasury.capital_governor import CapitalGovernor
@@ -24,9 +23,6 @@ def _isolate_runtime_state(monkeypatch, tmp_path: Path) -> None:
     monkeypatch.setattr(capital_module, "ANCHOR_LOCK_FILE", tmp_path / "daily_equity_anchor_lock.json")
     monkeypatch.setattr(ledger_module, "STATE_DIR", tmp_path)
     monkeypatch.setattr(ledger_module, "LEDGER_FILE", tmp_path / "venue_ledger.json")
-    monkeypatch.setattr(phantom_module, "STATE_DIR", tmp_path)
-    monkeypatch.setattr(phantom_module, "PHANTOM_STATE_FILE", tmp_path / "phantom_treasury.json")
-    monkeypatch.setattr(phantom_module, "PHANTOM_RECONCILIATION_FILE", tmp_path / "TREASURY_RECONCILIATION_REQUIRED")
     monkeypatch.setattr(daily_reset_coordinator, "STATE_DIR", tmp_path)
     monkeypatch.setattr(daily_reset_coordinator, "STATE_FILE", tmp_path / "daily_reset_state.json")
     monkeypatch.setattr(sovereign_state, "STATE_DIR", tmp_path)
@@ -296,8 +292,8 @@ async def test_daily_reset_does_not_freeze_on_exchange_locked_inventory(monkeypa
     assert data["daily_reset_pending"] is False
     assert data["allow_new_orders"] is True
     assert data["allow_indodax_orders"] is True
-    assert data["allow_phantom_orders"] is False
-    assert data["retired_venues"]["phantom"]["status"] == "REMOVED_BY_OPERATOR"
+    assert "allow_removed_wallet_orders" not in data
+    assert "retired_venues" not in data
     assert data["locked_inventory_count"] == 1
     assert data["locked_inventory_symbols"] == ["POND/IDR"]
     assert data["date"] == str(today)

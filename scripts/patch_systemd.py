@@ -7,7 +7,6 @@ import re
 SERVICES = [
     "kibot-ai-scout",
     "kibot-dashboard",
-    "kibot-executor-polymarket",
     "kibot-executor",
     "kibot-janitor",
     "kibot-master",

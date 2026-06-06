@@ -9,7 +9,7 @@ def test_strategy_control_enforces_negative_pairs_and_unknown_source() -> None:
             "strategy_edge_audit": {
                 "strategies": [
                     {"strategy": "EDEN/IDR", "status": "NEGATIVE_EDGE", "recommendation": "DISABLE", "venue": "indodax"},
-                    {"strategy": "POND/IDR", "status": "INSUFFICIENT_DATA", "recommendation": "COLLECT_MICRO_PROBE", "venue": "phantom"},
+                    {"strategy": "POND/IDR", "status": "INSUFFICIENT_DATA", "recommendation": "COLLECT_MICRO_PROBE", "venue": "indodax"},
                     {"strategy": "XRP/IDR", "status": "POSITIVE_EDGE", "recommendation": "SCALE_UP", "source": "unknown"},
                 ]
             }
@@ -19,4 +19,3 @@ def test_strategy_control_enforces_negative_pairs_and_unknown_source() -> None:
     assert "POND_IDR" in result["micro_probe_pairs"]
     assert "XRP_IDR" in result["do_not_scale_pairs"]
     assert "XRP_IDR" in result["ignored_unknown_source_scaleups"]
-

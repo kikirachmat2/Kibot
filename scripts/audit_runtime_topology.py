@@ -18,7 +18,6 @@ CORE_SERVICES = {
     "kibot-target-board",
     "kibot-autonomous-brain",
     "kibot-indodax-director",
-    "kibot-phantom-brain",
     "kibot-live-dispatcher",
     "kibot-executor",
     "kibot-dashboard",
@@ -34,13 +33,7 @@ SUPPORT_SERVICES = {
     "kibot-workflow-supervisor",
 }
 
-OPTIONAL_ROUTE_SERVICES = {
-    "kibot-base",
-    "kibot-pumpfun",
-    "kibot-future-web3",
-    "kibot-executor-polymarket",
-    "kibot-web3-exit",
-}
+OPTIONAL_ROUTE_SERVICES: set[str] = set()
 
 
 def _run(args: list[str]) -> str:

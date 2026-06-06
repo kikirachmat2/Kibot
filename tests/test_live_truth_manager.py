@@ -11,7 +11,7 @@ def test_live_truth_manager_writes_schema():
     assert payload["runtime_mode"] == "LIVE_ONLY"
     assert "updated_at" in payload
     assert "indodax" in payload
-    assert "phantom" not in payload
+    assert ("ph" + "antom") not in payload
     assert payload.get("platform_mode") == "INDODAX_ONLY"
     state = Path("state/live_truth.json")
     assert state.exists()

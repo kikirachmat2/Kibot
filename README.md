@@ -14,10 +14,9 @@ KiBot is an experimental open-source framework for building and operating autono
 KiBot is currently configured as **Indodax-only**.
 
 - Canonical executable venue: Indodax.
-- Retired venues: Phantom/Solana/Web3/Pump.fun/Base/Polymarket.
 - Runtime flag: `KIBOT_INDODAX_ONLY=true`.
-- Phantom wallet keys must not be used by runtime services.
-- Dashboard and PnL truth must exclude retired Phantom/Web3 balances.
+- Non-Indodax wallet, chain, and prediction-market routes have been removed from the runtime.
+- Dashboard and PnL truth are based on Indodax cash, held coins, and pending Indodax order reserve only.
 
 See [`docs/INDODAX_ONLY_RUNTIME.md`](./docs/INDODAX_ONLY_RUNTIME.md).
 

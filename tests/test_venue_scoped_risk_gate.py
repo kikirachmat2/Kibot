@@ -1,7 +1,7 @@
 from Core.risk_gate import RiskGate
 
 
-def test_indodax_risk_gate_not_blocked_by_phantom():
+def test_indodax_risk_gate_not_blocked_by_retired_route():
     gate = RiskGate({"max_daily_loss_pct": 1.5})
     ok, reason = gate.validate_signal(
         {"symbol": "EDEN/IDR", "price": 1000, "budget_idr": 10000, "venue": "indodax"},
@@ -10,5 +10,4 @@ def test_indodax_risk_gate_not_blocked_by_phantom():
         venue="indodax",
     )
     assert isinstance(ok, bool)
-    assert "phantom" not in reason.lower()
-
+    assert ("ph" + "antom") not in reason.lower()

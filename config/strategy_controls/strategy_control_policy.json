@@ -8,6 +8,5 @@
   "max_micro_probe_round_trips_per_day": 2,
   "min_net_growth_to_scale_up_idr": 1000,
   "flat_churn_action": "REDUCE_FREQUENCY",
-  "losing_action": "LOCK_NEW_ENTRIES",
-  "phantom_zero_fill_action": "TRACE_PIPELINE"
+  "losing_action": "LOCK_NEW_ENTRIES"
 }

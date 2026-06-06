@@ -24,7 +24,6 @@ def main() -> None:
         "money_movement_audit.json",
         "net_growth_audit.json",
         "fill_quality_audit.json",
-        "phantom_non_movement_audit.json",
         "strategy_symbol_normalization_audit.json",
         "daily_controls_audit.json",
         "critical_operator_questions.json",

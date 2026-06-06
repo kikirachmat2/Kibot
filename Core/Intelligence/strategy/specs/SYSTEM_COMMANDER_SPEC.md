@@ -25,7 +25,6 @@ If KiBot is blind, KiBot must not pretend to be brave.
 - Redis ping,
 - Ollama API and model list,
 - Indodax read-only health,
-- Polymarket read-only health,
 - Telegram notifier health,
 - AI provider state,
 - web/source health,
@@ -122,4 +121,3 @@ Dashboard must show:
 - what needs operator,
 - data freshness,
 - inventory utilization score.
-

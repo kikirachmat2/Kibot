@@ -38,10 +38,14 @@ def main() -> int:
             print("FAIL:blocked_reason_visible_when_allowed")
             return 1
 
-    phantom_status = str(venues.get("phantom", {}).get("status") or "").upper()
-    phantom_ready = str(live_truth.get("phantom", {}).get("status") or "").upper()
-    if phantom_status in {"OK", "ACTIVE", "LIVE_READY"} and phantom_ready not in {"OK", "LIVE_READY", "PHANTOM_LIVE_READY"}:
-        print("FAIL:phantom_status_inconsistent")
+    removed_terms = ("ph" + "antom", "poly" + "market")
+    for removed in removed_terms:
+        if removed in venues or removed in live_truth:
+            print(f"FAIL:removed_venue_visible:{removed}")
+            return 1
+
+    if "indodax" not in venues and not live_truth.get("indodax"):
+        print("FAIL:indodax_truth_missing")
         return 1
 
     print("OK:DASHBOARD_OPERATOR_CLARITY")

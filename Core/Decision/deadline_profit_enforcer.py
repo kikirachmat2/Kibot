@@ -121,7 +121,6 @@ class DeadlineProfitEnforcer:
             "minutes_to_midnight": int(minutes_to_midnight),
             "stage": stage,
             "indodax_pressure": "MAX" if stage in {"RECOVERY", "AGGRESSIVE_SEARCH", "CLOSING_WINDOW", "FATAL_BLOCKED"} else "NORMAL",
-            "phantom_pressure": "MAX" if stage in {"RECOVERY", "AGGRESSIVE_SEARCH", "CLOSING_WINDOW", "FATAL_BLOCKED"} else "NORMAL",
             "required_action": required_action if not locked else ("EXIT_ONLY" if stage == "FATAL_BLOCKED" else "CLOSE_WINDOW"),
             "reason": reason,
         }

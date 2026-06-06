@@ -58,12 +58,6 @@ def main() -> int:
     if bad:
         print(f"FAIL:forbidden_keys={bad}")
         return 1
-    if data.get("platform_mode") == "INDODAX_ONLY":
-        retired = data.get("retired_venues", {}) if isinstance(data.get("retired_venues"), dict) else {}
-        phantom = retired.get("phantom", {}) if isinstance(retired.get("phantom"), dict) else {}
-        if phantom.get("enabled") is not False or phantom.get("status") != "REMOVED_BY_OPERATOR":
-            print(f"FAIL:phantom_not_retired:{phantom}")
-            return 1
     print(f"OK:LIVE_TRUTH_FRESH age={age:.1f}s risk={data.get('risk_state')}")
     return 0
 

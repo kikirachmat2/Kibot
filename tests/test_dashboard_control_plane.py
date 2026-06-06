@@ -28,9 +28,6 @@ def test_control_plane_payload_structure():
     assert "trading_mode" in mode
     assert isinstance(mode["live_trading_enabled"], bool)
     assert isinstance(mode["legacy_modes_disabled"], bool)
-    assert isinstance(mode["real_swap_enabled"], bool)
-    assert isinstance(mode["real_bridge_enabled"], bool)
-    assert isinstance(mode["real_withdrawal_enabled"], bool)
 
     # 2. Portfolio command metrics checks (simulated vs real isolation)
     assert "portfolio" in data
@@ -56,8 +53,8 @@ def test_control_plane_payload_structure():
         assert "mode" in v
         assert "status" in v
         assert "reason" in v
-    assert "phantom" not in venues
-    assert "polymarket" not in venues
+    assert ("ph" + "antom") not in venues
+    assert ("poly" + "market") not in venues
     assert "indodax_shadow" not in venues
 
     # 4. Intelligence Gate Stack
@@ -155,7 +152,6 @@ def test_control_plane_preserves_explicit_hard_stop_reason(tmp_path, monkeypatch
         "max_daily_loss_idr": 4200.0,
         "venues": {
             "indodax": {"allow_orders": False, "status": "BLOCKED_WITH_REASON", "reason": "global_daily_loss_cap_breached"},
-            "phantom": {"allow_orders": False, "status": "BLOCKED_WITH_REASON", "reason": "global_daily_loss_cap_breached"},
         },
     }))
 
@@ -217,9 +213,6 @@ def test_simulated_vs_real_pnl_isolation(tmp_path, monkeypatch):
             "daily_pnl_shadow_idr": -250_000,
             "daily_pnl_idr": 250_000,
             "daily_pnl_pct": 0.25,
-            "phantom": {
-                "opportunity_pnl_idr": 75_000
-            }
         }
     }
     

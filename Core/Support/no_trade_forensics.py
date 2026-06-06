@@ -39,7 +39,6 @@ def build_no_trade_forensics() -> Dict[str, Any]:
     ai_patrol = _read_json("ai_patrol.json", {})
     target_boards = {
         "indodax": _read_json("indodax_top_targets.json", {}),
-        "phantom": _read_json("phantom_top_targets.json", {}),
     }
     risk_state = _read_json("risk_state.json", {})
     canonical = reconcile_risk_truth(live_truth, governor, risk_state, ai_patrol, workflow)
@@ -74,7 +73,7 @@ def build_no_trade_forensics() -> Dict[str, Any]:
     elif "sol_balance_below_trade_min" in str(dispatcher.get("reason") or "").lower() or "trade_min" in str(dispatcher.get("reason") or "").lower():
         classification = "CAPITAL_BOTTLENECK"
     elif allow_new_orders and not blockers:
-        if int(len(target_boards.get("indodax", {}).get("top_targets", []) if isinstance(target_boards.get("indodax"), dict) else [])) == 0 and int(len(target_boards.get("phantom", {}).get("top_targets", []) if isinstance(target_boards.get("phantom"), dict) else [])) == 0:
+        if int(len(target_boards.get("indodax", {}).get("top_targets", []) if isinstance(target_boards.get("indodax"), dict) else [])) == 0:
             classification = "STRATEGY_NO_EDGE"
         else:
             classification = "HEALTHY_WAIT"
@@ -118,7 +117,6 @@ def build_no_trade_forensics() -> Dict[str, Any]:
         "ai_support_action": str(ai_patrol.get("support_action") or ""),
         "target_counts": {
             "indodax": len(target_boards.get("indodax", {}).get("top_targets", []) if isinstance(target_boards.get("indodax"), dict) else []),
-            "phantom": len(target_boards.get("phantom", {}).get("top_targets", []) if isinstance(target_boards.get("phantom"), dict) else []),
         },
         "micro_probe": {
             "enabled": bool(_read_json("capital_governor.json", {}).get("micro_probe_enabled", False) or False),

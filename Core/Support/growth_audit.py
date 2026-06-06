@@ -139,8 +139,6 @@ def build_critical_operator_questions(bundle: Dict[str, Any] | None = None) -> D
         {"id": "avg_fee_per_fill", "question": "What is average fee per fill?", "answer": "Need fee-trace reconciliation from trade history; current state lacks a clean per-fill fee ledger."},
         {"id": "gross_vs_net", "question": "What is gross PnL vs net PnL?", "answer": "Use accounting_truth and trade_history; net is the decision metric."},
         {"id": "fills_type", "question": "Are fills mostly entries, exits, partial fills, cancel/retry artifacts, or real closed round trips?", "answer": "Requires fill-quality audit; current indicators suggest many fills but not enough closed round trips."},
-        {"id": "phantom_zero", "question": "Why is Phantom filled_count_24h = 0 even though Phantom targets = 5 and runtime autonomy OK?", "answer": "Likely gate/handoff/RPC/executor receive-path issue."},
-        {"id": "phantom_block", "question": "Is Phantom blocked by gate, route, size, slippage, price impact, or no execution handoff?", "answer": "Likely gate or execution handoff; confirm with phantom_non_movement_audit."},
         {"id": "indodax_overtrading", "question": "Is Indodax overtrading?", "answer": "Possible if fill count high and net growth flat/negative."},
         {"id": "micro_probe_churn", "question": "Is micro-probe causing churn?", "answer": "Possible if many fills but low closed round-trip profit."},
         {"id": "a_plus_rarity", "question": "Is A_PLUS too rare?", "answer": "Possibly, but that is safer than forcing weak trades."},
@@ -362,57 +360,6 @@ def audit_fill_quality(bundle: Dict[str, Any] | None = None) -> Dict[str, Any]:
         "canonical_stats": canonical_stats,
     }
     (_ensure_state_dir() / "fill_quality_audit.json").write_text(json.dumps(payload, indent=2, ensure_ascii=False), encoding="utf-8")
-    return payload
-
-
-def audit_phantom_non_movement(bundle: Dict[str, Any] | None = None) -> Dict[str, Any]:
-    bundle = bundle or load_state_bundle()
-    phantom_targets = bundle.get("phantom_targets", {}) if isinstance(bundle, dict) else {}
-    top_targets = phantom_targets.get("top_targets", []) if isinstance(phantom_targets, dict) else []
-    rpc = bundle.get("phantom_rpc_health", {}) if isinstance(bundle, dict) else {}
-    candidates = [row for row in bundle.get("candidate_decisions", []) if str(row.get("venue") or row.get("route") or "").lower().startswith("phantom")]
-    tiered = [row for row in candidates if row.get("tier") or row.get("trade_tier") or row.get("label")]
-    micro = [row for row in tiered if str(row.get("tier") or row.get("trade_tier") or row.get("label") or "").upper() == "MICRO_PROBE"]
-    approved = [row for row in candidates if bool(row.get("approved")) or str(row.get("tier") or "").upper() in {"A_PLUS", "MICRO_PROBE"}]
-    executor_state = _read_json(STATE_DIR / "phantom_treasury.json", {})
-    orders = _read_jsonl(STATE_DIR / "trade_history" / "2026-05-30.jsonl")
-    quote_ok = bool(rpc.get("quote_ok") or rpc.get("status") in {"OK", "HEALTHY"})
-    swap_ok = bool(rpc.get("swap_build_ok") or rpc.get("status") in {"OK", "HEALTHY"})
-    reason = ""
-    classification = "PHANTOM_READY_BUT_WAITING"
-    if not top_targets:
-        classification = "PHANTOM_NO_EDGE"
-        reason = "no_targets"
-    elif not candidates:
-        classification = "PHANTOM_EXECUTOR_NOT_RECEIVING"
-        reason = "targets_exist_but_no_candidates_reached_executor"
-    elif tiered and not approved:
-        classification = "PHANTOM_GATE_TOO_STRICT"
-        reason = "candidates_stopped_before_approval"
-    elif approved and not quote_ok:
-        classification = "PHANTOM_RPC_DEGRADED"
-        reason = "quotes_not_ok"
-    elif approved and quote_ok and not swap_ok:
-        classification = "PHANTOM_ROUTE_UNSAFE"
-        reason = "swap_build_not_ok"
-    elif approved and quote_ok and swap_ok and not orders:
-        classification = "PHANTOM_ACCOUNTING_MISSING"
-        reason = "no_order_or_fill_trace"
-    payload = {
-        "updated_at": datetime.now(timezone.utc).isoformat(),
-        "classification": classification,
-        "reason": reason,
-        "scanner_targets": len(top_targets),
-        "candidate_count_24h": len(candidates),
-        "tiered_count_24h": len(tiered),
-        "micro_probe_count_24h": len(micro),
-        "approved_count_24h": len(approved),
-        "quote_ok": quote_ok,
-        "swap_build_ok": swap_ok,
-        "executor_received_state": bool(executor_state),
-        "real_fills": len([row for row in orders if str(row.get("venue") or "").lower().startswith("phantom")]),
-    }
-    (_ensure_state_dir() / "phantom_non_movement_audit.json").write_text(json.dumps(payload, indent=2, ensure_ascii=False), encoding="utf-8")
     return payload
 
 

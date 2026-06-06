@@ -13,12 +13,10 @@ def test_target_freshness_audit_fresh(tmp_path, monkeypatch):
     monkeypatch.setattr(mod, "HISTORY_FILE", tmp_path / "target_freshness_history.json")
     now = datetime.now(timezone.utc).isoformat()
     (tmp_path / "indodax_top_targets.json").write_text(json.dumps({"updated_at": now, "top_targets": [{"symbol": "AAA/IDR"}]}), encoding="utf-8")
-    (tmp_path / "phantom_top_targets.json").write_text(json.dumps({"updated_at": now, "top_targets": [{"symbol": "BBB"}]}), encoding="utf-8")
     (tmp_path / "target_board_runtime.json").write_text(json.dumps({"updated_at": now}), encoding="utf-8")
     (tmp_path / "candidate_decisions.jsonl").write_text(json.dumps({"updated_at": now}) + "\n", encoding="utf-8")
 
     payload = mod.build_target_freshness_audit()
     assert payload["status"] == "FRESH"
     assert "indodax_target_age_s" in payload
-    assert "phantom_target_age_s" in payload
     assert payload["top_targets_changed_last_30m"] is True

@@ -110,12 +110,8 @@ function drawConnectors() {
     {from:'card-director',  to:'card-risk',      style:'solid',  color:'#3b82f6'},
     {from:'card-director',  to:'card-indodax-real',  style:'solid',  color:'#ef4444'},
     {from:'card-director',  to:'card-indodax-balance', style:'solid',  color:'#64748b'},
-    {from:'card-risk',      to:'card-phantom',   style:'dashed', color:'#a855f7'},
-    {from:'card-risk',      to:'card-polymarket',style:'dashed', color:'#f97316'},
     {from:'card-indodax-real', to:'card-pnl-feedback', style:'dotted', color:'#ef4444'},
     {from:'card-indodax-balance',to:'card-pnl-feedback', style:'dotted', color:'#64748b'},
-    {from:'card-phantom',    to:'card-cashwait',  style:'dashed', color:'#a855f7'},
-    {from:'card-polymarket', to:'card-cashwait',  style:'dashed', color:'#f97316'},
     {from:'card-pnl-feedback', to:'card-punishment', style:'dotted', color:'#22c55e'},
     {from:'card-punishment', to:'card-risk',      style:'dashed', color:'#ef4444', dir:'upstream-right'},
   ];
@@ -203,8 +199,6 @@ const AGENT_META = {
   scorecard:  { letter:'C', color:'purple', name:'Strategy Scorecard',     role:'Deliberation Score',    row: 3, isSm: true,  desc:'Grades strategies against current market regimes and recent trade outcomes. Submits composite scorecard to Council.', inputs:['signal_quality.json', 'expected_value.json'], outputs:['strategy_scorecard.json'], stateFile:'strategy_scorecard.json' },
   indodax_real: { letter:'IR', color:'red',  name:'Indodax Spot',         role:'Live Spot Venue',       row: 4, isSm: true,  desc:'LIVE_ONLY exchange order placement with RiskGate and Capital Governor enforcement.', inputs:['autonomous_director.json'], outputs:['live_trades.json'], stateFile:null },
   indodax_balance: { letter:'IB', color:'gray', name:'Indodax Balance',      role:'Balance Ledger',        row: 4, isSm: true,  desc:'Balance accounting for internal analysis only.', inputs:['autonomous_director.json'], outputs:['balance_trades.json'], stateFile:'portfolio_summary.json' },
-  phantom:    { letter:'Φ', color:'purple', name:'Phantom Treasury',      role:'Solana / Web3 Capital',  row: 4, isSm: true,  desc:'Treasury and route visibility for Phantom multichain capital.', inputs:[], outputs:['phantom_scout.json'], stateFile:'phantom_scout.json' },
-  polymarket: { letter:'M', color:'orange', name:'Polymarket',           role:'Prediction Market',     row: 4, isSm: true,  desc:'Prediction market control with guarded settlement-aware lifecycle.', inputs:[], outputs:['polymarket_state.json'], stateFile:'polymarket_state.json' },
   pnl_feedback: { letter:'F', color:'green', name:'PnL Feedback',          role:'Adaptive Learning',     row: 5, isSm: true,  desc:'Post-trade feedback analyzer. Reviews execution quality and adjusts expected value coefficients.', inputs:['shadow_trades.json', 'live_trades.json'], outputs:['pnl_feedback.json'], stateFile:null },
   cashwait:   { letter:'W', color:'gray',   name:'Cash Wait Reserve',     role:'Idle Capital',          row: 5, isSm: true,  desc:'Liquidity reservoir tracking idle assets waiting for high-conviction opportunities. Prevents over-trading.', inputs:[], outputs:[], stateFile:'market_rotation.json' },
   punishment: { letter:'P', color:'red',    name:'Punishment Gate',       role:'Strike Guard',          row: 5, isSm: true,  desc:'Monitors execution failures and consecutive losses. Imposes cooling-off periods and quarantines underperforming pathways.', inputs:['pnl_feedback.json'], outputs:['punishment_state.json'], stateFile:'punishment_state.json' },
@@ -284,18 +278,6 @@ function openModal(agentId) {
     status = 'BALANCE';
     metric = 'active';
     decision = 'Balance ledger only. Production route text intentionally hidden from the live dashboard.';
-  } else if (agentId === 'phantom') {
-    const d = runtime.phantom_scout || {};
-    status = d.status || 'SCOUTING_ONLY';
-    metric = 'live route';
-    const age = fresh.phantom_scout_age_s;
-    if (age > STALE_SECS) stale = true;
-  } else if (agentId === 'polymarket') {
-    const d = runtime.polymarket_state || {};
-    status = d.status || 'SCOUTING_ONLY';
-    metric = 'live route';
-    const age = fresh.polymarket_state_age_s;
-    if (age > STALE_SECS) stale = true;
   } else if (agentId === 'pnl_feedback') {
     status = 'TRACKING';
     metric = 'active';
@@ -391,7 +373,7 @@ function pushLog(arr, domId, entry) {
   }
   const tagCl = {
     INFO:'info', WARN:'warn', ERROR:'error', SUCCESS:'success',
-    BUY:'buy', SWAP:'swap', 'SELL PROFIT':'sell-profit', 'SELL LOSS':'sell-loss',
+    BUY:'buy', 'SELL PROFIT':'sell-profit', 'SELL LOSS':'sell-loss',
     'BUY PENDING':'warn', 'SELL PENDING':'warn',
     'BUY REJECTED':'error', 'SELL REJECTED':'error',
     STALE:'warn',
@@ -517,7 +499,6 @@ function render(data) {
   const sizing = data.autonomous_sizing || {};
   const brain = data.autonomous_trading_brain || {};
   const indoBrain = data.indodax_live_brain || {};
-  const phBrain = data.phantom_live_brain || {};
 
   // Top bar badges
   const modeBadge = el('mode-badge');
@@ -597,35 +578,12 @@ function render(data) {
   const riskRemaining = data.capital?.risk_remaining_idr || port.risk_remaining_idr || 0;
   setT('risk-remaining-status', `Rp ${Math.abs(riskRemaining).toLocaleString('id-ID')}`);
 
-  // Phantom
-  const ph = venues.phantom || {};
-  setT('phantom-metric', phBrain.decision || `${ph.opportunities||0} opportunities`);
-  if (phBrain.recovery_mode) {
-    setT('phantom-metric', `${phBrain.decision || 'SCAN_NEXT'} · RECOVERY`);
-    const phantomStatus = el('phantom-status');
-    if (phantomStatus) phantomStatus.textContent = `${phBrain.status || 'ACTIVE'} · RECOVERY`;
-  }
-
-  // Polymarket
-  const poly = venues.polymarket || {};
-  setT('poly-metric', poly.equity_idr ? idr(poly.equity_idr) : 'live route');
-
   // Safety Gates Badges (Dynamic)
   const liveEnabled = Boolean(mode.live_trading_enabled ?? data.mode?.live_trading_enabled ?? rt.mode?.live_trading_enabled ?? false);
   const gateLive = el('gate-live-trading');
   if (gateLive) {
     gateLive.textContent = liveEnabled ? 'ON' : 'OFF';
     gateLive.className = 'badge ' + (liveEnabled ? 'badge--red' : 'badge--ghost');
-  }
-  const gateBridge = el('gate-bridge');
-  if (gateBridge) {
-    gateBridge.textContent = Boolean(mode.real_bridge_enabled ?? data.mode?.real_bridge_enabled ?? false) ? 'ON' : 'OFF';
-    gateBridge.className = 'badge ' + (Boolean(mode.real_bridge_enabled ?? data.mode?.real_bridge_enabled ?? false) ? 'badge--red' : 'badge--ghost');
-  }
-  const gateSwap = el('gate-swap');
-  if (gateSwap) {
-    gateSwap.textContent = Boolean(mode.real_swap_enabled ?? data.mode?.real_swap_enabled ?? false) ? 'ON' : 'OFF';
-    gateSwap.className = 'badge ' + (Boolean(mode.real_swap_enabled ?? data.mode?.real_swap_enabled ?? false) ? 'badge--red' : 'badge--ghost');
   }
   const gateWithdrawal = el('gate-withdrawal');
   if (gateWithdrawal) {
@@ -685,57 +643,6 @@ function render(data) {
   // Venue equities
   setT('eq-indodax-real',  idr(venues.indodax_real?.equity_idr  || 0));
   setT('eq-indodax-live', idr(venues.indodax_live?.equity_idr || 0));
-  setT('eq-polymarket',    idr(venues.polymarket?.equity_idr    || 0));
-  
-  // Phantom Scout details
-  setT('eq-phantom', idr(ph.total_value_idr || 0));
-  setT('phantom-sol', (ph.sol_balance || 0).toFixed(4) + ' SOL');
-  setT('phantom-usdc', (ph.usdc_balance || 0).toFixed(2) + ' USDC');
-  setT('phantom-base-idrx', idr(ph.base_idrx_balance || 0));
-  setT('phantom-base-address', shortAddr(ph.chains?.base?.evm_address || ph.evm_address || ''));
-  setT('phantom-base-block', ph.chains?.base?.latest_block ? `#${ph.chains.base.latest_block}` : '—');
-  setT('phantom-base-status', ph.status || '—');
-  setT('phantom-recon', ph.reconciliation?.matches_user_wallet ? 'MATCH' : 'MISMATCH');
-  setT('phantom-bucket-swap', idr(ph.buckets?.swap_idr || 0));
-  setT('phantom-bucket-polymarket', idr(ph.buckets?.polymarket_idr || 0));
-  setT('phantom-bucket-reserve', idr(ph.buckets?.reserve_idr || 0));
-  setT('phantom-bucket-future-web3', idr(ph.buckets?.future_web3_idr || 0));
-
-  const web3 = data.web3 || {};
-  const routes = web3.routes || {};
-  setT('eq-web3', `${Object.keys(routes).length || 0} routes`);
-  setT('web3-solanastatus', routes.solana?.status || '—');
-  setT('web3-basestatus', routes.base?.status || '—');
-  setT('web3-polystatus', routes.polymarket?.status || '—');
-  setT('web3-futurestatus', routes.future_web3?.status || '—');
-  const bestOpp = (web3.opportunities?.best_opportunities || [])[0];
-  setT('web3-bestopp', bestOpp ? `${bestOpp.route}:${bestOpp.asset}` : '—');
-  const rej = (web3.opportunities?.rejected || [])[0];
-  setT('web3-rejected', rej ? String(rej.reason || '—').slice(0, 36) : '—');
-  const memeHunter = web3.meme_hunter || {};
-  const memeBest = memeHunter.best_candidate || web3.solana_trending?.best_candidate || {};
-  setT('meme-best-candidate', memeBest?.symbol ? `${memeBest.symbol} ${memeBest.change_24h_pct != null ? pct(memeBest.change_24h_pct) : ''}`.trim() : '—');
-  setT('meme-reason', memeBest?.reason || (memeHunter.enabled ? `${memeHunter.candidates_found || 0} scanned` : 'disabled'));
-  const pumpfun = web3.pumpfun || {};
-  const pumpfunRoute = web3.pumpfun_route || {};
-  const pumpfunNative = web3.pumpfun_native || {};
-  const pumpfunBest = pumpfun.best_candidate || {};
-  setT('pumpfun-route-type', pumpfun.route_type || pumpfunRoute.route_type || '—');
-  setT('pumpfun-buy-sell', `${pumpfun.can_buy ? 'BUY' : 'NO BUY'} / ${pumpfun.can_sell ? 'SELL' : 'NO SELL'}`);
-  setT('pumpfun-reason', pumpfun.reason || pumpfunRoute.reason || '—');
-  setT('pumpfun-best-candidate', pumpfunBest?.symbol ? `${pumpfunBest.symbol} ${pumpfunBest.route_type ? `(${pumpfunBest.route_type})` : ''}`.trim() : '—');
-  setT('pumpfun-native-status', pumpfunNative.status ? `${pumpfunNative.status}${pumpfunNative.reason ? ` · ${pumpfunNative.reason}` : ''}` : '—');
-  const lat = pumpfun.latency || {};
-  setT('pumpfun-latency', lat.hot_path_total_ms != null ? `${lat.hot_path_total_ms}ms` : '—');
-  const pumpfunPos = Array.isArray(pumpfun.positions) ? pumpfun.positions[0] : null;
-  setT('pumpfun-position', pumpfunPos ? `${pumpfunPos.symbol || pumpfunPos.asset || 'pos'} · ${pumpfunPos.status || 'OPEN'}` : '—');
-  const pumpfunExitState = pumpfun.exit_state || {};
-  setT('pumpfun-exit-state', pumpfunExitState.status ? `${pumpfunExitState.status}${pumpfunExitState.latest_exit_reason ? ` · ${pumpfunExitState.latest_exit_reason}` : ''}` : '—');
-  setT('web3-openpos', Array.isArray(web3.positions) ? String(web3.positions.length) : '0');
-  const exitState = web3.exit || {};
-  setT('web3-exit-status', exitState.status || '—');
-  setT('web3-exit-reason', exitState.latest_exit_reason || '—');
-  setT('web3-exit-updated', exitState.last_updated ? new Date(exitState.last_updated).toLocaleTimeString('en-GB', {hour12:false, timeZone:'Asia/Jakarta'}) + ' WIB' : '—');
 
   const scannerContract = data.scanner_executor_contract || data.scanner_coverage || {};
   const scannerContractRoutes = scannerContract.routes || scannerContract.coverage || scannerContract;
@@ -756,18 +663,11 @@ function render(data) {
 
   const engine = data.engine_independence || {};
   const indodaxEngine = engine.indodax_engine || {};
-  const phantomEngine = engine.phantom_engine || {};
   const engineIndo = el('engine-indodax');
   if (engineIndo) {
     engineIndo.textContent = indoBrain.status || indodaxEngine.status || '—';
     engineIndo.className = 'badge ' + ((indodaxEngine.allow_orders ?? true) ? 'badge--green' : 'badge--red');
   }
-  const enginePh = el('engine-phantom');
-  if (enginePh) {
-    enginePh.textContent = phBrain.status || phantomEngine.status || '—';
-    enginePh.className = 'badge ' + ((phantomEngine.allow_orders ?? true) ? 'badge--green' : 'badge--red');
-  }
-  setT('engine-bridge', engine.bridge || 'OFF');
   setT('engine-withdrawal', engine.withdrawal || 'OFF');
 
   const deadline = data.deadline_pressure || {};
@@ -782,8 +682,6 @@ function render(data) {
   }
   const deadlineIndo = el('deadline-indodax-pressure');
   if (deadlineIndo) deadlineIndo.textContent = deadline.indodax_pressure || deadline.pressure_level || '—';
-  const deadlinePh = el('deadline-phantom-pressure');
-  if (deadlinePh) deadlinePh.textContent = deadline.phantom_pressure || deadline.pressure_level || '—';
   setT('deadline-required-action', deadline.required_action || deadline.reason || '—');
 
   const dailyReset = data.daily_reset?.data || data.daily_reset || {};
@@ -856,29 +754,6 @@ function render(data) {
     }).join('');
   }
   renderTopTargets('indodax-top-targets', 'indodax-top-empty', data.indodax_top_targets?.data || data.top_targets?.indodax?.data || data.indodax_top_targets || data.top_targets?.indodax || {});
-  renderTopTargets('phantom-top-targets', 'phantom-top-empty', data.phantom_top_targets?.data || data.top_targets?.phantom?.data || data.phantom_top_targets || data.top_targets?.phantom || {});
-
-  const phantomBoard = data.phantom_top_targets?.data || data.top_targets?.phantom?.data || data.phantom_top_targets || data.top_targets?.phantom || {};
-  const phantomBreakdown = el('phantom-source-breakdown');
-  if (phantomBreakdown) {
-    const breakdown = phantomBoard.source_breakdown || {};
-    const rows = Object.entries(breakdown).map(([name, info]) => {
-      const count = info?.count ?? 0;
-      const status = info?.status || '—';
-      const reason = info?.reason || '';
-      return `<div><strong>${esc(name)}</strong> · ${esc(String(count))} · ${esc(status)}${reason ? ` · ${esc(reason)}` : ''}</div>`;
-    });
-    const cap = phantomBoard.route_capability_summary || {};
-    const capRows = phantomBoard.route_capabilities
-      ? Object.entries(phantomBoard.route_capabilities).map(([name, info]) => `<div><strong>${esc(name)}</strong> · ${esc(info.status || '—')} · exec:${info.can_execute ? 'Y' : 'N'} · exit:${info.can_exit ? 'Y' : 'N'}</div>`)
-      : [];
-    const capHeader = `<div style="margin-top:6px;color:#64748b">Route capabilities · total:${esc(String(cap.routes_total ?? 0))} ready:${esc(String(cap.routes_ready ?? 0))} blocked:${esc(String(cap.routes_blocked ?? 0))}</div>`;
-    phantomBreakdown.innerHTML = `${rows.length ? rows.join('') : `<div>${esc(phantomBoard.why_empty || '—')}</div>`}${capHeader}${capRows.length ? capRows.join('') : ''}`;
-  }
-  const phantomTopEmpty = el('phantom-top-empty');
-  if (phantomTopEmpty && phBrain.recovery_mode) {
-    phantomTopEmpty.textContent = `RECOVERY · ${phantomBoard.why_empty || phantomBoard.source_status || 'active search'}`;
-  }
 
   setT('ai-objective', ai.objective || '—');
   setT('ai-best-action', brain.current_best_action || ai.best_action || '—');
@@ -936,12 +811,12 @@ function render(data) {
   setT('kpi-open-positions-sub', port.realized_pnl_today_idr != null ? `realized ${idr(port.realized_pnl_today_idr)}` : 'live');
   setT('kpi-indodax', `${esc(venues.indodax_real?.status || '—')} · ${idr(venues.indodax_real?.equity_idr || 0)}`);
   setT('kpi-indodax-sub', venues.indodax_real?.allow_orders ? 'orders on' : 'orders off');
-  setT('kpi-phantom', `${esc(venues.phantom?.status || '—')} · ${idr(venues.phantom?.total_value_idr || 0)}`);
-  setT('kpi-phantom-sub', venues.phantom?.allow_orders ? 'orders on' : 'orders off');
+  setT('kpi-cash-reserve', idr(port.cash_idr ?? port.idr_cash ?? 0));
+  setT('kpi-cash-reserve-sub', 'Indodax-only');
 
   // Logs — activity
   const events = (data.events || []).filter(e => !NOISE_RE.test(e.message||''));
-  const allowTags = new Set(['BUY','BUY PENDING','SELL PENDING','BUY REJECTED','SELL REJECTED','SWAP','SELL PROFIT','SELL LOSS','STALE','COUNCIL REPORT']);
+  const allowTags = new Set(['BUY','BUY PENDING','SELL PENDING','BUY REJECTED','SELL REJECTED','SELL PROFIT','SELL LOSS','STALE','COUNCIL REPORT']);
   const activityEvents = events.filter(e => allowTags.has(String(e.tag || '').toUpperCase()));
   if (activityEvents.length) {
     activityEvents.slice(0,5).reverse().forEach(e => pushLog(_actLog,'activity-log',{message:e.message,tag:String(e.tag || 'SYSTEM EVENT').toUpperCase()}));
@@ -1094,16 +969,14 @@ function renderDashboardPanels(data) {
         <div class="panel-card">
           <div class="panel-card__title">Venue Status</div>
           ${row('Indodax', venues.indodax_real || {})}
-          ${row('Phantom', venues.phantom || {})}
-          ${row('Polymarket', venues.polymarket || {})}
           ${row('Cash Wait', venues.cash_wait || {})}
         </div>
         <div class="panel-card">
-          <div class="panel-card__title">Phantom Treasury</div>
-          ${renderKeyValue('SOL', (venues.phantom?.sol_balance || 0).toFixed(4))}
-          ${renderKeyValue('USDC', (venues.phantom?.usdc_balance || 0).toFixed(2))}
-          ${renderKeyValue('Base IDRX', idr(venues.phantom?.base_idrx_balance || 0))}
-          ${renderKeyValue('Total Value', idr(venues.phantom?.total_value_idr || 0))}
+          <div class="panel-card__title">Indodax Money Truth</div>
+          ${renderKeyValue('Cash', idr(portfolio.cash_idr || portfolio.idr_cash || 0))}
+          ${renderKeyValue('Held Coin Value', idr(portfolio.held_coin_value_idr || portfolio.coin_holdings_idr || 0))}
+          ${renderKeyValue('Total Equity', idr(portfolio.total_equity_idr || 0))}
+          ${renderKeyValue('Venue Lock', (venues.indodax_real || {}).reason || '—', 'mono')}
         </div>
       </div>`;
   }
@@ -1263,16 +1136,6 @@ function ensureAgentCardsCreated() {
         <span id="indodax-balance-status">WAIT</span>
         <span id="risk-remaining-status" style="display:none"></span>
       `;
-  } else if (agentId === 'polymarket') {
-    metricHtml = `
-        <span id="polymarket-metric">—</span>
-        <span id="poly-metric" style="display:none"></span>
-      `;
-  } else if (agentId === 'phantom') {
-    metricHtml = `
-        <span id="phantom-metric">—</span>
-        <span id="phantom-route-metric" style="display:none"></span>
-      `;
   }
 
     card.innerHTML = `
@@ -1320,8 +1183,6 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   };
   syncBadge('gate-live-trading');
-  syncBadge('gate-bridge');
-  syncBadge('gate-swap');
   syncBadge('gate-withdrawal');
   syncBadge('gate-allow-new-orders');
   ensureAgentCardsCreated();

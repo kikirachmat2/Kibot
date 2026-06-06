@@ -9,7 +9,6 @@ def main() -> None:
     reset_path = Path("state/recovery_reset_plan.json")
     growth_path = Path("state/net_growth_audit.json")
     fill_path = Path("state/fill_quality_audit.json")
-    phantom_path = Path("state/phantom_quote_diagnosis.json")
     if not reset_path.exists():
         raise SystemExit("FAIL:RECOVERY_RESET_PLAN_MISSING")
     reset = json.loads(reset_path.read_text())
@@ -31,11 +30,6 @@ def main() -> None:
     if str(fill.get("status") or "").upper() == "ACCOUNTING_ERROR" and bool(reset.get("scale_up", True)):
         raise SystemExit("FAIL:RECOVERY_UNLOCK_SCALE_UP_ON_ACCOUNTING_ERROR")
 
-    if phantom_path.exists():
-        phantom = json.loads(phantom_path.read_text())
-        if str(phantom.get("status") or "").upper() == "QUOTES_NOT_OK":
-            if bool(phantom.get("targets_checked", 0)) > 0:
-                pass
     print("OK:RECOVERY_UNLOCK_SAFETY")
 
 

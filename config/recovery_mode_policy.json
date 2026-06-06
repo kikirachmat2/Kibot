@@ -9,7 +9,6 @@
     "lock_new_indodax_entries_until_next_daily_reset": true,
     "allow_exit_management": true,
     "allow_accounting_repair": true,
-    "allow_phantom_pipeline_trace": true,
     "allow_micro_probe": false,
     "disable_scale_up": true,
     "disable_unknown_source_scale_up": true,

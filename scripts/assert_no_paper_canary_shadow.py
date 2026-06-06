@@ -28,8 +28,6 @@ def main() -> int:
         root / "state" / "daily_equity_anchor_lock.json",
         root / "state" / "scanner_executor_contract.json",
         root / "state" / "indodax_top_targets.json",
-        root / "state" / "phantom_top_targets.json",
-        root / "state" / "capital_movement_runtime.json",
     ]
     for file in files:
         if not file.exists():
@@ -47,4 +45,3 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-

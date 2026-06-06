@@ -29,24 +29,12 @@ try:
 except ImportError:
     MarketRotationEngine = None
 
-try:
-    from Core.Web3.web3_opportunity_scanner import Web3OpportunityScanner
-except ImportError:
-    Web3OpportunityScanner = None
-
-try:
-    from Core.Scanner.market_wide_wave_scanner import MarketWideWaveScanner
-except ImportError:
-    MarketWideWaveScanner = None
-
-
 class ScannerEngine:
     def __init__(self, scanners: Sequence[Any] | None = None, interval_s: int | None = None):
         self.interval_s = int(interval_s or os.getenv("SCAN_INTERVAL_S", "2"))
         self.poly_interval_s = int(os.getenv("POLY_SCAN_INTERVAL_S", "30"))
         self.scanners: List[Any] = list(scanners or self._build_scanners())
         self.direct_indodax_dispatch = os.getenv("KIBOT_SCANNER_DIRECT_INDODAX", "0").strip().lower() in {"1", "true", "yes", "on"}
-        self.direct_polymarket_dispatch = False if KiConfig.INDODAX_ONLY else os.getenv("KIBOT_SCANNER_DIRECT_POLYMARKET", "0").strip().lower() in {"1", "true", "yes", "on"}
         
         # Now centralized on localhost (Batam Internal)
         self.target_host = "127.0.0.1"
@@ -56,15 +44,10 @@ class ScannerEngine:
         self.last_prices = {} # For Delta Filtering
         self.seq_id = 0
         self.is_running = True
-        self._last_poly_scan = 0.0
         self._last_heatmap_refresh = 0.0
         self._heatmap_interval_s = float(os.getenv("KIBOT_HEATMAP_REFRESH_SEC", "60") or 60)
-        self._last_web3_scan = 0.0
-        self._web3_scan_interval_s = float(os.getenv("KIBOT_WEB3_SCAN_INTERVAL_SEC", "30") or 30)
         self._last_ai_trace_refresh = 0.0
         self._ai_trace_interval_s = float(os.getenv("KIBOT_AI_TRACE_REFRESH_SEC", "60") or 60)
-        self._last_market_wide_scan = 0.0
-        self._market_wide_scan_interval_s = float(os.getenv("KIBOT_MARKET_WIDE_SCAN_INTERVAL_SEC", "120") or 120)
 
         # LeadLag alpha engine setup
         self.leadlag_enabled = os.getenv("KIBOT_LEADLAG_ENABLED", "true").strip().lower() in {"1", "true", "yes", "on"}
@@ -80,18 +63,6 @@ class ScannerEngine:
             logger.info("✅ Market Rotation Engine initialized in HFT Scanner.")
         else:
             self.rotation_engine = None
-
-        if Web3OpportunityScanner is not None and KiConfig.SCANNER_ENABLE_WEB3:
-            self.web3_scanner = Web3OpportunityScanner()
-            logger.info("✅ Web3 Opportunity Scanner initialized in HFT Scanner.")
-        else:
-            self.web3_scanner = None
-
-        if MarketWideWaveScanner is not None and not KiConfig.INDODAX_ONLY:
-            self.market_wide_scanner = MarketWideWaveScanner()
-            logger.info("✅ Market-Wide Wave Scanner initialized in HFT Scanner.")
-        else:
-            self.market_wide_scanner = None
 
         # Turbo Adaptive Mode setup
         self.scanner_turbo = os.getenv("KIBOT_SCANNER_TURBO", "true").strip().lower() in {"1", "true", "yes", "on", "auto"}
@@ -118,13 +89,6 @@ class ScannerEngine:
         exchange = str(signal.get("exchange") or "UNKNOWN").upper().strip()
         symbol = str(signal.get("symbol") or signal.get("base_symbol") or "UNK").upper().strip()
 
-        if exchange == "POLYMARKET":
-            meta = signal.get("meta") if isinstance(signal.get("meta"), dict) else {}
-            market_id = str(meta.get("market_id") or signal.get("market_id") or symbol).upper().strip()
-            outcome_index = meta.get("outcome_index")
-            outcome_suffix = f":{outcome_index}" if outcome_index is not None else ""
-            return f"{exchange}:{market_id}{outcome_suffix}"
-
         if exchange == "INDODAX":
             return f"{exchange}:{symbol}"
 
@@ -137,8 +101,6 @@ class ScannerEngine:
     def _normalize_price(self, exchange: str, signal: Dict[str, Any]) -> Any:
         if exchange == "INDODAX":
             raw_price = signal.get("price_idr", signal.get("price", 0))
-        elif exchange == "POLYMARKET":
-            raw_price = signal.get("price", 0)
         else:
             raw_price = signal.get("price_usdt", signal.get("price", 0))
 
@@ -163,16 +125,6 @@ class ScannerEngine:
             except Exception as fallback_exc:
                 logger.error(f"⚠️ Failed to build fallback Indodax scanner: {fallback_exc}")
             
-        if KiConfig.INDODAX_ONLY:
-            return scanners
-
-        try:
-            from Core.Scanner.ki_polymarket_full_scanner import PolymarketFullScanner
-            scanners.append(PolymarketFullScanner())
-            logger.info("✅ Polymarket Full Scanner integrated.")
-        except Exception as e:
-            logger.error(f"⚠️ Failed to build Polymarket scanner: {e}")
-
         if not KiConfig.SCANNER_ENABLE_UNIVERSAL:
             return scanners
 
@@ -328,11 +280,6 @@ class ScannerEngine:
 
         selected_scanners = []
         for scanner in self.scanners:
-            exchange = str(getattr(scanner, "exchange", "UNKNOWN")).upper()
-            if exchange == "POLYMARKET":
-                if started_at - self._last_poly_scan < self.poly_interval_s:
-                    continue
-                self._last_poly_scan = started_at
             selected_scanners.append(scanner)
 
         with ThreadPoolExecutor(max_workers=max(1, len(selected_scanners))) as executor:
@@ -340,15 +287,12 @@ class ScannerEngine:
             
         # Group signals by destination
         indo_signals = []
-        poly_signals = []
         
         for res in results:
             for s in res["signals"]:
                 ex = s.get("exchange")
                 if ex == "INDODAX":
                     indo_signals.append(s)
-                elif ex == "POLYMARKET":
-                    poly_signals.append(s)
                 elif ex == "UNIVERSAL_LEAD":
                     if not hasattr(self, 'universal_signals'): self.universal_signals = []
                     self.universal_signals.append(s)
@@ -389,25 +333,13 @@ class ScannerEngine:
         elif indo_signals:
             logger.debug(f"[SCANNER] Seq:{self.seq_id} | {len(indo_signals)} INDO signals routed to Council only.")
 
-        # Dispatch Polymarket
-        if poly_signals and self.direct_polymarket_dispatch:
-            data = {
-                "seq_id": self.seq_id,
-                "ts": int(started_at * 1000),
-                "signals": poly_signals
-            }
-            await self._dispatch(KiConfig.POLY_SIGNAL_PORT, data, secret)
-            logger.debug(f"[SCANNER] Seq:{self.seq_id} | Dispatched {len(poly_signals)} HMAC-signed POLY signals.")
-        elif poly_signals:
-            logger.debug(f"[SCANNER] Seq:{self.seq_id} | {len(poly_signals)} POLY signals routed to Council only.")
-
         # NEW: Dispatch to MasterNode (Council) for high-level deliberation.
         # Universal lead-lag items are useful context, but they are not directly
         # executable. Do not wake Council for universal-only slates or it wastes
         # AI budget debating non-tradeable exchange names.
         universal_signals = getattr(self, 'universal_signals', [])
-        all_signals = indo_signals + poly_signals + universal_signals
-        tradeable_signals = indo_signals + poly_signals
+        all_signals = indo_signals + universal_signals
+        tradeable_signals = indo_signals
         dispatch_signals = all_signals if tradeable_signals else []
         if dispatch_signals:
             data = {
@@ -436,7 +368,6 @@ class ScannerEngine:
                 "generated_at": datetime.now(timezone.utc).isoformat(),
                 "total": len(all_signals),
                 "indodax_count": len(indo_signals),
-                "polymarket_count": len(poly_signals),
                 "universal_count": len(getattr(self, "universal_signals", [])),
                 "top": ranked[:25],
             }
@@ -463,20 +394,6 @@ class ScannerEngine:
                 fetch_indodax_heatmap(persist=True, timeout=6.0)
             except Exception as _heatmap_err:
                 logger.debug(f"[Scanner] heatmap refresh skipped: {_heatmap_err}")
-
-        if self.web3_scanner and (started_at - self._last_web3_scan >= self._web3_scan_interval_s):
-            self._last_web3_scan = started_at
-            try:
-                try:
-                    from Core.Support.ki_config import STATE_DIR
-                    web3_state = Path(STATE_DIR) / "web3_opportunities.json"
-                    if web3_state.exists():
-                        web3_state.touch()
-                except Exception as _touch_err:
-                    logger.debug(f"[Scanner] web3 heartbeat touch skipped: {_touch_err}")
-                await self.web3_scanner.scan()
-            except Exception as _web3_err:
-                logger.debug(f"[Scanner] web3 opportunity scan skipped: {_web3_err}")
 
         if started_at - self._last_ai_trace_refresh >= self._ai_trace_interval_s:
             self._last_ai_trace_refresh = started_at
@@ -507,13 +424,6 @@ class ScannerEngine:
                 Path(tmp.name).replace(trace_path)
             except Exception as _ai_err:
                 logger.debug(f"[Scanner] ai_decision_trace heartbeat skipped: {_ai_err}")
-
-        if self.market_wide_scanner and (started_at - self._last_market_wide_scan >= self._market_wide_scan_interval_s):
-            self._last_market_wide_scan = started_at
-            try:
-                await self.market_wide_scanner.scan()
-            except Exception as _mw_err:
-                logger.debug(f"[Scanner] market-wide wave scan skipped: {_mw_err}")
 
         # ── §17.2 Persist best Indodax signal for dashboard Signal Intel panel ──
         if indo_signals:

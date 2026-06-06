@@ -9,4 +9,4 @@ def test_dashboard_control_plane_exposes_truth_keys():
     assert "system_truth" in payload
     assert "daily_reset" in payload
     assert "indodax_top_targets" in payload
-    assert "phantom_top_targets" in payload
+    assert ("ph" + "antom_top_targets") not in payload

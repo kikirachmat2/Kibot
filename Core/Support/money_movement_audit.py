@@ -88,8 +88,6 @@ def load_state_bundle(state_dir: Path | None = None) -> Dict[str, Any]:
         "risk_state": _read_json(state_dir / "risk_state.json", {}),
         "workflow": _read_json(state_dir / "workflow_automation.json", {}),
         "indodax_targets": _read_json(state_dir / "indodax_top_targets.json", {}),
-        "phantom_targets": _read_json(state_dir / "phantom_top_targets.json", {}),
-        "phantom_rpc_health": _read_json(state_dir / "phantom_rpc_health.json", {}),
         "server_telemetry": _read_json(state_dir / "server_telemetry.json", {}),
         "ai_patrol": _read_json(state_dir / "ai_patrol.json", {}),
         "ai_system_inventory": _read_json(state_dir / "ai_system_inventory.json", {}),
@@ -144,8 +142,6 @@ def money_movement_status(bundle: Dict[str, Any]) -> Dict[str, Any]:
     risk = bundle.get("risk_state", {})
     workflow = bundle.get("workflow", {})
     targets_indo = bundle.get("indodax_targets", {})
-    targets_phantom = bundle.get("phantom_targets", {})
-    rpc_health = bundle.get("phantom_rpc_health", {})
 
     live_fresh = bool(live_truth.get("updated_at"))
     canonical_state = str(no_trade.get("canonical_risk_state") or "UNKNOWN").upper()
@@ -205,9 +201,9 @@ def money_movement_status(bundle: Dict[str, Any]) -> Dict[str, Any]:
         "ev_bottleneck": any(token in dominant_reason.upper() for token in ("EV", "EXPECTED_VALUE", "INSUFFICIENT_HISTORY")),
         "scanner_bottleneck": any(token in dominant_reason.lower() for token in ("scanner", "no_targets", "no_candidates", "strategy_no_edge")),
         "executor_bottleneck": any(token in dominant_reason.lower() for token in ("executor", "submitted", "filled", "dispatch")),
-        "venue_bottleneck": bool(rpc_health) and str(rpc_health.get("status") or "").upper() not in {"OK", "HEALTHY", "RECONCILED"},
+        "venue_bottleneck": False,
         "strategy_bottleneck": any(token in dominant_reason.lower() for token in ("strategy", "edge", "no_edge", "market")),
-        "recommended_action": _recommend_action(status, dominant_reason, c24, o24, t24, no_trade, capital, workflow, targets_indo, targets_phantom, rpc_health),
+        "recommended_action": _recommend_action(status, dominant_reason, c24, o24, t24, no_trade, capital, workflow, targets_indo),
         "live_truth": live_truth,
         "no_trade_forensics": no_trade,
         "opportunity_funnel": funnel,
@@ -253,7 +249,6 @@ def candidate_pipeline_audit(bundle: Dict[str, Any]) -> Dict[str, Any]:
 
     return {
         "indodax": _venue_block("indodax", bundle.get("indodax_targets", {})),
-        "phantom": _venue_block("phantom", bundle.get("phantom_targets", {})),
         "updated_at": datetime.now(timezone.utc).isoformat(),
     }
 
@@ -372,7 +367,7 @@ def server_support_audit(bundle: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 
-def _recommend_action(status: str, dominant_reason: str, candidates: List[dict], orders: List[dict], trades: List[dict], no_trade: Dict[str, Any], capital: Dict[str, Any], workflow: Dict[str, Any], targets_indo: Dict[str, Any], targets_phantom: Dict[str, Any], rpc_health: Dict[str, Any]) -> str:
+def _recommend_action(status: str, dominant_reason: str, candidates: List[dict], orders: List[dict], trades: List[dict], no_trade: Dict[str, Any], capital: Dict[str, Any], workflow: Dict[str, Any], targets_indo: Dict[str, Any]) -> str:
     if status == "BROKEN":
         return "repair runtime freshness / services"
     if status == "BLOCKED":
@@ -385,7 +380,7 @@ def _recommend_action(status: str, dominant_reason: str, candidates: List[dict],
         return "continue scan and allow A_PLUS when ready"
     if status == "MOVING":
         return "monitor fills and preserve risk discipline"
-    if not candidates and (targets_indo or targets_phantom):
+    if not candidates and targets_indo:
         return "candidate pipeline likely broken; inspect tier classifier integration"
     if not candidates:
         return "widen safe universe and keep scanning"

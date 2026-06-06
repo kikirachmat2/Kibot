@@ -110,15 +110,14 @@ class KiConfig:
     CANARY_AUTO_ROLLBACK = _env_flag("KIBOT_CANARY_AUTO_ROLLBACK", "true")
     LEGACY_TRADING_MODES_DISABLED = TRADING_MODE == LIVE_ONLY
 
-    # --- WEB3 SAFETY GATES ---
-    PHANTOM_ENABLED = False if INDODAX_ONLY else _env_flag("KIBOT_PHANTOM_ENABLED", "false")
-    ENABLE_REAL_SWAP = False if INDODAX_ONLY else _env_flag("KIBOT_ENABLE_REAL_SWAP", "false")
+    # --- REMOVED CROSS-CHAIN SAFETY GATES ---
+    ENABLE_REAL_SWAP = False
     ENABLE_REAL_BRIDGE = False
     ENABLE_REAL_WITHDRAWAL = False
-    ENABLE_POLYMARKET_LIVE = False if INDODAX_ONLY else _env_flag("KIBOT_ENABLE_POLYMARKET_LIVE", "false")
-    SCANNER_ENABLE_POLYMARKET = False if INDODAX_ONLY else _env_flag("KIBOT_SCANNER_ENABLE_POLYMARKET", "false")
-    SCANNER_ENABLE_WEB3 = False if INDODAX_ONLY else _env_flag("KIBOT_SCANNER_ENABLE_WEB3", "false")
-    SCANNER_ENABLE_UNIVERSAL = False if INDODAX_ONLY else _env_flag("KIBOT_SCANNER_ENABLE_UNIVERSAL", "false")
+    ENABLE_POLYMARKET_LIVE = False
+    SCANNER_ENABLE_POLYMARKET = False
+    SCANNER_ENABLE_WEB3 = False
+    SCANNER_ENABLE_UNIVERSAL = False
     
     # --- AI & OLLAMA GUARDRAILS ---
     LLM_ENABLED = _env_flag("KIBOT_LLM_ENABLED", "true")
@@ -148,7 +147,6 @@ class KiConfig:
     # --- PORTS ---
     UDP_SIGNAL_PORT = 9999      # Default signal port
     INDO_SIGNAL_PORT = 9998     # Indodax specific
-    POLY_SIGNAL_PORT = 9990     # Polymarket specific
     COMMAND_PLANE_PORT = 9991
     
     # --- SECURITY ---

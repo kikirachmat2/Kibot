@@ -7,7 +7,6 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 from Core.Treasury.allocation_policy import AllocationPolicy
 from Core.Treasury.venue_ledger import VenueLedger
-from Core.Treasury.phantom_treasury import PhantomTreasury
 from Core.Treasury.capital_governor import CapitalGovernor, GOVERNOR_FILE
 from Core.risk_gate import RiskGate
 from Core.Support.ki_config import KiConfig
@@ -17,7 +16,6 @@ def _isolate_runtime_state(monkeypatch, tmp_path: Path) -> Path:
     """Keep tests from mutating the operator's live state directory."""
     import Core.Treasury.capital_governor as capital_module
     import Core.Treasury.venue_ledger as ledger_module
-    import Core.Treasury.phantom_treasury as phantom_module
     import Core.risk_gate as risk_module
 
     tmp_path.mkdir(parents=True, exist_ok=True)
@@ -26,13 +24,6 @@ def _isolate_runtime_state(monkeypatch, tmp_path: Path) -> Path:
     monkeypatch.setattr(capital_module, "ANCHOR_FILE", tmp_path / "daily_equity_anchor.json")
     monkeypatch.setattr(ledger_module, "STATE_DIR", tmp_path)
     monkeypatch.setattr(ledger_module, "LEDGER_FILE", tmp_path / "venue_ledger.json")
-    monkeypatch.setattr(phantom_module, "STATE_DIR", tmp_path)
-    monkeypatch.setattr(phantom_module, "PHANTOM_STATE_FILE", tmp_path / "phantom_treasury.json")
-    monkeypatch.setattr(
-        phantom_module,
-        "PHANTOM_RECONCILIATION_FILE",
-        tmp_path / "TREASURY_RECONCILIATION_REQUIRED",
-    )
     monkeypatch.setattr(risk_module, "STATE_DIR", tmp_path)
     monkeypatch.setattr(risk_module, "RISK_STATE_FILE", tmp_path / "risk_state.json")
     monkeypatch.setitem(globals(), "GOVERNOR_FILE", tmp_path / "capital_governor.json")
@@ -41,18 +32,15 @@ def _isolate_runtime_state(monkeypatch, tmp_path: Path) -> Path:
 
 def test_allocation_policy():
     policy = AllocationPolicy()
-    
-    # If Phantom balance is 0 or negative
+
     targets_zero = policy.compute_targets(0.0)
-    assert targets_zero["indodax"] == 0.80
-    assert targets_zero["phantom"] == 0.00
-    assert targets_zero["reserve"] == 0.20
-    
-    # If Phantom balance is positive
+    assert targets_zero["indodax"] == 0.85
+    assert targets_zero["reserve"] == 0.15
+
     targets_pos = policy.compute_targets(150000.0)
-    assert targets_pos["indodax"] == 0.60
-    assert targets_pos["phantom"] == 0.25
+    assert targets_pos["indodax"] == 0.85
     assert targets_pos["reserve"] == 0.15
+    assert set(targets_pos) == {"indodax", "reserve"}
 
 def test_venue_ledger(monkeypatch, tmp_path):
     _isolate_runtime_state(monkeypatch, tmp_path)
@@ -60,42 +48,14 @@ def test_venue_ledger(monkeypatch, tmp_path):
     
     # Test setting and updating venues
     ledger.update_venue("indodax_real", equity_idr=250000.0)
-    ledger.update_venue("phantom", equity_idr=50000.0)
     
     v_indo = ledger.get_venue("indodax_real")
     assert v_indo["equity_idr"] == 250000.0
-    
-    v_phantom = ledger.get_venue("phantom")
-    assert v_phantom["equity_idr"] == 50000.0
-
-@pytest.mark.anyio
-async def test_phantom_treasury(monkeypatch, tmp_path):
-    _isolate_runtime_state(monkeypatch, tmp_path)
-    # Mock PhantomRouter
-    router = MagicMock()
-    router.wallet_address = "0xPhantomWalletAddress"
-    router.get_balances = AsyncMock(return_value={
-        "usdc_balance": 10.0,
-        "sol_balance": 0.5,
-        "matic_balance": 0.0
-    })
-    
-    # Force mock KiConfig settings for a clean state
-    with patch.object(KiConfig, "ENABLE_POLYMARKET_LIVE", False):
-        treasury = PhantomTreasury(router)
-        # Reconcile
-        await treasury.reconcile_balances()
-        summary = treasury.get_summary()
-        
-        assert summary["usdc_balance"] == 10.0
-        assert summary["sol_balance"] == 0.5
-        # Total: usdc ($10) + sol (0.5 * $170 = $85) = $95 * 16,000 IDR = 1,520,000 IDR
-        assert summary["total_value_idr"] == 95.0 * 16000.0
 
 @pytest.mark.anyio
 async def test_capital_governor_drawdown_enforcement(monkeypatch, tmp_path):
     _isolate_runtime_state(monkeypatch, tmp_path)
-    # Setup mock Indodax and Phantom router
+    # Setup mock Indodax gateway
     indodax = AsyncMock()
     indodax.get_info = AsyncMock(return_value={
         "success": 1,
@@ -106,26 +66,17 @@ async def test_capital_governor_drawdown_enforcement(monkeypatch, tmp_path):
         }
     })
     
-    router = MagicMock()
-    router.wallet_address = "0xPhantomWalletAddress"
-    router.get_balances = AsyncMock(return_value={
-        "usdc_balance": 5.0,
-        "sol_balance": 0.0,
-        "matic_balance": 0.0
-    })
-    
     # Enforce LIVE_TRADING_ENABLED = True for the test so we calculate with real Indodax
-    with patch.object(KiConfig, "LIVE_TRADING_ENABLED", True), \
-         patch.object(KiConfig, "ENABLE_POLYMARKET_LIVE", False):
+    with patch.object(KiConfig, "LIVE_TRADING_ENABLED", True):
          
-        governor = CapitalGovernor(indodax, router)
+        governor = CapitalGovernor(indodax, None)
         
         # Reset starting to 0 so check_daily_reset initializes it
         governor.start_total_equity_idr = 0.0
         
         # Reconcile capital
         gov_data = await governor.reconcile_governor()
-        # Indodax-only total_equity = Indodax cash only; retired Phantom is excluded.
+        # Indodax-only total_equity = Indodax cash only.
         assert gov_data["current_total_equity_idr"] == 100000.0
         assert gov_data["total_balance_idr"] == 100000.0
         assert gov_data["combined_pnl_idr"] == gov_data["daily_pnl_idr"]
@@ -164,17 +115,8 @@ async def test_capital_governor_global_hard_stop_flags_blocked(monkeypatch, tmp_
         }
     })
 
-    router = MagicMock()
-    router.wallet_address = "0xPhantomWalletAddress"
-    router.get_balances = AsyncMock(return_value={
-        "usdc_balance": 5.0,
-        "sol_balance": 0.0,
-        "matic_balance": 0.0
-    })
-
-    with patch.object(KiConfig, "LIVE_TRADING_ENABLED", True), \
-         patch.object(KiConfig, "ENABLE_POLYMARKET_LIVE", False):
-        governor = CapitalGovernor(indodax, router)
+    with patch.object(KiConfig, "LIVE_TRADING_ENABLED", True):
+        governor = CapitalGovernor(indodax, None)
         governor.start_total_equity_idr = 100000.0
         governor.current_total_equity_idr = 95000.0
         governor.max_daily_loss_idr = 1500.0
@@ -192,7 +134,7 @@ async def test_capital_governor_global_hard_stop_flags_blocked(monkeypatch, tmp_
 @pytest.mark.anyio
 async def test_capital_governor_flows_and_hardenings(monkeypatch, tmp_path):
     _isolate_runtime_state(monkeypatch, tmp_path)
-    # Setup mock Indodax and Phantom router
+    # Setup mock Indodax gateway
     indodax = AsyncMock()
     indodax.get_info = AsyncMock(return_value={
         "success": 1,
@@ -201,14 +143,6 @@ async def test_capital_governor_flows_and_hardenings(monkeypatch, tmp_path):
                 "idr": 200000.0
             }
         }
-    })
-    
-    router = MagicMock()
-    router.wallet_address = "0xPhantomWalletAddress"
-    router.get_balances = AsyncMock(return_value={
-        "usdc_balance": 5.0,
-        "sol_balance": 0.0,
-        "matic_balance": 0.0
     })
     
     # 1. Test transfer parsing & PnL accounting
@@ -232,10 +166,9 @@ async def test_capital_governor_flows_and_hardenings(monkeypatch, tmp_path):
         for r in records:
             f.write(json.dumps(r) + "\n")
             
-    with patch.object(KiConfig, "LIVE_TRADING_ENABLED", True), \
-         patch.object(KiConfig, "ENABLE_POLYMARKET_LIVE", False):
+    with patch.object(KiConfig, "LIVE_TRADING_ENABLED", True):
          
-        governor = CapitalGovernor(indodax, router)
+        governor = CapitalGovernor(indodax, None)
         governor.start_total_equity_idr = 0.0
         
         gov_data = await governor.reconcile_governor()
@@ -287,7 +220,7 @@ async def test_capital_governor_flows_and_hardenings(monkeypatch, tmp_path):
 @pytest.mark.anyio
 async def test_capital_governor_manual_reset(monkeypatch, tmp_path):
     _isolate_runtime_state(monkeypatch, tmp_path)
-    # Setup mock Indodax and Phantom router
+    # Setup mock Indodax gateway
     indodax = AsyncMock()
     indodax.get_info = AsyncMock(return_value={
         "success": 1,
@@ -296,14 +229,6 @@ async def test_capital_governor_manual_reset(monkeypatch, tmp_path):
                 "idr": 200000.0
             }
         }
-    })
-    
-    router = MagicMock()
-    router.wallet_address = "0xPhantomWalletAddress"
-    router.get_balances = AsyncMock(return_value={
-        "usdc_balance": 5.0,
-        "sol_balance": 0.0,
-        "matic_balance": 0.0
     })
     
     from Core.Treasury.capital_governor import STATE_DIR
@@ -323,10 +248,9 @@ async def test_capital_governor_manual_reset(monkeypatch, tmp_path):
         for r in records:
             f.write(json.dumps(r) + "\n")
             
-    with patch.object(KiConfig, "LIVE_TRADING_ENABLED", True), \
-         patch.object(KiConfig, "ENABLE_POLYMARKET_LIVE", False):
+    with patch.object(KiConfig, "LIVE_TRADING_ENABLED", True):
          
-        governor = CapitalGovernor(indodax, router)
+        governor = CapitalGovernor(indodax, None)
         governor.start_total_equity_idr = 0.0
         
         gov_data = await governor.reconcile_governor()
@@ -375,14 +299,6 @@ async def test_capital_governor_includes_open_buy_reserve(monkeypatch, tmp_path)
         }
     })
 
-    router = MagicMock()
-    router.wallet_address = "0xPhantomWalletAddress"
-    router.get_balances = AsyncMock(return_value={
-        "usdc_balance": 5.0,
-        "sol_balance": 0.0,
-        "matic_balance": 0.0
-    })
-
     orders_dir = tmp_path / "orders"
     orders_dir.mkdir(parents=True, exist_ok=True)
     (orders_dir / "_index.json").write_text(json.dumps({
@@ -404,13 +320,12 @@ async def test_capital_governor_includes_open_buy_reserve(monkeypatch, tmp_path)
         "exchange_order_id": "ex_buy_123",
     }), encoding="utf-8")
 
-    with patch.object(KiConfig, "LIVE_TRADING_ENABLED", True), \
-         patch.object(KiConfig, "ENABLE_POLYMARKET_LIVE", False):
-        governor = CapitalGovernor(indodax, router)
+    with patch.object(KiConfig, "LIVE_TRADING_ENABLED", True):
+        governor = CapitalGovernor(indodax, None)
         governor.start_total_equity_idr = 0.0
 
         gov_data = await governor.reconcile_governor()
 
-        # 75k cash + 25k reserved order; retired Phantom is excluded.
+        # 75k cash + 25k reserved order.
         assert gov_data["current_total_equity_idr"] == 100000.0
         assert gov_data["open_buy_order_reserve_idr"] == 25000.0

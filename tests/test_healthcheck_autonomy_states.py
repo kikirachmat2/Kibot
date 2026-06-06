@@ -11,11 +11,8 @@ def create_valid_base_files(state_dir):
     (state_dir / "scanner_runtime.json").write_text(json.dumps({
         "current_interval": 2.0, "mode": "NORMAL", "telemetry": {"cpu_percent": 0.0}
     }))
-    (state_dir / "phantom_scout.json").write_text(json.dumps({
-        "active_rpc": "https://api.mainnet-beta.solana.com", "failed_rpcs": []
-    }))
     (state_dir / "market_rotation.json").write_text(json.dumps({
-        "allocations_pct": {"Indodax": 25.0, "Polymarket": 25.0, "Phantom": 25.0, "CASH_WAIT": 25.0}
+        "allocations_pct": {"Indodax": 85.0, "CASH_WAIT": 15.0}
     }))
     (state_dir / "punishment_state.json").write_text(json.dumps({
         "schema_version": 1, "status": "idle", "records": {}, "quarantined": []
@@ -121,4 +118,3 @@ def test_healthcheck_cpu_guardrails(tmp_path, monkeypatch):
     monkeypatch.setenv("KIBOT_DISABLE_CPU_HEALTHCHECK", "true")
     # Should run successfully without exiting
     check_json_states(tmp_path)
-

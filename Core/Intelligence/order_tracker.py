@@ -4,7 +4,7 @@ KiBot Order Lifecycle Tracker
 §16.2 — Order Lifecycle State Tracking
 
 Tracks every order from CREATED → RECONCILED.
-Bridges the gap between SUBMITTED and actual FILLED state,
+Closes the gap between SUBMITTED and actual FILLED state,
 so the system knows what is real money at risk vs. pending intent.
 
 States:

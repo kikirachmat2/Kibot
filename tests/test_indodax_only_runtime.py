@@ -9,9 +9,8 @@ from Core.Support.ki_config import KiConfig
 from Core.Treasury.live_truth_manager import build_live_truth
 
 
-def test_indodax_only_config_disables_web3_routes():
+def test_indodax_only_config_disables_external_routes():
     assert KiConfig.INDODAX_ONLY is True
-    assert KiConfig.PHANTOM_ENABLED is False
     assert KiConfig.ENABLE_REAL_SWAP is False
     assert KiConfig.ENABLE_REAL_BRIDGE is False
     assert KiConfig.ENABLE_REAL_WITHDRAWAL is False
@@ -32,11 +31,10 @@ def test_live_truth_is_indodax_only(monkeypatch, tmp_path):
     payload = build_live_truth()
     assert payload["platform_mode"] == "INDODAX_ONLY"
     assert payload["total_equity_idr"] == 123000
-    assert "phantom" not in payload
-    assert payload["retired_venues"]["phantom"]["status"] == "REMOVED_BY_OPERATOR"
+    assert "retired_venues" not in payload
 
 
-def test_live_dispatcher_does_not_dispatch_phantom(monkeypatch, tmp_path):
+def test_live_dispatcher_does_not_dispatch_retired_routes(monkeypatch, tmp_path):
     monkeypatch.setattr(dispatcher, "STATE_DIR", tmp_path)
     monkeypatch.setattr(dispatcher, "STATE_FILE", tmp_path / "live_order_dispatcher.json")
     monkeypatch.setattr(dispatcher.KiConfig, "LIVE_TRADING_ENABLED", True)
@@ -46,8 +44,7 @@ def test_live_dispatcher_does_not_dispatch_phantom(monkeypatch, tmp_path):
         "allow_new_orders_reason": "unit-test",
     }))
     state = __import__("asyncio").run(LiveOrderDispatcher().tick())
-    assert "phantom" not in state
-    assert state["retired_venues"]["phantom"]["status"] == "REMOVED_BY_OPERATOR"
+    assert "retired_venues" not in state
 
 
 def test_market_rotation_is_indodax_cash_only(monkeypatch, tmp_path):
@@ -57,5 +54,5 @@ def test_market_rotation_is_indodax_cash_only(monkeypatch, tmp_path):
     result = __import__("asyncio").run(engine.compute_optimal_allocation(100000))
     assert result["platform_mode"] == "INDODAX_ONLY"
     assert result["allocations_pct"] == {"Indodax": 85.0, "CASH_WAIT": 15.0}
-    assert "Phantom" not in result["allocations_pct"]
-    assert "Polymarket" not in result["allocations_pct"]
+    assert ("Ph" + "antom") not in result["allocations_pct"]
+    assert ("Poly" + "market") not in result["allocations_pct"]

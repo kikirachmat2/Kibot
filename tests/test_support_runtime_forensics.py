@@ -28,8 +28,7 @@ def test_sovereign_council_evidence_bundle_initialized():
 def test_live_truth_marks_dust_unsellable(monkeypatch, tmp_path):
     monkeypatch.setattr(live_truth_manager, "STATE_DIR", tmp_path)
     monkeypatch.setattr(live_truth_manager, "LIVE_TRUTH_FILE", tmp_path / "live_truth.json")
-    (tmp_path / "capital_governor.json").write_text(json.dumps({"venues": {"indodax": {"equity_idr": 10, "status": "RECONCILED"}, "phantom": {"equity_idr": 20, "status": "OK"}}, "status": "RECONCILED", "daily_pnl_idr": 1.0}), encoding="utf-8")
-    (tmp_path / "phantom_treasury.json").write_text(json.dumps({"status": "OK", "balances": {"sol": 0.0}}), encoding="utf-8")
+    (tmp_path / "capital_governor.json").write_text(json.dumps({"venues": {"indodax": {"equity_idr": 10, "status": "RECONCILED"}}, "status": "RECONCILED", "daily_pnl_idr": 1.0}), encoding="utf-8")
     (tmp_path / "active_trades.json").write_text(json.dumps({"PEPE/IDR": {"amount": 0.7328859, "price": 1.0, "reason": "EXIT_MINIMUM_NOT_MET"}}), encoding="utf-8")
     (tmp_path / "orders" / "_index.json").parent.mkdir(parents=True, exist_ok=True)
     (tmp_path / "orders" / "_index.json").write_text("{}", encoding="utf-8")
@@ -56,7 +55,6 @@ def test_no_trade_forensics_written(monkeypatch, tmp_path):
         "live_order_dispatcher.json": {"reason": "blocked"},
         "ai_patrol.json": {"support_action": "monitor"},
         "indodax_top_targets.json": {"top_targets": []},
-        "phantom_top_targets.json": {"top_targets": []},
     }.items():
         path = tmp_path / name
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -64,4 +62,3 @@ def test_no_trade_forensics_written(monkeypatch, tmp_path):
     payload = no_trade_forensics.build_no_trade_forensics()
     assert payload["classification"] in {"CAPITAL_BOTTLENECK", "BROKEN_WAIT", "HEALTHY_WAIT", "STRATEGY_NO_EDGE"}
     assert (tmp_path / "no_trade_forensics.json").exists()
-

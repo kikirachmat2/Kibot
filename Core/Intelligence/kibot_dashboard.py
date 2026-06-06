@@ -18,7 +18,7 @@ from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
 from Core.Support.ki_config import PROJECT_ROOT, STATE_DIR, KiConfig
-from Core.Support.growth_audit import audit_daily_controls, audit_fill_quality, audit_net_growth, audit_phantom_non_movement, audit_strategy_symbol_normalization, build_critical_operator_questions
+from Core.Support.growth_audit import audit_daily_controls, audit_fill_quality, audit_net_growth, audit_strategy_symbol_normalization, build_critical_operator_questions
 from Core.Support.strategy_control_actions import build_strategy_control_actions
 from Core.Support.money_movement_audit import ai_support_audit, candidate_pipeline_audit, load_state_bundle, money_movement_status, server_support_audit, strategy_edge_audit
 from Core.Support.risk_truth_reconciler import reconcile_risk_truth
@@ -48,9 +48,6 @@ STATE = Path(STATE_DIR)
 DASHBOARD_DIR = ROOT / "Core" / "Intelligence" / "dashboard"
 LOGS = ROOT / "Logs"
 WIB = ZoneInfo("Asia/Jakarta")
-POLYMARKET_STATE_URL = os.getenv("KIBOT_POLYMARKET_STATE_URL", "http://127.0.0.1:11600/api/state").strip()
-USD_IDR_RATE = float(os.getenv("USD_IDR_RATE", "16000") or 16000)
-
 SERVICE_NAMES = [
     "kibot-master",
     "kibot-scanner",
@@ -61,8 +58,6 @@ SERVICE_NAMES = [
     "ollama",
     "redis-server",
 ]
-if not KiConfig.INDODAX_ONLY:
-    SERVICE_NAMES.extend(["kibot-executor-polymarket", "kibot-pumpfun"])
 
 SERVICE_CACHE: Dict[str, Any] = {"ts": 0.0, "data": {}}
 SERVICE_CACHE_TTL_SEC = 5.0
@@ -303,68 +298,8 @@ def _service_statuses(telemetry: Dict[str, Any]) -> Dict[str, str]:
     return statuses
 
 
-def _load_polymarket_state() -> Dict[str, Any]:
-    try:
-        import urllib.request
-
-        with urllib.request.urlopen(POLYMARKET_STATE_URL, timeout=2.5) as response:
-            payload = json.loads(response.read().decode("utf-8"))
-            return payload if isinstance(payload, dict) else {}
-    except Exception:
-        return {}
-
-
-def _load_phantom_state() -> Dict[str, Any]:
-    return _read_json(STATE / "phantom_scout.json", {})
-
 def _load_shadow_state() -> Dict[str, Any]:
     return _read_json(STATE / "shadow_portfolio.json", {})
-
-
-def _load_web3_state() -> Dict[str, Any]:
-    return _read_json(STATE / "web3_opportunities.json", {})
-
-
-def _load_web3_fee_state() -> Dict[str, Any]:
-    return _read_json(STATE / "web3_fee_state.json", {})
-
-
-def _load_solana_trending_state() -> Dict[str, Any]:
-    return _read_json(STATE / "solana_trending_candidates.json", {})
-
-
-def _load_web3_positions() -> List[Dict[str, Any]]:
-    positions = _read_json(STATE / "web3_positions.json", [])
-    return positions if isinstance(positions, list) else []
-
-
-def _load_web3_exit_state() -> Dict[str, Any]:
-    return _read_json(STATE / "web3_exit_state.json", {})
-
-
-def _load_pumpfun_route_state() -> Dict[str, Any]:
-    return _read_json(STATE / "pumpfun_route_state.json", {})
-
-
-def _load_pumpfun_candidates() -> Dict[str, Any]:
-    return _read_json(STATE / "pumpfun_candidates.json", {})
-
-
-def _load_pumpfun_native_state() -> Dict[str, Any]:
-    return _read_json(STATE / "pumpfun_native_executor_state.json", {})
-
-
-def _load_pumpfun_latency_state() -> Dict[str, Any]:
-    return _read_json(STATE / "pumpfun_latency.json", {})
-
-
-def _load_pumpfun_positions() -> List[Dict[str, Any]]:
-    payload = _read_json(STATE / "pumpfun_positions.json", [])
-    return payload if isinstance(payload, list) else []
-
-
-def _load_pumpfun_exit_state() -> Dict[str, Any]:
-    return _read_json(STATE / "pumpfun_exit_state.json", {})
 
 
 def _load_scanner_executor_contract() -> Dict[str, Any]:
@@ -377,14 +312,6 @@ def _load_engine_independence() -> Dict[str, Any]:
 
 def _load_indodax_no_idle() -> Dict[str, Any]:
     return _read_json(STATE / "indodax_no_idle.json", {})
-
-
-def _load_phantom_capital_mover() -> Dict[str, Any]:
-    return _read_json(STATE / "phantom_capital_mover.json", {})
-
-
-def _load_phantom_network_maximizer() -> Dict[str, Any]:
-    return _read_json(STATE / "phantom_network_maximizer.json", {})
 
 
 def _load_deadline_pressure() -> Dict[str, Any]:
@@ -405,10 +332,6 @@ def _load_target_board_runtime() -> Dict[str, Any]:
 
 def _load_indodax_top_targets() -> Dict[str, Any]:
     return _read_json(STATE / "indodax_top_targets.json", {})
-
-
-def _load_phantom_top_targets() -> Dict[str, Any]:
-    return _read_json(STATE / "phantom_top_targets.json", {})
 
 
 def _load_ai_decision_trace() -> Dict[str, Any]:
@@ -453,10 +376,6 @@ def _load_trade_history() -> Dict[str, Any]:
 
 def _load_indodax_live_brain() -> Dict[str, Any]:
     return _read_json(STATE / "indodax_live_brain.json", {})
-
-
-def _load_phantom_live_brain() -> Dict[str, Any]:
-    return _read_json(STATE / "phantom_live_brain.json", {})
 
 
 def _load_live_order_dispatcher() -> Dict[str, Any]:
@@ -564,23 +483,11 @@ def _build_portfolio(telemetry: Dict[str, Any]) -> Dict[str, Any]:
     portfolio = portfolio if isinstance(portfolio, dict) else {}
     accounting_truth = build_accounting_truth()
     live_truth = _load_live_truth()
-    polymarket_live = {} if KiConfig.INDODAX_ONLY else _load_polymarket_state()
-    polymarket = {} if KiConfig.INDODAX_ONLY else portfolio.get("polymarket") if isinstance(portfolio.get("polymarket"), dict) else {}
-    if polymarket_live and not KiConfig.INDODAX_ONLY:
-        polymarket = {**polymarket, **polymarket_live}
 
     active_positions = _normalize_list(portfolio.get("active_positions") or portfolio.get("positions") or [], limit=10)
     indodax_equity = _safe_float(portfolio.get("equity_idr"), 0.0)
     idr_cash = _safe_float(portfolio.get("idr_cash"), indodax_equity)
     coin_holdings = _safe_float(portfolio.get("coin_holdings_idr"), 0.0)
-    phantom_state = {}
-    phantom_equity_idr = 0.0
-    if not KiConfig.INDODAX_ONLY:
-        phantom_state = _load_phantom_state()
-        phantom_equity_idr = _safe_float(
-            phantom_state.get("total_value_idr"),
-            _safe_float(phantom_state.get("equity_idr"), 0.0),
-        )
     refreshed_positions = []
     refreshed_holdings = 0.0
     for item in active_positions:
@@ -605,21 +512,16 @@ def _build_portfolio(telemetry: Dict[str, Any]) -> Dict[str, Any]:
     if indodax_equity <= 0:
         indodax_equity = idr_cash + coin_holdings
 
-    usdc_balance = _safe_float(polymarket.get("usdc_balance"), 0.0)
-    poly_equity_idr = _safe_float(polymarket.get("equity_idr"), usdc_balance * USD_IDR_RATE)
-    poly_daily_pnl_usd = _safe_float(polymarket.get("daily_pnl_usd"), 0.0)
-    poly_daily_pnl_idr = _safe_float(polymarket.get("daily_pnl_idr"), poly_daily_pnl_usd * USD_IDR_RATE)
-
     # Canonical total balance is the combined live venue equity. The accounting
     # truth layer keeps the dashboard, governor, and daily PnL on the same
     # number even while positions remain open.
-    live_total_equity = _safe_float(live_truth.get("wallet_equity_idr"), indodax_equity + phantom_equity_idr)
+    live_total_equity = _safe_float(live_truth.get("wallet_equity_idr"), indodax_equity)
     snapshot_total_equity = _safe_float(portfolio.get("combined_equity_idr"), _safe_float(portfolio.get("total_balance_idr"), 0.0))
 
     realized_daily_pnl = _safe_float(live_truth.get("realized_pnl_today_idr"), _realized_daily_pnl_idr())
     open_pnl = _active_trade_unrealized_pnl(active_positions)
     unrealized_daily_pnl = _safe_float(open_pnl.get("unrealized_pnl_idr"), 0.0)
-    live_daily_pnl = _safe_float(live_truth.get("net_pnl_today_idr"), realized_daily_pnl + unrealized_daily_pnl + poly_daily_pnl_idr)
+    live_daily_pnl = _safe_float(live_truth.get("net_pnl_today_idr"), realized_daily_pnl + unrealized_daily_pnl)
     live_daily_pnl_pct = (live_daily_pnl / max(live_total_equity if live_total_equity > 0.0 else max(snapshot_total_equity, 1.0), 1.0)) * 100.0
 
     # Load Capital Governor reconciled data if available and fresh for today.
@@ -692,15 +594,6 @@ def _build_portfolio(telemetry: Dict[str, Any]) -> Dict[str, Any]:
         "governor_daily_pnl_pct": _safe_float(gov_data.get("daily_pnl_pct"), daily_pnl_pct) if isinstance(gov_data, dict) else daily_pnl_pct,
         "governor_current_total_equity_idr": _safe_float(gov_data.get("current_total_equity_idr"), combined_equity) if isinstance(gov_data, dict) else combined_equity,
         "active_positions": active_positions,
-        "polymarket": {} if KiConfig.INDODAX_ONLY else {
-            "usdc_balance": usdc_balance,
-            "equity_idr": poly_equity_idr,
-            "daily_pnl_idr": poly_daily_pnl_idr,
-            "daily_pnl_usd": poly_daily_pnl_usd,
-            "active_bets": _normalize_list(polymarket.get("active_bets") or polymarket.get("active_positions") or [], limit=5),
-            "wallet_ready": bool(polymarket.get("wallet_ready")),
-        },
-        "retired_venues": {"phantom": "REMOVED_BY_OPERATOR"} if KiConfig.INDODAX_ONLY else {},
         "shadow": _load_shadow_state(),
     }
 
@@ -814,8 +707,8 @@ def _translate_to_human(agent: str, message: str, tag: str) -> str:
         return "RiskGate mengaudit batas drawdown portofolio. Keamanan modal terjamin di bawah batas harian 1.5%."
     if "OLLAMA" in upper or "MODEL" in upper:
         return "Council sync model."
-    if "BRIDGE" in upper or "FEE" in upper:
-        return "Bridge route checked."
+    if "FEE" in upper:
+        return "Fee model checked."
     if "FIREWALL" in upper or "UFW" in upper or "PORT" in upper:
         return "Firewall checked."
     if "SQLITE" in upper or "DATABASE" in upper:
@@ -841,7 +734,6 @@ def _build_events(summary: Dict[str, Any], limit: int = 30) -> List[Dict[str, st
     strategy_intel = summary.get("strategy_intelligence", {})
     brain = summary.get("autonomous_trading_brain", {})
     indo_brain = summary.get("indodax_live_brain", {})
-    ph_brain = summary.get("phantom_live_brain", {})
     dispatcher = summary.get("live_order_dispatcher", {})
     capital = summary.get("capital", {})
     order_tracker = summary.get("order_tracker", {})
@@ -861,7 +753,7 @@ def _build_events(summary: Dict[str, Any], limit: int = 30) -> List[Dict[str, st
             tag = str(row.get("tag") or "").upper()
             message = str(row.get("message") or "").strip()
             agent = str(row.get("agent") or "Trade")
-            if tag in {"BUY", "BUY PENDING", "SELL PENDING", "BUY REJECTED", "SELL REJECTED", "SELL PROFIT", "SELL LOSS", "SWAP", "STALE"} and message:
+            if tag in {"BUY", "BUY PENDING", "SELL PENDING", "BUY REJECTED", "SELL REJECTED", "SELL PROFIT", "SELL LOSS", "STALE"} and message:
                 add_event(tag, message, agent)
 
     council_state = council.get("decision_state") or council.get("last_decision") or brain.get("reason") or "WAIT"
@@ -1066,33 +958,9 @@ def _build_summary() -> Dict[str, Any]:
     summary["market_heatmap"] = _read_json(STATE / "market_heatmap.json", {})
     summary["green_probability"] = _read_json(STATE / "green_probability.json", {})
     summary["scanner_candidates"] = _read_json(STATE / "scanner_candidates.json", {})
-    if KiConfig.INDODAX_ONLY:
-        summary["web3_opportunities"] = {}
-        summary["solana_trending_candidates"] = {}
-        summary["web3_positions"] = []
-        summary["web3_exit"] = {}
-        summary["pumpfun_route_state"] = {}
-        summary["pumpfun_candidates"] = {}
-        summary["pumpfun_native_executor"] = {}
-        summary["pumpfun_latency"] = {}
-        summary["pumpfun_positions"] = []
-        summary["pumpfun_exit_state"] = {}
-    else:
-        summary["web3_opportunities"] = _load_web3_state()
-        summary["solana_trending_candidates"] = _load_solana_trending_state()
-        summary["web3_positions"] = _load_web3_positions()
-        summary["web3_exit"] = _load_web3_exit_state()
-        summary["pumpfun_route_state"] = _load_pumpfun_route_state()
-        summary["pumpfun_candidates"] = _load_pumpfun_candidates()
-        summary["pumpfun_native_executor"] = _load_pumpfun_native_state()
-        summary["pumpfun_latency"] = _load_pumpfun_latency_state()
-        summary["pumpfun_positions"] = _load_pumpfun_positions()
-        summary["pumpfun_exit_state"] = _load_pumpfun_exit_state()
     summary["scanner_executor_contract"] = _load_scanner_executor_contract()
     summary["engine_independence"] = _load_engine_independence()
     summary["indodax_no_idle"] = _load_indodax_no_idle()
-    summary["phantom_capital_mover"] = {} if KiConfig.INDODAX_ONLY else _load_phantom_capital_mover()
-    summary["phantom_network_maximizer"] = {} if KiConfig.INDODAX_ONLY else _load_phantom_network_maximizer()
     summary["deadline_pressure"] = _load_deadline_pressure()
     summary["server_telemetry"] = _load_server_telemetry()
     summary["scanner_health"] = _load_scanner_health()
@@ -1124,7 +992,6 @@ def _build_summary() -> Dict[str, Any]:
         summary["server_support_audit"] = server_support_audit(bundle)
         summary["net_growth_audit"] = audit_net_growth(bundle)
         summary["fill_quality_audit"] = audit_fill_quality(bundle)
-        summary["phantom_non_movement_audit"] = {} if KiConfig.INDODAX_ONLY else audit_phantom_non_movement(bundle)
         summary["strategy_symbol_normalization_audit"] = audit_strategy_symbol_normalization(bundle)
         summary["daily_controls_audit"] = audit_daily_controls(bundle)
         summary["critical_operator_questions"] = build_critical_operator_questions(bundle)
@@ -1148,7 +1015,6 @@ def _build_summary() -> Dict[str, Any]:
         summary["server_support_audit"] = {}
         summary["net_growth_audit"] = {}
         summary["fill_quality_audit"] = {}
-        summary["phantom_non_movement_audit"] = {}
         summary["strategy_symbol_normalization_audit"] = {}
         summary["daily_controls_audit"] = {}
         summary["critical_operator_questions"] = {}
@@ -1161,23 +1027,12 @@ def _build_summary() -> Dict[str, Any]:
         summary["repo_safety_audit"] = {}
         summary["trading_decision_policy_audit"] = {}
     summary["indodax_top_targets"] = _load_indodax_top_targets()
-    summary["phantom_top_targets"] = {}
     summary["ai_decision_trace"] = _load_ai_decision_trace()
     summary["autonomous_sizing"] = _load_autonomous_sizing_state()
     summary["autonomous_trading_brain"] = _load_autonomous_trading_brain()
     summary["indodax_live_brain"] = _load_indodax_live_brain()
-    summary["phantom_live_brain"] = {}
     summary["live_order_dispatcher"] = _load_live_order_dispatcher()
     summary["capital_movement_runtime"] = {}
-    if KiConfig.INDODAX_ONLY:
-        summary["phantom_multichain"] = {}
-    else:
-        try:
-            from Core.Treasury.phantom_multichain_controller import PhantomMultichainController
-
-            summary["phantom_multichain"] = PhantomMultichainController().get_summary()
-        except Exception:
-            summary["phantom_multichain"] = {}
 
     _daily_context = summary.get("daily_context")
     _daily_context_dict = _daily_context if isinstance(_daily_context, dict) else {}
@@ -1239,7 +1094,6 @@ def _build_summary() -> Dict[str, Any]:
         "green_probability_pct": _green_prob_dict.get("estimated_green_probability_pct"),
     }
 
-    summary["web3"] = {}
     summary["scanner_coverage"] = summary.get("scanner_executor_contract", {})
     summary["engine_split"] = summary.get("engine_independence", {})
     summary["top_targets"] = {
@@ -1449,10 +1303,6 @@ def _build_control_plane_payload() -> Dict[str, Any]:
         "trading_mode": "LIVE_ONLY" if str(KiConfig.TRADING_MODE).upper() == "LIVE_ONLY" else str(KiConfig.TRADING_MODE),
         "live_trading_enabled": bool(KiConfig.LIVE_TRADING_ENABLED),
         "legacy_modes_disabled": bool(KiConfig.LEGACY_TRADING_MODES_DISABLED),
-        "real_swap_enabled": bool(KiConfig.ENABLE_REAL_SWAP),
-        "real_bridge_enabled": bool(KiConfig.ENABLE_REAL_BRIDGE),
-        "real_withdrawal_enabled": bool(KiConfig.ENABLE_REAL_WITHDRAWAL),
-        "polymarket_live_enabled": bool(KiConfig.ENABLE_POLYMARKET_LIVE),
         "allow_new_live_orders": allow_new_live_orders,
         "allow_new_live_orders_reason": rejection_reason,
         "advisory_gate_state": "ADVISORY_ONLY",
@@ -1665,8 +1515,6 @@ def _build_control_plane_payload() -> Dict[str, Any]:
             {"id": "Executor", "label": "Executor Block", "role": "executor"},
             {"id": "Indodax Spot", "label": "Indodax Spot Venue", "role": "venue"},
             {"id": "Indodax Balance", "label": "Indodax Balance", "role": "wallet"},
-            {"id": "Phantom Treasury", "label": "Phantom Treasury", "role": "wallet"},
-            {"id": "Polymarket", "label": "Polymarket Venue", "role": "venue"},
             {"id": "Cash Wait", "label": "Cash Wait Reserves", "role": "reserve"},
             {"id": "Ollama / AI Scout", "label": "Ollama / AI Scout", "role": "advisory"}
         ],
@@ -1683,8 +1531,6 @@ def _build_control_plane_payload() -> Dict[str, Any]:
             {"from": "RiskGate Shield", "to": "Executor"},
             {"from": "Executor", "to": "Indodax Spot"},
             {"from": "Indodax Spot", "to": "Indodax Balance"},
-            {"from": "Scanner", "to": "Phantom Treasury", "type": "dotted"},
-            {"from": "Scanner", "to": "Polymarket", "type": "dotted"},
             {"from": "Expected Value", "to": "Cash Wait", "type": "dotted"},
             {"from": "Autonomous Director", "to": "Ollama / AI Scout", "type": "dotted"}
         ]
@@ -1817,26 +1663,10 @@ def _build_control_plane_payload() -> Dict[str, Any]:
         "pnl_reconciliation": pnl_reconciliation,
         "capital": capital_block,
         "venues": venues,
-        "web3": {
-            "routes": summary_data.get("phantom_multichain", {}).get("registry", {}),
-            "opportunities": summary_data.get("web3_opportunities", {}),
-            "meme_hunter": summary_data.get("web3_opportunities", {}).get("meme_hunter", summary_data.get("solana_trending_candidates", {})),
-            "solana_trending": summary_data.get("solana_trending_candidates", {}),
-            "positions": summary_data.get("web3_positions", []),
-            "exit": summary_data.get("web3_exit", {}),
-            "pumpfun": summary_data.get("pumpfun_candidates", {}),
-            "pumpfun_route": summary_data.get("pumpfun_route_state", {}),
-            "pumpfun_native": summary_data.get("pumpfun_native_executor", {}),
-            "pumpfun_latency": summary_data.get("pumpfun_latency", {}),
-            "pumpfun_positions": summary_data.get("pumpfun_positions", []),
-            "pumpfun_exit_state": summary_data.get("pumpfun_exit_state", {}),
-        },
         "scanner_executor_contract": summary_data.get("scanner_executor_contract", {}),
         "scanner_coverage": summary_data.get("scanner_coverage", {}),
         "engine_independence": summary_data.get("engine_independence", {}),
         "indodax_no_idle": summary_data.get("indodax_no_idle", {}),
-        "phantom_capital_mover": summary_data.get("phantom_capital_mover", {}),
-        "phantom_network_maximizer": summary_data.get("phantom_network_maximizer", {}),
         "deadline_pressure": summary_data.get("deadline_pressure", {}),
         "server_telemetry": {
             "data": summary_data.get("server_telemetry", {}),
@@ -1868,11 +1698,6 @@ def _build_control_plane_payload() -> Dict[str, Any]:
             "age_s": _file_age_s(STATE / "indodax_top_targets.json"),
             "fresh": _file_age_s(STATE / "indodax_top_targets.json") >= 0 and _file_age_s(STATE / "indodax_top_targets.json") < 15,
         },
-        "phantom_top_targets": {
-            "data": summary_data.get("phantom_top_targets", {}),
-            "age_s": _file_age_s(STATE / "phantom_top_targets.json"),
-            "fresh": _file_age_s(STATE / "phantom_top_targets.json") >= 0 and _file_age_s(STATE / "phantom_top_targets.json") < 15,
-        },
         "live_order_dispatcher": {
             "data": summary_data.get("live_order_dispatcher", {}),
             "age_s": _file_age_s(STATE / "live_order_dispatcher.json"),
@@ -1889,24 +1714,6 @@ def _build_control_plane_payload() -> Dict[str, Any]:
         "runtime": runtime,
         "flow": flow,
         "workflow": workflow,
-        "meme_hunter": {
-            "enabled": bool(summary_data.get("web3_opportunities", {}).get("meme_hunter", {}).get("enabled", False)),
-            "best_candidate": summary_data.get("web3_opportunities", {}).get("meme_hunter", {}).get("best_candidate", {}),
-            "candidates_found": int(summary_data.get("web3_opportunities", {}).get("meme_hunter", {}).get("candidates_found", 0) or 0),
-            "rejected_count": int(summary_data.get("web3_opportunities", {}).get("meme_hunter", {}).get("rejected_count", 0) or 0),
-            "latest_update": str(summary_data.get("web3_opportunities", {}).get("meme_hunter", {}).get("latest_update", "")),
-            "sources": summary_data.get("web3_opportunities", {}).get("meme_hunter", {}).get("sources", []),
-        },
-        "pumpfun": {
-            "route_type": str(summary_data.get("pumpfun_route_state", {}).get("route_type", "UNSUPPORTED")),
-            "can_buy": bool(summary_data.get("pumpfun_route_state", {}).get("buy_route_available", False)),
-            "can_sell": bool(summary_data.get("pumpfun_route_state", {}).get("sell_route_available", False)),
-            "reason": str(summary_data.get("pumpfun_route_state", {}).get("reason", "")),
-            "best_candidate": summary_data.get("pumpfun_candidates", {}).get("best_candidate", {}),
-            "candidates_found": int(len(summary_data.get("pumpfun_candidates", {}).get("candidates", []) or [])),
-            "rejected_count": int(len(summary_data.get("pumpfun_candidates", {}).get("rejected", []) or [])),
-            "native_executor": summary_data.get("pumpfun_native_executor", {}),
-        },
         "recent_decisions": decisions,
         "decisions": decisions,
         "warnings": warnings,
@@ -1956,7 +1763,6 @@ def _build_control_plane_payload() -> Dict[str, Any]:
         {"name": "Deterministic Gate", "status": "PASS" if current_entry_approved else "BLOCKED", "freshness_s": _file_age_s(STATE / "capital_governor.json"), "reason": rejection_reason},
         {"name": "Sizing", "status": "PASS" if summary_data.get("autonomous_sizing", {}).get("size_idr", 0) else "WAIT", "freshness_s": _file_age_s(STATE / "autonomous_sizing.json"), "reason": summary_data.get("autonomous_sizing", {}).get("reason", "")},
         {"name": "Executor", "status": "ACTIVE" if allow_new_live_orders else "WAIT", "freshness_s": _file_age_s(STATE / "live_order_dispatcher.json"), "reason": summary_data.get("live_order_dispatcher", {}).get("reason", "")},
-        {"name": "Exit Manager", "status": "ACTIVE" if summary_data.get("web3_exit") else "WAIT", "freshness_s": _file_age_s(STATE / "web3_exit_state.json"), "reason": summary_data.get("web3_exit", {}).get("latest_exit_reason", "")},
     ]
     opportunity_funnel = {
         "scanned": int(summary_data.get("scanner_candidates", {}).get("candidates_found", 0) or 0) if isinstance(summary_data.get("scanner_candidates"), dict) else 0,
@@ -2043,7 +1849,6 @@ def _build_control_plane_payload() -> Dict[str, Any]:
         "candidate_pipeline": {
             "data": summary_data.get("candidate_pipeline_audit", {}),
             "indodax": summary_data.get("candidate_pipeline_audit", {}).get("indodax", {}),
-            "phantom": summary_data.get("candidate_pipeline_audit", {}).get("phantom", {}),
         },
         "strategy_edge_summary": {
             "data": summary_data.get("strategy_edge_audit", {}),
@@ -2068,11 +1873,6 @@ def _build_control_plane_payload() -> Dict[str, Any]:
         "fill_quality": {
             "data": summary_data.get("fill_quality_audit", {}),
             "status": str((summary_data.get("fill_quality_audit", {}) or {}).get("status") or ""),
-        },
-        "phantom_non_movement": {
-            "data": summary_data.get("phantom_non_movement_audit", {}),
-            "classification": str((summary_data.get("phantom_non_movement_audit", {}) or {}).get("classification") or ""),
-            "reason": str((summary_data.get("phantom_non_movement_audit", {}) or {}).get("reason") or ""),
         },
         "strategy_symbol_normalization": {
             "data": summary_data.get("strategy_symbol_normalization_audit", {}),

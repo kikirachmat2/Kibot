@@ -82,7 +82,7 @@ SAFE_COMMAND_PATTERNS = [
 NODES = {
     "BATAM": {"ip": "127.0.0.1", "role": "MASTER"},
     "SINGAPORE_SCANNER": {"ip": "100.105.139.21", "role": "SCANNER", "services": ["kibot-scanner"]},
-    "SINGAPORE_EXECUTOR": {"ip": "100.122.1.109", "role": "EXECUTOR", "services": ["kibot-executor-engine", "kibot-polymarket"]}
+    "SINGAPORE_EXECUTOR": {"ip": "100.122.1.109", "role": "EXECUTOR", "services": ["kibot-executor-engine"]}
 }
 
 class KiBotMaster:
@@ -94,8 +94,6 @@ class KiBotMaster:
         self.aggregator = CouncilDataAggregator(self)
         self.system_commander = SystemCommander(str(ROOT_DIR))
         from Core.Treasury.capital_commander import CapitalCommander
-        from Core.Exchange.phantom_router import PhantomRouter
-        self.phantom_router = PhantomRouter()
         self.capital_commander = None # Will be initialized after IndodaxGateway
         self.is_running = True
         self.last_state = {"portfolio": {"equity_idr": 0, "daily_pnl": "0.0%", "active_positions": []}}
@@ -116,11 +114,11 @@ class KiBotMaster:
         # [OPTIMIZATION] Reuse Gateway instances
         from Core.Exchange.indodax import IndodaxGateway
         self.indodax = IndodaxGateway()
-        self.capital_commander = CapitalCommander(self.indodax, self.phantom_router)
+        self.capital_commander = CapitalCommander(self.indodax)
         
         # Initialize Sovereign Capital Governor
         from Core.Treasury.capital_governor import CapitalGovernor
-        self.governor = CapitalGovernor(self.indodax, self.phantom_router)
+        self.governor = CapitalGovernor(self.indodax, None)
         
         # Self-Healing: Keep AI provider cooldowns persistent by default.
         # Reset only when explicitly requested so 401/429 providers stay muted
@@ -170,8 +168,6 @@ class KiBotMaster:
                 
                 portfolio_snapshot = await self.aggregator._get_portfolio_snapshot()
                 current_idr = float(portfolio_snapshot.get("idr_cash", 0.0) or 0.0)
-                poly_state = portfolio_snapshot.get("polymarket", {}) if isinstance(portfolio_snapshot.get("polymarket"), dict) else {}
-                usdc_balance = float(poly_state.get("usdc_balance", 0) or 0)
                 combined_equity_idr = float(portfolio_snapshot.get("combined_equity_idr", 0.0) or 0.0)
                 pnl_idr = float(portfolio_snapshot.get("daily_pnl_idr", 0.0) or 0.0)
                 pnl_pct = float(portfolio_snapshot.get("daily_pnl_pct", 0.0) or 0.0)
@@ -272,47 +268,14 @@ class KiBotMaster:
 
     async def capital_rotation_watchdog_loop(self):
         """
-        Autonomous Capital Rotation Engine.
-        Evaluates DeFi APYs vs Indodax market mood, and automatically bridges funds to/from Phantom.
+        Indodax-only capital rotation hook.
+
+        Cross-chain wallet movement has been removed. This loop remains as a
+        lightweight placeholder so older process scheduling does not crash.
         """
         interval_sec = int(os.getenv("KIBOT_CAPITAL_ROTATION_SEC", "600"))
-        # Leave a safety buffer of 500,000 IDR
-        MIN_IDR_IDLE = float(os.getenv("KIBOT_MIN_IDR_IDLE", "500000"))
-        logger.info(f"🔄 Autonomous Capital Rotation Engine active ({interval_sec}s). Min Idle: Rp {MIN_IDR_IDLE:,.0f}")
-        
+        logger.info("Capital rotation is Indodax-only; cross-chain movement removed.")
         while self.is_running:
-            try:
-                # 1. Fetch World Model and Possibility Matrix
-                world_model = self.brain._load_external_world_model() if hasattr(self.brain, "_load_external_world_model") else {}
-                possibility_matrix = world_model.get("possibility_matrix", [])
-                
-                # 2. Get current equity and balances
-                portfolio_snapshot = await self.aggregator._get_portfolio_snapshot()
-                idle_idr = float(portfolio_snapshot.get("idr_cash", 0.0) or 0.0)
-                
-                # 3. Check if PHANTOM_DEFI is the top recommended regime
-                if possibility_matrix:
-                    top_possibility = possibility_matrix[0]
-                    platforms = top_possibility.get("platforms", [])
-                    probability = top_possibility.get("probability", 0)
-                    
-                    if "PHANTOM_DEFI" in platforms and probability > 0.75:
-                        logger.info(f"🚀 AI Recommends PHANTOM_DEFI with {probability*100:.1f}% confidence.")
-                        
-                        amount_to_bridge = idle_idr - MIN_IDR_IDLE
-                        if amount_to_bridge > 100000: # Min 100k IDR to bridge
-                            logger.info(f"🌉 Preparing to bridge Rp {amount_to_bridge:,.0f} to Phantom...")
-                            if self.capital_commander:
-                                await self.capital_commander.bridge_indodax_to_phantom(
-                                    amount_idr_equiv=amount_to_bridge,
-                                    target_network="all",
-                                    target_apy=20.0 # Assumed target APY for profitability check
-                                )
-                        else:
-                            logger.debug(f"💤 Idle IDR (Rp {idle_idr:,.0f}) is below bridging threshold.")
-            except Exception as e:
-                logger.error(f"Capital Rotation Engine error: {e}")
-                
             await asyncio.sleep(interval_sec)
 
     async def whatif_refresh_loop(self):
@@ -438,14 +401,12 @@ class KiBotMaster:
                             is_midnight = (now.hour == 23 and now.minute >= 45)
                             minutes_to_midnight = self.council._minutes_to_midnight_wib()
                             portfolio_state = dict(self.last_state.get("portfolio", {}) or {})
-                            polymarket_state = dict(self.last_state.get("polymarket", {}) or {})
                             decision = await self.council.deliberate_trading({
                                 "signals": sigs, 
                                 "source": addr[0],
                                 "is_midnight_approaching": is_midnight,
                                 "minutes_to_midnight": minutes_to_midnight,
                                 "portfolio_state": portfolio_state,
-                                "polymarket_state": polymarket_state,
                                 "current_strategy": load_strategy(),
                             })
                             
@@ -462,9 +423,9 @@ class KiBotMaster:
                                 if not isinstance(source_signal, dict):
                                     source_signal = {}
 
-                                # Prepare mandate for the right executor. Start with the
-                                # source signal so pump-stage, quality, spread, and
-                                # Polymarket metadata survive the Council hop.
+                                # Prepare mandate for the Indodax executor. Start with the
+                                # source signal so quality, spread, and provenance survive
+                                # the Council hop.
                                 mandate_data = dict(source_signal)
                                 mandate_data.update({
                                     "type": "COUNCIL_MANDATE",
@@ -500,9 +461,7 @@ class KiBotMaster:
 
                                 exchange = str(source_signal.get("exchange") or "").upper()
                                 mandate_symbol = str(mandate_data.get("symbol") or "").upper()
-                                if exchange == "POLYMARKET":
-                                    target_port = KiConfig.POLY_SIGNAL_PORT
-                                elif exchange == "INDODAX" or mandate_symbol.endswith("/IDR") or mandate_symbol.endswith("_IDR"):
+                                if exchange == "INDODAX" or mandate_symbol.endswith("/IDR") or mandate_symbol.endswith("_IDR"):
                                     target_port = KiConfig.INDO_SIGNAL_PORT
                                 else:
                                     logger.warning(
@@ -773,24 +732,6 @@ class KiBotMaster:
         except Exception as e:
             logger.error(f"Failed to fetch Indodax balance: {e}")
 
-        # 3. Add Polymarket State
-        try:
-            poly_url = f"http://{NODES['SINGAPORE_EXECUTOR']['ip']}:11600/api/state"
-            poly_state = await self._fetch_json(poly_url)
-            if poly_state:
-                telemetry["polymarket"] = {
-                    "status": "ONLINE" if poly_state.get("ready") else "DEGRADED",
-                    "equity_idr": 0, # Still placeholder
-                    "pnl_idr": 0,
-                    "return_pct": 0.0,
-                    "wl_ratio": "0W / 0L",
-                    "pnl_today": "+0.00%",
-                    "pnl_7d": "+0.00%",
-                    "pnl_30d": "+0.00%",
-                    "active_positions": []
-                }
-        except: pass
-
         # 4. Add Council & Market Context
         try:
             context = await self.aggregator.get_debate_context()
@@ -802,9 +743,7 @@ class KiBotMaster:
             telemetry["market"] = context.get("market_context", {})
             telemetry["stats"] = context.get("audit_data", {}).get("rejection_analysis", {})
             telemetry["council"] = context.get("philosophy", {})
-            telemetry["polymarket"] = portfolio_state.get("polymarket", telemetry.get("polymarket", {}))
             self.last_state["portfolio"] = portfolio_state
-            self.last_state["polymarket"] = portfolio_state.get("polymarket", {})
         except Exception as e:
             logger.error(f"Failed to aggregate council data: {e}")
         
@@ -863,7 +802,6 @@ class KiBotMaster:
         monitored = [
             "kibot-scanner",
             "kibot-executor",
-            "kibot-executor-polymarket",
             "kibot-ai-scout",
             "kibot-janitor",
             "ollama",

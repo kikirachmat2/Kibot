@@ -7,6 +7,5 @@
   "no_closed_round_trip_action": "COLLECT_AND_CLOSE_BEFORE_SCALE",
   "negative_edge_action": "DISABLE_PAIR",
   "unknown_source_edge_action": "IGNORE_SCALE_UP",
-  "phantom_zero_fill_action": "TRACE_PIPELINE",
   "micro_probe_max_until_growth_proven": 2
 }

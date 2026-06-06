@@ -6,10 +6,6 @@ from pathlib import Path
 
 def test_route_availability_not_hardcoded_true():
     paths = [
-        Path("state/market_wide_wave_candidates.json"),
-        Path("state/pumpfun_candidates.json"),
-        Path("state/base_scanner_state.json"),
-        Path("state/future_web3_scanner_state.json"),
         Path("state/indodax_scanner_state.json"),
     ]
     for path in paths:

@@ -23,7 +23,7 @@ def test_no_trade_forensics_uses_canonical_risk_when_ai_patrol_lags(tmp_path, mo
             "total_equity_idr": 153000.0,
             "open_positions": [],
             "dust_positions": [],
-            "venue_locks": {"indodax": "RECONCILED", "phantom": "OK"},
+            "venue_locks": {"indodax": "RECONCILED"},
         },
         "capital_governor.json": {
             "updated_at": now,
@@ -42,7 +42,6 @@ def test_no_trade_forensics_uses_canonical_risk_when_ai_patrol_lags(tmp_path, mo
             "runtime_semantics": {},
         },
         "indodax_top_targets.json": {"top_targets": [{"symbol": "EDEN/IDR", "recommended_action": "ENTER"}]},
-        "phantom_top_targets.json": {"top_targets": [{"symbol": "SOL/USDC", "recommended_action": "ENTER"}]},
         "risk_state.json": {"daily_pnl": 1250.0},
     }
 

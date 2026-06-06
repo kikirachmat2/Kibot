@@ -42,8 +42,6 @@ def test_assert_boleh_ditinggal_yes(tmp_path, monkeypatch, capsys):
             return subprocess.CompletedProcess(args, 0, stdout="OK:REPO_SAFETY_AUDITED status=SAFE\n", stderr="")
         if "audit_trading_decision_policy.py" in script:
             return subprocess.CompletedProcess(args, 0, stdout="OK:TRADING_DECISION_POLICY_AUDITED status=TIGHTEN\n", stderr="")
-        if "assert_phantom_handoff_pipeline.py" in script:
-            return subprocess.CompletedProcess(args, 0, stdout="OK:PHANTOM_HANDOFF_PIPELINE\n", stderr="")
         if "assert_recovery_unlock_safety.py" in script:
             return subprocess.CompletedProcess(args, 0, stdout="OK:RECOVERY_UNLOCK_SAFETY\n", stderr="")
         return subprocess.CompletedProcess(args, 0, stdout="OK\n", stderr="")

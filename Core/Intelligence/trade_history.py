@@ -155,12 +155,6 @@ def _activity_from_event(row: Dict[str, Any]) -> Optional[Dict[str, Any]]:
             msg += f" fee {_rp(fee)}"
         return {"time": ts, "agent": agent, "tag": label, "message": msg, "offset": "0"}
 
-    if kind in {"SWAP", "CAPITAL_SWAP", "CROSS_CHAIN_SWAP"}:
-        route = str(row.get("reason") or row.get("note") or row.get("source") or "swap").strip()
-        amount = _safe_float(row.get("amount_idr"), 0.0)
-        msg = f"{route} {_rp(amount)}"
-        return {"time": ts, "agent": agent, "tag": "SWAP", "message": msg, "offset": "0"}
-
     if kind in {"ENTRY_PENDING", "ORDER_CREATED", "ORDER_SUBMITTED", "ORDER_ACCEPTED", "ENTRY_PARTIAL"}:
         budget = _safe_float(row.get("amount_idr"), 0.0)
         price = _safe_float(row.get("price_idr") or row.get("fill_price"), 0.0)

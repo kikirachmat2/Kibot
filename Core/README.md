@@ -14,7 +14,7 @@ Ini adalah "Otak Kolektif" KiBot. Council tidak berjalan linear, melainkan melal
 - **Strategist (DeepSeek-R1 / Reasoning):** Pake "Thinking Mode" buat analisa efek domino dan anomali pasar. Ini "Otak Jenius" Council yang mikir 5 langkah ke depan.
 - **Global Eye Integration:** Council terhubung langsung ke web search (Brave/Tavily/Jina) untuk memvalidasi apakah gangguan sistem disebabkan oleh faktor eksternal (Market outage).
 - **Risk Arbiter (0.6b):** Menentukan keputusan final dan tingkat kepercayaan (confidence).
-- **Executor Bridge:** Menjalankan aksi otomatis (Service Restart, ADB Recovery, Aider Self-Healing) jika `confidence >= 85%` dan `risk <= MEDIUM`.
+- **Executor Automation:** Menjalankan aksi otomatis (service restart, ADB recovery, Aider self-healing) jika `confidence >= 85%` dan `risk <= MEDIUM`.
 - **Live Trading Gate:** Order real-money hanya dibuka jika `KIBOT_LIVE_TRADING_ENABLED=true` atau mode trading `live` sudah di-set eksplisit.
 - **What-If First:** Council selalu membawa hasil simulasi what-if ke deliberasi supaya keputusan tidak buta skenario.
 

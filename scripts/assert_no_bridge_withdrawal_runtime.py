@@ -9,15 +9,15 @@ STATE = ROOT / "state"
 
 
 def main() -> int:
-    checks = ["capital_governor.json", "engine_independence.json", "phantom_capital_mover.json"]
+    checks = ["capital_governor.json", "engine_independence.json"]
     for name in checks:
         p = STATE / name
         if not p.exists():
             continue
         data = json.loads(p.read_text(encoding="utf-8"))
-        if str(data.get("bridge", "OFF")).upper() != "ON" or str(data.get("withdrawal", "OFF")).upper() != "ON":
+        if str(data.get("withdrawal", "OFF")).upper() == "ON":
             print("ASSERT_BRIDGE_WITHDRAWAL_RUNTIME_FAILED")
-            print(f"{name}: bridge/withdrawal not active")
+            print(f"{name}: withdrawal unexpectedly active")
             return 1
     print("ASSERT_BRIDGE_WITHDRAWAL_RUNTIME_OK")
     return 0

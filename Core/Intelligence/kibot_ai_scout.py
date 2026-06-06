@@ -26,7 +26,6 @@ from Core.circuit_breaker import CircuitBreaker
 from Core.Support.ki_config import STATE_DIR
 from Core.Support.risk_truth_reconciler import reconcile_risk_truth
 from Core.Decision.script_adaptation_engine import ScriptAdaptationEngine
-from Core.Intelligence.defi_metrics_fetcher import DeFiMetricsFetcher
 
 WORLD_MODEL_FILE = STATE_DIR / "world_model.json"
 AI_TRACE_FILE = STATE_DIR / "ai_decision_trace.json"
@@ -55,7 +54,6 @@ class WorldScout:
         STATE_DIR.mkdir(parents=True, exist_ok=True)
         self.search_service = get_ai_search()
         self.coordinator = get_ai_coordinator()
-        self.defi_fetcher = DeFiMetricsFetcher()
         self.adaptation_engine = ScriptAdaptationEngine()
         self.breaker = CircuitBreaker("WORLD_SCOUT", max_failures=3, reset_after_sec=600)
         self.patrol_services = [
@@ -63,7 +61,6 @@ class WorldScout:
             "kibot-scanner",
             "kibot-executor",
             "kibot-indodax-director",
-            "kibot-phantom-brain",
             "kibot-target-board",
             "kibot-telemetry",
             "kibot-dashboard",
@@ -164,7 +161,6 @@ class WorldScout:
         governor = self._read_state_json("capital_governor.json")
         dispatcher = self._read_state_json("live_order_dispatcher.json")
         indodax_targets = self._read_state_json("indodax_top_targets.json")
-        phantom_targets = self._read_state_json("phantom_top_targets.json")
         indodax_scanner = self._read_state_json("indodax_scanner_state.json")
         order_tracker = self._read_state_json("order_tracker_state.json")
         active_trades = self._read_state_json("active_trades.json")
@@ -186,7 +182,7 @@ class WorldScout:
         dispatcher_reason = str(dispatcher.get("reason") or "").strip()
         if not dispatcher_reason:
             child_reasons = []
-            for key in ("indodax", "phantom"):
+            for key in ("indodax",):
                 child = dispatcher.get(key)
                 if isinstance(child, dict) and child.get("reason"):
                     child_reasons.append(f"{key}:{child.get('reason')}")
@@ -238,9 +234,9 @@ class WorldScout:
                         f"ai_patrol_ignored:{str(item.get('source') or '')}:{str(item.get('reason') or '')}".strip(":")
                     )
 
-        target_count = self._count_targets(indodax_targets) + self._count_targets(phantom_targets)
+        target_count = self._count_targets(indodax_targets)
         enter_targets = 0
-        for board in (indodax_targets, phantom_targets):
+        for board in (indodax_targets,):
             for target in board.get("top_targets", []) if isinstance(board.get("top_targets"), list) else []:
                 if str(target.get("recommended_action") or "").upper() == "ENTER":
                     enter_targets += 1
@@ -322,16 +318,13 @@ class WorldScout:
 
         state_files = [
             "capital_governor.json",
-            "phantom_treasury.json",
             "indodax_scanner_state.json",
-            "phantom_top_targets.json",
             "scanner_executor_contract.json",
             "server_telemetry.json",
             "ai_decision_trace.json",
             "ai_strategy_review.json",
             "live_order_dispatcher.json",
             "indodax_top_targets.json",
-            "phantom_top_targets.json",
             "telegram_throttle.json",
         ]
         freshness = {}
@@ -455,13 +448,11 @@ class WorldScout:
         
         # 1. Gather Raw Data from multiple sources
         scouting_data = {
-            "defi_intelligence": await self.defi_fetcher.get_aggregated_defi_intelligence(),
             "security_threats": await self.search_service.ddg_search_async("crypto protocol exploit hack vulnerability latest", max_results=3),
             "market_catalysts": await self.search_service.tavily_search_async("top crypto market catalysts today bitcoin eth regulation", search_depth="advanced") or await self.search_service.jina_search_async("top crypto market catalysts today"),
             "trending_narratives": await self.search_service.gdelt_news_async("crypto trending AI meme RWA layer2"),
             "news_pulse": (await self.search_service.finnhub_news_async("crypto") or [])[:5],
             "indodax_intel": await self.search_service.get_market_consensus_async("Indodax latest listing rumors IDR premium"),
-            "polymarket_intel": await self.search_service.get_market_consensus_async("Polymarket trending events crypto prediction odds")
         }
 
         # 2. Synthesize using Cloud AI (Non-Ollama preferred for global context)
@@ -492,7 +483,7 @@ class WorldScout:
         )
 
         # 2b. Specialized Possibility Mining (Using Multi-Agent Debate for higher confidence)
-        self._log("Mining for high-performance possibilities (Indodax & Polymarket) using AI Debate...")
+        self._log("Mining for high-performance Indodax possibilities using AI Debate...")
         possibilities = await self.coordinator.query_ai_debate(
             prompt_type="POSSIBILITY_MINING",
             context=prompt_context,

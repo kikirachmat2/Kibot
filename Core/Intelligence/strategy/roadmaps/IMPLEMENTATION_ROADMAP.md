@@ -1,197 +1,47 @@
-# KiBot Sovereign — Implementation Roadmap
+# KiBot Implementation Roadmap
 
-> Purpose: phased execution plan for turning `TRADING_STRATEGY.md` and
-> `SYSTEM_STRATEGY.md` into runtime behavior.
-
----
-
-## Phase 0 — Documentation Sync
-
+## Phase 0 — Runtime Scope Lock
 Status: DONE.
 
-Goal: make the repo and server agree on the new strategy file layout.
+- Runtime scope is Indodax-only.
+- External wallet/chain/prediction-market routes are retired.
+- README, inventory, dashboard, and strategy docs must stay aligned with that scope.
 
-Tasks:
+## Phase 1 — Accounting Truth
+Status: ACTIVE.
 
-- replace references to `PUMP_LIFECYCLE_STRATEGY.md` with `TRADING_STRATEGY.md`,
-- deploy `TRADING_STRATEGY.md` and `SYSTEM_STRATEGY.md` to Batam,
-- update README and server inventory,
-- remove stale doc references from dashboards/tooling.
+- `state/live_truth.json` is the canonical money source.
+- Dashboard and council must use total Indodax equity, not partial cash-only views.
+- PnL must separate realized, unrealized, fees, and dust.
 
-Exit criteria:
+## Phase 2 — Indodax Execution Quality
+Status: ACTIVE.
 
-- local GitHub and Batam server reference the same canonical strategy docs.
+- Pre-trade simulation before buy.
+- Fee-aware exit plan before entry.
+- Stale order cancel.
+- Pair memory/quarantine.
+- Trade history reconciliation.
 
----
-
-## Phase 1 — System Commander Foundation
-
-Status: DONE, with continuous hardening.
-
-Goal: build the missing non-trading control brain.
-
-Tasks:
-
-- create `Core/Support/system_commander.py`,
-- classify system state as `HEALTHY`, `DEGRADED`, `RECOVERING`, `BLIND`,
-  `UNSAFE`,
-- read service status, disk/RAM, model health, source health, drift status,
-- write `state/system_commander.json`,
-- expose summary to dashboard.
-
-Exit criteria:
-
-- dashboard can say why system is healthy/degraded/blind.
-
----
-
-## Phase 2 — Inventory Utilization Runtime
-
-Status: DONE, with ongoing inventory expansion.
-
-Goal: make server inventory machine-readable and actionable.
-
-Tasks:
-
-- create inventory utilization builder,
-- map services, models, APIs, tools, and state files,
-- compute utilization score,
-- identify installed-but-unused and referenced-but-missing items,
-- show inventory health on dashboard.
-
-Exit criteria:
-
-- every major inventory item has health, owner, and usage status.
-
----
-
-## Phase 3 — RiskGate V4
-
-Status: PARTIAL-RUNTIME.
-
-Goal: make RiskGate the adaptive risk brain.
-
-Tasks:
-
-- normalize top-level and nested spread,
-- read `daily_context`,
-- read `fallback_category`,
-- read `trade_grade`,
-- read `exit_quality`,
-- read `pre_trade_simulation`,
-- use starting equity for drawdown,
-- output approved budget/sizing recommendation.
-
-Exit criteria:
-
-- executor uses RiskGate sizing output rather than duplicating budget logic.
-
----
-
-## Phase 4 — Polymarket Runtime V2
-
-Status: PARTIAL-RUNTIME.
-
-Goal: raise Polymarket from basic executor to event intelligence system.
-
-Tasks:
-
-- probability engine,
-- resolution parser,
-- liquidity simulator,
-- evidence bundle,
-- expiry risk scorer,
-- mark-to-market position tracker,
-- Polymarket role votes in council.
-
-Exit criteria:
-
-- Polymarket BUY mandate cannot execute without probability, liquidity,
-  resolution, and evidence fields.
-
----
-
-## Phase 5 — Data Warehouse and Learning Loop
-
+## Phase 3 — Learning Loop
 Status: FOUNDATION ACTIVE.
 
-Goal: learn from executed, rejected, and missed decisions.
+- Store accepted, rejected, and missed candidates.
+- Measure post-decision outcomes.
+- Penalize repeated loser pairs.
+- Use evidence to tune thresholds without letting AI bypass gates.
 
-Tasks:
+## Phase 4 — Dashboard Clarity
+Status: ACTIVE.
 
-- store candidate snapshots,
-- store rejected candidates,
-- store missed pump outcomes,
-- track post-decision windows,
-- track role accuracy,
-- track execution quality.
+- Show live truth freshness.
+- Show total equity, realized/unrealized PnL, fees, open orders, and blocked reason.
+- Hide legacy panels.
 
-Exit criteria:
+## Phase 5 — Server Autonomy
+Status: ACTIVE.
 
-- dashboard can answer: “why did KiBot not buy this pump, and was that correct?”
-
----
-
-## Phase 6 — Dashboard V4
-
-Status: PARTIAL-RUNTIME, System Brain wired.
-
-Goal: show the system brain, not only trading cards.
-
-Tasks:
-
-- Capital Commander panel,
-- RiskGate reason panel,
-- rejected/missed candidates,
-- provider/source health,
-- model routing,
-- server drift,
-- backup status,
-- System Commander state,
-- Telegram report preview.
-
-Exit criteria:
-
-- operator can see trading, system, and intelligence health from one screen.
-
----
-
-## Phase 7 — Backup, Restore, Deployment Guard
-
-Status: BACKUP/GUARD ACTIVE, restore drills pending.
-
-Goal: make system changes safer.
-
-Tasks:
-
-- state backup script,
-- restore verification,
-- config validator,
-- deployment guard,
-- rollback notes,
-- drift detector.
-
-Exit criteria:
-
-- live-critical deploys run a repeatable pre/post checklist.
-
----
-
-## Phase 8 — Mobile/API Bridge
-
-Status: PLANNED.
-
-Goal: make APK a cockpit, not a second brain.
-
-Tasks:
-
-- endpoint config,
-- version display,
-- dashboard/API health,
-- read-only diagnostics,
-- no duplicated trading logic,
-- no secrets in app.
-
-Exit criteria:
-
-- mobile can show health and account state without bypassing core runtime.
+- Keep `systemd` as runtime source of truth.
+- Use `bin/kibotctl` for operator checks.
+- Patrol logs and services every cycle.
+- Notify Telegram only for important exceptions and trade summaries.

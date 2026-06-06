@@ -80,8 +80,6 @@ def build_daily_report(telemetry: Dict[str, Any] | None = None) -> str:
         except Exception:
             daily_return_pct = 0.0
 
-    poly = portfolio.get("polymarket", {}) if isinstance(portfolio.get("polymarket"), dict) else {}
-
     top_candidates = _top(journal_summary.get("top_candidates", []), 3)
     candidate_lines = []
     for cand in top_candidates:
@@ -122,7 +120,8 @@ Unrealized: {_rp(unrealized)}
 Green Probability: {prob_pct}% ({prob_quality})
 
 CAPITAL
-Polymarket: ${float(poly.get('usdc_balance') or 0):.2f} / {_rp(poly.get('equity_idr', 0))}
+Indodax Cash: {_rp(portfolio.get('cash_idr', portfolio.get('idr_cash', 0)))}
+Held Coin Value: {_rp(portfolio.get('held_coin_value_idr', portfolio.get('coin_holdings_idr', 0)))}
 
 TRADING SUMMARY
 Orders Today: {order_summary.get('total', 0)} total, {order_summary.get('reconciled', 0)} reconciled, {order_summary.get('stale', 0)} stale

@@ -31,8 +31,6 @@ def _normalize_venue_key(value: Optional[str]) -> str:
     raw = str(value or "").strip().lower()
     if raw in {"indodax", "indodax_real", "indodax_spot"}:
         return "indodax"
-    if raw in {"phantom", "solana", "pumpfun", "base", "polymarket", "future_web3"}:
-        return "phantom"
     return raw or "indodax"
 
 class RiskGate:
@@ -164,6 +162,8 @@ class RiskGate:
         
         explicit_venue_source = venue or signal.get("venue") or signal.get("route") or signal.get("network")
         venue = _normalize_venue_key(explicit_venue_source) if explicit_venue_source else ""
+        if venue and venue != "indodax":
+            return False, f"FAIL-CLOSED: venue '{venue}' is removed from this Indodax-only runtime"
 
         # 1. Global Treasury Governor Daily Drawdown, Staleness & Reconcile Check
         from Core.Treasury.capital_governor import GOVERNOR_FILE
@@ -204,8 +204,8 @@ class RiskGate:
                         # Fallback to top-level booleans if the per-venue structure is absent.
                         if venue == "indodax" and not bool(gov_data.get("allow_indodax_orders", False)):
                             return False, "FAIL-CLOSED: Indodax venue orders disabled"
-                        if venue != "indodax" and not bool(gov_data.get("allow_phantom_orders", False)):
-                            return False, f"FAIL-CLOSED: {venue} venue orders disabled"
+                        if venue != "indodax":
+                            return False, f"FAIL-CLOSED: venue '{venue}' is removed from this Indodax-only runtime"
                     else:
                         venue_status = str(venue_state.get("status") or "").upper()
                         venue_allow = bool(venue_state.get("allow_orders", False))
@@ -221,26 +221,12 @@ class RiskGate:
             else:
                 return False, "FAIL-CLOSED: Capital Governor state date is from a different day"
 
-            phantom_file = STATE_DIR / "phantom_treasury.json"
-            if venue in {"phantom"} and phantom_file.exists():
-                try:
-                    with open(phantom_file, "r") as f:
-                        phantom_state = json.load(f)
-                    recon = phantom_state.get("reconciliation", {}) if isinstance(phantom_state, dict) else {}
-                    if phantom_state.get("status") not in {"OK", "SCOUTING"} or not recon.get("matches_user_wallet"):
-                        return False, (
-                            "FAIL-CLOSED: Phantom treasury not reconciled "
-                            f"(status={phantom_state.get('status')}, match={recon.get('matches_user_wallet')})"
-                        )
-                except Exception as e:
-                    logger.error(f"❌ Failed to validate Phantom treasury state inside RiskGate: {e}")
-                    return False, f"FAIL-CLOSED: Error validating Phantom treasury state: {e}"
         except Exception as e:
             logger.error(f"❌ Failed to validate Capital Governor state inside RiskGate: {e}")
             return False, f"FAIL-CLOSED: Error validating Capital Governor state: {e}"
 
         # 2. Hard Venue Manifesto Cap fallback for legacy callers without venue data.
-        if venue not in {"indodax", "phantom"} and self.daily_pnl < -effective_daily_loss_cap_idr:
+        if venue != "indodax" and self.daily_pnl < -effective_daily_loss_cap_idr:
             return False, f"MANIFESTO CAP: Daily loss reached ({self.daily_pnl:.2f} < -{effective_daily_loss_cap_idr:.2f})"
 
         symbol = signal.get("symbol", "UNKNOWN").upper()

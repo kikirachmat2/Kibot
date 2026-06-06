@@ -61,7 +61,7 @@ OLLAMA_DEFAULT_MODEL = os.getenv("KIBOT_OLLAMA_MODEL", "qwen2.5:1.5b")
 OLLAMA_PRO_MODEL = "qwen2.5:3b"            # Balanced
 OLLAMA_SMART_MODEL = "llama3.2:3b"         # NLP/Sentiment
 OLLAMA_DEEP_MODEL = "deepseek-r1:7b"       # Reasoning Champion
-OLLAMA_BRIDGE_MODEL = "mistral:7b"         # Synthesis
+OLLAMA_SYNTHESIS_MODEL = "mistral:7b"      # Synthesis
 OLLAMA_FAST_TIMEOUT_SEC = float(os.getenv("KIBOT_OLLAMA_FAST_TIMEOUT_SEC", "300"))
 OLLAMA_DEFAULT_TIMEOUT_SEC = float(os.getenv("KIBOT_OLLAMA_TIMEOUT_SEC", "300"))
 OLLAMA_DEEP_TIMEOUT_SEC = float(os.getenv("KIBOT_OLLAMA_DEEP_TIMEOUT_SEC", "600"))
@@ -357,13 +357,13 @@ PROMPT_TEMPLATES = {
         "8. Anti-Idle Bias: A healthy FLAT day should not default to DEFENSIVE. When resources are healthy and evidence is not collapsing, prefer CONTROLLED_AGGRESSIVE or NEUTRAL so the council stays opportunistic instead of passive.\n"
         "9. Confidence Calibration: For high-liquidity, narrow-spread opportunities, do not over-demand extreme confidence. Calibrate confidence by evidence density, catalyst quality, and recovery pressure so the system can still trade when the edge is real but not perfect.\n"
         "Inputs: {market_data}, {system_health}, {current_strategy}, {whatif_snapshot}, {daily_state}, {today_trade_activity}, {antagonist_view}, {possibility_view}, Minutes to Midnight: {minutes_to_midnight}, Deadline Pressure: {deadline_pressure}, Midnight Approaching: {is_midnight_approaching}.\n"
-        "Task: Output a refined JSON strategy (Indodax & Polymarket) focusing on Risk mitigation, capital allocation, and confidence calibration.\n"
+        "Task: Output a refined JSON strategy for Indodax only, focusing on risk mitigation, capital allocation, and confidence calibration.\n"
         "Optimal Modes: AGGRESSIVE|NEUTRAL|DEFENSIVE|FULL_ATTACK|EXIT_ALL.\n"
-        "Return strict JSON: {\"global_mode\":\"...\", \"indodax\":{...}, \"polymarket\":{...}, \"rationale\":\"...\"}"
+        "Return strict JSON: {\"global_mode\":\"...\", \"indodax\":{...}, \"rationale\":\"...\"}"
     ),
     "MARKET_SCOUT": (
         "You are MarketScout (Radar Intelligence). Model: qwen2.5:1.5b.\n"
-        "Scanning Indodax Lead-Lag and Polymarket anomalies.\n"
+        "Scanning Indodax lead-lag, orderbook, volume, and momentum anomalies.\n"
         "Context: {raw_scan_results}.\n"
         "Task: Identify high-probability opportunities and filter out social media noise/fake-pumps.\n"
         "For Indodax, prefer coins with strong 24h run-up, volume persistence, near-high structure, and trend continuation; do not dismiss a valid pump just because the 5m move is small if the continuation evidence is strong.\n"
@@ -400,10 +400,10 @@ PROMPT_TEMPLATES = {
         "Return strict JSON: {\"is_bug\":true, \"file\":\"...\", \"suggested_fix\":\"...\", \"severity\":\"LOW|MED|HIGH\"}"
     ),
     "LIQUIDITY_HUNTER": (
-        "You are LiquidityHunter (Polymarket Specialist). Model: qwen2.5:1.5b.\n"
-        "Audit Order-Book for {market_name}.\n"
-        "Task: Check slippage for $50-$500 trades. Ensure exit paths exist.\n"
-        "Return strict JSON: {\"is_liquid\":true, \"max_safe_bet\":0.0, \"exit_path_quality\":\"POOR|FAIR|GOOD\"}"
+        "You are LiquidityHunter (Indodax orderbook specialist). Model: qwen2.5:1.5b.\n"
+        "Audit orderbook for {market_name}.\n"
+        "Task: Check spread, depth, fee drag, and whether a small position can be exited cleanly.\n"
+        "Return strict JSON: {\"is_liquid\":true, \"max_safe_notional_idr\":0.0, \"exit_path_quality\":\"POOR|FAIR|GOOD\"}"
     ),
     "SENTIMENT_SYNTHESIZER": (
         "You are SentimentSynthesizer (Fundamental News). Model: qwen2.5:3b.\n"
@@ -429,7 +429,6 @@ PROMPT_TEMPLATES = {
         "latest_learning={latest_learning}\n"
         "pair_memory={pair_memory}\n"
         "world_model={world_model}\n"
-        "polymarket={polymarket}\n"
         "Return strict compact JSON with keys "
         "{\"summary\":\"...\",\"root_causes\":[...],\"missed_opportunities\":[...],\"lessons\":[...],\"risks\":[...],\"parameter_recommendations\":[...],\"tomorrow_mode\":\"SURVIVAL|CONTROLLED|CONTROLLED_AGGRESSIVE|FULL_ATTACK\",\"tomorrow_focus\":[...]}\n"
         "Be concrete and evidence-driven."
@@ -441,16 +440,15 @@ PROMPT_TEMPLATES = {
         "Answer the operator's query professionally and concisely.\n"
         "User message={user_message}\n"
         "Return compact JSON only with keys "
-        "{\"answer\":\"...\",\"intent\":\"STATUS|COMMAND|QUESTION|POLYMARKET\",\"recommended_command\":\"...\",\"risk_note\":\"\"}\n"
+        "{\"answer\":\"...\",\"intent\":\"STATUS|COMMAND|QUESTION\",\"recommended_command\":\"...\",\"risk_note\":\"\"}\n"
         "Rules: be concise, operational, and truthful; never invent balances or executions."
     ),
     "OPS_CHAT_LOCAL": (
         "You are KiBot's local Ollama operator copilot.\n"
         "System state={system_state}\n"
-        "Polymarket={polymarket}\n"
         "User message={user_message}\n"
         "Return compact JSON only with keys "
-        "{\"answer\":\"...\",\"intent\":\"STATUS|COMMAND|QUESTION|POLYMARKET\",\"recommended_command\":\"...\",\"risk_note\":\"\"}\n"
+        "{\"answer\":\"...\",\"intent\":\"STATUS|COMMAND|QUESTION\",\"recommended_command\":\"...\",\"risk_note\":\"\"}\n"
         "Keep the answer short and practical."
     ),
     "INTELLIGENCE_SYNTHESIS": (
@@ -489,8 +487,8 @@ PROMPT_TEMPLATES = {
         "{\"critique\":\"...\",\"hallucination_detected\":true|false,\"hallucination_explanation\":\"...\",\"additional_risks\":[...]}"
     ),
     "POSSIBILITY_MINING": (
-        "You are KiBot's Opportunity Scout (Specialized in Indodax, Polymarket, & DeFi Web3).\n"
-        "Analyze the raw market data to find cross-market arbitrage, event-driven trades, or Web3 DeFi possibilities.\n"
+        "You are KiBot's Opportunity Scout specializing in Indodax.\n"
+        "Analyze the raw market data to find realistic Indodax momentum, continuation, reclaim, and liquidity-scalp possibilities.\n"
         "Context: {raw_data}\n"
         "Daily state: {daily_state}\n"
         "Indodax context: Focus on IDR premiums and local Indonesian listing rumors.\n"
@@ -500,10 +498,8 @@ PROMPT_TEMPLATES = {
         "If a coin breaks out of an intraday range and then reclaims with sustained volume, treat it as a range-break reclaim candidate, but only if the thesis is still clean.\n"
         "If a coin bounces from intraday support with meaningful run-up and strong reclaim behavior, treat it as a support-bounce candidate, but only if the move still has room and the edge is not stretched.\n"
         "If a coin is early in a rebound and shows a fresh pivot reclaim with modest run-up, healthy persistence, and enough room to run, treat it as a pivot-reclaim candidate, but only when the structure is not broken.\n"
-        "Polymarket context: Focus on high-volume prediction shifts that correlate with tokens.\n"
-        "DeFi Web3 context: Compare idle capital vs Kamino yields, Drift funding rates, and trending meme coins. If APY > 15%, suggest routing capital to DeFi.\n"
         "Return strict compact JSON only with keys "
-        "{\"possibilities\":[{\"title\":\"...\",\"description\":\"...\",\"probability\":0.0,\"assets\":[...],\"platforms\":[\"INDODAX\",\"POLYMARKET\",\"BINANCE\",\"PHANTOM_DEFI\"],\"urgency\":\"LOW|MED|HIGH\"}]}"
+        "{\"possibilities\":[{\"title\":\"...\",\"description\":\"...\",\"probability\":0.0,\"assets\":[...],\"platforms\":[\"INDODAX\",\"BINANCE\"],\"urgency\":\"LOW|MED|HIGH\"}]}"
     ),
     "COUNCIL_SPEAKER": (
         "You are the Speaker of the Sovereign Council.\n"
@@ -573,11 +569,11 @@ PROMPT_TEMPLATES = {
         "\"estimated_size_idr\":0,\"manipulation_risk\":\"LOW|MED|HIGH\","
         "\"recommendation\":\"PROCEED|WAIT|ABORT\"}"
     ),
-    "CROSS_BRIDGE_STRATEGIST": (
-        "You are KiBot's Cross-Bridge Strategist. Find alpha between Indodax and Polymarket.\n"
-        "Indodax data: {indodax_data}\nPolymarket data: {poly_data}\n"
-        "Philosophy: 'Tekan Kerugian' — only recommend if cross-market edge is CLEAR.\n"
-        "Return strict JSON: {\"cross_signal\":false,\"direction\":\"IDR_LEADS|POLY_LEADS|NONE\","
+    "CROSS_MARKET_STRATEGIST": (
+        "You are KiBot's cross-market strategist. Use external market data only as context for Indodax.\n"
+        "Indodax data: {indodax_data}\nExternal data: {external_data}\n"
+        "Philosophy: 'Tekan Kerugian' — only recommend if the Indodax edge is clear after fees.\n"
+        "Return strict JSON: {\"cross_signal\":false,\"direction\":\"INDODAX_LEADS|EXTERNAL_CONFIRMS|NONE\","
         "\"target_pair\":\"...\",\"edge_confidence\":0.0,\"action\":\"BUY|SELL|NONE\"}"
     ),
 
@@ -644,7 +640,7 @@ PROMPT_OLLAMA_MODEL = {
     "LIQUIDITY_HUNTER": OLLAMA_PRO_MODEL,
     "SENTIMENT_SYNTHESIZER": OLLAMA_SMART_MODEL,
     "WHALE_WATCHER": OLLAMA_DEFAULT_MODEL,
-    "CROSS_BRIDGE_STRATEGIST": OLLAMA_BRIDGE_MODEL,
+    "CROSS_MARKET_STRATEGIST": OLLAMA_SYNTHESIS_MODEL,
     "COUNCIL_ANTAGONIST": OLLAMA_PRO_MODEL,
     "POSSIBILITY_MINING": OLLAMA_PRO_MODEL,
     
@@ -677,7 +673,7 @@ PROMPT_OLLAMA_TIMEOUT = {
     "LIQUIDITY_HUNTER": OLLAMA_DEFAULT_TIMEOUT_SEC,
     "SENTIMENT_SYNTHESIZER": OLLAMA_DEFAULT_TIMEOUT_SEC,
     "WHALE_WATCHER": OLLAMA_DEFAULT_TIMEOUT_SEC,
-    "CROSS_BRIDGE_STRATEGIST": OLLAMA_DEEP_TIMEOUT_SEC,
+    "CROSS_MARKET_STRATEGIST": OLLAMA_DEEP_TIMEOUT_SEC,
     "SOVEREIGN_DAILY_REVIEW": OLLAMA_DEEP_TIMEOUT_SEC,
     "MOMENTUM_HAWK": OLLAMA_FAST_TIMEOUT_SEC,
     "RISK_SENTINEL": OLLAMA_FAST_TIMEOUT_SEC,

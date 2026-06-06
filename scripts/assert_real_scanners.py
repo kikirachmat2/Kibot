@@ -9,17 +9,7 @@ ROOT = Path(__file__).resolve().parent.parent
 STATE = ROOT / "state"
 
 FILES = [
-    "market_wide_wave_candidates.json",
-    "pumpfun_candidates.json",
-    "pumpfun_wave_candidates.json",
-    "base_scanner_state.json",
-    "future_web3_scanner_state.json",
     "indodax_scanner_state.json",
-    "solana_jupiter_scanner_state.json",
-    "solana_meme_scanner_state.json",
-    "pumpfun_jupiter_scanner_state.json",
-    "pumpfun_native_scanner_state.json",
-    "polymarket_scanner_state.json",
 ]
 
 

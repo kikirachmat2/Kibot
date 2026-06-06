@@ -27,13 +27,11 @@ def main() -> None:
             payload = json.loads(CONTROL.read_text())
         except Exception as exc:
             fail(f"invalid control plane json: {exc}")
-    routes = payload.get("web3", {}).get("routes", {}) if isinstance(payload, dict) else {}
-    base = routes.get("base", {}) if isinstance(routes, dict) else {}
-    future = routes.get("future_web3", {}) if isinstance(routes, dict) else {}
-    if base.get("executor") is False and "reason" not in base:
-        fail("base executor false without reason")
-    if future.get("executor") is False and "reason" not in future:
-        fail("future web3 executor false without reason")
+    routes = payload.get("scanner_executor_contract", {}).get("routes", []) if isinstance(payload, dict) else []
+    if not isinstance(routes, list) or not any(isinstance(route, dict) and route.get("route") == "indodax" for route in routes):
+        fail("indodax route missing from scanner executor contract")
+    if any(isinstance(route, dict) and route.get("route") != "indodax" for route in routes):
+        fail("non-indodax route present")
     print("ASSERT_ROUTE_COMPLETION_OK")
 
 
