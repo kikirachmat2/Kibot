@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 import os
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Dict, List
 
@@ -35,6 +35,102 @@ def _today_iso() -> str:
     return datetime.now(timezone.utc).astimezone().isoformat()
 
 
+def _today_wib() -> str:
+    return datetime.now(timezone(timedelta(hours=7))).date().isoformat()
+
+
+def _dict_get(payload: Dict[str, Any], *path: str, default: Any = None) -> Any:
+    node: Any = payload
+    for key in path:
+        if not isinstance(node, dict):
+            return default
+        node = node.get(key)
+    return default if node is None else node
+
+
+def _position_value_idr(trade: Dict[str, Any]) -> float:
+    amount = _safe_float(trade.get("amount") or trade.get("coin_amount") or trade.get("size"), 0.0)
+    explicit = _safe_float(trade.get("value_idr") or trade.get("current_value_idr") or trade.get("market_value_idr"), 0.0)
+    if explicit > 0.0:
+        return explicit
+    price = _safe_float(
+        trade.get("mark_price")
+        or trade.get("current_price")
+        or trade.get("last_price")
+        or trade.get("price")
+        or trade.get("entry_price")
+        or trade.get("fill_price"),
+        0.0,
+    )
+    return amount * price if amount > 0.0 and price > 0.0 else 0.0
+
+
+def _is_dust_trade(trade: Dict[str, Any], value_idr: float) -> bool:
+    reason_blob = " ".join(
+        str(trade.get(key) or "")
+        for key in ("exit_blocked_reason", "partial_tp_blocked_reason", "reason", "status", "state")
+    ).upper()
+    if "EXIT_MINIMUM_NOT_MET" in reason_blob or "PARTIAL_EXIT_MINIMUM_NOT_MET" in reason_blob:
+        return True
+    if "DUST" in reason_blob or "RESIDUAL" in reason_blob or "UNSELLABLE" in reason_blob:
+        return True
+    return 0.0 < value_idr < 10_000.0
+
+
+def _trade_history_summary_today() -> Dict[str, Any]:
+    try:
+        from Core.Intelligence.trade_history import summarize_today
+
+        summary = summarize_today(limit=5000)
+        return summary if isinstance(summary, dict) else {}
+    except Exception:
+        return {}
+
+
+def _fees_today_idr() -> float:
+    explicit = _safe_float(_read_json(STATE_DIR / "trade_fees_today.json", {}).get("total_fee_idr"), 0.0)
+    if explicit > 0.0:
+        return explicit
+    summary_fee = _safe_float(_trade_history_summary_today().get("fee_paid_idr"), 0.0)
+    if summary_fee > 0.0:
+        return summary_fee
+
+    # Last resort: scan today's normalized trade journal directly. This keeps
+    # the live truth useful even if the summary helper is not warm yet.
+    history_file = STATE_DIR / "trade_history" / f"{_today_wib()}.jsonl"
+    total = 0.0
+    if not history_file.exists():
+        return 0.0
+    try:
+        seen: set[str] = set()
+        for line in history_file.read_text(encoding="utf-8").splitlines():
+            if not line.strip():
+                continue
+            try:
+                row = json.loads(line)
+            except Exception:
+                continue
+            fee = _safe_float(row.get("fee_idr") or row.get("fee"), 0.0)
+            if fee <= 0.0:
+                continue
+            key = str(row.get("order_id") or row.get("exchange_order_id") or row.get("ts") or "")
+            if key and key in seen:
+                continue
+            if key:
+                seen.add(key)
+            total += fee
+    except Exception:
+        return 0.0
+    return round(total, 8)
+
+
+def _atomic_write_json(path: Path, payload: Dict[str, Any]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_suffix(f".tmp.{os.getpid()}")
+    tmp.write_text(json.dumps(payload, indent=2, ensure_ascii=False), encoding="utf-8")
+    tmp.replace(path)
+
+
 def build_live_truth() -> Dict[str, Any]:
     assert_runtime_live_only()
     governor = _read_json(STATE_DIR / "capital_governor.json", {})
@@ -43,38 +139,61 @@ def build_live_truth() -> Dict[str, Any]:
     order_tracker = _read_json(STATE_DIR / "orders" / "_index.json", {})
     pnl_recon = _read_json(STATE_DIR / "pnl_reconciliation.json", {})
 
+    indodax_venue = _dict_get(governor, "venues", "indodax", default={})
+    indodax_venue = indodax_venue if isinstance(indodax_venue, dict) else {}
     indodax_equity = _safe_float(
-        (governor.get("venues", {}) or {}).get("indodax", {}).get("equity_idr"),
-        _safe_float(portfolio.get("equity_idr"), 0.0),
+        indodax_venue.get("equity_idr"),
+        _safe_float(governor.get("current_total_equity_idr"), _safe_float(portfolio.get("equity_idr"), 0.0)),
     )
     wallet_equity = indodax_equity
-    cash_idr = _safe_float(portfolio.get("idr_cash"), 0.0)
-    realized = _safe_float(governor.get("daily_pnl_idr"), _safe_float(portfolio.get("realized_pnl_idr"), 0.0))
-    unrealized = _safe_float(portfolio.get("unrealized_pnl_idr"), 0.0)
-    fees = _safe_float(_read_json(STATE_DIR / "trade_fees_today.json", {}).get("total_fee_idr"), 0.0)
-    net = realized + unrealized - fees
+    explicit_cash_present = "idr_cash" in portfolio or "cash_idr" in portfolio
+    portfolio_cash = _safe_float(portfolio.get("idr_cash"), _safe_float(portfolio.get("cash_idr"), 0.0))
+    open_buy_reserve = _safe_float(governor.get("open_buy_order_reserve_idr"), _safe_float(indodax_venue.get("open_buy_order_reserve_idr"), 0.0))
+    portfolio_coin_holdings = _safe_float(portfolio.get("coin_holdings_idr"), 0.0)
+    equity_daily_pnl = _safe_float(governor.get("daily_pnl_idr"), _safe_float(portfolio.get("daily_pnl_idr"), 0.0))
+    trade_summary = _trade_history_summary_today()
+    trade_realized = _safe_float(trade_summary.get("realized_pnl_idr"), 0.0)
+    realized = trade_realized if _safe_float(trade_summary.get("sell_fills"), 0.0) > 0 else equity_daily_pnl
+    fees = _fees_today_idr()
 
     open_positions: List[Dict[str, Any]] = []
     dust_positions: List[Dict[str, Any]] = []
+    active_mark_value = 0.0
+    dust_value_idr = 0.0
     if isinstance(active_trades, dict):
         for pair, trade in active_trades.items():
             if not isinstance(trade, dict):
                 continue
             amount = _safe_float(trade.get("amount") or trade.get("coin_amount") or trade.get("size"), 0.0)
             entry_price = _safe_float(trade.get("price") or trade.get("entry_price") or trade.get("fill_price"), 0.0)
-            value_idr = amount * entry_price if amount > 0 and entry_price > 0 else _safe_float(trade.get("value_idr"), 0.0)
+            value_idr = _position_value_idr(trade)
+            is_dust = _is_dust_trade(trade, value_idr)
             entry = {
                 "pair": pair,
                 "amount": amount,
                 "entry_price": entry_price,
                 "value_idr": value_idr,
-                "status": "DUST_UNSELLABLE" if 0.0 < value_idr < 10_000 else str(trade.get("status") or trade.get("state") or "OPEN"),
+                "status": "DUST_UNSELLABLE" if is_dust else str(trade.get("status") or trade.get("state") or "OPEN"),
                 "reason": str(trade.get("reason") or trade.get("exit_blocked_reason") or ""),
             }
-            if value_idr > 0 and value_idr < 10000:
+            if is_dust:
+                dust_value_idr += max(0.0, value_idr)
                 dust_positions.append(entry)
             else:
+                active_mark_value += max(0.0, value_idr)
                 open_positions.append(entry)
+
+    held_coin_value_idr = portfolio_coin_holdings if portfolio_coin_holdings > 0.0 else active_mark_value + dust_value_idr
+    inferred_cash = max(0.0, indodax_equity - held_coin_value_idr - open_buy_reserve)
+    cash_idr = portfolio_cash if explicit_cash_present and portfolio_cash > 0.0 else inferred_cash
+    cash_source = "portfolio_summary" if explicit_cash_present and portfolio_cash > 0.0 else "capital_governor_inferred"
+    unrealized = _safe_float(portfolio.get("unrealized_pnl_idr"), 0.0)
+    if unrealized == 0.0 and open_positions and trade_realized:
+        unrealized = equity_daily_pnl - trade_realized
+    # CapitalGovernor PnL is already equity-based and therefore already includes
+    # fees/spread/slippage effects. Fees are displayed as a cost breakdown, not
+    # subtracted a second time from the canonical net PnL.
+    net = equity_daily_pnl
 
     indodax_status = str((governor.get("venues", {}) or {}).get("indodax", {}).get("status") or "OK").upper()
     if indodax_status in {"BLOCKED_WITH_REASON", "DOWN", "ERROR", "LOCKED"}:
@@ -94,12 +213,21 @@ def build_live_truth() -> Dict[str, Any]:
         "updated_at": _today_iso(),
         "wallet_equity_idr": wallet_equity,
         "cash_idr": cash_idr,
+        "liquid_cash_idr": cash_idr,
+        "coin_holdings_idr": held_coin_value_idr,
+        "held_coin_value_idr": held_coin_value_idr,
+        "open_buy_order_reserve_idr": open_buy_reserve,
+        "dust_value_idr": dust_value_idr,
         "total_equity_idr": wallet_equity,
         "indodax": {
             "enabled": True,
             "status": indodax_status,
             "equity_idr": indodax_equity,
             "cash_idr": cash_idr,
+            "liquid_cash_idr": cash_idr,
+            "held_coin_value_idr": held_coin_value_idr,
+            "open_buy_order_reserve_idr": open_buy_reserve,
+            "dust_value_idr": dust_value_idr,
             "open_positions": open_positions,
             "last_error": None,
         },
@@ -107,6 +235,7 @@ def build_live_truth() -> Dict[str, Any]:
         "realized_pnl_today_idr": realized,
         "unrealized_pnl_idr": unrealized,
         "fees_today_idr": fees,
+        "fee_paid_today_idr": fees,
         "net_pnl_today_idr": net,
         "open_positions": open_positions,
         "dust_positions": dust_positions,
@@ -118,6 +247,18 @@ def build_live_truth() -> Dict[str, Any]:
         "last_trade": _read_json(STATE_DIR / "last_trade.json", {}),
         "last_error": _read_json(STATE_DIR / "last_error.json", {}).get("error"),
         "last_exception": _read_json(STATE_DIR / "last_error.json", {}).get("error"),
+        "accounting_breakdown": {
+            "cash_source": cash_source,
+            "portfolio_cash_idr": portfolio_cash,
+            "inferred_cash_idr": inferred_cash,
+            "indodax_equity_idr": indodax_equity,
+            "held_coin_value_idr": held_coin_value_idr,
+            "open_buy_order_reserve_idr": open_buy_reserve,
+            "dust_value_idr": dust_value_idr,
+            "equity_daily_pnl_idr": equity_daily_pnl,
+            "trade_realized_pnl_idr": trade_realized,
+            "fees_are_breakdown_not_double_subtracted": True,
+        },
         "sources": {
             "capital_governor": governor,
             "pnl_reconciliation": pnl_recon,
@@ -125,8 +266,7 @@ def build_live_truth() -> Dict[str, Any]:
         },
     }
     try:
-        LIVE_TRUTH_FILE.parent.mkdir(parents=True, exist_ok=True)
-        LIVE_TRUTH_FILE.write_text(json.dumps(payload, indent=2, ensure_ascii=False))
+        _atomic_write_json(LIVE_TRUTH_FILE, payload)
     except Exception:
         pass
     return payload

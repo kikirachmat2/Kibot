@@ -485,9 +485,17 @@ def _build_portfolio(telemetry: Dict[str, Any]) -> Dict[str, Any]:
     live_truth = _load_live_truth()
 
     active_positions = _normalize_list(portfolio.get("active_positions") or portfolio.get("positions") or [], limit=10)
-    indodax_equity = _safe_float(portfolio.get("equity_idr"), 0.0)
-    idr_cash = _safe_float(portfolio.get("idr_cash"), indodax_equity)
-    coin_holdings = _safe_float(portfolio.get("coin_holdings_idr"), 0.0)
+    indodax_equity = _safe_float(portfolio.get("equity_idr"), _safe_float(live_truth.get("indodax_equity_idr"), 0.0))
+    idr_cash = _safe_float(
+        portfolio.get("idr_cash"),
+        _safe_float(live_truth.get("cash_idr"), _safe_float(live_truth.get("liquid_cash_idr"), indodax_equity)),
+    )
+    if idr_cash <= 0.0 and _safe_float(live_truth.get("cash_idr"), 0.0) > 0.0:
+        idr_cash = _safe_float(live_truth.get("cash_idr"), 0.0)
+    coin_holdings = _safe_float(
+        portfolio.get("coin_holdings_idr"),
+        _safe_float(live_truth.get("held_coin_value_idr"), _safe_float(live_truth.get("coin_holdings_idr"), 0.0)),
+    )
     refreshed_positions = []
     refreshed_holdings = 0.0
     for item in active_positions:
@@ -572,6 +580,9 @@ def _build_portfolio(telemetry: Dict[str, Any]) -> Dict[str, Any]:
         "total_balance_idr": combined_equity,
         "reset_total_balance_idr": reset_total_balance,
         "open_buy_order_reserve_idr": _safe_float(gov_data.get("open_buy_order_reserve_idr"), 0.0) if isinstance(gov_data, dict) else 0.0,
+        "fees_today_idr": _safe_float(live_truth.get("fees_today_idr"), _safe_float(live_truth.get("fee_paid_today_idr"), 0.0)),
+        "dust_positions": live_truth.get("dust_positions", []) if isinstance(live_truth.get("dust_positions"), list) else [],
+        "dust_value_idr": _safe_float(live_truth.get("dust_value_idr"), 0.0),
         "daily_pnl_idr": daily_pnl,
         "combined_pnl_idr": daily_pnl,
         "daily_return_idr": daily_pnl,
@@ -1738,9 +1749,15 @@ def _build_control_plane_payload() -> Dict[str, Any]:
     portfolio_v6 = {
         "total_equity_idr": _safe_float(accounting_truth.get("current_total_equity_idr"), _safe_float(portfolio.get("combined_equity_idr"), 0.0)),
         "starting_equity_idr": _safe_float(accounting_truth.get("reset_total_balance_idr"), _safe_float(portfolio.get("reset_total_balance_idr"), 0.0)),
+        "cash_idr": _safe_float(portfolio.get("idr_cash"), _safe_float(live_truth.get("cash_idr"), 0.0)),
+        "liquid_cash_idr": _safe_float(portfolio.get("idr_cash"), _safe_float(live_truth.get("liquid_cash_idr"), _safe_float(live_truth.get("cash_idr"), 0.0))),
+        "held_coin_value_idr": _safe_float(portfolio.get("coin_holdings_idr"), _safe_float(live_truth.get("held_coin_value_idr"), 0.0)),
+        "coin_holdings_idr": _safe_float(portfolio.get("coin_holdings_idr"), _safe_float(live_truth.get("coin_holdings_idr"), 0.0)),
+        "open_buy_order_reserve_idr": _safe_float(portfolio.get("open_buy_order_reserve_idr"), _safe_float(live_truth.get("open_buy_order_reserve_idr"), 0.0)),
+        "dust_value_idr": _safe_float(portfolio.get("dust_value_idr"), _safe_float(live_truth.get("dust_value_idr"), 0.0)),
         "realized_pnl_today_idr": _safe_float(portfolio.get("realized_pnl_idr"), _safe_float(accounting_truth.get("daily_pnl_idr"), 0.0)),
         "unrealized_pnl_idr": _safe_float(portfolio.get("unrealized_pnl_idr"), 0.0),
-        "fees_today_idr": _safe_float(portfolio.get("fees_today_idr"), 0.0),
+        "fees_today_idr": _safe_float(portfolio.get("fees_today_idr"), _safe_float(live_truth.get("fees_today_idr"), 0.0)),
         "net_pnl_today_idr": _safe_float(accounting_truth.get("daily_pnl_idr"), _safe_float(portfolio.get("daily_pnl_idr"), 0.0)),
         "risk_remaining_idr": _safe_float(capital_block.get("risk_remaining_idr"), 0.0),
         "daily_loss_cap_pct": _safe_float(capital_block.get("max_daily_loss_pct"), 1.5),
@@ -1778,7 +1795,7 @@ def _build_control_plane_payload() -> Dict[str, Any]:
         "pending_orders": capital_block.get("pending_orders_count", 0),
         "closed_trades": summary_data.get("trade_history", {}).get("closed_trades", []) if isinstance(summary_data.get("trade_history"), dict) else [],
         "rejected_candidates": summary_data.get("scanner_candidates", {}).get("rejected", []) if isinstance(summary_data.get("scanner_candidates"), dict) else [],
-        "dust_positions": portfolio.get("open_position_pnl", []),
+        "dust_positions": live_truth.get("dust_positions", portfolio.get("dust_positions", [])),
     }
     logs_v6 = {
         "operator_activity": decisions[:10],
