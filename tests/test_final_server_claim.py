@@ -27,4 +27,5 @@ def test_final_server_claim_writes_state(tmp_path, monkeypatch):
     (tmp_path / "phantom_top_targets.json").write_text(json.dumps({"top_targets": [{"rank": 1}]}), encoding="utf-8")
     result = claim.build_final_claim()
     assert result["top_targets"]["indodax_count"] == 1
-    assert result["top_targets"]["phantom_count"] == 1
+    assert result["top_targets"]["phantom_count"] == 0
+    assert result["phantom_engine"]["status"] == "REMOVED_BY_OPERATOR"

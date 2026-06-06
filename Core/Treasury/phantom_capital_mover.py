@@ -6,6 +6,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict
 
+from Core.Support.ki_config import KiConfig
 from Core.Web3.web3_fee_intelligence import build_fee_intelligence
 
 STATE_DIR = Path(__file__).resolve().parent.parent.parent / "state"
@@ -24,6 +25,35 @@ def _read_json(path: Path, default: Any) -> Any:
 
 def write_phantom_capital_mover(payload: Dict[str, Any]) -> Dict[str, Any]:
     STATE_DIR.mkdir(parents=True, exist_ok=True)
+    if KiConfig.INDODAX_ONLY:
+        resolved = {
+            "updated_at": datetime.now(timezone.utc).isoformat(),
+            "status": "REMOVED_BY_OPERATOR",
+            "mode": "INDODAX_ONLY",
+            "bridge": "OFF",
+            "withdrawal": "OFF",
+            "total_phantom_value_idr": 0.0,
+            "active_capital_paths": [],
+            "blocked_capital_paths": {
+                "phantom": "operator_removed_compromised_wallet_use_indodax_only",
+                "solana": "operator_removed_compromised_wallet_use_indodax_only",
+                "web3": "operator_removed_compromised_wallet_use_indodax_only",
+            },
+            "recommended_action": {
+                "route": "",
+                "action": "REMOVED_BY_OPERATOR",
+                "amount_idr": 0,
+                "reason": "operator_removed_compromised_wallet_use_indodax_only",
+            },
+            "reason": "operator_removed_compromised_wallet_use_indodax_only",
+        }
+        resolved.update(payload or {})
+        try:
+            STATE_FILE.write_text(json.dumps(resolved, indent=2, ensure_ascii=False), encoding="utf-8")
+        except PermissionError:
+            resolved["state_write_skipped"] = "permission_denied"
+        return resolved
+
     bridge_env = os.getenv("KIBOT_ENABLE_REAL_BRIDGE", "false").strip().lower() in {"1", "true", "yes", "on", "live", "production"}
     withdrawal_env = os.getenv("KIBOT_ENABLE_REAL_WITHDRAWAL", "false").strip().lower() in {"1", "true", "yes", "on", "live", "production"}
     bridge_on = False if not bridge_env else False

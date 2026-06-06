@@ -12,9 +12,14 @@ if str(ROOT) not in sys.path:
 
 from Core.Decision.phantom_target_board import build_phantom_target_board
 from Core.Decision.target_board_runner import _write_candidate_decisions
+from Core.Support.ki_config import KiConfig
 
 
 def main() -> None:
+    if KiConfig.INDODAX_ONLY:
+        print("OK:PHANTOM_HANDOFF_PIPELINE retired_by_operator")
+        return
+
     trace_path = Path("state/phantom_candidate_handoff_trace.json")
     candidates_path = Path("state/candidate_decisions.jsonl")
     phantom_board = build_phantom_target_board()

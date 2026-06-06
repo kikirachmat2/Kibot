@@ -5,6 +5,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict
 
+from Core.Support.ki_config import KiConfig
+
 STATE_DIR = Path(__file__).resolve().parent.parent.parent / "state"
 STATE_FILE = STATE_DIR / "phantom_network_maximizer.json"
 TREASURY_FILE = STATE_DIR / "phantom_treasury.json"
@@ -22,6 +24,24 @@ def _read_json(path: Path, default: Any) -> Any:
 
 def write_phantom_network_maximizer(payload: Dict[str, Any]) -> Dict[str, Any]:
     STATE_DIR.mkdir(parents=True, exist_ok=True)
+    if KiConfig.INDODAX_ONLY:
+        resolved = {
+            "updated_at": datetime.now(timezone.utc).isoformat(),
+            "status": "REMOVED_BY_OPERATOR",
+            "best_route": "",
+            "best_candidate": {},
+            "executable_routes": [],
+            "blocked_routes": {"phantom": "operator_removed_compromised_wallet_use_indodax_only"},
+            "recommended_action": "REMOVED_BY_OPERATOR",
+            "reason": "operator_removed_compromised_wallet_use_indodax_only",
+        }
+        resolved.update(payload or {})
+        try:
+            STATE_FILE.write_text(json.dumps(resolved, indent=2, ensure_ascii=False), encoding="utf-8")
+        except PermissionError:
+            resolved["state_write_skipped"] = "permission_denied"
+        return resolved
+
     treasury = _read_json(TREASURY_FILE, {})
     targets = _read_json(TARGETS_FILE, {})
     route_candidates = list(targets.get("top_targets", []) or []) if isinstance(targets, dict) else []

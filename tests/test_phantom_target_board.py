@@ -12,8 +12,8 @@ def test_phantom_target_board_builds(tmp_path, monkeypatch):
     (tmp_path / "scanner_executor_contract.json").write_text(json.dumps({"routes": {"solana": {"status": "LIVE_READY"}}, "source_proof_count": 1}), encoding="utf-8")
     (tmp_path / "web3_opportunities.json").write_text(json.dumps({"best_opportunities": [{"route": "solana_jupiter", "symbol": "SOL", "quote_ok": True, "exit_route_ok": True, "source_proof_ok": True, "executor_status": "EXECUTABLE", "wave_score": 9}]}), encoding="utf-8")
     result = board.build_phantom_target_board()
-    assert result["top_targets"]
-    assert result["top_targets"][0]["route"] == "solana_jupiter"
+    assert result["status"] == "REMOVED_BY_OPERATOR"
+    assert result["top_targets"] == []
 
 
 def test_phantom_target_board_does_not_enter_without_quote_or_exit(tmp_path, monkeypatch):
@@ -63,7 +63,6 @@ def test_phantom_target_board_does_not_enter_without_quote_or_exit(tmp_path, mon
 
     result = board.build_phantom_target_board()
 
-    target = result["top_targets"][0]
-    assert target["recommended_action"] == "WATCH"
-    assert target["reason"] == "quote_not_verified"
-    assert "quote_not_verified" in target["advisory_notes"]
+    assert result["status"] == "REMOVED_BY_OPERATOR"
+    assert result["top_targets"] == []
+    assert result["why_empty"] == "operator_removed_compromised_wallet_use_indodax_only"

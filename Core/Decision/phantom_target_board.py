@@ -5,6 +5,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List
 
+from Core.Support.ki_config import KiConfig
 from Core.Web3.web3_fee_intelligence import build_fee_intelligence
 
 STATE_DIR = Path(__file__).resolve().parent.parent.parent / "state"
@@ -92,6 +93,24 @@ def _extract_candidates(payload: Any, keys: List[str]) -> List[Dict[str, Any]]:
 
 
 def build_phantom_target_board() -> Dict[str, Any]:
+    if KiConfig.INDODAX_ONLY:
+        payload = {
+            "updated_at": datetime.now(timezone.utc).isoformat(),
+            "status": "REMOVED_BY_OPERATOR",
+            "platform_mode": "INDODAX_ONLY",
+            "top_targets": [],
+            "source_breakdown": {},
+            "route_diversity": {},
+            "why_empty": "operator_removed_compromised_wallet_use_indodax_only",
+            "retired_venues": {"phantom": "REMOVED_BY_OPERATOR"},
+        }
+        try:
+            STATE_DIR.mkdir(parents=True, exist_ok=True)
+            STATE_FILE.write_text(json.dumps(payload, indent=2, ensure_ascii=False), encoding="utf-8")
+        except PermissionError:
+            payload["state_write_skipped"] = "permission_denied"
+        return payload
+
     treasury = _read(STATE_DIR / "phantom_treasury.json", {})
     mover = _read(STATE_DIR / "phantom_capital_mover.json", {})
     maximizer = _read(STATE_DIR / "phantom_network_maximizer.json", {})

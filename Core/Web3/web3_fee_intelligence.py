@@ -371,8 +371,14 @@ def build_fee_intelligence(
 
 
 def write_fee_state(payload: Dict[str, Any]) -> Dict[str, Any]:
-    STATE_DIR.mkdir(parents=True, exist_ok=True)
     resolved = dict(payload or {})
     resolved["updated_at"] = resolved.get("updated_at") or datetime.now(timezone.utc).isoformat()
-    FEE_STATE_FILE.write_text(json.dumps(resolved, indent=2, ensure_ascii=False), encoding="utf-8")
+    try:
+        STATE_DIR.mkdir(parents=True, exist_ok=True)
+        FEE_STATE_FILE.write_text(json.dumps(resolved, indent=2, ensure_ascii=False), encoding="utf-8")
+    except PermissionError:
+        # Web3 is retired in Indodax-only runtime, and production state files may
+        # be owned by systemd. Fee intelligence should still return a safe
+        # payload instead of crashing a caller that is only asking for a reject.
+        resolved["state_write_skipped"] = "permission_denied"
     return resolved
