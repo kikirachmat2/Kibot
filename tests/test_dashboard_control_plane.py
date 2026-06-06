@@ -106,6 +106,14 @@ def test_control_plane_payload_stays_browser_sized():
     assert len(raw) < 1_000_000
 
 
+def test_dashboard_v6_pnl_percentage_is_exposed():
+    payload = _build_control_plane_payload()
+    portfolio = payload["portfolio_v6"]
+
+    assert "net_pnl_today_pct" in portfolio
+    assert "daily_pnl_pct" in portfolio
+
+
 def test_zero_secret_leak(monkeypatch):
     """Ensure no raw secrets or private keys are leaked in the dashboard payload."""
     monkeypatch.setenv("KIBOT_SECRET_KEY", "super_secret_value_12345")

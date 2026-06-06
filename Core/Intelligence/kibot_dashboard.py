@@ -1791,6 +1791,8 @@ def _build_control_plane_payload() -> Dict[str, Any]:
         "unrealized_pnl_idr": _safe_float(portfolio.get("unrealized_pnl_idr"), 0.0),
         "fees_today_idr": _safe_float(portfolio.get("fees_today_idr"), _safe_float(live_truth.get("fees_today_idr"), 0.0)),
         "net_pnl_today_idr": _safe_float(accounting_truth.get("daily_pnl_idr"), _safe_float(portfolio.get("daily_pnl_idr"), 0.0)),
+        "net_pnl_today_pct": _safe_float(accounting_truth.get("daily_pnl_pct"), _safe_float(portfolio.get("daily_pnl_pct"), 0.0)),
+        "daily_pnl_pct": _safe_float(accounting_truth.get("daily_pnl_pct"), _safe_float(portfolio.get("daily_pnl_pct"), 0.0)),
         "risk_remaining_idr": _safe_float(capital_block.get("risk_remaining_idr"), 0.0),
         "daily_loss_cap_pct": _safe_float(capital_block.get("max_daily_loss_pct"), 1.5),
         "start_total_equity_idr": _safe_float(accounting_truth.get("reset_total_balance_idr"), _safe_float(portfolio.get("reset_total_balance_idr"), 0.0)),

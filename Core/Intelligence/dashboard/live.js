@@ -6,7 +6,7 @@ const STALE_SECS = 90;
 const MAX_LOGS   = 80;
 const NOISE_RE   = /vault|decrypt|cipher|CEREBRAS_API_KEY|MISTRAL_API_KEY|os\.environ/i;
 
-const idr = v => `Rp ${(+v||0).toLocaleString('id-ID')}`;
+const idr = v => `Rp ${Math.round(+v||0).toLocaleString('id-ID')}`;
 const pct = v => `${v>=0?'+':''}${(+v||0).toFixed(2)}%`;
 const pickFinite = (...vals) => {
   for (const v of vals) {
