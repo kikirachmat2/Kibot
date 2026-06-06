@@ -303,7 +303,10 @@ function openModal(agentId) {
     ? `<ul class="modal-file-list">${meta.outputs.map(f=>`<li>${esc(f)}</li>`).join('')}</ul>`
     : '<span style="color:#94a3b8;font-size:11px">none</span>';
 
-  el('modal-content').innerHTML = `
+  const content = el('modal-content');
+  if (!modal || !content) return;
+
+  content.innerHTML = `
     <div class="modal-header">
       <div class="modal-avatar av--${esc(meta.color)}">${esc(meta.letter)}</div>
       <div class="modal-title-block">
@@ -337,12 +340,15 @@ function openModal(agentId) {
 }
 
 function closeModal() {
-  el('agent-modal').classList.add('hidden');
+  const modal = el('agent-modal');
+  if (modal) modal.classList.add('hidden');
 }
 
 function initModal() {
-  el('modal-close').onclick    = closeModal;
-  el('modal-backdrop').onclick = closeModal;
+  const closeButton = el('modal-close');
+  const backdrop = el('modal-backdrop');
+  if (closeButton) closeButton.onclick = closeModal;
+  if (backdrop) backdrop.onclick = closeModal;
   document.addEventListener('keydown', e => { if (e.key==='Escape') closeModal(); });
 
   const layer = el('delegation-layer');
