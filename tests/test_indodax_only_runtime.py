@@ -4,6 +4,7 @@ import json
 
 from Core.Decision import live_order_dispatcher as dispatcher
 from Core.Decision.live_order_dispatcher import LiveOrderDispatcher
+from Core.Intelligence.market_rotation import MarketRotationEngine
 from Core.Support.ki_config import KiConfig
 from Core.Treasury.live_truth_manager import build_live_truth
 
@@ -47,3 +48,14 @@ def test_live_dispatcher_does_not_dispatch_phantom(monkeypatch, tmp_path):
     state = __import__("asyncio").run(LiveOrderDispatcher().tick())
     assert "phantom" not in state
     assert state["retired_venues"]["phantom"]["status"] == "REMOVED_BY_OPERATOR"
+
+
+def test_market_rotation_is_indodax_cash_only(monkeypatch, tmp_path):
+    engine = MarketRotationEngine()
+    engine.state_file = str(tmp_path / "market_rotation.json")
+    engine.last_allocation = {}
+    result = __import__("asyncio").run(engine.compute_optimal_allocation(100000))
+    assert result["platform_mode"] == "INDODAX_ONLY"
+    assert result["allocations_pct"] == {"Indodax": 85.0, "CASH_WAIT": 15.0}
+    assert "Phantom" not in result["allocations_pct"]
+    assert "Polymarket" not in result["allocations_pct"]

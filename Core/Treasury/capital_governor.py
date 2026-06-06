@@ -637,7 +637,13 @@ class CapitalGovernor:
             indodax_snapshot = venues_snapshot.get("indodax", {}) if isinstance(venues_snapshot.get("indodax", {}), dict) else {}
             phantom_snapshot = venues_snapshot.get("phantom", {}) if isinstance(venues_snapshot.get("phantom", {}), dict) else {}
             allow_indodax_orders = bool(indodax_snapshot.get("allow_orders", allow_new_orders))
-            allow_phantom_orders = bool(phantom_snapshot.get("allow_orders", allow_new_orders))
+            allow_phantom_orders = False if KiConfig.INDODAX_ONLY else bool(phantom_snapshot.get("allow_orders", allow_new_orders))
+            phantom_retired = {
+                "status": "REMOVED_BY_OPERATOR",
+                "enabled": False,
+                "reason": "operator_removed_compromised_wallet_use_indodax_only",
+                "total_value_idr": 0.0,
+            }
             reasons = [reason for reason in [
                 base_reason,
                 (
@@ -686,7 +692,10 @@ class CapitalGovernor:
                     "allow_phantom_orders": allow_phantom_orders,
                     "venues": venues_snapshot,
                     "targets": getattr(self, "targets_snapshot", {}),
-                    "phantom_details": getattr(self, "phantom_details_snapshot", {}),
+                    "bridge": "OFF" if KiConfig.INDODAX_ONLY else getattr(self, "bridge", "OFF"),
+                    "withdrawal": "OFF" if KiConfig.INDODAX_ONLY else getattr(self, "withdrawal", "OFF"),
+                    "retired_venues": {"phantom": phantom_retired} if KiConfig.INDODAX_ONLY else getattr(self, "retired_venues", {}),
+                    "phantom_details": phantom_retired if KiConfig.INDODAX_ONLY else getattr(self, "phantom_details_snapshot", {}),
                 }, f, indent=4)
             self._write_daily_anchor()
         except Exception as e:

@@ -47,6 +47,20 @@ class MarketRotationEngine:
         """
         Estimate current annualized yield profiles (APRs) for all trading venues.
         """
+        if KiConfig.INDODAX_ONLY:
+            return {
+                "Indodax": {
+                    "apy": 0.0,
+                    "risk_score": 2,
+                    "description": "Spot trading via Indodax orderbook, fee-aware EV, and lead-lag confirmation.",
+                },
+                "CASH_WAIT": {
+                    "apy": 0.0,
+                    "risk_score": 0,
+                    "description": "IDR cash buffer while deterministic gates wait for a qualified setup.",
+                },
+            }
+
         venues = {
             "Indodax": {"apy": 0.0, "risk_score": 2, "description": "Spot HFT trading via Lead-Lag & orderbook microstructure."},
             "Polymarket": {"apy": 0.0, "risk_score": 4, "description": "Prediction markets arbitrage & dynamic probability scans."},
@@ -96,6 +110,28 @@ class MarketRotationEngine:
         Evaluate APRs and calculate optimal capital distribution across venues.
         Allocates capital primarily to higher-yield, lower-risk environments.
         """
+        if KiConfig.INDODAX_ONLY:
+            venues = await self.calculate_venue_yields()
+            allocations = {"Indodax": 85.0, "CASH_WAIT": 15.0}
+            alloc_idr = {name: round(total_capital_idr * (pct / 100.0), 0) for name, pct in allocations.items()}
+            result = {
+                "timestamp_ms": int(asyncio.get_event_loop().time() * 1000),
+                "platform_mode": "INDODAX_ONLY",
+                "total_capital_idr": total_capital_idr,
+                "venue_yields": venues,
+                "allocations_pct": allocations,
+                "allocations_idr": alloc_idr,
+                "suggested_movements": [],
+                "retired_venues": {
+                    "phantom": "REMOVED_BY_OPERATOR",
+                    "polymarket": "REMOVED_BY_OPERATOR",
+                    "web3": "REMOVED_BY_OPERATOR",
+                },
+            }
+            self._save_state(result)
+            logger.info(f"📈 Indodax-only Rotation Computed: {allocations}")
+            return result
+
         venues = await self.calculate_venue_yields()
         
         # Calculate a combined score: Yield divided by Risk Score (adding a risk-adjusted discount)
