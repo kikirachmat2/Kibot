@@ -133,24 +133,26 @@ def compute_ev(
 def ev_from_candidate(candidate: Dict[str, Any]) -> EVResult:
     """Convenience wrapper that reads standard candidate dict fields."""
     sample_size = int(candidate.get("historical_sample_size", 0) or candidate.get("sample_size", 0) or 0)
-    if sample_size < MIN_SAMPLE_SIZE:
-        return EVResult(
-            approved=False,
-            ev_pct=-1.0,
-            kelly_fraction=0.0,
-            rr_ratio=0.0,
-            win_prob=float(candidate.get("win_rate", 0.0) or 0.0),
-            avg_win_pct=float(candidate.get("avg_profit_pct", 0.0) or 0.0),
-            avg_loss_pct=float(candidate.get("avg_loss_pct", 0.0) or 0.0),
-            rejection_reasons=[f"Historical sample size {sample_size} below minimum {MIN_SAMPLE_SIZE}"],
-        )
-    return compute_ev(
-        win_prob=float(candidate.get("win_rate", 0.0)),
-        avg_win_pct=float(candidate.get("avg_profit_pct", 0.0)),
-        avg_loss_pct=float(candidate.get("avg_loss_pct", 0.0)),
-        fee_pct=float(candidate.get("fee_pct", 0.003)),
-        slippage_pct=float(candidate.get("slippage_pct", 0.001)),
+    win_prob = float(candidate.get("win_rate", 0.0) or 0.0)
+    avg_win_pct = float(candidate.get("avg_profit_pct", 0.0) or 0.0)
+    avg_loss_pct = float(candidate.get("avg_loss_pct", 0.0) or 0.0)
+    fee_pct = float(candidate.get("fee_pct", 0.003))
+    slippage_pct = float(candidate.get("slippage_pct", 0.001))
+
+    res = compute_ev(
+        win_prob=win_prob,
+        avg_win_pct=avg_win_pct,
+        avg_loss_pct=avg_loss_pct,
+        fee_pct=fee_pct,
+        slippage_pct=slippage_pct,
     )
+
+    if sample_size < MIN_SAMPLE_SIZE:
+        res.approved = False
+        res.rejection_reasons.insert(
+            0, f"Historical sample size {sample_size} below minimum {MIN_SAMPLE_SIZE}"
+        )
+    return res
 
 
 def batch_evaluate_ev(candidates: List[Dict[str, Any]]) -> List[Dict[str, Any]]:

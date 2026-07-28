@@ -1,0 +1,199 @@
+"""Strategy Statistics Aggregator — calculates rolling historical stats for EV calculations.
+
+Reads state/trade_history/*.jsonl and state/orders/*.json to compute:
+- sample_size (total_trades)
+- win_rate (fraction 0.0 - 1.0)
+- avg_profit_pct (fraction > 0, e.g. 0.02 = 2%)
+- avg_loss_pct (fraction > 0, e.g. 0.01 = 1%)
+
+Maintains an in-memory cache refreshed periodically (default: 300s).
+"""
+
+from __future__ import annotations
+
+import json
+import logging
+import time
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Any, Dict, Optional
+
+logger = logging.getLogger("KiBot.StrategyStats")
+
+ROOT_DIR = Path(__file__).resolve().parent.parent.parent
+STATE_DIR = ROOT_DIR / "state"
+TRADE_HISTORY_DIR = STATE_DIR / "trade_history"
+ORDERS_DIR = STATE_DIR / "orders"
+
+CACHE_TTL_SECONDS = 300.0  # 5 minutes
+
+
+@dataclass
+class StrategyMetrics:
+    total_trades: int = 0
+    total_wins: int = 0
+    total_losses: int = 0
+    win_rate: float = 0.0
+    avg_profit_pct: float = 0.0
+    avg_loss_pct: float = 0.0
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "historical_sample_size": self.total_trades,
+            "sample_size": self.total_trades,
+            "win_rate": self.win_rate,
+            "avg_profit_pct": self.avg_profit_pct,
+            "avg_loss_pct": self.avg_loss_pct,
+        }
+
+
+class StrategyStatsAggregator:
+    def __init__(self, ttl_seconds: float = CACHE_TTL_SECONDS):
+        self.ttl_seconds = ttl_seconds
+        self._last_refresh: float = 0.0
+        self._cache: Dict[str, StrategyMetrics] = {}
+        self._global_metrics: StrategyMetrics = StrategyMetrics()
+
+    def get_metrics_for_candidate(self, candidate: Dict[str, Any]) -> StrategyMetrics:
+        """Look up metrics matching candidate keys (strategy_id, pattern, pair, or global fallback)."""
+        self.refresh_if_needed()
+        keys_to_try = [
+            str(candidate.get("strategy_id") or "").strip(),
+            str(candidate.get("pattern") or candidate.get("stage") or "").strip(),
+            str(candidate.get("pair") or candidate.get("symbol") or "").strip().upper().replace("_", "/"),
+            str(candidate.get("pair") or candidate.get("symbol") or "").strip().upper().replace("/", "_"),
+        ]
+        for key in keys_to_try:
+            if key and key in self._cache and self._cache[key].total_trades > 0:
+                return self._cache[key]
+        return self._global_metrics
+
+    def inject_stats(self, candidate: Dict[str, Any]) -> Dict[str, Any]:
+        """Inject historical statistics directly into the candidate dict."""
+        metrics = self.get_metrics_for_candidate(candidate)
+        candidate["historical_sample_size"] = metrics.total_trades
+        candidate["sample_size"] = metrics.total_trades
+        candidate["win_rate"] = metrics.win_rate
+        candidate["avg_profit_pct"] = metrics.avg_profit_pct
+        candidate["avg_loss_pct"] = metrics.avg_loss_pct
+        return candidate
+
+    def refresh_if_needed(self, force: bool = False) -> None:
+        now = time.time()
+        if force or (now - self._last_refresh) >= self.ttl_seconds or not self._cache:
+            self._rebuild_cache()
+            self._last_refresh = now
+
+    def _rebuild_cache(self) -> None:
+        stats_acc: Dict[str, Dict[str, Any]] = {}
+
+        def _init_acc() -> Dict[str, Any]:
+            return {"wins": [], "losses": [], "total": 0}
+
+        def _record_trade(key: str, pnl_pct: float) -> None:
+            if not key:
+                return
+            acc = stats_acc.setdefault(key, _init_acc())
+            acc["total"] += 1
+            if pnl_pct > 0:
+                acc["wins"].append(pnl_pct)
+            elif pnl_pct < 0:
+                acc["losses"].append(abs(pnl_pct))
+
+        # 1. Scan trade_history directory (*.jsonl)
+        if TRADE_HISTORY_DIR.exists():
+            for filepath in TRADE_HISTORY_DIR.glob("*.jsonl"):
+                try:
+                    for line in filepath.read_text(encoding="utf-8").splitlines():
+                        if not line.strip():
+                            continue
+                        try:
+                            row = json.loads(line)
+                        except Exception:
+                            continue
+                        st = str(row.get("state") or row.get("status") or "").upper()
+                        evt = str(row.get("event_type") or row.get("trade_event_type") or "").upper()
+                        if st == "RECONCILED" or evt in ("ORDER_RECONCILED", "SELL_FILLED", "EXIT_FILLED"):
+                            pnl_pct = float(row.get("realized_pnl_pct") or row.get("pnl_pct") or 0.0)
+                            # Convert percent format (e.g. 5.0 = 5%, -1.0 = -1%) to decimal fraction
+                            if abs(pnl_pct) >= 0.05:  # >= 0.05% assumed as percent scale e.g. 1.0% -> 0.01
+                                pnl_pct = pnl_pct / 100.0
+
+                            pair = str(row.get("pair") or row.get("symbol") or "").upper().strip()
+                            pair_slash = pair.replace("_", "/")
+                            pair_underscore = pair.replace("/", "_")
+                            strat = str(row.get("strategy_id") or row.get("trade_profile") or "").strip()
+                            pattern = str(row.get("trade_grade") or row.get("pattern") or "").strip()
+
+                            _record_trade(pair_slash, pnl_pct)
+                            _record_trade(pair_underscore, pnl_pct)
+                            _record_trade(strat, pnl_pct)
+                            _record_trade(pattern, pnl_pct)
+                            _record_trade("_GLOBAL_", pnl_pct)
+                except Exception as e:
+                    logger.warning(f"Error reading trade history {filepath}: {e}")
+
+        # 2. Scan orders directory (*.json)
+        if ORDERS_DIR.exists():
+            for filepath in ORDERS_DIR.glob("*.json"):
+                if filepath.name == "_index.json":
+                    continue
+                try:
+                    order = json.loads(filepath.read_text(encoding="utf-8"))
+                    st = str(order.get("state") or order.get("status") or "").upper()
+                    if st in ("RECONCILED", "FILLED", "CLOSED"):
+                        pnl_idr = float(order.get("pnl_idr") or 0.0)
+                        pnl_pct = float(order.get("pnl_pct") or 0.0)
+                        if pnl_pct != 0.0:
+                            pnl_val = pnl_pct / 100.0 if abs(pnl_pct) >= 0.05 else pnl_pct
+                        elif pnl_idr != 0.0 and float(order.get("budget_idr") or 0.0) > 0:
+                            pnl_val = pnl_idr / float(order["budget_idr"])
+                        else:
+                            continue
+
+                        pair = str(order.get("pair") or order.get("symbol") or "").upper().strip()
+                        pair_slash = pair.replace("_", "/")
+                        pair_underscore = pair.replace("/", "_")
+                        strat = str(order.get("strategy_id") or order.get("trade_profile") or "").strip()
+
+                        _record_trade(pair_slash, pnl_val)
+                        _record_trade(pair_underscore, pnl_val)
+                        _record_trade(strat, pnl_val)
+                        _record_trade("_GLOBAL_", pnl_val)
+                except Exception:
+                    pass
+
+        # Build StrategyMetrics objects
+        new_cache: Dict[str, StrategyMetrics] = {}
+        for key, acc in stats_acc.items():
+            total = acc["total"]
+            if total == 0:
+                continue
+            wins = acc["wins"]
+            losses = acc["losses"]
+            win_rate = len(wins) / total
+            avg_win = sum(wins) / len(wins) if wins else 0.02  # default fallback 2%
+            avg_loss = sum(losses) / len(losses) if losses else 0.01  # default fallback 1%
+            metrics = StrategyMetrics(
+                total_trades=total,
+                total_wins=len(wins),
+                total_losses=len(losses),
+                win_rate=win_rate,
+                avg_profit_pct=avg_win,
+                avg_loss_pct=avg_loss,
+            )
+            new_cache[key] = metrics
+
+        self._cache = new_cache
+        self._global_metrics = new_cache.get("_GLOBAL_", StrategyMetrics())
+        logger.info(f"[StrategyStats] Cache rebuilt with {len(new_cache)} keys. Global sample size: {self._global_metrics.total_trades}")
+
+
+_aggregator: Optional[StrategyStatsAggregator] = None
+
+
+def get_stats_aggregator() -> StrategyStatsAggregator:
+    global _aggregator
+    if _aggregator is None:
+        _aggregator = StrategyStatsAggregator()
+    return _aggregator

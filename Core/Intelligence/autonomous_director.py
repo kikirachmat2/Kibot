@@ -68,6 +68,15 @@ class AutonomousDirector:
         # Step 1 — Signal Quality gate
         candidates = sq_batch(raw_candidates)
 
+        # Step 1.5 — Inject Historical Strategy Statistics
+        try:
+            from .strategy_stats import get_stats_aggregator
+            aggregator = get_stats_aggregator()
+            for c in candidates:
+                aggregator.inject_stats(c)
+        except Exception as err:
+            pass
+
         # Step 2 — Expected Value gate
         candidates = batch_evaluate_ev(candidates)
 
