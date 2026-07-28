@@ -147,7 +147,12 @@ def ev_from_candidate(candidate: Dict[str, Any]) -> EVResult:
         slippage_pct=slippage_pct,
     )
 
-    if sample_size < MIN_SAMPLE_SIZE:
+    if not candidate.get("is_specific_match", True):
+        res.approved = False
+        res.rejection_reasons.insert(
+            0, "Fallback global stats used — specific strategy/pair historical track record required for live approval"
+        )
+    elif sample_size < MIN_SAMPLE_SIZE:
         res.approved = False
         res.rejection_reasons.insert(
             0, f"Historical sample size {sample_size} below minimum {MIN_SAMPLE_SIZE}"

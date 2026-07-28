@@ -57,6 +57,7 @@ def score_candidate(
     quarantine_active: bool = False,
     punishment_severity: float = 0.0,
     llm_advisory_score: Optional[float] = None,
+    is_specific_match: bool = True,
 ) -> ScorecardResult:
     breakdown: List[str] = []
 
@@ -98,6 +99,9 @@ def score_candidate(
         verdict = ScorecardVerdict.REJECTED
     elif not ev_approved:
         verdict = ScorecardVerdict.REJECTED if composite < PAPER_THRESHOLD else ScorecardVerdict.PAPER_ONLY
+    elif not is_specific_match:
+        verdict = ScorecardVerdict.PAPER_ONLY if composite >= PAPER_THRESHOLD else ScorecardVerdict.REJECTED
+        breakdown.append("cap_paper_only_global_fallback")
     elif composite >= APPROVE_THRESHOLD:
         verdict = ScorecardVerdict.APPROVED
     elif composite >= PAPER_THRESHOLD:
@@ -121,6 +125,7 @@ def run_scorecard(candidate: Dict[str, Any], *, market_regime: str = "UNKNOWN") 
         quarantine_active=candidate.get("quarantine_active", False),
         punishment_severity=candidate.get("punishment_severity", 0.0),
         llm_advisory_score=candidate.get("llm_advisory_score"),
+        is_specific_match=candidate.get("is_specific_match", True),
     )
     candidate["scorecard"] = result.to_dict()
     candidate["scorecard_verdict"] = result.verdict.value

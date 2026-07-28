@@ -72,13 +72,24 @@ def test_ev_gating_verdicts():
     ev_good = ev_from_candidate(good_cand)
     assert ev_good.approved is True
 
+    from Core.Intelligence.strategy_stats import get_stats_aggregator
+    agg = get_stats_aggregator()
+    agg._cache["NEW_STRAT"] = StrategyMetrics(total_trades=5, total_wins=4, total_losses=1, win_rate=0.8, avg_profit_pct=0.04, avg_loss_pct=0.01)
+    agg._cache["BAD_STRAT"] = StrategyMetrics(total_trades=30, total_wins=9, total_losses=21, win_rate=0.3, avg_profit_pct=0.01, avg_loss_pct=0.03)
+
     # 2. Sample < 20 -> approved = False in EVResult, but verdict is PAPER_ONLY in director
     low_sample_cand = {
+        "symbol": "NEW_STRAT/IDR",
+        "pair": "NEW_STRAT/IDR",
         "historical_sample_size": 5,
         "win_rate": 0.70,
         "avg_profit_pct": 0.04,
         "avg_loss_pct": 0.01,
-        "signal_quality": {"grade": "STRONG", "score": 0.85},
+        "spread_pct": 0.001,
+        "volume_ratio": 1.5,
+        "leadlag_score": 0.8,
+        "daily_volatility_pct": 0.03,
+        "data_age_seconds": 2.0,
         "strategy_id": "NEW_STRAT",
     }
     ev_low = ev_from_candidate(low_sample_cand)
@@ -93,11 +104,14 @@ def test_ev_gating_verdicts():
 
     # 3. Sample >= 20 tapi EV jelek -> approved = False, REJECTED verdict
     bad_ev_cand = {
+        "symbol": "BAD_STRAT/IDR",
+        "pair": "BAD_STRAT/IDR",
         "historical_sample_size": 30,
         "win_rate": 0.30,  # 30% win rate
         "avg_profit_pct": 0.01,
         "avg_loss_pct": 0.03,
-        "signal_quality": {"grade": "MARGINAL", "score": 0.4},
+        "spread_pct": 0.001,
+        "data_age_seconds": 2.0,
         "strategy_id": "BAD_STRAT",
     }
     ev_bad = ev_from_candidate(bad_ev_cand)
@@ -106,3 +120,52 @@ def test_ev_gating_verdicts():
     res_bad = director.evaluate_cycle([bad_ev_cand], market_regime="BEAR")
     assert len(res_bad["rejected"]) == 1
     assert res_bad["rejected"][0]["scorecard_verdict"] == "REJECTED"
+
+
+def test_global_fallback_candidate_is_capped_at_paper_only(temp_history_dir):
+    history_dir, _ = temp_history_dir
+
+    # Write 30 global trades with good stats
+    lines = []
+    for _ in range(25):
+        lines.append(json.dumps({
+            "state": "RECONCILED",
+            "pair": "SOME_OLD_PAIR/IDR",
+            "strategy_id": "OLD_STRAT",
+            "realized_pnl_pct": 4.0,
+        }))
+    for _ in range(5):
+        lines.append(json.dumps({
+            "state": "RECONCILED",
+            "pair": "SOME_OLD_PAIR/IDR",
+            "strategy_id": "OLD_STRAT",
+            "realized_pnl_pct": -1.0,
+        }))
+    (history_dir / "2026-05-20.jsonl").write_text("\n".join(lines), encoding="utf-8")
+
+    aggregator = StrategyStatsAggregator(ttl_seconds=0)
+    aggregator.refresh_if_needed(force=True)
+
+    # Completely brand new pair and strategy NOT in history, but with STRONG signal quality
+    unknown_cand = {
+        "symbol": "BRAND_NEW_PAIR/IDR",
+        "pair": "BRAND_NEW_PAIR/IDR",
+        "strategy_id": "UNKNOWN_STRAT",
+        "spread_pct": 0.001,
+        "volume_ratio": 1.5,
+        "leadlag_score": 0.8,
+        "daily_volatility_pct": 0.03,
+        "data_age_seconds": 2.0,
+    }
+
+    director = AutonomousDirector(market_regime="BULL")
+    res = director.evaluate_cycle([unknown_cand], market_regime="BULL")
+
+    # MUST NOT be APPROVED — must be PAPER_ONLY (shadow)
+    assert len(res["approved"]) == 0
+    assert len(res["shadow"]) == 1
+    evaluated = res["shadow"][0]
+    assert evaluated["is_specific_match"] is False
+    assert evaluated["ev_approved"] is False
+    assert evaluated["scorecard_verdict"] == "PAPER_ONLY"
+    assert "Fallback global stats used" in evaluated["ev_analysis"]["rejection_reasons"][0]

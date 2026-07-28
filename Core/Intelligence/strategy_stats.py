@@ -16,7 +16,7 @@ import logging
 import time
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, Tuple
 
 logger = logging.getLogger("KiBot.StrategyStats")
 
@@ -36,6 +36,7 @@ class StrategyMetrics:
     win_rate: float = 0.0
     avg_profit_pct: float = 0.0
     avg_loss_pct: float = 0.0
+    insufficient_data: bool = False
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -44,6 +45,7 @@ class StrategyMetrics:
             "win_rate": self.win_rate,
             "avg_profit_pct": self.avg_profit_pct,
             "avg_loss_pct": self.avg_loss_pct,
+            "insufficient_data": self.insufficient_data,
         }
 
 
@@ -52,10 +54,16 @@ class StrategyStatsAggregator:
         self.ttl_seconds = ttl_seconds
         self._last_refresh: float = 0.0
         self._cache: Dict[str, StrategyMetrics] = {}
-        self._global_metrics: StrategyMetrics = StrategyMetrics()
+        self._global_metrics: StrategyMetrics = StrategyMetrics(insufficient_data=True)
 
-    def get_metrics_for_candidate(self, candidate: Dict[str, Any]) -> StrategyMetrics:
-        """Look up metrics matching candidate keys (strategy_id, pattern, pair, or global fallback)."""
+    def get_metrics_for_candidate(self, candidate: Dict[str, Any]) -> Tuple[StrategyMetrics, bool]:
+        """Look up metrics matching candidate keys (strategy_id, pattern, pair).
+
+        Returns:
+            Tuple of (metrics, is_specific_match)
+            is_specific_match is True ONLY if matched to a specific strategy_id/pattern/pair,
+            and False if using global fallback.
+        """
         self.refresh_if_needed()
         keys_to_try = [
             str(candidate.get("strategy_id") or "").strip(),
@@ -64,18 +72,21 @@ class StrategyStatsAggregator:
             str(candidate.get("pair") or candidate.get("symbol") or "").strip().upper().replace("/", "_"),
         ]
         for key in keys_to_try:
-            if key and key in self._cache and self._cache[key].total_trades > 0:
-                return self._cache[key]
-        return self._global_metrics
+            if key and key in self._cache and key != "_GLOBAL_" and self._cache[key].total_trades > 0:
+                return self._cache[key], True
+
+        return self._global_metrics, False
 
     def inject_stats(self, candidate: Dict[str, Any]) -> Dict[str, Any]:
         """Inject historical statistics directly into the candidate dict."""
-        metrics = self.get_metrics_for_candidate(candidate)
+        metrics, is_specific_match = self.get_metrics_for_candidate(candidate)
         candidate["historical_sample_size"] = metrics.total_trades
         candidate["sample_size"] = metrics.total_trades
         candidate["win_rate"] = metrics.win_rate
         candidate["avg_profit_pct"] = metrics.avg_profit_pct
         candidate["avg_loss_pct"] = metrics.avg_loss_pct
+        candidate["is_specific_match"] = is_specific_match
+        candidate["insufficient_data"] = metrics.insufficient_data or not is_specific_match
         return candidate
 
     def refresh_if_needed(self, force: bool = False) -> None:
@@ -115,8 +126,7 @@ class StrategyStatsAggregator:
                         evt = str(row.get("event_type") or row.get("trade_event_type") or "").upper()
                         if st == "RECONCILED" or evt in ("ORDER_RECONCILED", "SELL_FILLED", "EXIT_FILLED"):
                             pnl_pct = float(row.get("realized_pnl_pct") or row.get("pnl_pct") or 0.0)
-                            # Convert percent format (e.g. 5.0 = 5%, -1.0 = -1%) to decimal fraction
-                            if abs(pnl_pct) >= 0.05:  # >= 0.05% assumed as percent scale e.g. 1.0% -> 0.01
+                            if abs(pnl_pct) >= 0.05:  # Convert % format to decimal fraction
                                 pnl_pct = pnl_pct / 100.0
 
                             pair = str(row.get("pair") or row.get("symbol") or "").upper().strip()
@@ -172,8 +182,12 @@ class StrategyStatsAggregator:
             wins = acc["wins"]
             losses = acc["losses"]
             win_rate = len(wins) / total
-            avg_win = sum(wins) / len(wins) if wins else 0.02  # default fallback 2%
-            avg_loss = sum(losses) / len(losses) if losses else 0.01  # default fallback 1%
+            
+            # Conservative defaults if all wins or all losses
+            avg_win = sum(wins) / len(wins) if wins else 0.005  # conservative 0.5%
+            avg_loss = sum(losses) / len(losses) if losses else 0.02  # conservative 2.0%
+            insufficient_data = (len(wins) == 0 or len(losses) == 0)
+
             metrics = StrategyMetrics(
                 total_trades=total,
                 total_wins=len(wins),
@@ -181,11 +195,12 @@ class StrategyStatsAggregator:
                 win_rate=win_rate,
                 avg_profit_pct=avg_win,
                 avg_loss_pct=avg_loss,
+                insufficient_data=insufficient_data,
             )
             new_cache[key] = metrics
 
         self._cache = new_cache
-        self._global_metrics = new_cache.get("_GLOBAL_", StrategyMetrics())
+        self._global_metrics = new_cache.get("_GLOBAL_", StrategyMetrics(insufficient_data=True))
         logger.info(f"[StrategyStats] Cache rebuilt with {len(new_cache)} keys. Global sample size: {self._global_metrics.total_trades}")
 
 
