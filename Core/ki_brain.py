@@ -421,6 +421,29 @@ class BrainManager:
             pass
         return dict(self._indodax_pairs_cache)
 
+    @staticmethod
+    def _parse_indodax_pairs_payload(indodax_pairs: List[Dict[str, Any]]) -> Dict[str, str]:
+        """Parses raw payload from Indodax API /api/pairs into {BASE_SYMBOL: ticker_id}.
+
+        Note on Indodax API Schema:
+          - 'traded_currency' (e.g. 'btc', 'eden') = the traded coin symbol.
+          - 'base_currency' (e.g. 'idr', 'usdt') = the account quote currency.
+          - 'quote_currency' / 'quote' = alternate keys in some proxy schemas.
+        """
+        cleaned: Dict[str, str] = {}
+        for item in indodax_pairs:
+            if not isinstance(item, dict):
+                continue
+            pair_id = item.get("ticker_id") or item.get("id") or ""
+            base = item.get("traded_currency") or item.get("base_currency") or ""
+            # Check quote currency: in Indodax API, base_currency is 'idr'. In proxy schemas, quote_currency/quote is 'idr'.
+            quote = item.get("quote_currency") or item.get("quote") or item.get("base_currency") or ""
+            if pair_id and base and str(quote).lower() == "idr":
+                if "_" not in str(pair_id) and str(pair_id).lower().endswith("idr"):
+                    pair_id = f"{str(base).lower()}_idr"
+                cleaned[str(base).upper()] = str(pair_id).lower()
+        return cleaned
+
     def _get_indodax_pairs(self) -> List[Dict[str, Any]]:
         now = time.time()
         if now < self._indodax_pairs_cooldown_until:
@@ -438,17 +461,7 @@ class BrainManager:
             logger.debug("[KiBrain] indodax pairs fetch failed: %s", error)
             return []
         if isinstance(indodax_pairs, list) and indodax_pairs:
-            cleaned: Dict[str, str] = {}
-            for item in indodax_pairs:
-                if not isinstance(item, dict):
-                    continue
-                pair_id = item.get("ticker_id") or item.get("id") or ""
-                base = item.get("traded_currency") or item.get("base_currency") or ""
-                quote = item.get("base_currency") or item.get("quote_currency") or item.get("quote") or ""
-                if pair_id and base and str(quote).lower() == "idr":
-                    if "_" not in str(pair_id) and str(pair_id).lower().endswith("idr"):
-                        pair_id = f"{str(base).lower()}_idr"
-                    cleaned[str(base).upper()] = str(pair_id).lower()
+            cleaned = self._parse_indodax_pairs_payload(indodax_pairs)
             if cleaned:
                 self._indodax_pairs_cache = cleaned
                 self._indodax_pairs_cache_at = now
