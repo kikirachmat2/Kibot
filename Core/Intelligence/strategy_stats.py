@@ -31,6 +31,8 @@ CACHE_TTL_SECONDS = 300.0  # 5 minutes
 @dataclass
 class StrategyMetrics:
     total_trades: int = 0
+    sample_size_live: int = 0
+    sample_size_paper: int = 0
     total_wins: int = 0
     total_losses: int = 0
     win_rate: float = 0.0
@@ -42,6 +44,8 @@ class StrategyMetrics:
         return {
             "historical_sample_size": self.total_trades,
             "sample_size": self.total_trades,
+            "sample_size_live": self.sample_size_live,
+            "sample_size_paper": self.sample_size_paper,
             "win_rate": self.win_rate,
             "avg_profit_pct": self.avg_profit_pct,
             "avg_loss_pct": self.avg_loss_pct,
@@ -82,6 +86,8 @@ class StrategyStatsAggregator:
         metrics, is_specific_match = self.get_metrics_for_candidate(candidate)
         candidate["historical_sample_size"] = metrics.total_trades
         candidate["sample_size"] = metrics.total_trades
+        candidate["sample_size_live"] = metrics.sample_size_live
+        candidate["sample_size_paper"] = metrics.sample_size_paper
         candidate["win_rate"] = metrics.win_rate
         candidate["avg_profit_pct"] = metrics.avg_profit_pct
         candidate["avg_loss_pct"] = metrics.avg_loss_pct
@@ -99,21 +105,27 @@ class StrategyStatsAggregator:
         stats_acc: Dict[str, Dict[str, Any]] = {}
 
         def _init_acc() -> Dict[str, Any]:
-            return {"wins": [], "losses": [], "total": 0}
+            return {"wins": [], "losses": [], "total": 0, "live_count": 0, "paper_count": 0}
 
-        def _record_trade(key: str, pnl_pct: float) -> None:
+        def _record_trade(key: str, pnl_pct: float, is_paper: bool = False) -> None:
             if not key:
                 return
             acc = stats_acc.setdefault(key, _init_acc())
             acc["total"] += 1
+            if is_paper:
+                acc["paper_count"] += 1
+            else:
+                acc["live_count"] += 1
+
             if pnl_pct > 0:
                 acc["wins"].append(pnl_pct)
             elif pnl_pct < 0:
                 acc["losses"].append(abs(pnl_pct))
 
-        # 1. Scan trade_history directory (*.jsonl)
+        # 1. Scan trade_history directory (*.jsonl including paper_*.jsonl)
         if TRADE_HISTORY_DIR.exists():
             for filepath in TRADE_HISTORY_DIR.glob("*.jsonl"):
+                is_paper_file = filepath.name.startswith("paper_")
                 try:
                     for line in filepath.read_text(encoding="utf-8").splitlines():
                         if not line.strip():
@@ -129,17 +141,18 @@ class StrategyStatsAggregator:
                             if abs(pnl_pct) >= 0.05:  # Convert % format to decimal fraction
                                 pnl_pct = pnl_pct / 100.0
 
+                            is_paper = is_paper_file or bool(row.get("is_paper"))
                             pair = str(row.get("pair") or row.get("symbol") or "").upper().strip()
                             pair_slash = pair.replace("_", "/")
                             pair_underscore = pair.replace("/", "_")
                             strat = str(row.get("strategy_id") or row.get("trade_profile") or "").strip()
                             pattern = str(row.get("trade_grade") or row.get("pattern") or "").strip()
 
-                            _record_trade(pair_slash, pnl_pct)
-                            _record_trade(pair_underscore, pnl_pct)
-                            _record_trade(strat, pnl_pct)
-                            _record_trade(pattern, pnl_pct)
-                            _record_trade("_GLOBAL_", pnl_pct)
+                            _record_trade(pair_slash, pnl_pct, is_paper=is_paper)
+                            _record_trade(pair_underscore, pnl_pct, is_paper=is_paper)
+                            _record_trade(strat, pnl_pct, is_paper=is_paper)
+                            _record_trade(pattern, pnl_pct, is_paper=is_paper)
+                            _record_trade("_GLOBAL_", pnl_pct, is_paper=is_paper)
                 except Exception as e:
                     logger.warning(f"Error reading trade history {filepath}: {e}")
 
@@ -190,6 +203,8 @@ class StrategyStatsAggregator:
 
             metrics = StrategyMetrics(
                 total_trades=total,
+                sample_size_live=acc.get("live_count", 0),
+                sample_size_paper=acc.get("paper_count", 0),
                 total_wins=len(wins),
                 total_losses=len(losses),
                 win_rate=win_rate,

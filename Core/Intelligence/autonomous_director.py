@@ -109,6 +109,27 @@ class AutonomousDirector:
             else:
                 rejected.append(c)
 
+        # Step 5.5 — Paper Trade Tracker Integration (Virtual Execution for PAPER_ONLY candidates)
+        try:
+            from .paper_trade_tracker import get_paper_trade_tracker
+            paper_tracker = get_paper_trade_tracker()
+
+            # Open virtual positions for candidates in shadow list
+            for s_cand in shadow:
+                paper_tracker.open_paper_trade(s_cand)
+
+            # Build price map from current candidates to evaluate open paper trades
+            price_map = {}
+            for c in raw_candidates:
+                pair = str(c.get("pair") or c.get("symbol") or "").upper().strip()
+                px = float(c.get("price_idr") or c.get("price") or c.get("last_price") or 0.0)
+                if pair and px > 0:
+                    price_map[pair] = px
+            if price_map:
+                paper_tracker.evaluate_open_trades(price_map)
+        except Exception as err:
+            log.warning(f"[AutonomousDirector] PaperTradeTracker error: {err}")
+
         # Step 6 — Apply live gate
         live_forward: List[Dict[str, Any]] = []
         if _LIVE_ENABLED:
