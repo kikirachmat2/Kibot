@@ -50,8 +50,8 @@ def test_full_paper_trade_lifecycle(temp_paper_env):
         "scorecard_verdict": "PAPER_ONLY",
     }
 
-    # 2. Open paper trade
-    opened = tracker.open_paper_trade(shadow_candidate, budget_idr=10000.0, stop_loss_pct=0.015, take_profit_pct=0.02)
+    # 2. Open paper trade with calibrated TP=+3.0% / SL=-1.0%
+    opened = tracker.open_paper_trade(shadow_candidate, budget_idr=10000.0, stop_loss_pct=0.010, take_profit_pct=0.030)
     assert opened is not None
     assert opened["pair"] == "MOCK/IDR"
     assert opened["entry_price_idr"] == 100.0
@@ -121,3 +121,23 @@ def test_autonomous_director_paper_trading_pipeline(temp_paper_env, monkeypatch)
     open_trades = tracker.get_open_paper_trades()
     assert len(open_trades) == 1
     assert open_trades[0]["pair"] == "SOL/IDR"
+
+
+def test_paper_trade_rr_ratio_safety_check(temp_paper_env):
+    tracker, _, _, _ = temp_paper_env
+    from Core.Intelligence.paper_trade_tracker import compute_net_rr_ratio, MIN_NET_RR_BUFFER
+
+    # 1. Test default TP=+3.0% / SL=-1.0% net R:R ratio calculation
+    default_net_rr = compute_net_rr_ratio(take_profit_pct=0.03, stop_loss_pct=0.01)
+    assert default_net_rr >= MIN_NET_RR_BUFFER  # Must be >= 1.60 (actual: 1.857)
+
+    cand = {"symbol": "TEST/IDR", "pair": "TEST/IDR", "price_idr": 100.0}
+
+    # 2. Valid trade (TP=3%, SL=1%) opens successfully
+    valid_trade = tracker.open_paper_trade(cand, take_profit_pct=0.03, stop_loss_pct=0.01)
+    assert valid_trade is not None
+
+    # 3. Invalid trade with bad R:R (TP=2%, SL=1.5% -> net RR ~0.84) must be blocked
+    invalid_cand = {"symbol": "BAD/IDR", "pair": "BAD/IDR", "price_idr": 100.0}
+    blocked_trade = tracker.open_paper_trade(invalid_cand, take_profit_pct=0.02, stop_loss_pct=0.015)
+    assert blocked_trade is None

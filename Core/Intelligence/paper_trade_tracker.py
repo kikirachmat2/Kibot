@@ -28,7 +28,22 @@ PAPER_OPEN_DIR = STATE_DIR / "paper_trades" / "open"
 TRADE_HISTORY_DIR = STATE_DIR / "trade_history"
 WIB_TZ = timezone(timedelta(hours=7))
 
-FEE_PCT = 0.003  # 0.3% roundtrip fee
+DEFAULT_FEE_PCT = 0.003  # 0.3% roundtrip fee
+DEFAULT_SLIPPAGE_PCT = 0.001  # 0.1% slippage
+MIN_NET_RR_BUFFER = 1.60  # Must be >= 1.6 to safely pass MIN_RR_RATIO (1.5) in compute_ev
+
+
+def compute_net_rr_ratio(
+    take_profit_pct: float = 0.03,
+    stop_loss_pct: float = 0.01,
+    fee_pct: float = DEFAULT_FEE_PCT,
+    slippage_pct: float = DEFAULT_SLIPPAGE_PCT,
+) -> float:
+    """Calculate net risk-to-reward ratio accounting for fee and slippage friction."""
+    friction = fee_pct + slippage_pct
+    net_win = max(0.0001, take_profit_pct - friction)
+    net_loss = max(0.0001, stop_loss_pct + friction)
+    return net_win / net_loss
 
 
 def _now_wib() -> datetime:
@@ -51,7 +66,7 @@ class PaperTradeTracker:
         self,
         open_dir: Path = PAPER_OPEN_DIR,
         history_dir: Path = TRADE_HISTORY_DIR,
-        fee_pct: float = FEE_PCT,
+        fee_pct: float = DEFAULT_FEE_PCT,
     ):
         self.open_dir = open_dir
         self.history_dir = history_dir
@@ -63,11 +78,18 @@ class PaperTradeTracker:
         self,
         candidate: Dict[str, Any],
         budget_idr: float = 10000.0,
-        stop_loss_pct: float = 0.015,
-        take_profit_pct: float = 0.020,
+        stop_loss_pct: float = 0.010,   # -1.0% stop loss
+        take_profit_pct: float = 0.030, # +3.0% take profit
         max_hold_seconds: float = 7200.0,
     ) -> Optional[Dict[str, Any]]:
         """Open a virtual paper trade for a candidate with PAPER_ONLY verdict."""
+        # Enforce safety check: Net R:R ratio must be >= 1.6
+        net_rr = compute_net_rr_ratio(take_profit_pct, stop_loss_pct, self.fee_pct)
+        if net_rr < MIN_NET_RR_BUFFER:
+            logger.warning(
+                f"[PaperTrade] Cannot open trade: net R:R ratio {net_rr:.2f} is below minimum required buffer {MIN_NET_RR_BUFFER:.2f}"
+            )
+            return None
         pair = str(candidate.get("pair") or candidate.get("symbol") or "").upper().strip()
         if not pair:
             return None
