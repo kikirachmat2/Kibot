@@ -455,6 +455,16 @@ class OrderTracker:
         except Exception as e:
             logger.warning(f"[OrderTracker] Learning engine update failed: {e}")
 
+        # Feed to pair quarantine system (G-003)
+        try:
+            from Core.Intelligence.pair_quarantine import record_pair_outcome
+            pair_display = reconciled_record["pair"]
+            quarantined = record_pair_outcome(pair_display, pnl_idr)
+            if quarantined:
+                logger.warning(f"[OrderTracker] Pair {pair_display} QUARANTINED after consecutive losses")
+        except Exception as e:
+            logger.warning(f"[OrderTracker] Pair quarantine update failed: {e}")
+
         return reconciled_record
 
     def mark_stale(self, order_id: str) -> Optional[dict]:

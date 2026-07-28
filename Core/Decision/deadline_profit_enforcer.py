@@ -10,6 +10,10 @@ logger = logging.getLogger("KiBot.DeadlineProfitEnforcer")
 
 DEFAULT_STATE_DIR = pathlib.Path(__file__).resolve().parent.parent.parent / "state"
 
+# Throttle: only log when reason changes or every N seconds
+_THROTTLE_INTERVAL = 300  # 5 minutes
+
+
 class DeadlineProfitEnforcer:
     """
     Deadline Profit Enforcer (§12.1).
@@ -22,6 +26,8 @@ class DeadlineProfitEnforcer:
         self.state_dir.mkdir(parents=True, exist_ok=True)
         self.enforcer_path = self.state_dir / "deadline_profit_enforcer.json"
         self.authority_path = self.state_dir / "decision_authority.json"
+        self._last_logged_reason: str = ""
+        self._last_logged_time: float = 0.0
         self._ensure_defaults()
 
     def _ensure_defaults(self) -> None:
@@ -128,7 +134,19 @@ class DeadlineProfitEnforcer:
         try:
             self.enforcer_path.write_text(json.dumps(enforcer_state, indent=2), encoding="utf-8")
             if locked:
-                logger.warning(f"🔒 [DEADLINE ENFORCER] Active Lock Engaged: {reason}")
+                now = time.time()
+                reason_changed = (reason != self._last_logged_reason)
+                throttle_elapsed = (now - self._last_logged_time) >= _THROTTLE_INTERVAL
+                if reason_changed or throttle_elapsed:
+                    logger.warning(f"🔒 [DEADLINE ENFORCER] Active Lock Engaged: {reason}")
+                    self._last_logged_reason = reason
+                    self._last_logged_time = now
+            else:
+                # Lock released — always log transition
+                if self._last_logged_reason:
+                    logger.info(f"🔓 [DEADLINE ENFORCER] Lock released (was: {self._last_logged_reason})")
+                    self._last_logged_reason = ""
+                    self._last_logged_time = 0.0
         except Exception as e:
             logger.error(f"Failed to write deadline enforcer state: {e}")
 
