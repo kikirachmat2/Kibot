@@ -388,15 +388,14 @@ class KiBotMaster:
                     if payload.get("type") == "COUNCIL_SIGNAL_DATA":
                         signals = payload.get("signals", [])
                         
-                        # [G-001] Sovereign Execution Block
+                        # [G-001] Sovereign Execution Block (Live order execution gate)
                         sys_state = self.system_commander.get_system_state({})
-                        if sys_state.get("system_state") in ["UNSAFE", "BLIND"]:
-                            logger.error(f"🚨 [COMMANDER BLOCK] System is {sys_state['system_state']}. Rejecting incoming signals.")
-                            await self.notifier.send_urgent_alert(f"🚨 **COMMANDER BLOCK**\nSystem is `{sys_state['system_state']}`. Signals rejected to protect capital.", "SYSTEM_BLOCK")
-                            continue
-                            
+                        is_system_unsafe = sys_state.get("system_state") in ["UNSAFE", "BLIND"]
+                        if is_system_unsafe:
+                            logger.info(f"ℹ️ [COMMANDER NOTICE] System is {sys_state['system_state']}. Live trading mandates blocked, proceeding with shadow/paper deliberation.")
+
                         logger.info(f"🏛️ Received {len(signals)} signed signals from {addr}. Deliberating...")
-                        
+
                         async def deliberate_and_dispatch(sigs):
                             now = datetime.now(WIB)
                             is_midnight = (now.hour == 23 and now.minute >= 45)
@@ -410,12 +409,15 @@ class KiBotMaster:
                                 "portfolio_state": portfolio_state,
                                 "current_strategy": load_strategy(),
                             })
-                            
+
                             if not decision or not isinstance(decision, dict):
                                 logger.warning("⚠️ Council returned invalid or empty decision.")
                                 return
 
                             if decision.get("status") == "EXECUTING":
+                                if is_system_unsafe:
+                                    logger.warning(f"🚨 [COMMANDER BLOCK] System is {sys_state['system_state']}. Live order mandate for {decision.get('action')} {decision.get('ticker')} BLOCKED.")
+                                    return
                                 action = decision.get("action", "UNKNOWN")
                                 ticker = decision.get("ticker", "UNKNOWN")
                                 logger.info(f"🚀 [MANDATE] Council approved {action} {ticker}.")
