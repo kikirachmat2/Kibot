@@ -135,7 +135,7 @@ def _is_residual_inventory_entry(payload: Any, *, min_notional_idr: float = 10_0
     if "DUST" in reason_blob or "RESIDUAL" in reason_blob or "UNSELLABLE" in reason_blob:
         return True
     notional = _inventory_notional_idr(payload)
-    return 0.0 < notional < float(min_notional_idr)
+    return 0.0 < notional < min_notional_idr
 
 
 def _pending_buy_order_reserve_idr(state_dir: Optional[Path] = None) -> float:
@@ -161,12 +161,12 @@ def _pending_buy_order_reserve_idr(state_dir: Optional[Path] = None) -> float:
         nonlocal reserve
         if value <= 0.0:
             return
-        key = str(key or "").strip()
-        if key and key in seen_keys:
+        key_str = str(key or "").strip()
+        if key_str and key_str in seen_keys:
             return
-        if key:
-            seen_keys.add(key)
-        reserve += float(value)
+        if key_str:
+            seen_keys.add(key_str)
+        reserve += value
 
     active_trades_file = base_dir / "active_trades.json"
     if active_trades_file.exists():
@@ -286,7 +286,7 @@ def load_daily_inventory_snapshot(state_dir: Optional[Path] = None) -> Dict[str,
         if count <= 0:
             return
         snapshot["has_open_inventory"] = True
-        snapshot["open_sources"][source] = int(count)
+        snapshot["open_sources"][source] = count
         if symbols:
             added = 0
             for raw_symbol in symbols:
@@ -298,12 +298,12 @@ def load_daily_inventory_snapshot(state_dir: Optional[Path] = None) -> Dict[str,
                 added += 1
             snapshot["open_count"] += added
         else:
-            snapshot["open_count"] += int(count)
+            snapshot["open_count"] += count
 
     def _mark_locked(source: str, count: int, symbols: Optional[list[str]] = None) -> None:
         if count <= 0:
             return
-        snapshot["locked_sources"][source] = int(count)
+        snapshot["locked_sources"][source] = count
         if symbols:
             added = 0
             for raw_symbol in symbols:
@@ -315,7 +315,7 @@ def load_daily_inventory_snapshot(state_dir: Optional[Path] = None) -> Dict[str,
                 added += 1
             snapshot["locked_count"] += added
         else:
-            snapshot["locked_count"] += int(count)
+            snapshot["locked_count"] += count
 
     def _is_externally_locked_inventory(trade: Dict[str, Any]) -> bool:
         reason = str(trade.get("exit_blocked_reason") or trade.get("reason") or "").upper()
@@ -665,7 +665,7 @@ class CapitalGovernor:
                     )
                     or 0.0
                 )
-            global_hard_stop = bool(self.max_daily_loss_idr > 0.0 and self.daily_pnl_idr <= -self.max_daily_loss_idr)
+            global_hard_stop = self.max_daily_loss_idr > 0.0 and self.daily_pnl_idr <= -self.max_daily_loss_idr
             daily_reset_block = bool(getattr(self, "pending_daily_reset", False))
             allow_new_orders = bool(getattr(self, "allow_new_orders", False)) and not global_hard_stop and not daily_reset_block
             base_reason = str(getattr(self, "allow_new_orders_reason", ""))
@@ -993,7 +993,7 @@ class CapitalGovernor:
             daily_reset_state = _load_daily_reset_state()
             daily_reset_status = str(daily_reset_state.get("status") or "").upper().strip()
             daily_reset_current_mode = str(daily_reset_state.get("current_global_mode") or "").upper().strip()
-            daily_reset_active = bool(
+            daily_reset_active = (
                 daily_reset_status in {"PRE_CLOSE", "EXITING", "PENDING_RESET"}
                 or (
                     daily_reset_status == "MONITORING"
@@ -1070,13 +1070,13 @@ class CapitalGovernor:
             self.ledger.update_venue("indodax_shadow", equity_idr=indodax_shadow_balance)
             self.ledger.update_venue("cash_wait", equity_idr=self.current_total_equity_idr * targets.get("reserve", 0.20))
 
-            global_hard_stop = bool(
+            global_hard_stop = (
                 self.max_daily_loss_idr > 0.0 and self.daily_pnl_idr <= -self.max_daily_loss_idr
             )
             daily_reset_block = bool(getattr(self, "pending_daily_reset", False))
 
-            indodax_local_allow = bool(indodax_ready and self.indodax_daily_pnl_idr > -indodax_daily_loss_cap_idr)
-            indodax_allow_orders = bool(indodax_local_allow and not global_hard_stop and not daily_reset_block)
+            indodax_local_allow = indodax_ready and self.indodax_daily_pnl_idr > -indodax_daily_loss_cap_idr
+            indodax_allow_orders = indodax_local_allow and not global_hard_stop and not daily_reset_block
 
             indodax_reason = ""
             if not indodax_ready:
@@ -1094,7 +1094,7 @@ class CapitalGovernor:
                     f"({self.indodax_daily_pnl_idr:.2f} < -{indodax_daily_loss_cap_idr:.2f})"
                 )
 
-            allow_new_orders = bool(indodax_allow_orders)
+            allow_new_orders = indodax_allow_orders
             if global_hard_stop or daily_reset_block:
                 allow_new_orders = False
                 if daily_reset_block:
@@ -1162,7 +1162,8 @@ class CapitalGovernor:
             }
             self.allow_new_orders = allow_new_orders
             self.allow_new_orders_reason = allow_reason
-            self.venue_states = payload.get("venues", {})
+            venues_raw = payload.get("venues")
+            self.venue_states = dict(venues_raw) if isinstance(venues_raw, dict) else {}
             self.targets_snapshot = targets
             self.save()
             return payload
