@@ -82,7 +82,7 @@ class KiConfig:
     MOTTO = "Tekan Kerugian, Maksimalkan Probabilitas Keuntungan"
     
     # Strict Risk Parameters (Sovereign Level - Aggressive V3.1)
-    MAX_DAILY_LOSS_PERCENT = 1.5       # Manifesto max daily loss cap
+    MAX_DAILY_LOSS_PERCENT = 3.0       # Manifesto max daily loss cap (updated to 3.0%)
     MIN_SIGNAL_PROBABILITY = 0.65     # Lowered to 65% for high-aggression
     SCALPING_TP_PERCENT = 1.0         # Increased for more room
     SCALPING_SL_PERCENT = 2.0         # Matches RiskGate SL

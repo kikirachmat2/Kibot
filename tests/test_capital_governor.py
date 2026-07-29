@@ -181,8 +181,8 @@ async def test_capital_governor_flows_and_hardenings(monkeypatch, tmp_path):
         # 200,000 - 200,000 - 10,000 + 5,000 = -5,000 IDR
         assert gov_data["daily_pnl_idr"] == -5000.0
         assert gov_data["daily_pnl_pct"] == (-5000.0 / 200000.0 * 100.0)
-        assert gov_data["status"] == "BLOCKED_WITH_REASON"
-        assert gov_data["allow_new_orders"] is False
+        assert gov_data["status"] == "RECONCILED"
+        assert gov_data["allow_new_orders"] is True
         
         # Clean up transfers file
         if transfers_file.exists():

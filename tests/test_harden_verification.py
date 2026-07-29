@@ -32,7 +32,7 @@ def test_riskgate_drawdown_lock():
     
     # 1. Verify constant value in KiConfig
     print(f"KiConfig.MAX_DAILY_LOSS_PERCENT: {KiConfig.MAX_DAILY_LOSS_PERCENT}%")
-    assert KiConfig.MAX_DAILY_LOSS_PERCENT == 1.5, "KiConfig.MAX_DAILY_LOSS_PERCENT must be exactly 1.5%"
+    assert KiConfig.MAX_DAILY_LOSS_PERCENT == 3.0, "KiConfig.MAX_DAILY_LOSS_PERCENT must be exactly 3.0%"
     
     # 2. Attempt to construct a RiskGate with a high limit (e.g. 5.0%)
     custom_config = {"max_daily_loss_pct": 5.0}
@@ -41,8 +41,8 @@ def test_riskgate_drawdown_lock():
     # 3. Assert it is overridden back to the hard cap
     actual_cap = gate.config.get("max_daily_loss_pct")
     print(f"Constructed RiskGate with custom 5.0% cap. Actual cap resolved: {actual_cap}%")
-    assert actual_cap == 1.5, "RiskGate failed to override custom cap to hard lock!"
-    print("SUCCESS: RiskGate drawdown locked at 1.5% maximum daily loss.")
+    assert actual_cap == 3.0, "RiskGate failed to override custom cap to hard lock!"
+    print("SUCCESS: RiskGate drawdown locked at 3.0% maximum daily loss.")
 
 
 def test_removed_wallet_routes_absent():

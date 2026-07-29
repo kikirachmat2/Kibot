@@ -541,7 +541,7 @@ class CapitalGovernor:
                     drift_ratio = abs(self.start_total_equity_idr - existing_equity) / max(existing_equity, 1.0)
                     if drift_ratio > 0.50:
                         logger.warning(
-                            f"⚠️ [AnchorSafeguard] Proposed anchor equity Rp{self.start_total_equity_idr:.2f} drifts by {drift_ratio*100:.1f}% (>50%) from existing anchor Rp{existing_equity:.2f}. Preserving existing anchor baseline."
+                            f"⚠️ [AnchorSafeguard] Large equity increase/drift ({drift_ratio*100:.1f}% > 50%) detected without matching deposit event — if this is a manual top-up, run 'bin/kibotctl deposit-notify <amount_idr>' first. Preserving baseline Rp{existing_equity:.2f}."
                         )
                 self.last_reset_date = str(existing.get("date") or self.last_reset_date or _today_wib())
                 self.start_total_equity_idr = existing_equity
@@ -727,13 +727,47 @@ class CapitalGovernor:
         except Exception as e:
             logger.error(f"❌ Failed to save Capital Governor state: {e}")
 
+    def _reconcile_operator_deposits(self) -> float:
+        """Process unreconciled operator deposit events, adjusting starting baseline equity."""
+        try:
+            from .deposit_event_manager import get_deposit_manager
+            dep_mgr = get_deposit_manager()
+            unreconciled = dep_mgr.get_unreconciled_deposits()
+            if not unreconciled:
+                return 0.0
+
+            total_added = 0.0
+            event_ids = []
+            for dep in unreconciled:
+                amt = float(dep.get("amount_idr", 0.0))
+                if amt > 0:
+                    total_added += amt
+                    event_ids.append(dep["event_id"])
+
+            if total_added > 0:
+                self.start_total_equity_idr += total_added
+                self.start_indodax_equity_idr += total_added
+                if self.max_daily_loss_idr > 0:
+                    self.max_daily_loss_idr = self.start_total_equity_idr * (KiConfig.MAX_DAILY_LOSS_PERCENT / 100.0)
+                dep_mgr.mark_reconciled(event_ids)
+                self._write_daily_anchor(force=True)
+                logger.info(
+                    f"💰 [CapitalGovernor] Successfully reconciled operator deposit of Rp{total_added:,.2f} IDR. Updated start_equity baseline to Rp{self.start_total_equity_idr:,.2f} IDR."
+                )
+            return total_added
+        except Exception as err:
+            logger.warning(f"Failed to reconcile operator deposits: {err}")
+            return 0.0
+
     def _read_daily_transfers(self, date_str: str) -> tuple[float, float]:
-        """Read state/treasury_transfers.jsonl and sum external deposits and withdrawals for the given date."""
+        """Read state/treasury_transfers.jsonl and deposit_events.jsonl for daily transfers."""
+        operator_deposit_amt = self._reconcile_operator_deposits()
+
         transfers_file = STATE_DIR / "treasury_transfers.jsonl"
-        deposits = 0.0
+        deposits = operator_deposit_amt
         withdrawals = 0.0
         if not transfers_file.exists():
-            return 0.0, 0.0
+            return deposits, 0.0
         try:
             with open(transfers_file, "r") as f:
                 for line in f:
