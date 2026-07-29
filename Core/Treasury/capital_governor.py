@@ -822,6 +822,8 @@ class CapitalGovernor:
                 if amount <= 0:
                     continue
                 try:
+                    if self.indodax is None:
+                        continue
                     ticker = await asyncio.wait_for(self.indodax.get_ticker(pair), timeout=5)
                     if not isinstance(ticker, dict):
                         continue
@@ -969,7 +971,7 @@ class CapitalGovernor:
                             try:
                                 tickers = await asyncio.gather(*coin_tasks, return_exceptions=True)
                                 for (coin, amt), ticker in zip(held_coins, tickers):
-                                    if isinstance(ticker, Exception):
+                                    if not isinstance(ticker, dict):
                                         continue
                                     try:
                                         price = float(ticker.get("last", 0.0) or 0.0)
