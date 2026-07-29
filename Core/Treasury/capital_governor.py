@@ -161,7 +161,7 @@ def _pending_buy_order_reserve_idr(state_dir: Optional[Path] = None) -> float:
         nonlocal reserve
         if value <= 0.0:
             return
-        key_str = str(key or "").strip()
+        key_str = (key or "").strip()
         if key_str and key_str in seen_keys:
             return
         if key_str:
@@ -290,7 +290,7 @@ def load_daily_inventory_snapshot(state_dir: Optional[Path] = None) -> Dict[str,
         if symbols:
             added = 0
             for raw_symbol in symbols:
-                symbol = str(raw_symbol or "").upper().strip()
+                symbol = (raw_symbol or "").upper().strip()
                 if not symbol or symbol in open_symbol_set:
                     continue
                 open_symbol_set.add(symbol)
@@ -307,7 +307,7 @@ def load_daily_inventory_snapshot(state_dir: Optional[Path] = None) -> Dict[str,
         if symbols:
             added = 0
             for raw_symbol in symbols:
-                symbol = str(raw_symbol or "").upper().strip()
+                symbol = (raw_symbol or "").upper().strip()
                 if not symbol or symbol in locked_symbol_set:
                     continue
                 locked_symbol_set.add(symbol)
