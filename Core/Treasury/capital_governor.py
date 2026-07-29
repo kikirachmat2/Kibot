@@ -536,8 +536,16 @@ class CapitalGovernor:
             existing = self._load_daily_anchor()
             existing_equity = float(existing.get("start_equity_idr", 0.0) or 0.0)
             if existing and existing_equity > 0.0 and not force:
+                # Safeguard: Check for extreme drift (>50%) when forcing/writing anchor
+                if self.start_total_equity_idr > 0.0:
+                    drift_ratio = abs(self.start_total_equity_idr - existing_equity) / max(existing_equity, 1.0)
+                    if drift_ratio > 0.50:
+                        logger.warning(
+                            f"⚠️ [AnchorSafeguard] Proposed anchor equity Rp{self.start_total_equity_idr:.2f} drifts by {drift_ratio*100:.1f}% (>50%) from existing anchor Rp{existing_equity:.2f}. Preserving existing anchor baseline."
+                        )
                 self.last_reset_date = str(existing.get("date") or self.last_reset_date or _today_wib())
                 self.start_total_equity_idr = existing_equity
+                self.start_indodax_equity_idr = existing_equity
                 self.max_daily_loss_idr = float(
                     existing.get(
                         "max_daily_loss_idr",
@@ -642,6 +650,7 @@ class CapitalGovernor:
             # The healthcheck anchor is the canonical daily baseline. If the
             # governor file drifted, trust the anchor and force one PnL source.
             self.start_total_equity_idr = anchor_equity
+            self.start_indodax_equity_idr = anchor_equity
             self.max_daily_loss_idr = float(
                 anchor.get("max_daily_loss_idr", anchor_equity * (KiConfig.MAX_DAILY_LOSS_PERCENT / 100.0)) or 0.0
             )
