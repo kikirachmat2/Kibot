@@ -43,17 +43,17 @@ def test_reconciler_locks_on_real_loss_cap() -> None:
     live_truth = {
         "updated_at": now,
         "risk_state": "OK",
-        "net_pnl_today_idr": -3500.0,
-        "total_equity_idr": 149000.0,
+        "net_pnl_today_idr": -5000.0,
+        "total_equity_idr": 147500.0,
     }
     capital_governor = {
         "updated_at": now,
         "status": "BLOCKED_WITH_REASON",
         "allow_new_orders": False,
-        "allow_new_orders_reason": "global_daily_loss_cap_breached (-3500.00 <= -2301.68)",
-        "daily_pnl_idr": -3500.0,
+        "allow_new_orders_reason": "global_daily_loss_cap_breached (-5000.00 <= -4575.00)",
+        "daily_pnl_idr": -5000.0,
         "start_total_equity_idr": 152500.0,
-        "max_daily_loss_idr": 2301.68,
+        "max_daily_loss_idr": 4575.0,
     }
     canonical = reconcile_risk_truth(live_truth, capital_governor, {}, {}, {})
 

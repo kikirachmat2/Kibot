@@ -100,9 +100,15 @@ def reconcile_risk_truth(
         capital_governor.get("daily_pnl_pct"),
         _safe_float(capital_governor.get("daily_return_pct"), 0.0),
     )
+    from Core.Support.ki_config import KiConfig
+
+    dynamic_loss_cap_idr = daily_anchor * (KiConfig.MAX_DAILY_LOSS_PERCENT / 100.0) if daily_anchor > 0 else 0.0
     threshold = _safe_float(
-        capital_governor.get("max_daily_loss_idr"),
-        _safe_float(capital_governor.get("daily_loss_cap_idr"), 0.0),
+        dynamic_loss_cap_idr,
+        _safe_float(
+            capital_governor.get("max_daily_loss_idr"),
+            _safe_float(capital_governor.get("daily_loss_cap_idr"), 0.0),
+        )
     )
 
     canonical_state = "OK"
@@ -151,7 +157,7 @@ def reconcile_risk_truth(
             canonical_blockers.append(
                 {
                     "source": "capital_governor",
-                    "reason": f"global_daily_loss_cap_breached ({daily_pnl:.2f} <= -{threshold:.2f})",
+                    "reason": f"global_daily_loss_cap_breached (Rp {daily_pnl:.2f} <= -Rp {threshold:.2f} [{KiConfig.MAX_DAILY_LOSS_PERCENT}% cap])",
                     "evidence": {
                         "source_equity": current_equity,
                         "daily_anchor": daily_anchor,

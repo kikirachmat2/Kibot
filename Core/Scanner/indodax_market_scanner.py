@@ -96,6 +96,11 @@ class IndodaxMarketScanner:
             out.setdefault("route_status", "EXECUTABLE")
         return out
 
+    async def collect_signals(self) -> list:
+        """Standard scanner interface required by engine.py. Runs scan() and returns candidates."""
+        state = await self.scan()
+        return state.get("candidates", []) if isinstance(state, dict) else []
+
     async def scan(self) -> dict:
         logger.info("📡 Running real Indodax exchange scanner...")
         now_str = datetime.now(timezone.utc).isoformat()

@@ -546,19 +546,13 @@ class CapitalGovernor:
                 self.last_reset_date = str(existing.get("date") or self.last_reset_date or _today_wib())
                 self.start_total_equity_idr = existing_equity
                 self.start_indodax_equity_idr = existing_equity
-                self.max_daily_loss_idr = float(
-                    existing.get(
-                        "max_daily_loss_idr",
-                        existing_equity * (KiConfig.MAX_DAILY_LOSS_PERCENT / 100.0),
-                    )
-                    or 0.0
-                )
+                self.max_daily_loss_idr = existing_equity * (KiConfig.MAX_DAILY_LOSS_PERCENT / 100.0)
                 return
             ANCHOR_FILE.write_text(json.dumps({
                 "date": self.last_reset_date,
                 "start_equity_idr": self.start_total_equity_idr,
                 "max_daily_loss_pct": KiConfig.MAX_DAILY_LOSS_PERCENT,
-                "max_daily_loss_idr": self.max_daily_loss_idr,
+                "max_daily_loss_idr": self.start_total_equity_idr * (KiConfig.MAX_DAILY_LOSS_PERCENT / 100.0),
                 "source": "capital_governor",
             }, indent=4), encoding="utf-8")
         except Exception as e:
@@ -1033,7 +1027,8 @@ class CapitalGovernor:
             if self.start_indodax_equity_idr <= 0.0:
                 self.start_indodax_equity_idr = float(primary_indodax_balance or 0.0)
 
-            indodax_daily_loss_cap_idr = self.start_indodax_equity_idr * (KiConfig.MAX_DAILY_LOSS_PERCENT / 100.0)
+            self.max_daily_loss_idr = max(self.start_total_equity_idr, self.start_indodax_equity_idr) * (KiConfig.MAX_DAILY_LOSS_PERCENT / 100.0)
+            indodax_daily_loss_cap_idr = self.max_daily_loss_idr
             self.indodax_daily_pnl_idr = primary_indodax_balance - self.start_indodax_equity_idr
             self.indodax_daily_pnl_pct = (self.indodax_daily_pnl_idr / max(self.start_indodax_equity_idr, 1.0)) * 100.0
 

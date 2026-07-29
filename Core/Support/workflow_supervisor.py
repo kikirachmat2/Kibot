@@ -403,6 +403,10 @@ def build_workflow_automation_state() -> dict[str, Any]:
     return payload
 
 
+SUPERVISOR_ALERT_STATE_FILE = STATE / "supervisor_alert_state.json"
+MIN_ALERT_REPEAT_INTERVAL_SEC = 7200  # 2 hours minimum interval for unchanged blocker status
+
+
 async def notify_if_needed(payload: dict[str, Any]) -> bool:
     blockers = payload.get("blockers")
     if not blockers:
@@ -412,23 +416,47 @@ async def notify_if_needed(payload: dict[str, Any]) -> bool:
         return False
     if _is_auto_repairable_blocker(blockers) and not auto_repair.get("operator_alert_required"):
         return False
+
+    current_status = str(payload.get("overall_status") or "")
+    reasons = "; ".join(str(item.get("reason") or item.get("source")) for item in blockers[:3] if isinstance(item, dict))
+    signature = f"{current_status}|{reasons}"
+
+    last_state = _read_json(SUPERVISOR_ALERT_STATE_FILE, {})
+    last_sig = str(last_state.get("signature") or "")
+    last_ts = float(last_state.get("sent_ts") or 0.0)
+    now_ts = time.time()
+
+    # Log-on-change: Only resend if state changed OR min 2 hours passed for identical blocker state
+    if signature == last_sig and (now_ts - last_ts) < MIN_ALERT_REPEAT_INTERVAL_SEC:
+        return False
+
     try:
         from Core.sovereign_notifier import SovereignNotifier
 
-        reasons = "; ".join(str(item.get("reason") or item.get("source")) for item in blockers[:3] if isinstance(item, dict))
         message = (
             "KiBot workflow supervisor\n"
-            f"- status: {payload.get('overall_status')}\n"
+            f"- status: {current_status}\n"
             f"- action: {payload.get('current_best_action')}\n"
             f"- blockers: {reasons}\n"
             f"- targets: {payload.get('target_summary', {}).get('enter_targets', 0)} ENTER visible"
         )
-        return bool(
+        sent = bool(
             await SovereignNotifier().send_urgent_alert(
                 message,
                 incident_key="workflow_automation_blocked",
             )
         )
+        if sent:
+            _write_json(
+                SUPERVISOR_ALERT_STATE_FILE,
+                {
+                    "signature": signature,
+                    "sent_ts": now_ts,
+                    "reasons": reasons,
+                    "overall_status": current_status,
+                },
+            )
+        return sent
     except Exception:
         return False
 
