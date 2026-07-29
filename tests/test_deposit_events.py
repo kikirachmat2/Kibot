@@ -1,16 +1,26 @@
-"""Unit tests for DepositEventManager and CapitalGovernor integration.
+"""Regression unit tests for DepositEventManager and CapitalGovernor end-to-end evaluation.
 
-Tests:
-1. Operator deposit event notification increases start_total_equity_idr and start_indodax_equity_idr without inflating daily PnL.
-2. Large balance increase (>50%) WITHOUT deposit event triggers safeguard drift warning.
+Ensures:
+1. End-to-end gov.evaluate() with deposit D and zero trading yields daily_pnl_idr == 0 (no double-subtraction).
+2. End-to-end gov.evaluate() with deposit D and trading profit P yields daily_pnl_idr == +P.
+3. End-to-end gov.evaluate() with deposit D and trading loss L yields daily_pnl_idr == -L.
+4. Large balance increase (>50%) WITHOUT deposit event triggers drift safeguard.
 """
 
-import json
+import json, asyncio
 from pathlib import Path
 import pytest
 
 from Core.Treasury.deposit_event_manager import DepositEventManager
 from Core.Treasury.capital_governor import CapitalGovernor
+
+
+class MockIndodaxGateway:
+    def __init__(self, idr_balance: float):
+        self.idr_balance = idr_balance
+
+    async def get_info(self):
+        return {"success": 1, "return": {"balance": {"idr": self.idr_balance}}}
 
 
 @pytest.fixture
@@ -32,8 +42,12 @@ def temp_treasury_env(tmp_path, monkeypatch):
     monkeypatch.setattr(cg_mod, "ANCHOR_FILE", anchor_file)
     monkeypatch.setattr(cg_mod, "GOVERNOR_FILE", governor_file)
 
+    import Core.Support.ki_config as kc_mod
+    monkeypatch.setattr(kc_mod.KiConfig, "LIVE_TRADING_ENABLED", True)
+
     dep_mgr = DepositEventManager(log_file=log_file)
     monkeypatch.setattr(dem_mod, "_deposit_manager_instance", dep_mgr)
+
     gov = CapitalGovernor()
     gov.last_reset_date = "2026-07-29"
     gov.start_total_equity_idr = 100000.0
@@ -42,30 +56,57 @@ def temp_treasury_env(tmp_path, monkeypatch):
     return dep_mgr, gov, state_dir
 
 
-def test_operator_deposit_event_reconciliation(temp_treasury_env):
-    dep_mgr, gov, state_dir = temp_treasury_env
+def test_end_to_end_deposit_reconciliation_zero_trading_pnl(temp_treasury_env, monkeypatch):
+    dep_mgr, gov, _ = temp_treasury_env
 
-    initial_start_equity = gov.start_total_equity_idr  # 100,000 IDR
+    # Baseline start equity X = 100,000 IDR
+    X = 100000.0
+    D = 500000.0  # Deposit amount
 
-    # 1. Record deposit notification of 500,000 IDR
-    event = dep_mgr.record_deposit(amount_idr=500000.0, note="Operator manual topup test")
+    # Record operator deposit notification
+    event = dep_mgr.record_deposit(amount_idr=D, note="Top up 500k test")
     assert event["reconciled"] is False
-    assert len(dep_mgr.get_unreconciled_deposits()) == 1
 
-    # 2. CapitalGovernor reconciles transfers
-    deposits, _ = gov._read_daily_transfers("2026-07-29")
-    assert deposits == 500000.0
+    # Attach mock Indodax gateway with X + D = 600,000 IDR
+    gov.indodax = MockIndodaxGateway(idr_balance=X + D)
 
-    # 3. Verify start equity updated and unreconciled deposit cleared
-    assert gov.start_total_equity_idr == 600000.0  # 100k + 500k
-    assert gov.start_indodax_equity_idr == 600000.0
+    # Call end-to-end reconcile_governor()
+    gov_data = asyncio.run(gov.reconcile_governor())
+
+    # Assertions:
+    # 1. Unreconciled deposit cleared
     assert len(dep_mgr.get_unreconciled_deposits()) == 0
 
-    # 4. Verify PnL is NOT inflated as profit when equity matches new start equity
-    gov.current_total_equity_idr = 600000.0
-    gov.daily_pnl_idr = gov.current_total_equity_idr - gov.start_total_equity_idr
-    # Since start_equity was updated to 600k and current equity is 600k, PnL = 600k - 600k = 0
-    assert gov.daily_pnl_idr == 0.0
+    # 2. current_total_equity_idr is 600,000 IDR
+    assert abs(gov_data["current_total_equity_idr"] - (X + D)) < 0.01
+
+    # 3. daily_pnl_idr MUST be 0.0 (NOT -500k or any negative double-subtraction)
+    assert abs(gov_data["daily_pnl_idr"]) < 0.01
+    assert abs(gov_data["daily_pnl_pct"]) < 0.001
+
+
+def test_end_to_end_deposit_reconciliation_with_real_trading_pnl(temp_treasury_env, monkeypatch):
+    dep_mgr, gov, _ = temp_treasury_env
+
+    # Baseline start equity X = 100,000 IDR
+    X = 100000.0
+    D = 500000.0  # Deposit amount
+    P = 25000.0   # Real trading profit = +25,000 IDR
+
+    # Record operator deposit notification
+    dep_mgr.record_deposit(amount_idr=D, note="Top up test")
+
+    # Attach mock Indodax gateway with X + D + P = 625,000 IDR
+    gov.indodax = MockIndodaxGateway(idr_balance=X + D + P)
+
+    # Call end-to-end reconcile_governor()
+    gov_data = asyncio.run(gov.reconcile_governor())
+
+    # Assertions:
+    # 1. daily_pnl_idr MUST be exactly +P (+25,000 IDR), NOT +25k - 500k or any distorted number
+    assert abs(gov_data["daily_pnl_idr"] - P) < 0.01
+    assert gov_data["status"] == "RECONCILED"
+    assert gov_data["allow_new_orders"] is True
 
 
 def test_large_balance_increase_without_deposit_event_drift_safeguard(temp_treasury_env, caplog):

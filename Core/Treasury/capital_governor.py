@@ -745,14 +745,13 @@ class CapitalGovernor:
                     event_ids.append(dep["event_id"])
 
             if total_added > 0:
-                self.start_total_equity_idr += total_added
                 self.start_indodax_equity_idr += total_added
+                effective_equity = self.start_total_equity_idr + total_added
                 if self.max_daily_loss_idr > 0:
-                    self.max_daily_loss_idr = self.start_total_equity_idr * (KiConfig.MAX_DAILY_LOSS_PERCENT / 100.0)
+                    self.max_daily_loss_idr = effective_equity * (KiConfig.MAX_DAILY_LOSS_PERCENT / 100.0)
                 dep_mgr.mark_reconciled(event_ids)
-                self._write_daily_anchor(force=True)
                 logger.info(
-                    f"💰 [CapitalGovernor] Successfully reconciled operator deposit of Rp{total_added:,.2f} IDR. Updated start_equity baseline to Rp{self.start_total_equity_idr:,.2f} IDR."
+                    f"💰 [CapitalGovernor] Successfully reconciled operator deposit of Rp{total_added:,.2f} IDR into daily deposits flow."
                 )
             return total_added
         except Exception as err:
