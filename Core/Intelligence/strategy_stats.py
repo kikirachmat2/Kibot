@@ -1,5 +1,10 @@
 """Strategy Statistics Aggregator — calculates rolling historical stats for EV calculations.
 
+SINGLE SOURCE OF TRUTH (SSOT):
+This module is the canonical Single Source of Truth for live trading execution gates,
+EV calculations, and strategy graduation decisions across KiBot.
+All live trading gates and EV evaluations must derive from StrategyStatsAggregator.
+
 Reads state/trade_history/*.jsonl and state/orders/*.json to compute:
 - sample_size (total_trades)
 - win_rate (fraction 0.0 - 1.0)
@@ -17,6 +22,8 @@ import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, Optional, Tuple
+
+from Core.Intelligence.expected_value import compute_ev
 
 logger = logging.getLogger("KiBot.StrategyStats")
 
@@ -220,26 +227,38 @@ class StrategyStatsAggregator:
         self.evaluate_and_update_graduations()
 
     def evaluate_and_update_graduations(self) -> Dict[str, Any]:
-        """Evaluate cache entries for live graduation (sample_size >= 20, EV >= 0.3%)."""
+        """Evaluate cache entries for live graduation using canonical compute_ev().
+
+        Criteria:
+        - GRADUATED_LIVE_READY: total_trades >= 20 and ev_res.approved is True
+          (compute_ev handles EV >= 0.3%, RR ratio >= 1.5, Kelly floor >= 0.01 net of fee+slippage)
+        - QUARANTINED: total_trades >= 10 and ev_res.ev_pct < -0.005 (-0.5%)
+        """
         graduated: Dict[str, Any] = {}
         for key, metrics in self._cache.items():
             if key == "_GLOBAL_":
                 continue
-            ev = (metrics.win_rate * metrics.avg_profit_pct) - ((1.0 - metrics.win_rate) * metrics.avg_loss_pct)
-            if metrics.total_trades >= 20 and ev >= 0.003:
+            ev_res = compute_ev(
+                win_prob=metrics.win_rate,
+                avg_win_pct=metrics.avg_profit_pct,
+                avg_loss_pct=metrics.avg_loss_pct,
+            )
+            if metrics.total_trades >= 20 and ev_res.approved:
                 graduated[key] = {
                     "status": "GRADUATED_LIVE_READY",
                     "sample_size": metrics.total_trades,
                     "win_rate": round(metrics.win_rate, 4),
-                    "ev_pct": round(ev * 100.0, 4),
+                    "ev_pct": round(ev_res.ev_pct * 100.0, 4),
+                    "kelly_fraction": round(ev_res.kelly_fraction, 4),
+                    "rr_ratio": round(ev_res.rr_ratio, 3),
                     "graduated_at": time.time(),
                 }
-            elif metrics.total_trades >= 10 and ev < -0.005:
+            elif metrics.total_trades >= 10 and ev_res.ev_pct < -0.005:
                 graduated[key] = {
                     "status": "QUARANTINED",
                     "sample_size": metrics.total_trades,
                     "win_rate": round(metrics.win_rate, 4),
-                    "ev_pct": round(ev * 100.0, 4),
+                    "ev_pct": round(ev_res.ev_pct * 100.0, 4),
                     "quarantined_at": time.time(),
                 }
 

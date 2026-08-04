@@ -1,3 +1,12 @@
+"""KiBot Learning Engine — Bayesian PairStats & Historian Profiler.
+
+ARCHITECTURE NOTE:
+- `strategy_stats.py` is the official Single Source of Truth (SSOT) for live trading execution gates,
+  EV calculations, and strategy graduation.
+- `kibot_learning_engine.py` serves as an auxiliary contextual/display layer providing
+  Bayesian prior updating (alpha/beta), historian profiling, and pair behavior metrics.
+"""
+
 from __future__ import annotations
 import sys
 import os
