@@ -64,12 +64,15 @@ class AutonomousSizing:
         trade_grade: str = "",
         stop_loss_pct: float = 0.0,
         route_min_trade_idr: float = 0.0,
+        spread_pct: float = 0.0,
     ) -> Dict[str, Any]:
         hard_reasons = []
         if not exit_available:
             hard_reasons.append("exit_unavailable")
         if available_balance_idr <= 0:
             hard_reasons.append("no_available_balance")
+        if spread_pct > 2.5:
+            hard_reasons.append("spread_too_wide_slippage_risk")
         recovery_probe = False
 
         if hard_reasons:
@@ -123,6 +126,8 @@ class AutonomousSizing:
             quality_reasons.append("liquidity_thin")
         if slippage_pct > float(os.getenv("KIBOT_ADAPTIVE_MAX_SLIPPAGE_PCT", "3.0") or 3.0):
             quality_reasons.append("slippage_high")
+        if spread_pct > 1.2:
+            quality_reasons.append("spread_elevated")
 
         exit_grade_ok = str(exit_quality or trade_grade or "").upper() in {"A", "B", "A+", "A-"}
         momentum_ok = max(float(momentum_score or 0.0), min(1.0, max(0.0, volatility_pct) / 25.0)) >= self.probe_min_momentum
@@ -147,6 +152,11 @@ class AutonomousSizing:
             size_idr = min(size_idr, hard_cap_idr)
         if self.route_ceiling_idr > 0 and not self.allow_hardcoded_caps:
             size_idr = min(size_idr, self.route_ceiling_idr)
+
+        # Apply slippage-aware orderbook spread discount for elevated spread (1.2% < spread <= 2.5%)
+        if spread_pct > 1.2:
+            spread_discount = max(0.25, 1.0 - ((spread_pct - 1.2) / 1.3))
+            size_idr = size_idr * spread_discount
 
         size_idr = max(0.0, size_idr)
 

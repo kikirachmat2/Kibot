@@ -217,6 +217,54 @@ class StrategyStatsAggregator:
         self._cache = new_cache
         self._global_metrics = new_cache.get("_GLOBAL_", StrategyMetrics(insufficient_data=True))
         logger.info(f"[StrategyStats] Cache rebuilt with {len(new_cache)} keys. Global sample size: {self._global_metrics.total_trades}")
+        self.evaluate_and_update_graduations()
+
+    def evaluate_and_update_graduations(self) -> Dict[str, Any]:
+        """Evaluate cache entries for live graduation (sample_size >= 20, EV >= 0.3%)."""
+        graduated: Dict[str, Any] = {}
+        for key, metrics in self._cache.items():
+            if key == "_GLOBAL_":
+                continue
+            ev = (metrics.win_rate * metrics.avg_profit_pct) - ((1.0 - metrics.win_rate) * metrics.avg_loss_pct)
+            if metrics.total_trades >= 20 and ev >= 0.003:
+                graduated[key] = {
+                    "status": "GRADUATED_LIVE_READY",
+                    "sample_size": metrics.total_trades,
+                    "win_rate": round(metrics.win_rate, 4),
+                    "ev_pct": round(ev * 100.0, 4),
+                    "graduated_at": time.time(),
+                }
+            elif metrics.total_trades >= 10 and ev < -0.005:
+                graduated[key] = {
+                    "status": "QUARANTINED",
+                    "sample_size": metrics.total_trades,
+                    "win_rate": round(metrics.win_rate, 4),
+                    "ev_pct": round(ev * 100.0, 4),
+                    "quarantined_at": time.time(),
+                }
+
+        grad_file = STATE_DIR / "graduated_strategies.json"
+        try:
+            STATE_DIR.mkdir(parents=True, exist_ok=True)
+            grad_file.write_text(json.dumps(graduated, indent=2, ensure_ascii=False), encoding="utf-8")
+        except Exception as e:
+            logger.error(f"[StrategyStats] Failed to save graduated strategies: {e}")
+        return graduated
+
+
+def is_strategy_graduated(key: str) -> bool:
+    """Check if a strategy/pair key has graduated to LIVE_READY status."""
+    grad_file = STATE_DIR / "graduated_strategies.json"
+    if not grad_file.exists():
+        return False
+    try:
+        data = json.loads(grad_file.read_text(encoding="utf-8"))
+        entry = data.get(key) or data.get(key.upper()) or data.get(key.lower())
+        if isinstance(entry, dict):
+            return entry.get("status") == "GRADUATED_LIVE_READY"
+    except Exception:
+        pass
+    return False
 
 
 _aggregator: Optional[StrategyStatsAggregator] = None

@@ -250,6 +250,13 @@ class PaperTradeTracker:
             except Exception as e:
                 logger.warning(f"Error removing paper open trade file {open_file}: {e}")
 
+        # 3. Trigger immediate strategy stats refresh & graduation check
+        try:
+            from Core.Intelligence.strategy_stats import get_stats_aggregator
+            get_stats_aggregator().refresh_if_needed(force=True)
+        except Exception as e:
+            logger.warning(f"Failed to refresh strategy stats on paper trade close: {e}")
+
         logger.info(
             f"[PaperTrade] Closed virtual position for {trade.get('pair')} — Reason: {exit_reason}, PnL: {net_pnl_idr:+.2f} IDR ({net_pct*100:+.2f}%)"
         )
