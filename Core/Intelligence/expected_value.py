@@ -98,12 +98,12 @@ def compute_ev(
 
     approved = True
 
-    if ev < ev_threshold:
+    if round(ev, 6) < ev_threshold:
         approved = False
         rejection_reasons.append(
             f"EV {ev*100:.3f}% below threshold {ev_threshold*100:.3f}%"
         )
-    if rr_ratio < rr_threshold:
+    if round(rr_ratio, 6) < rr_threshold:
         approved = False
         rejection_reasons.append(
             f"R:R {rr_ratio:.2f} below minimum {rr_threshold:.2f}"
