@@ -344,13 +344,13 @@ class LearningEngine:
         """Alias for get_stats for compatibility."""
         return self.get_stats(pair)
 
-    def save_stats(self, stats: PairStats):
+    def save_stats(self, stats: PairStats, force: bool = False):
         self._cache[stats.pair] = stats
         if self.use_redis:
             self.redis.set(f"kibot:learning:{stats.pair}", json.dumps(stats.to_dict()))
         
-        # Periodic signed snapshot
-        if time.time() % 3600 < 60 or not STATE_PATH.exists():
+        # Periodic or forced signed snapshot
+        if force or time.time() % 3600 < 60 or not STATE_PATH.exists():
             payload = json.dumps({k: v.to_dict() for k, v in self._cache.items()}, indent=2)
             key = _get_signing_key()
             signature = hmac.new(key, payload.encode(), hashlib.sha256).hexdigest()
@@ -385,7 +385,7 @@ class LearningEngine:
         """Directly record a trade result to pair stats with metadata."""
         stats = self.get_stats(pair)
         stats.record_trade(pnl_pct, regime)
-        self.save_stats(stats)
+        self.save_stats(stats, force=True)
         
         # Log it to the file too for audit trail
         audit_log = {

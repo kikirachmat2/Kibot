@@ -48,6 +48,7 @@ Usage:
   kibotctl doctor
   kibotctl deposit-notify <amount_idr> [note]
   kibotctl reset-pnl
+  kibotctl learn-status
   kibotctl up
   kibotctl down
   kibotctl restart
@@ -363,11 +364,66 @@ cmd_deposit_notify() {
   PYTHONPATH="." "$py_bin" Core/Support/deposit_cli.py "$@"
 }
 
+cmd_learn_status() {
+  section "KiBot Bayesian Learning & Graduation Status"
+  local py_bin="/home/ubuntu/KiBot/.venv/bin/python3"
+  if [[ ! -f "$py_bin" ]]; then
+    py_bin="python3"
+  fi
+  PYTHONPATH="." "$py_bin" -c "
+import json
+from pathlib import Path
+state_dir = Path('/home/ubuntu/KiBot/state')
+learn_path = state_dir / 'learning_state.json'
+grad_path = state_dir / 'graduated_strategies.json'
+
+print('=== BAYESIAN PAIR STATS ===')
+if learn_path.exists():
+    try:
+        content = learn_path.read_text(encoding='utf-8')
+        payload = content.rsplit('|', 1)[0] if '|' in content else content
+        data = json.loads(payload)
+        print(f'Total Pairs Tracked: {len(data)}')
+        sorted_pairs = sorted(
+            data.items(),
+            key=lambda x: (x[1].get('alpha', 1) / max(1e-9, x[1].get('alpha', 1) + x[1].get('beta', 1))),
+            reverse=True
+        )
+        for pair, stats in sorted_pairs[:10]:
+            trades = stats.get('trade_count', 0)
+            a = stats.get('alpha', 1)
+            b = stats.get('beta', 1)
+            wr = (a / max(1e-9, a + b)) * 100
+            verdict = stats.get('historian_verdict', 'UNKNOWN')
+            print(f'  {pair:18s} | Trades: {trades:3d} | WinProb: {wr:5.1f}% | Verdict: {verdict}')
+    except Exception as e:
+        print(f'Error reading learning state: {e}')
+else:
+    print('(learning_state.json not created yet — waiting for closed paper trades)')
+
+print('\n=== GRADUATED STRATEGIES ===')
+if grad_path.exists():
+    try:
+        data = json.loads(grad_path.read_text(encoding='utf-8'))
+        print(f'Total Graduated/Tracked: {len(data)}')
+        for k, v in data.items():
+            st = v.get('status', '?')
+            ev = v.get('ev_pct', 0.0)
+            ss = v.get('sample_size', 0)
+            print(f'  {k:25s} | Status: {st:20s} | EV: {ev:+.2f}% | Samples: {ss}')
+    except Exception as e:
+        print(f'Error reading graduated strategies: {e}')
+else:
+    print('(graduated_strategies.json not created yet — accumulating paper trades)')
+"
+}
+
 case "${1:-}" in
   status) shift; cmd_status "$@" ;;
   doctor) shift; cmd_doctor "$@" ;;
   deposit-notify) shift; cmd_deposit_notify "$@" ;;
   reset-pnl) shift; cmd_reset_pnl "$@" ;;
+  learn-status) shift; cmd_learn_status "$@" ;;
   up) shift; cmd_up "$@" ;;
   down) shift; cmd_down "$@" ;;
   restart) shift; cmd_restart "$@" ;;

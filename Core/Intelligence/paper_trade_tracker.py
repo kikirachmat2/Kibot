@@ -277,6 +277,27 @@ class PaperTradeTracker:
         except Exception as e:
             logger.warning(f"Failed to refresh strategy stats on paper trade close: {e}")
 
+        # 4. Feed to Bayesian KiBot Learning Engine
+        try:
+            from Core.Intelligence.kibot_learning_engine import get_engine
+            learning = get_engine()
+            pair_key = str(trade.get("pair") or "").lower().replace("/", "_")
+            won = net_pnl_idr > 0
+            learning.record_trade(pair_key, net_pct, regime=trade.get("pattern", "NORMAL"), won=won, pnl_idr=net_pnl_idr)
+            logger.info(f"[PaperTrade] Recorded paper trade to Bayesian learning engine: {pair_key} PnL={net_pnl_idr:+.2f} IDR")
+        except Exception as e:
+            logger.warning(f"[PaperTrade] Learning engine update failed: {e}")
+
+        # 5. Feed to Pair Quarantine System
+        try:
+            from Core.Intelligence.pair_quarantine import record_pair_outcome
+            pair_display = str(trade.get("pair") or "")
+            quarantined = record_pair_outcome(pair_display, net_pnl_idr)
+            if quarantined:
+                logger.warning(f"[PaperTrade] Pair {pair_display} QUARANTINED after consecutive paper losses")
+        except Exception as e:
+            logger.warning(f"[PaperTrade] Pair quarantine update failed: {e}")
+
         logger.info(
             f"[PaperTrade] Closed virtual position for {trade.get('pair')} — Reason: {exit_reason}, PnL: {net_pnl_idr:+.2f} IDR ({net_pct*100:+.2f}%)"
         )
