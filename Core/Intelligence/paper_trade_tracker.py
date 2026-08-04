@@ -172,6 +172,26 @@ class PaperTradeTracker:
             exit_price = current_price if current_price and current_price > 0 else entry_price
 
             if current_price and current_price > 0:
+                # Dynamic Trailing Stop Ratchet: raise stop loss as price ascends
+                if current_price > entry_price and entry_price > 0:
+                    profit_pct = ((current_price - entry_price) / entry_price) * 100.0
+                    try:
+                        from Core.Intelligence.exit_plan import DEFAULT_TRAILING_SCHEDULE
+                        best_new_stop = stop_price
+                        for threshold_pct, buffer_pct in DEFAULT_TRAILING_SCHEDULE:
+                            if profit_pct >= threshold_pct:
+                                calculated_stop = entry_price * (1.0 + ((threshold_pct - buffer_pct) / 100.0))
+                                if calculated_stop > best_new_stop:
+                                    best_new_stop = calculated_stop
+                        if best_new_stop > stop_price:
+                            trade["stop_loss_price"] = best_new_stop
+                            stop_price = best_new_stop
+                            trade_file = self.open_dir / f"{trade.get('trade_id')}.json"
+                            if trade_file.exists():
+                                _atomic_write_json(trade_file, trade)
+                    except Exception:
+                        pass
+
                 if current_price <= stop_price:
                     should_close = True
                     exit_reason = "STOP_LOSS_BREACHED"

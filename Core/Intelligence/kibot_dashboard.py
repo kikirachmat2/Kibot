@@ -198,6 +198,35 @@ def _coin_from_pair(pair: str) -> str:
     return raw.replace("idr", "")
 
 
+@app.get("/api/v1/stream-logs")
+async def stream_system_logs(service: str = Query("kibot-master", description="Service name")):
+    """Server-Sent Events (SSE) endpoint to stream real-time logs for a given service."""
+    async def log_generator():
+        service_name = service if service in SERVICE_NAMES else "kibot-master"
+        cmd = ["sudo", "journalctl", "-u", service_name, "-n", "20", "-f", "--no-pager"]
+        try:
+            proc = await asyncio.create_subprocess_exec(
+                *cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.STDOUT
+            )
+            while True:
+                if proc.stdout is None:
+                    break
+                line = await proc.stdout.readline()
+                if not line:
+                    break
+                text = line.decode("utf-8", errors="replace").strip()
+                if text:
+                    data = json.dumps({"timestamp": datetime.now(timezone.utc).isoformat(), "service": service_name, "log": text})
+                    yield f"data: {data}\n\n"
+        except asyncio.CancelledError:
+            pass
+        except Exception as err:
+            data = json.dumps({"timestamp": datetime.now(timezone.utc).isoformat(), "service": service, "log": f"Log stream error: {err}"})
+            yield f"data: {data}\n\n"
+
+    return StreamingResponse(log_generator(), media_type="text/event-stream")
+
+
 def _position_value_map(active_positions: List[Dict[str, Any]]) -> Dict[str, Dict[str, float]]:
     values: Dict[str, Dict[str, float]] = {}
     for position in active_positions:

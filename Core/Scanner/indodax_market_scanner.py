@@ -262,6 +262,8 @@ class IndodaxMarketScanner:
                                 ),
                                 2,
                             )
+                            momentum_score = round(min(1.0, max(0.0, (float(sig.get("change_pct", 0.0)) / 10.0) * 0.4 + (range_position_pct / 100.0) * 0.6)), 3)
+                            is_multi_candle = bool(range_position_pct >= 40.0 and distance_to_high_pct <= 20.0)
                             candidate = {
                                 "symbol": symbol,
                                 "mint": pair,
@@ -273,6 +275,8 @@ class IndodaxMarketScanner:
                                 "volume_acceleration": float(sig.get("vol_ratio", 0.0)),
                                 "confidence": float(sig.get("confidence", 0.5)),
                                 "entry_score": entry_score,
+                                "momentum_score": momentum_score,
+                                "is_multi_candle_momentum": is_multi_candle,
                                 "high_24h": high,
                                 "low_24h": low,
                                 "range_position_pct": range_position_pct,
