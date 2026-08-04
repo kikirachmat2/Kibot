@@ -50,9 +50,20 @@ def build_autonomous_trading_brain() -> Dict[str, Any]:
     except Exception:
         capital_governor = {}
     try:
+        import signal
+
+        def _timeout_handler(signum, frame):
+            raise TimeoutError("reconcile_pnl_state timed out after 30s")
+
         from Core.Treasury.pnl_reconciliation import reconcile_pnl_state
 
-        pnl_reconciliation = reconcile_pnl_state(write=True)
+        old_handler = signal.signal(signal.SIGALRM, _timeout_handler)
+        signal.alarm(30)
+        try:
+            pnl_reconciliation = reconcile_pnl_state(write=True)
+        finally:
+            signal.alarm(0)
+            signal.signal(signal.SIGALRM, old_handler)
     except Exception:
         pnl_reconciliation = {}
     trading_pnl_pct = float(capital_governor.get("trading_pnl_pct", capital_governor.get("daily_pnl_pct", 0.0)) or 0.0)

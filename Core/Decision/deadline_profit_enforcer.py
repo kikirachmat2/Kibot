@@ -55,11 +55,18 @@ class DeadlineProfitEnforcer:
         # Load profit targets from Decision Authority config
         target_pct = 1.5
         global_loss_cap_idr = 0.0
+        paper_trade_only = True  # Assume paper-only until proven otherwise
         capital_governor_path = self.state_dir / "capital_governor.json"
         if capital_governor_path.exists():
             try:
                 gov = json.loads(capital_governor_path.read_text(encoding="utf-8"))
-                global_loss_cap_idr = float(gov.get("max_daily_loss_idr", 0.0) or 0.0)
+                # Dynamically compute loss cap from KiConfig instead of reading cached value
+                start_equity = float(gov.get("start_total_equity_idr", 0.0) or 0.0)
+                try:
+                    from Core.Support.ki_config import KiConfig
+                    global_loss_cap_idr = start_equity * (KiConfig.MAX_DAILY_LOSS_PERCENT / 100.0) if start_equity > 0 else 0.0
+                except Exception:
+                    global_loss_cap_idr = float(gov.get("max_daily_loss_idr", 0.0) or 0.0)
             except Exception:
                 global_loss_cap_idr = 0.0
         if self.authority_path.exists():
@@ -68,6 +75,19 @@ class DeadlineProfitEnforcer:
                 target_pct = float(auth_cfg.get("lock_green_pnl_pct", 1.5))
             except Exception:
                 pass
+
+        # Detect paper-trade-only mode: no real live positions means LOCK_GREEN is counterproductive
+        # (we need brain services running to accumulate paper trade samples)
+        try:
+            active_trades_path = self.state_dir / "active_trades.json"
+            if active_trades_path.exists():
+                active_trades = json.loads(active_trades_path.read_text(encoding="utf-8"))
+                if isinstance(active_trades, list) and len(active_trades) > 0:
+                    paper_trade_only = False
+                elif isinstance(active_trades, dict) and len(active_trades) > 0:
+                    paper_trade_only = False
+        except Exception:
+            pass
 
         locked = False
         reason = "No lock active"
@@ -89,16 +109,25 @@ class DeadlineProfitEnforcer:
             stage = "FATAL_BLOCKED"
 
         # Rule 1: Lock Green Target reached
+        # BYPASS: Do NOT lock when in paper-trade-only mode — brain must keep running to collect samples
         if not locked and daily_pnl_pct >= target_pct:
-            locked = True
-            reason = f"LOCK_GREEN: Daily profit target reached ({daily_pnl_pct:.2f}% >= {target_pct:.2f}%)"
-            stage = "CLOSING_WINDOW"
+            if paper_trade_only:
+                # Log advisory but do NOT lock — paper trade sample collection must continue
+                stage = "GREEN"
+                reason = f"GREEN_TARGET_ADVISORY: profit target reached ({daily_pnl_pct:.2f}% >= {target_pct:.2f}%) but paper-trade-only mode — brain continues"
+            else:
+                locked = True
+                reason = f"LOCK_GREEN: Daily profit target reached ({daily_pnl_pct:.2f}% >= {target_pct:.2f}%)"
+                stage = "CLOSING_WINDOW"
         
         # Rule 2: Midnight deadline approaching protection
         elif not locked and minutes_to_midnight <= 30 and daily_pnl_pct > 0.0:
-            locked = True
-            reason = f"LOCK_GREEN: Midnight approaching ({minutes_to_midnight}m left) and green profit protected (+{daily_pnl_pct:.2f}%)"
-            stage = "CLOSING_WINDOW"
+            if paper_trade_only:
+                reason = f"MIDNIGHT_ADVISORY: {minutes_to_midnight}m left, profit protected (+{daily_pnl_pct:.2f}%) but paper-trade-only mode — brain continues"
+            else:
+                locked = True
+                reason = f"LOCK_GREEN: Midnight approaching ({minutes_to_midnight}m left) and green profit protected (+{daily_pnl_pct:.2f}%)"
+                stage = "CLOSING_WINDOW"
 
         if stage == "FATAL_BLOCKED" and not locked:
             locked = True

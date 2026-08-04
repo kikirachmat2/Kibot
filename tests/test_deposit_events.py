@@ -48,8 +48,11 @@ def temp_treasury_env(tmp_path, monkeypatch):
     dep_mgr = DepositEventManager(log_file=log_file)
     monkeypatch.setattr(dem_mod, "_deposit_manager_instance", dep_mgr)
 
+    from Core.Treasury.capital_governor import _today_wib
+    today_str = _today_wib()
+
     gov = CapitalGovernor()
-    gov.last_reset_date = "2026-07-29"
+    gov.last_reset_date = today_str
     gov.start_total_equity_idr = 100000.0
     gov.start_indodax_equity_idr = 100000.0
 
@@ -112,10 +115,13 @@ def test_end_to_end_deposit_reconciliation_with_real_trading_pnl(temp_treasury_e
 def test_large_balance_increase_without_deposit_event_drift_safeguard(temp_treasury_env, caplog):
     _, gov, state_dir = temp_treasury_env
 
+    from Core.Treasury.capital_governor import _today_wib
+    today_str = _today_wib()
+
     # Initial anchor equity set to 100,000 IDR
     anchor_file = state_dir / "daily_equity_anchor.json"
     anchor_file.write_text(json.dumps({
-        "date": "2026-07-29",
+        "date": today_str,
         "start_equity_idr": 100000.0,
         "max_daily_loss_pct": 3.0,
         "max_daily_loss_idr": 3000.0,

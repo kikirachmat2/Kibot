@@ -42,9 +42,20 @@ def build_indodax_live_brain() -> Dict[str, Any]:
     board = build_indodax_target_board()
     pnl_reconciliation = {}
     try:
+        import signal
+
+        def _timeout_handler(signum, frame):
+            raise TimeoutError("reconcile_pnl_state timed out after 30s")
+
         from Core.Treasury.pnl_reconciliation import reconcile_pnl_state
 
-        pnl_reconciliation = reconcile_pnl_state(write=True)
+        old_handler = signal.signal(signal.SIGALRM, _timeout_handler)
+        signal.alarm(30)
+        try:
+            pnl_reconciliation = reconcile_pnl_state(write=True)
+        finally:
+            signal.alarm(0)
+            signal.signal(signal.SIGALRM, old_handler)
     except Exception:
         pnl_reconciliation = {}
     targets = board.get("top_targets", []) if isinstance(board, dict) else []
