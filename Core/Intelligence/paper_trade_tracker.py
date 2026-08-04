@@ -266,6 +266,42 @@ class PaperTradeTracker:
         with open(history_file, "a", encoding="utf-8") as f:
             f.write(json.dumps(closed_record, ensure_ascii=False) + "\n")
 
+        # 1b. Update cumulative paper equity curve file (state/paper_equity.json)
+        try:
+            equity_file = STATE_DIR / "paper_equity.json"
+            eq_data = {
+                "initial_bankroll_idr": self.bankroll_idr,
+                "current_equity_idr": self.bankroll_idr,
+                "total_pnl_idr": 0.0,
+                "total_paper_trades": 0,
+                "winning_trades": 0,
+                "losing_trades": 0,
+                "win_rate_pct": 0.0,
+                "updated_at": now_iso,
+            }
+            if equity_file.exists():
+                try:
+                    eq_data = json.loads(equity_file.read_text(encoding="utf-8"))
+                except Exception:
+                    pass
+
+            eq_data["total_paper_trades"] = int(eq_data.get("total_paper_trades", 0)) + 1
+            if net_pnl_idr > 0:
+                eq_data["winning_trades"] = int(eq_data.get("winning_trades", 0)) + 1
+            elif net_pnl_idr < 0:
+                eq_data["losing_trades"] = int(eq_data.get("losing_trades", 0)) + 1
+
+            total_trades = eq_data["total_paper_trades"]
+            wins = eq_data["winning_trades"]
+            eq_data["win_rate_pct"] = round((wins / total_trades) * 100.0, 2) if total_trades > 0 else 0.0
+            eq_data["total_pnl_idr"] = round(float(eq_data.get("total_pnl_idr", 0.0)) + net_pnl_idr, 2)
+            eq_data["current_equity_idr"] = round(float(eq_data.get("initial_bankroll_idr", self.bankroll_idr)) + eq_data["total_pnl_idr"], 2)
+            eq_data["updated_at"] = now_iso
+
+            _atomic_write_json(equity_file, eq_data)
+        except Exception as err:
+            logger.warning(f"[PaperTrade] Failed to update paper equity curve file: {err}")
+
         # 2. Delete open position file
         open_file = self.open_dir / f"{trade_id}.json"
         if open_file.exists():

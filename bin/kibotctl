@@ -376,8 +376,28 @@ from pathlib import Path
 state_dir = Path('/home/ubuntu/KiBot/state')
 learn_path = state_dir / 'learning_state.json'
 grad_path = state_dir / 'graduated_strategies.json'
+eq_path = state_dir / 'paper_equity.json'
 
-print('=== BAYESIAN PAIR STATS ===')
+print('=== PAPER EQUITY CURVE (Rp 5,000,000 IDR Bankroll) ===')
+if eq_path.exists():
+    try:
+        eq = json.loads(eq_path.read_text(encoding='utf-8'))
+        init_b = float(eq.get('initial_bankroll_idr', 5000000.0))
+        curr_e = float(eq.get('current_equity_idr', init_b))
+        tot_pnl = float(eq.get('total_pnl_idr', 0.0))
+        trades = int(eq.get('total_paper_trades', 0))
+        wins = int(eq.get('winning_trades', 0))
+        wr = float(eq.get('win_rate_pct', 0.0))
+        print(f'  Initial Bankroll: Rp {init_b:,.2f} IDR')
+        print(f'  Current Equity:   Rp {curr_e:,.2f} IDR (PnL: Rp {tot_pnl:+,.2f})')
+        print(f'  Closed Trades:    {trades:d} (Wins: {wins:d}, Win Rate: {wr:.1f}%)')
+    except Exception as e:
+        print(f'Error reading paper equity: {e}')
+else:
+    print('  Initial Bankroll: Rp 5,000,000.00 IDR (Current Equity: Rp 5,000,000.00 IDR)')
+    print('  (no paper trades closed yet today)')
+
+print('\n=== BAYESIAN PAIR STATS ===')
 if learn_path.exists():
     try:
         content = learn_path.read_text(encoding='utf-8')
