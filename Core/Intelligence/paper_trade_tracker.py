@@ -31,6 +31,8 @@ WIB_TZ = timezone(timedelta(hours=7))
 DEFAULT_FEE_PCT = 0.003  # 0.3% roundtrip fee
 DEFAULT_SLIPPAGE_PCT = 0.001  # 0.1% slippage
 MIN_NET_RR_BUFFER = 1.60  # Must be >= 1.6 to safely pass MIN_RR_RATIO (1.5) in compute_ev
+DEFAULT_PAPER_BANKROLL_IDR = float(os.getenv("KIBOT_PAPER_BANKROLL_IDR", "5000000.0"))  # Rp 5,000,000 IDR paper balance
+DEFAULT_PAPER_TRADE_SIZE_IDR = float(os.getenv("KIBOT_PAPER_TRADE_SIZE_IDR", "250000.0")) # 5% per trade (Rp 250,000)
 
 
 def compute_net_rr_ratio(
@@ -67,17 +69,19 @@ class PaperTradeTracker:
         open_dir: Path = PAPER_OPEN_DIR,
         history_dir: Path = TRADE_HISTORY_DIR,
         fee_pct: float = DEFAULT_FEE_PCT,
+        bankroll_idr: float = DEFAULT_PAPER_BANKROLL_IDR,
     ):
         self.open_dir = open_dir
         self.history_dir = history_dir
         self.fee_pct = fee_pct
+        self.bankroll_idr = bankroll_idr
         self.open_dir.mkdir(parents=True, exist_ok=True)
         self.history_dir.mkdir(parents=True, exist_ok=True)
 
     def open_paper_trade(
         self,
         candidate: Dict[str, Any],
-        budget_idr: float = 10000.0,
+        budget_idr: float = DEFAULT_PAPER_TRADE_SIZE_IDR,
         stop_loss_pct: float = 0.010,   # -1.0% stop loss
         take_profit_pct: float = 0.030, # +3.0% take profit
         max_hold_seconds: float = 7200.0,
