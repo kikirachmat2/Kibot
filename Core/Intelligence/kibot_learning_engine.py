@@ -55,10 +55,12 @@ PNL_UPPER_BOUND = 0.50 # +50% max per trade for learning (prevents outlier manip
 PNL_LOWER_BOUND = -0.20 # -20% max per trade for learning
 STALE_SIGNAL_TTL_SEC = 15 # Signals older than 15s are rejected for entry
 
-# INDODAX FEE (Maker 0.04%, PPh 0.21%, Taker 0.55%)
-MAKER_FEE = 0.0004
-TAKER_FEE = 0.0055
-PPH_SELL  = 0.0021
+from Core.Support.ki_config import KiConfig
+
+# INDODAX OFFICIAL FEE STRUCTURE (Maker 0.21% buy / 0.20% sell, Taker 0.31% buy / 0.30% sell)
+MAKER_FEE = KiConfig.INDODAX_MAKER_BUY_FEE_PCT   # 0.0021 (0.21%)
+TAKER_FEE = KiConfig.INDODAX_TAKER_BUY_FEE_PCT   # 0.0031 (0.31%)
+PPH_SELL  = 0.0000  # Included in official 0.30% sell fee
 
 @dataclass
 class PairStats:

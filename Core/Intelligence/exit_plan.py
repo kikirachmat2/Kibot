@@ -23,10 +23,12 @@ logger = logging.getLogger("ExitPlan")
 STATE_DIR  = Path(__file__).resolve().parent.parent.parent / "state"
 PLANS_DIR  = STATE_DIR / "exit_plans"
 
+from Core.Support.ki_config import KiConfig
+
 # ─────────────────────────────────────────────
 # Default parameters (§5, §6)
 # ─────────────────────────────────────────────
-FEE_ROUNDTRIP_PCT     = 0.0102     # 1.02% default Indodax maker+taker roundtrip
+FEE_ROUNDTRIP_PCT     = KiConfig.KIBOT_TAKER_FEE_ROUNDTRIP_PCT  # 0.0061 (0.61% official Indodax taker roundtrip)
 HARD_STOP_DEFAULT_PCT = 2.5        # §5: hard stop below entry
 BREAKEVEN_BUFFER_PCT  = 0.3        # move stop to breakeven after this profit above fees
 PARTIAL_TP_DEFAULT    = 0.8        # take 50% off at 0.8% profit

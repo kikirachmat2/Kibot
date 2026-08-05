@@ -3,15 +3,17 @@ from typing import Dict, Any, List
 
 logger = logging.getLogger("KiBotMicrostructure")
 
+from Core.Support.ki_config import KiConfig
+
 class IndodaxMicrostructureAnalyzer:
-    def __init__(self, taker_fee_pct: float = 0.51):
+    def __init__(self, taker_fee_pct: float = KiConfig.INDODAX_TAKER_BUY_FEE_PCT * 100.0):
         """
         Initialize the Microstructure Analyzer.
         
         Args:
-            taker_fee_pct: The taker fee percentage for Indodax (default 0.51%).
+            taker_fee_pct: The taker fee percentage for Indodax (default 0.31%).
         """
-        self.taker_fee_pct = taker_fee_pct / 100.0  # e.g., 0.0051
+        self.taker_fee_pct = taker_fee_pct / 100.0  # e.g., 0.0031
 
     def analyze_liquidity(self, orderbook: Dict[str, Any], target_size_idr: float = 10000000.0) -> Dict[str, Any]:
         """

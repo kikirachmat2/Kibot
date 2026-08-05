@@ -155,8 +155,9 @@ class LeadLagAlphaEngine:
             spread_pct = ((sell - buy) / buy * 100.0) if buy > 0 else 0.0
             vol_idr = indodax_info.get("vol_idr", 0.0)
             
-            # Fee Taker adjustment (0.51% taker fee on Indodax spot + 0.1% slippage buffer)
-            fee_pct = 0.51
+            from Core.Support.ki_config import KiConfig
+            # Fee Taker adjustment (0.31% official Indodax taker buy fee)
+            fee_pct = KiConfig.INDODAX_TAKER_BUY_FEE_PCT * 100.0  # 0.31%
             expected_net_pct = lag_gap_pct - fee_pct - (spread_pct / 2.0)
             
             reasons = []

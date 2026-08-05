@@ -26,9 +26,10 @@ from Core.risk_gate import RiskGate
 from Core.Support.ki_vault import load_sovereign_env
 from Core.sovereign_state import load_strategy, check_urgency
 from Core.Decision.deterministic_decision_gate import evaluate_live_trade
-from Core.Decision.live_opportunity_tier import classify_live_opportunity
 from Core.Treasury.live_truth_manager import load_live_truth
 from Core.Intelligence.pair_quarantine import is_quarantined
+from Core.Support.ki_config import KiConfig
+DEFAULT_FEE_ROUNDTRIP_PCT = KiConfig.KIBOT_TAKER_FEE_ROUNDTRIP_PCT * 100.0  # 0.61% official Indodax taker roundtrip fee
 
 # ── Phase 5: Order lifecycle tracking ──
 try:
@@ -374,7 +375,7 @@ class IndodaxExecutor:
                     indo_strat.get("green_hold_tp_multiplier", daily_state.get("take_profit_multiplier", 1.0)) or 1.0
                 )
                 urgency = check_urgency()
-                fee_roundtrip_pct = float(indo_strat.get("fee_roundtrip_pct", 1.02) or 1.02)
+                fee_roundtrip_pct = float(indo_strat.get("fee_roundtrip_pct", DEFAULT_FEE_ROUNDTRIP_PCT) or DEFAULT_FEE_ROUNDTRIP_PCT)
                 fee_buffer_pct = float(indo_strat.get("fee_buffer_pct", 0.3) or 0.3)
 
                 if urgency.get("flag") == "EMERGENCY_PAUSE":
@@ -792,7 +793,7 @@ class IndodaxExecutor:
         self._save_active_trades()
         return True
 
-    async def _handle_pending_exit(self, symbol: str, data: Dict[str, Any], fee_roundtrip_pct: float = 1.02) -> bool:
+    async def _handle_pending_exit(self, symbol: str, data: Dict[str, Any], fee_roundtrip_pct: float = DEFAULT_FEE_ROUNDTRIP_PCT) -> bool:
         """Keep pending exits honest until Indodax confirms the asset really left the wallet."""
         order_id = str(data.get("exit_pending_order_id") or "")
         if not order_id:
@@ -1294,7 +1295,7 @@ class IndodaxExecutor:
             return
         strategy = load_strategy()
         indo_strat = strategy.get("indodax", {}) if isinstance(strategy, dict) else {}
-        fee_roundtrip_pct = float(indo_strat.get("fee_roundtrip_pct", 1.02) or 1.02)
+        fee_roundtrip_pct = float(indo_strat.get("fee_roundtrip_pct", DEFAULT_FEE_ROUNDTRIP_PCT) or DEFAULT_FEE_ROUNDTRIP_PCT)
         entry_price = float(trade.get("price", price) or price or 0.0)
         profitable_floor_price = minimum_profitable_exit_price(
             entry_price,
@@ -1418,7 +1419,7 @@ class IndodaxExecutor:
             exit_amount = filled_amount if filled_amount > 0 else amount
             strategy = load_strategy()
             indo_strat = strategy.get("indodax", {}) if isinstance(strategy, dict) else {}
-            fee_roundtrip_pct = float(indo_strat.get("fee_roundtrip_pct", 1.02) or 1.02)
+            fee_roundtrip_pct = float(indo_strat.get("fee_roundtrip_pct", DEFAULT_FEE_ROUNDTRIP_PCT) or DEFAULT_FEE_ROUNDTRIP_PCT)
             math_result = self._net_exit_result(trade, exit_amount, price, fee_roundtrip_pct)
             self.risk.update_pnl(math_result["net_pnl_idr"])
             if KiConfig.CANARY_LIVE_ENABLED and math_result["net_pnl_idr"] < 0:
@@ -1562,7 +1563,7 @@ class IndodaxExecutor:
             # 3. EV check (expected_net_pct > 0)
             strategy = load_strategy()
             indo_strat = strategy.get("indodax", {})
-            fee_roundtrip_pct = float(indo_strat.get("fee_roundtrip_pct", 1.02))
+            fee_roundtrip_pct = float(indo_strat.get("fee_roundtrip_pct", DEFAULT_FEE_ROUNDTRIP_PCT))
             tp_pct = float(indo_strat.get("take_profit_pct", 1.5))
             expected_net_pct = tp_pct - fee_roundtrip_pct
             if KiConfig.CANARY_REQUIRE_POSITIVE_EV and expected_net_pct <= 0:
@@ -1748,7 +1749,7 @@ class IndodaxExecutor:
             signal["budget_idr"] = budget
 
 
-            fee_roundtrip_pct = float(indo_strat.get("fee_roundtrip_pct", 1.02))
+            fee_roundtrip_pct = float(indo_strat.get("fee_roundtrip_pct", DEFAULT_FEE_ROUNDTRIP_PCT))
             tp_pct = float(indo_strat.get("take_profit_pct", 1.5))
             expected_net_pct = tp_pct - fee_roundtrip_pct
             logger.info(
@@ -2323,7 +2324,7 @@ class IndodaxExecutor:
         indo_strat: Dict[str, Any],
         total_equity_idr: float | None = None,
     ) -> tuple[bool, str]:
-        fee_rate = float(indo_strat.get("fee_roundtrip_pct", 1.02)) / 100.0
+        fee_rate = float(indo_strat.get("fee_roundtrip_pct", DEFAULT_FEE_ROUNDTRIP_PCT)) / 100.0
         effective_budget = budget * (1 - fee_rate)
         if price <= 0:
             return False, "INVALID_PRICE"
@@ -2360,8 +2361,8 @@ class IndodaxExecutor:
             )
 
         tp_pct = float(indo_strat.get("take_profit_pct", 1.5))
-        if tp_pct <= float(indo_strat.get("fee_roundtrip_pct", 1.02)):
-            return False, f"FEE_EATS_PROFIT: TP {tp_pct:.2f}% <= fee {float(indo_strat.get('fee_roundtrip_pct', 1.02)):.2f}%"
+        if tp_pct <= float(indo_strat.get("fee_roundtrip_pct", DEFAULT_FEE_ROUNDTRIP_PCT)):
+            return False, f"FEE_EATS_PROFIT: TP {tp_pct:.2f}% <= fee {float(indo_strat.get('fee_roundtrip_pct', DEFAULT_FEE_ROUNDTRIP_PCT)):.2f}%"
 
         return True, "OK"
 

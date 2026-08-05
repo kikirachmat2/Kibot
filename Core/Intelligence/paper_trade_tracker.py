@@ -28,8 +28,10 @@ PAPER_OPEN_DIR = STATE_DIR / "paper_trades" / "open"
 TRADE_HISTORY_DIR = STATE_DIR / "trade_history"
 WIB_TZ = timezone(timedelta(hours=7))
 
-DEFAULT_FEE_PCT = 0.003  # 0.3% roundtrip fee
-DEFAULT_SLIPPAGE_PCT = 0.001  # 0.1% slippage
+from Core.Support.ki_config import KiConfig
+
+DEFAULT_FEE_PCT = KiConfig.INDODAX_TAKER_BUY_FEE_PCT  # 0.31% single-leg taker fee (Indodax official)
+DEFAULT_SLIPPAGE_PCT = KiConfig.KIBOT_DEFAULT_SLIPPAGE_PCT  # 0.10% slippage
 MIN_NET_RR_BUFFER = 1.60  # Must be >= 1.6 to safely pass MIN_RR_RATIO (1.5) in compute_ev
 DEFAULT_PAPER_BANKROLL_IDR = float(os.getenv("KIBOT_PAPER_BANKROLL_IDR", "5000000.0"))  # Rp 5,000,000 IDR paper balance
 DEFAULT_PAPER_TRADE_SIZE_IDR = float(os.getenv("KIBOT_PAPER_TRADE_SIZE_IDR", "250000.0")) # 5% per trade (Rp 250,000)
@@ -68,7 +70,7 @@ class PaperTradeTracker:
         self,
         open_dir: Path = PAPER_OPEN_DIR,
         history_dir: Path = TRADE_HISTORY_DIR,
-        fee_pct: float = DEFAULT_FEE_PCT,
+        fee_pct: float = KiConfig.KIBOT_TAKER_FEE_ROUNDTRIP_PCT,
         bankroll_idr: float = DEFAULT_PAPER_BANKROLL_IDR,
     ):
         self.open_dir = open_dir
@@ -88,7 +90,7 @@ class PaperTradeTracker:
     ) -> Optional[Dict[str, Any]]:
         """Open a virtual paper trade for a candidate with PAPER_ONLY verdict."""
         # Enforce safety check: Net R:R ratio must be >= 1.6
-        net_rr = compute_net_rr_ratio(take_profit_pct, stop_loss_pct, self.fee_pct)
+        net_rr = compute_net_rr_ratio(take_profit_pct, stop_loss_pct, DEFAULT_FEE_PCT)
         if net_rr < MIN_NET_RR_BUFFER:
             logger.warning(
                 f"[PaperTrade] Cannot open trade: net R:R ratio {net_rr:.2f} is below minimum required buffer {MIN_NET_RR_BUFFER:.2f}"

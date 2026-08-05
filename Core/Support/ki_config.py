@@ -86,6 +86,18 @@ class KiConfig:
     MIN_SIGNAL_PROBABILITY = 0.65     # Lowered to 65% for high-aggression
     SCALPING_TP_PERCENT = 1.0         # Increased for more room
     SCALPING_SL_PERCENT = 2.0         # Matches RiskGate SL
+    # --- OFFICIAL INDODAX FEE STRUCTURE (SSOT) ---
+    # Official Indodax IDR Market Fees: Taker Buy 0.31% / Sell 0.30% (Roundtrip 0.61%), Maker Buy 0.21% / Sell 0.20% (Roundtrip 0.41%)
+    # Ref: https://help.indodax.com/hc/en-us/articles/4416646599705-Indodax-Detailed-Fees
+    INDODAX_TAKER_BUY_FEE_PCT = float(os.getenv("KIBOT_INDODAX_TAKER_BUY_FEE_PCT", "0.0031"))
+    INDODAX_TAKER_SELL_FEE_PCT = float(os.getenv("KIBOT_INDODAX_TAKER_SELL_FEE_PCT", "0.0030"))
+    INDODAX_MAKER_BUY_FEE_PCT = float(os.getenv("KIBOT_INDODAX_MAKER_BUY_FEE_PCT", "0.0021"))
+    INDODAX_MAKER_SELL_FEE_PCT = float(os.getenv("KIBOT_INDODAX_MAKER_SELL_FEE_PCT", "0.0020"))
+    
+    KIBOT_TAKER_FEE_ROUNDTRIP_PCT = INDODAX_TAKER_BUY_FEE_PCT + INDODAX_TAKER_SELL_FEE_PCT  # 0.0061 (0.61%)
+    KIBOT_MAKER_FEE_ROUNDTRIP_PCT = INDODAX_MAKER_BUY_FEE_PCT + INDODAX_MAKER_SELL_FEE_PCT  # 0.0041 (0.41%)
+    KIBOT_DEFAULT_SLIPPAGE_PCT = float(os.getenv("KIBOT_DEFAULT_SLIPPAGE_PCT", "0.0010"))     # 0.10%
+
     _RAW_TRADING_MODE = os.getenv("KIBOT_RUNTIME_MODE", os.getenv("KIBOT_TRADING_MODE", LIVE_ONLY)).strip().lower()
     TRADING_MODE = normalize_runtime_mode(_RAW_TRADING_MODE)
     INDODAX_ONLY = _env_flag("KIBOT_INDODAX_ONLY", "true")

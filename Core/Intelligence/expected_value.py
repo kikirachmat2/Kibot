@@ -55,12 +55,15 @@ class EVResult:
         }
 
 
+from Core.Support.ki_config import KiConfig
+
+
 def compute_ev(
     *,
     win_prob: float,
     avg_win_pct: float,
     avg_loss_pct: float,
-    fee_pct: float = 0.003,         # Indodax taker fee default 0.3%
+    fee_pct: float = 0.003,         # Indodax taker fee per leg default 0.3%
     slippage_pct: float = 0.001,    # estimate slippage 0.1%
     override_ev_threshold: Optional[float] = None,
     override_rr_threshold: Optional[float] = None,
@@ -136,8 +139,8 @@ def ev_from_candidate(candidate: Dict[str, Any]) -> EVResult:
     win_prob = float(candidate.get("win_rate", 0.0) or 0.0)
     avg_win_pct = float(candidate.get("avg_profit_pct", 0.0) or 0.0)
     avg_loss_pct = float(candidate.get("avg_loss_pct", 0.0) or 0.0)
-    fee_pct = float(candidate.get("fee_pct", 0.003))
-    slippage_pct = float(candidate.get("slippage_pct", 0.001))
+    fee_pct = float(candidate.get("fee_pct", KiConfig.INDODAX_TAKER_BUY_FEE_PCT))
+    slippage_pct = float(candidate.get("slippage_pct", KiConfig.KIBOT_DEFAULT_SLIPPAGE_PCT))
 
     res = compute_ev(
         win_prob=win_prob,

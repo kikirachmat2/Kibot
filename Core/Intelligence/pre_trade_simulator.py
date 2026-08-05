@@ -76,14 +76,17 @@ def _estimate_sell_fill(bids: List[Tuple[float, float]], amount_coin: float) -> 
     }
 
 
-async def simulate_indodax_entry(
+from Core.Support.ki_config import KiConfig
+
+
+async def simulate_pre_trade(
     gateway: Any,
     *,
     symbol: str,
     price: float,
     budget_idr: float,
     signal: Dict[str, Any] | None = None,
-    fee_roundtrip_pct: float = 1.02,
+    fee_roundtrip_pct: float = KiConfig.KIBOT_TAKER_FEE_ROUNDTRIP_PCT * 100.0,  # 0.61%
 ) -> Dict[str, Any]:
     """Return a PASS / REDUCE_SIZE / REJECT pre-trade simulation."""
     pair = str(symbol or "").lower().replace("/", "_")
