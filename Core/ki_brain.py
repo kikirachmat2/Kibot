@@ -135,7 +135,7 @@ except Exception:
     # Initialize nest_asyncio to allow nested event loops in sync contexts
     try:
         nest_asyncio.apply()
-    except:
+    except Exception:
         pass
 
 
@@ -912,7 +912,7 @@ class BrainManager:
                     pulse = json.loads(sentiment_file.read_text())
                     risk_bias = pulse.get("global_bias", risk_bias)
                     sentiment_score = pulse.get("fear_greed_index", 0.5)
-                except:
+                except Exception:
                     pass
 
             return {
