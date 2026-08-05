@@ -184,7 +184,7 @@ def verify_egress_health() -> bool:
         try:
             with socket.create_connection((host, KIBOT_UDP_PORT), timeout=2):
                 return True
-        except:
+        except OSError:
             continue
     return False
 

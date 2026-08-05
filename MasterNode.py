@@ -675,7 +675,7 @@ class KiBotMaster:
             with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
                 s.settimeout(0.5)
                 return s.connect_ex(('127.0.0.1', port)) == 0
-        except:
+        except OSError:
             return False
 
     async def get_telemetry(self) -> Dict:
@@ -767,7 +767,7 @@ class KiBotMaster:
                     telemetry["redis"] = "ONLINE"
                 else:
                     telemetry["redis"] = "OFFLINE"
-            except: 
+            except Exception: 
                 # Fallback to port check if redis-cli fails
                 telemetry["redis"] = "ONLINE" if self._check_local_port(6379) else "OFFLINE"
         else:
@@ -851,7 +851,7 @@ class KiBotMaster:
             try:
                 logger.info(f"🛑 Terminating child: {name}")
                 proc.terminate()
-            except: pass
+            except Exception: pass
         sys.exit(0)
 
     def start(self):
@@ -912,7 +912,7 @@ class KiBotMaster:
                 logger.info(f"Stopping service {name}...")
                 try:
                     proc.terminate()
-                except: pass
+                except Exception: pass
         
         # Wait for them to finish (briefly)
         if self.procs:

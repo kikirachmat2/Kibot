@@ -470,7 +470,7 @@ class LearningEngine:
                         if t.get("trade_id") == trade_id and t.get("status") == "OPEN":
                             trade = t
                             break
-                    except: pass
+                    except Exception: pass
         
         if not trade: return None
 
@@ -517,7 +517,7 @@ class LearningEngine:
                         t = json.loads(line)
                         if t.get("status") == "CLOSED" and t.get("exit_at", "").startswith(today):
                             closed.append(t)
-                    except: pass
+                    except Exception: pass
         
         wins = [t for t in closed if t.get("win")]
         losses = [t for t in closed if not t.get("win")]
@@ -612,7 +612,7 @@ class LearningEngine:
             key = _get_signing_key()
             signature = hmac.new(key, payload.encode(), hashlib.sha256).hexdigest()
             self._atomic_write(STATE_PATH, f"{payload}|{signature}")
-        except: pass
+        except Exception: pass
 
     def patrol_and_audit(self):
         """Autonomous patrol for learning opportunities and trade audits."""

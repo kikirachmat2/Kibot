@@ -2376,7 +2376,7 @@ class IndodaxExecutor:
             }
             sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
             sock.sendto(json.dumps(report).encode(), (self.batam_ip, REPORT_PORT))
-        except: pass
+        except Exception: pass
     def handle_sigterm(self, signum, frame):
         logger.info("👋 IndodaxExecutor shutting down gracefully...")
         self._save_active_trades()

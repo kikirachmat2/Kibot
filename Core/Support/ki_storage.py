@@ -22,5 +22,5 @@ def atomic_load(filepath):
     try:
         with open(filepath, "r") as f:
             return json.load(f)
-    except:
+    except (OSError, json.JSONDecodeError, ValueError):
         return {}

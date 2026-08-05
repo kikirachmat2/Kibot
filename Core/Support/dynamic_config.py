@@ -20,7 +20,7 @@ def get_param(key: str, default=None):
             data = json.loads(_CONFIG_FILE.read_text())
             if key in data:
                 return data[key]
-        except:
+        except (OSError, json.JSONDecodeError, ValueError):
             pass
     
     # 2. Try environment (loaded from .env by ki_config)
@@ -30,7 +30,7 @@ def get_param(key: str, default=None):
         try:
             if "." in env_val: return float(env_val)
             return int(env_val)
-        except:
+        except (TypeError, ValueError):
             return env_val
             
     # 3. Use internal defaults
@@ -42,7 +42,7 @@ def set_param(key: str, value):
     if _CONFIG_FILE.exists():
         try:
             data = json.loads(_CONFIG_FILE.read_text())
-        except:
+        except (OSError, json.JSONDecodeError, ValueError):
             pass
     
     data[key] = value

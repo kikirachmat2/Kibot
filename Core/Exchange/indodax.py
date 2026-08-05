@@ -192,7 +192,7 @@ class IndodaxGateway:
             d = decimal.Decimal(str(amount))
             s = decimal.Decimal(str(step_size))
             return float(d.quantize(s, rounding=decimal.ROUND_DOWN))
-        except:
+        except Exception:
             return amount
 
     def _normalize_pair(self, pair: str) -> str:

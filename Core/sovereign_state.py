@@ -165,7 +165,7 @@ def check_urgency() -> Dict[str, Any]:
 
         data.setdefault("flag", "NORMAL")
         return data
-    except:
+    except (OSError, json.JSONDecodeError, ValueError, KeyError):
         return {"flag": "NORMAL"}
 
 def clear_urgency():
@@ -219,7 +219,7 @@ def save_trade_result(symbol: str, profit_pct: float, reason: str):
         try:
             with open(history_file, "r") as f:
                 history = json.load(f)
-        except: pass
+        except (OSError, json.JSONDecodeError, ValueError): pass
     
     history.append({
         "timestamp": time.time(),
@@ -239,4 +239,4 @@ def load_pnl_history() -> list:
     try:
         with open(history_file, "r") as f:
             return json.load(f)
-    except: return []
+    except (OSError, json.JSONDecodeError, ValueError): return []

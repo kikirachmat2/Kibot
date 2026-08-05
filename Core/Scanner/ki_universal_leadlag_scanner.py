@@ -55,7 +55,7 @@ class UniversalLeadLagScanner:
                     if price > 0:
                         await self._process_single_result(name, price)
                     return name, price
-        except: pass
+        except Exception: pass
         return name, 0.0
 
     async def _process_single_result(self, name, price):
