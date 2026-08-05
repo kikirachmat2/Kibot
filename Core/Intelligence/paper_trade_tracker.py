@@ -30,7 +30,7 @@ WIB_TZ = timezone(timedelta(hours=7))
 
 from Core.Support.ki_config import KiConfig
 
-DEFAULT_FEE_PCT = KiConfig.INDODAX_TAKER_BUY_FEE_PCT  # 0.31% single-leg taker fee (Indodax official)
+DEFAULT_FEE_PCT = KiConfig.KIBOT_TAKER_FEE_ROUNDTRIP_PCT  # 0.61% roundtrip taker fee (Indodax official)
 DEFAULT_SLIPPAGE_PCT = KiConfig.KIBOT_DEFAULT_SLIPPAGE_PCT  # 0.10% slippage
 MIN_NET_RR_BUFFER = 1.60  # Must be >= 1.6 to safely pass MIN_RR_RATIO (1.5) in compute_ev
 DEFAULT_PAPER_BANKROLL_IDR = float(os.getenv("KIBOT_PAPER_BANKROLL_IDR", "5000000.0"))  # Rp 5,000,000 IDR paper balance
@@ -38,8 +38,8 @@ DEFAULT_PAPER_TRADE_SIZE_IDR = float(os.getenv("KIBOT_PAPER_TRADE_SIZE_IDR", "25
 
 
 def compute_net_rr_ratio(
-    take_profit_pct: float = 0.03,
-    stop_loss_pct: float = 0.01,
+    take_profit_pct: float = 0.035,  # +3.5% TP for safe net R:R >= 1.60
+    stop_loss_pct: float = 0.010,   # -1.0% SL
     fee_pct: float = DEFAULT_FEE_PCT,
     slippage_pct: float = DEFAULT_SLIPPAGE_PCT,
 ) -> float:
@@ -85,12 +85,12 @@ class PaperTradeTracker:
         candidate: Dict[str, Any],
         budget_idr: float = DEFAULT_PAPER_TRADE_SIZE_IDR,
         stop_loss_pct: float = 0.010,   # -1.0% stop loss
-        take_profit_pct: float = 0.030, # +3.0% take profit
+        take_profit_pct: float = 0.035, # +3.5% take profit (calibrated for net R:R >= 1.63)
         max_hold_seconds: float = 7200.0,
     ) -> Optional[Dict[str, Any]]:
         """Open a virtual paper trade for a candidate with PAPER_ONLY verdict."""
         # Enforce safety check: Net R:R ratio must be >= 1.6
-        net_rr = compute_net_rr_ratio(take_profit_pct, stop_loss_pct, DEFAULT_FEE_PCT)
+        net_rr = compute_net_rr_ratio(take_profit_pct, stop_loss_pct, self.fee_pct, DEFAULT_SLIPPAGE_PCT)
         if net_rr < MIN_NET_RR_BUFFER:
             logger.warning(
                 f"[PaperTrade] Cannot open trade: net R:R ratio {net_rr:.2f} is below minimum required buffer {MIN_NET_RR_BUFFER:.2f}"

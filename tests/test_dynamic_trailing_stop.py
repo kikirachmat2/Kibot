@@ -30,7 +30,7 @@ def test_trailing_stop_ratchets_up_with_profit(temp_paper_env):
     }
 
     # Open paper trade at entry_price 100.0, initial stop loss = 99.0 (-1%)
-    trade = tracker.open_paper_trade(candidate, budget_idr=10000.0, stop_loss_pct=0.010, take_profit_pct=0.030)
+    trade = tracker.open_paper_trade(candidate, budget_idr=10000.0, stop_loss_pct=0.010, take_profit_pct=0.035)
     assert trade is not None
     initial_stop = trade["stop_loss_price"]
     assert initial_stop == 99.0

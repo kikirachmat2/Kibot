@@ -22,7 +22,7 @@ def test_fee_ssot_constants():
 
 def test_fee_ssot_module_integration():
     """Verify that all Core modules reference KiConfig SSOT fee constants."""
-    assert DEFAULT_FEE_PCT == KiConfig.INDODAX_TAKER_BUY_FEE_PCT
+    assert DEFAULT_FEE_PCT == KiConfig.KIBOT_TAKER_FEE_ROUNDTRIP_PCT
     assert DEFAULT_SLIPPAGE_PCT == KiConfig.KIBOT_DEFAULT_SLIPPAGE_PCT
     assert FEE_ROUNDTRIP_PCT == KiConfig.KIBOT_TAKER_FEE_ROUNDTRIP_PCT
     assert round(DEFAULT_FEE_ROUNDTRIP_PCT, 2) == 0.61
