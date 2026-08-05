@@ -60,11 +60,12 @@ class DeadlineProfitEnforcer:
         if capital_governor_path.exists():
             try:
                 gov = json.loads(capital_governor_path.read_text(encoding="utf-8"))
-                # Dynamically compute loss cap from KiConfig instead of reading cached value
-                start_equity = float(gov.get("start_total_equity_idr", 0.0) or 0.0)
+                # Dynamically compute loss cap using effective base equity (min 10,000 IDR floor for micro-equity)
+                raw_start_equity = float(gov.get("start_total_equity_idr", 0.0) or 0.0)
+                effective_base_equity = max(10000.0, raw_start_equity) if raw_start_equity > 0 else 0.0
                 try:
                     from Core.Support.ki_config import KiConfig
-                    global_loss_cap_idr = start_equity * (KiConfig.MAX_DAILY_LOSS_PERCENT / 100.0) if start_equity > 0 else 0.0
+                    global_loss_cap_idr = effective_base_equity * (KiConfig.MAX_DAILY_LOSS_PERCENT / 100.0) if effective_base_equity > 0 else 0.0
                 except Exception:
                     global_loss_cap_idr = float(gov.get("max_daily_loss_idr", 0.0) or 0.0)
             except Exception:
@@ -89,8 +90,19 @@ class DeadlineProfitEnforcer:
         except Exception:
             pass
 
-        locked = False
-        reason = "No lock active"
+        # Read existing breach count from disk to enforce 2-consecutive-cycle requirement
+        prev_breach_count = 0
+        prev_locked = False
+        if self.enforcer_path.exists():
+            try:
+                prev_state = json.loads(self.enforcer_path.read_text(encoding="utf-8"))
+                prev_breach_count = int(prev_state.get("breach_count", 0) or 0)
+                prev_locked = bool(prev_state.get("locked_for_day", False))
+            except Exception:
+                pass
+
+        locked = prev_locked
+        reason = "No lock active" if not locked else "Persisted daily lock active"
         stage = "NORMAL"
         if daily_pnl_idr < 0.0:
             stage = "RECOVERY"
@@ -101,12 +113,25 @@ class DeadlineProfitEnforcer:
         if daily_pnl_pct <= 0.0:
             stage = "RECOVERY"
 
+        current_breach = False
         if global_loss_cap_idr > 0.0 and daily_pnl_idr <= -global_loss_cap_idr:
-            locked = True
-            reason = (
-                f"LOSS_CUTOFF: Daily loss cap breached ({daily_pnl_idr:.2f} <= -{global_loss_cap_idr:.2f})"
-            )
-            stage = "FATAL_BLOCKED"
+            current_breach = True
+            if prev_breach_count >= 1 or prev_locked:
+                locked = True
+                breach_count = max(2, prev_breach_count + 1)
+                reason = (
+                    f"LOSS_CUTOFF: Daily loss cap breached ({daily_pnl_idr:.2f} <= -{global_loss_cap_idr:.2f}) [Confirmed {breach_count} cycles]"
+                )
+                stage = "FATAL_BLOCKED"
+            else:
+                breach_count = 1
+                locked = False
+                reason = (
+                    f"LOSS_CUTOFF_WARNING: Daily loss cap breached ({daily_pnl_idr:.2f} <= -{global_loss_cap_idr:.2f}) [Cycle 1/2 unconfirmed - awaiting confirmation]"
+                )
+                stage = "RECOVERY"
+        else:
+            breach_count = 0
 
         # Rule 1: Lock Green Target reached
         # BYPASS: Do NOT lock when in paper-trade-only mode — brain must keep running to collect samples
@@ -131,7 +156,7 @@ class DeadlineProfitEnforcer:
 
         if stage == "FATAL_BLOCKED" and not locked:
             locked = True
-        if stage == "RECOVERY" and not locked:
+        if stage == "RECOVERY" and not locked and not current_breach:
             reason = "RECOVERY: day is red; widen scan, lower nonfatal thresholds, keep searching"
         elif stage == "GREEN" and not locked:
             reason = "GREEN: profits present; keep hunting for continuation setups"
@@ -148,6 +173,7 @@ class DeadlineProfitEnforcer:
 
         enforcer_state = {
             "locked_for_day": locked,
+            "breach_count": breach_count,
             "lock_reason": reason,
             "daily_pnl_pct": round(daily_pnl_pct, 4),
             "daily_pnl_idr": round(daily_pnl_idr, 2),

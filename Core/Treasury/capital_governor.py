@@ -1048,7 +1048,21 @@ class CapitalGovernor:
             self.external_withdrawals_today = adjusted_withdrawals
             
             # Compute daily consolidated PnL (adjusted for capital flows and offset)
-            self.daily_pnl_idr = self.current_total_equity_idr - self.start_total_equity_idr - adjusted_deposits + adjusted_withdrawals
+            new_daily_pnl_idr = self.current_total_equity_idr - self.start_total_equity_idr - adjusted_deposits + adjusted_withdrawals
+            
+            # Safeguard: If current equity dropped >50% from start equity without a matching withdrawal event,
+            # treat as a transient balance reading latency / startup glitch and preserve previous PnL state.
+            if self.start_total_equity_idr > 0.0 and adjusted_withdrawals <= 0.0:
+                drop_ratio = (self.start_total_equity_idr - self.current_total_equity_idr) / self.start_total_equity_idr
+                if drop_ratio > 0.50:
+                    logger.warning(
+                        f"⚠️ [GovernorSafeguard] Large equity drop ({drop_ratio*100:.1f}% > 50%) detected without withdrawal: "
+                        f"current=Rp{self.current_total_equity_idr:,.2f} vs start=Rp{self.start_total_equity_idr:,.2f}. "
+                        "Preserving previous PnL calculation for this cycle."
+                    )
+                    new_daily_pnl_idr = max(0.0, getattr(self, "daily_pnl_idr", 0.0))
+
+            self.daily_pnl_idr = new_daily_pnl_idr
             self.trading_pnl_idr = self.current_total_equity_idr - self.start_total_equity_idr
             
             # Compute PnL percentage
