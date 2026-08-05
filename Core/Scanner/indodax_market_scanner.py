@@ -20,6 +20,7 @@ class IndodaxMarketScanner:
     """
 
     def __init__(self) -> None:
+        self.exchange = "INDODAX"
         self.scanner = IndodaxSmallCapScanner()
         self.leadlag_scanner = IndodaxBinanceLeadLagScanner()
         self.state_dir = STATE_DIR
