@@ -287,17 +287,22 @@ class WorldScout:
 
     async def _notify_runtime_blockers(self, semantics: Dict[str, Any], telegram: Dict[str, Any]) -> bool:
         alerts = semantics.get("alerts", [])
-        if not alerts or not telegram.get("configured"):
+        blockers = semantics.get("blockers", [])
+        allow_orders = bool(semantics.get("allow_new_orders", True))
+        
+        # Only notify as an URGENT BLOCKER if new orders are actually BLOCKED (allow_new_orders is False)
+        # AND there are active blockers. Advisory alerts when orders are ON (e.g. 0 targets) are normal state.
+        if allow_orders or not blockers or not telegram.get("configured"):
             return False
         if self._runtime_blocker_auto_repairable(semantics):
             return False
         try:
             from Core.sovereign_notifier import SovereignNotifier
 
-            reason = semantics.get("allow_new_orders_reason") or semantics.get("dispatcher_reason") or alerts[0]
+            reason = semantics.get("allow_new_orders_reason") or semantics.get("dispatcher_reason") or (blockers[0].get("reason") if blockers else "orders_blocked")
             message = (
                 "KiBot runtime blocker detected\n"
-                f"- orders: {'ON' if semantics.get('allow_new_orders') else 'OFF'}\n"
+                f"- orders: OFF\n"
                 f"- reason: {reason}\n"
                 f"- enter targets visible: {semantics.get('enter_targets', 0)}\n"
                 f"- next: inspect capital_governor/live_order_dispatcher"

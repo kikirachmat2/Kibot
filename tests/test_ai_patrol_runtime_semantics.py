@@ -106,3 +106,34 @@ def test_ai_patrol_does_not_send_telegram_for_auto_repairable_rollover(tmp_path,
             {"configured": True, "bot_api_ok": True},
         )
     ) is False
+
+
+def test_ai_patrol_does_not_send_urgent_alert_when_orders_are_on(tmp_path, monkeypatch):
+    monkeypatch.setattr(kibot_ai_scout, "STATE_DIR", tmp_path)
+
+    _write(
+        tmp_path / "capital_governor.json",
+        {
+            "allow_new_orders": True,
+            "allow_new_orders_reason": "venue-scoped allowances active: indodax",
+        },
+    )
+    _write(
+        tmp_path / "live_order_dispatcher.json",
+        {"status": "ALLOW_NEW_ORDERS", "reason": "ok"},
+    )
+    _write(tmp_path / "indodax_top_targets.json", {"top_targets": []})
+
+    scout = kibot_ai_scout.WorldScout()
+    semantics = scout._runtime_semantics()
+
+    assert semantics["allow_new_orders"] is True
+    assert semantics["enter_targets"] == 0
+
+    # Must return False (no urgent alert sent) when orders are ON
+    assert asyncio.run(
+        scout._notify_runtime_blockers(
+            semantics,
+            {"configured": True, "bot_api_ok": True},
+        )
+    ) is False
