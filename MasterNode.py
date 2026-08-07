@@ -401,6 +401,7 @@ class KiBotMaster:
                             is_midnight = (now.hour == 23 and now.minute >= 45)
                             minutes_to_midnight = self.council._minutes_to_midnight_wib()
                             portfolio_state = dict(self.last_state.get("portfolio", {}) or {})
+                            market_context = await self.aggregator._get_market_context()
                             decision = await self.council.deliberate_trading({
                                 "signals": sigs, 
                                 "source": addr[0],
@@ -408,6 +409,7 @@ class KiBotMaster:
                                 "minutes_to_midnight": minutes_to_midnight,
                                 "portfolio_state": portfolio_state,
                                 "current_strategy": load_strategy(),
+                                "market_context": market_context,
                             })
 
                             if not decision or not isinstance(decision, dict):
