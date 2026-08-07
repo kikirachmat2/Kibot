@@ -546,13 +546,13 @@ class CapitalGovernor:
                 self.last_reset_date = str(existing.get("date") or self.last_reset_date or _today_wib())
                 self.start_total_equity_idr = existing_equity
                 self.start_indodax_equity_idr = existing_equity
-                self.max_daily_loss_idr = existing_equity * (KiConfig.MAX_DAILY_LOSS_PERCENT / 100.0)
+                self.max_daily_loss_idr = max(existing_equity, KiConfig.MIN_EQUITY_FLOOR_IDR) * (KiConfig.MAX_DAILY_LOSS_PERCENT / 100.0)
                 return
             ANCHOR_FILE.write_text(json.dumps({
                 "date": self.last_reset_date,
                 "start_equity_idr": self.start_total_equity_idr,
                 "max_daily_loss_pct": KiConfig.MAX_DAILY_LOSS_PERCENT,
-                "max_daily_loss_idr": self.start_total_equity_idr * (KiConfig.MAX_DAILY_LOSS_PERCENT / 100.0),
+                "max_daily_loss_idr": max(self.start_total_equity_idr, KiConfig.MIN_EQUITY_FLOOR_IDR) * (KiConfig.MAX_DAILY_LOSS_PERCENT / 100.0),
                 "source": "capital_governor",
             }, indent=4), encoding="utf-8")
         except Exception as e:
@@ -646,7 +646,7 @@ class CapitalGovernor:
             self.start_total_equity_idr = anchor_equity
             self.start_indodax_equity_idr = anchor_equity
             self.max_daily_loss_idr = float(
-                anchor.get("max_daily_loss_idr", anchor_equity * (KiConfig.MAX_DAILY_LOSS_PERCENT / 100.0)) or 0.0
+                anchor.get("max_daily_loss_idr", max(anchor_equity, KiConfig.MIN_EQUITY_FLOOR_IDR) * (KiConfig.MAX_DAILY_LOSS_PERCENT / 100.0)) or 0.0
             )
             self.last_reset_date = str(anchor.get("date") or _today_wib())
 
@@ -661,7 +661,7 @@ class CapitalGovernor:
                 self.max_daily_loss_idr = float(
                     existing_anchor.get(
                         "max_daily_loss_idr",
-                        existing_anchor_equity * (KiConfig.MAX_DAILY_LOSS_PERCENT / 100.0),
+                        max(existing_anchor_equity, KiConfig.MIN_EQUITY_FLOOR_IDR) * (KiConfig.MAX_DAILY_LOSS_PERCENT / 100.0),
                     )
                     or 0.0
                 )
@@ -742,7 +742,7 @@ class CapitalGovernor:
                 self.start_indodax_equity_idr += total_added
                 effective_equity = self.start_total_equity_idr + total_added
                 if self.max_daily_loss_idr > 0:
-                    self.max_daily_loss_idr = effective_equity * (KiConfig.MAX_DAILY_LOSS_PERCENT / 100.0)
+                    self.max_daily_loss_idr = max(effective_equity, KiConfig.MIN_EQUITY_FLOOR_IDR) * (KiConfig.MAX_DAILY_LOSS_PERCENT / 100.0)
                 dep_mgr.mark_reconciled(event_ids)
                 logger.info(
                     f"💰 [CapitalGovernor] Successfully reconciled operator deposit of Rp{total_added:,.2f} IDR into daily deposits flow."
@@ -915,7 +915,7 @@ class CapitalGovernor:
         raw_deposits, raw_withdrawals = self._read_daily_transfers(self.last_reset_date)
         
         self.start_total_equity_idr = self.current_total_equity_idr
-        self.max_daily_loss_idr = self.current_total_equity_idr * (KiConfig.MAX_DAILY_LOSS_PERCENT / 100.0)
+        self.max_daily_loss_idr = max(self.current_total_equity_idr, KiConfig.MIN_EQUITY_FLOOR_IDR) * (KiConfig.MAX_DAILY_LOSS_PERCENT / 100.0)
         self.start_indodax_equity_idr = 0.0
         self.reset_deposits_offset = raw_deposits
         self.reset_withdrawals_offset = raw_withdrawals
