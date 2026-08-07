@@ -73,7 +73,18 @@ def score_candidate(
     breakdown.append(f"ev({'ok' if ev_approved else 'no'},{ev_pct:.3f}%)={ev_score:.2f}")
 
     regime = (market_regime or "UNKNOWN").upper()
-    regime_score = {"BULL": 0.9, "RANGING": 0.7, "VOLATILE": 0.5, "BEAR": 0.3}.get(regime, 0.5)
+    _regime_map = {
+        "RISK_ON": 0.9,
+        "BULL": 0.9,
+        "MIXED": 0.7,
+        "RANGING": 0.7,
+        "NEUTRAL": 0.7,
+        "VOLATILE": 0.5,
+        "RISK_OFF": 0.3,
+        "BEAR": 0.3,
+        "UNKNOWN": 0.5,
+    }
+    regime_score = _regime_map.get(regime, 0.5)
     breakdown.append(f"regime({regime})={regime_score:.2f}")
 
     if quarantine_active:
