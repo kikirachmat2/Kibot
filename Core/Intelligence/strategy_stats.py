@@ -46,6 +46,7 @@ class StrategyMetrics:
     avg_profit_pct: float = 0.0
     avg_loss_pct: float = 0.0
     insufficient_data: bool = False
+    data_quality: str = "clean"  # clean / excluded_invalid / live_order
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -57,6 +58,7 @@ class StrategyMetrics:
             "avg_profit_pct": self.avg_profit_pct,
             "avg_loss_pct": self.avg_loss_pct,
             "insufficient_data": self.insufficient_data,
+            "data_quality": self.data_quality,
         }
 
 
@@ -301,20 +303,24 @@ class StrategyStatsAggregator:
                 avg_win_pct=metrics.avg_profit_pct,
                 avg_loss_pct=metrics.avg_loss_pct,
             )
-            if metrics.total_trades >= 20 and ev_res.approved:
+            if (metrics.sample_size_paper >= 20 or metrics.sample_size_live >= 20) and ev_res.approved:
                 graduated[key] = {
                     "status": "GRADUATED_LIVE_READY",
                     "sample_size": metrics.total_trades,
+                    "sample_size_paper": metrics.sample_size_paper,
+                    "sample_size_live": metrics.sample_size_live,
                     "win_rate": round(metrics.win_rate, 4),
                     "ev_pct": round(ev_res.ev_pct * 100.0, 4),
                     "kelly_fraction": round(ev_res.kelly_fraction, 4),
                     "rr_ratio": round(ev_res.rr_ratio, 3),
                     "graduated_at": time.time(),
                 }
-            elif metrics.total_trades >= 10 and ev_res.ev_pct < -0.005:
+            elif (metrics.sample_size_paper >= 10 or metrics.sample_size_live >= 10) and ev_res.ev_pct < -0.005:
                 graduated[key] = {
                     "status": "QUARANTINED",
                     "sample_size": metrics.total_trades,
+                    "sample_size_paper": metrics.sample_size_paper,
+                    "sample_size_live": metrics.sample_size_live,
                     "win_rate": round(metrics.win_rate, 4),
                     "ev_pct": round(ev_res.ev_pct * 100.0, 4),
                     "quarantined_at": time.time(),
@@ -327,6 +333,67 @@ class StrategyStatsAggregator:
         except Exception as e:
             logger.error(f"[StrategyStats] Failed to save graduated strategies: {e}")
         return graduated
+
+
+    def perform_consistency_healthcheck(self) -> Dict[str, Any]:
+        """Self-consistency healthcheck comparing cache, variant cache, and raw JSONL trade history.
+
+        Logs an explicit 'DATA INCONSISTENCY DETECTED' warning if counts mismatch.
+        """
+        self.refresh_if_needed()
+        issues = []
+        raw_counts = {"DEFAULT": 0, "CONSERVATIVE": 0, "AGGRESSIVE": 0}
+        raw_valid_counts = {"DEFAULT": 0, "CONSERVATIVE": 0, "AGGRESSIVE": 0}
+
+        if TRADE_HISTORY_DIR.exists():
+            for filepath in TRADE_HISTORY_DIR.glob("*.jsonl"):
+                is_paper_file = filepath.name.startswith("paper_")
+                try:
+                    for line in filepath.read_text(encoding="utf-8").splitlines():
+                        if not line.strip():
+                            continue
+                        try:
+                            row = json.loads(line)
+                        except Exception:
+                            continue
+                        st = str(row.get("state") or row.get("status") or "").upper()
+                        evt = str(row.get("event_type") or row.get("trade_event_type") or "").upper()
+                        if st == "RECONCILED" or evt in ("ORDER_RECONCILED", "SELL_FILLED", "EXIT_FILLED"):
+                            row_variant = str(row.get("variant_id") or "DEFAULT").upper().strip()
+                            if is_paper_file and row_variant == "DEFAULT":
+                                parts = filepath.stem.split("_")
+                                if len(parts) >= 3 and parts[0] == "paper":
+                                    row_variant = parts[1].upper()
+
+                            if row_variant in raw_counts:
+                                raw_counts[row_variant] += 1
+
+                            exit_reason = str(row.get("exit_reason") or "").upper()
+                            entry_px = float(row.get("entry_price_idr") or 0.0)
+                            exit_px = float(row.get("exit_price_idr") or 0.0)
+                            is_invalid = bool(row.get("is_invalid_valuation")) or exit_reason == "TIMEOUT_PRICE_UNAVAILABLE" or (exit_reason == "MAX_HOLD_TIME_EXPIRED" and entry_px > 0 and entry_px == exit_px)
+                            if not is_invalid and row_variant in raw_valid_counts:
+                                raw_valid_counts[row_variant] += 1
+                except Exception as e:
+                    logger.warning(f"Error during healthcheck reading {filepath}: {e}")
+
+        # Check variant cache consistency against raw valid counts
+        for v_key, expected_valid in raw_valid_counts.items():
+            cache_summary = self.get_variant_summary(v_key)
+            cache_total = cache_summary.total_trades
+            if cache_total != expected_valid:
+                msg = f"Variant {v_key} cache trades ({cache_total}) != raw valid trades ({expected_valid})"
+                issues.append(msg)
+
+        if issues:
+            logger.warning(f"⚠️ DATA INCONSISTENCY DETECTED in StrategyStats: {'; '.join(issues)}")
+
+        return {
+            "healthy": len(issues) == 0,
+            "issues": issues,
+            "raw_counts": raw_counts,
+            "raw_valid_counts": raw_valid_counts,
+        }
 
 
 def is_strategy_graduated(key: str) -> bool:

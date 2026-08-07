@@ -75,3 +75,45 @@ def test_multi_variant_paper_trading_isolation():
             shutil.rmtree(tmp_dir, ignore_errors=True)
             
     asyncio.run(_test())
+
+
+def test_live_vs_paper_graduation_segregation():
+    from Core.Intelligence.strategy_stats import StrategyStatsAggregator, StrategyMetrics
+    agg = StrategyStatsAggregator()
+    
+    # Verify graduation requires sample_size_paper >= 20 OR sample_size_live >= 20 explicitly,
+    # rather than allowing paper + live to be merged blindly into total_trades
+    c = StrategyMetrics(
+        total_trades=25,
+        sample_size_paper=12,
+        sample_size_live=13,
+        win_rate=0.80,
+        avg_profit_pct=0.03,
+        avg_loss_pct=0.01,
+    )
+    agg._cache = {"TEST_STRAT": c}
+    grads = agg.evaluate_and_update_graduations()
+    # Should NOT graduate because neither paper (12) nor live (13) alone reaches 20
+    assert "TEST_STRAT" not in grads
+
+    c_valid = StrategyMetrics(
+        total_trades=20,
+        sample_size_paper=20,
+        sample_size_live=0,
+        win_rate=0.80,
+        avg_profit_pct=0.03,
+        avg_loss_pct=0.01,
+    )
+    agg._cache = {"TEST_STRAT_VALID": c_valid}
+    grads_valid = agg.evaluate_and_update_graduations()
+    assert "TEST_STRAT_VALID" in grads_valid
+    assert grads_valid["TEST_STRAT_VALID"]["status"] == "GRADUATED_LIVE_READY"
+
+
+def test_strategy_stats_healthcheck():
+    from Core.Intelligence.strategy_stats import get_stats_aggregator
+    agg = get_stats_aggregator()
+    res = agg.perform_consistency_healthcheck()
+    assert "healthy" in res
+    assert "raw_counts" in res
+    assert "raw_valid_counts" in res
