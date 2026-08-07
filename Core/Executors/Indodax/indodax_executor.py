@@ -90,6 +90,7 @@ class IndodaxExecutor:
         self.state_file = Path(ROOT_DIR) / "state" / "active_trades.json"
         self.lock = asyncio.Lock()
         self.reservations = {} # To prevent race conditions
+        self.verification_cooldowns = {} # Cooldown for ambiguous execution states (symbol -> expire_ts)
         self._last_wallet_reconcile = 0.0
         self._wallet_reconcile_interval = float(os.getenv("KIBOT_EXECUTOR_RECONCILE_INTERVAL_S", "60") or 60)
         self.sizing = AutonomousSizing()
@@ -1652,6 +1653,12 @@ class IndodaxExecutor:
             # Check total slots (Active + Reserved)
             total_slots = len(self.active_trades) + len(self.reservations)
             
+            # Check if symbol is under verification cooldown (ambiguous trade execution state)
+            cool_until = float(self.verification_cooldowns.get(symbol) or 0.0)
+            if cool_until > time.time():
+                logger.warning(f"🛡️ AMBIGUOUS EXECUTION COOLDOWN: {symbol} trading blocked until {int(cool_until - time.time())}s remaining. Aborting order.")
+                return
+
             if max_exposure > 0 and total_slots >= max_slots and symbol not in self.active_trades and symbol not in self.reservations:
                 logger.debug(f"🛡️ Slots full ({total_slots}/{max_slots}). Ignoring {symbol}.")
                 return
@@ -2066,40 +2073,65 @@ class IndodaxExecutor:
             except Exception as exc:
                 logger.error(f"⚠️ Trade API call raised exception for {symbol}: {exc}. Performing idempotency verification...")
                 res = {"success": 0, "error": str(exc)}
-                # Verify if order was actually placed despite network error/timeout
-                try:
-                    await asyncio.sleep(2.0)
-                    coin_after_exc = await self.indodax.get_balance(coin_symbol)
-                    if side.lower() == "buy" and (coin_after_exc - coin_before) > 1e-8:
-                        acquired_c = coin_after_exc - coin_before
-                        logger.info(f"✅ IDEMPOTENCY RECOVERY: Order succeeded despite exception! Acquired coin: {acquired_c}")
-                        res = {
-                            "success": 1,
-                            "return": {
-                                "filled_rp": budget,
-                                "filled_coin": acquired_c,
-                                "price": price,
-                                "order_id": f"recovered_exc_{int(time.time())}"
-                            }
-                        }
-                    else:
-                        # Check open orders
-                        oo_exc = await self.indodax.get_open_orders(pair)
-                        if oo_exc and oo_exc.get("success") == 1 and oo_exc.get("return", {}).get("orders"):
-                            existing_o = oo_exc["return"]["orders"][0]
-                            oid = str(existing_o.get("order_id") or existing_o.get("orderId") or "")
-                            logger.info(f"✅ IDEMPOTENCY RECOVERY: Open order found on Indodax after exception (order_id={oid})")
+                verification_successful = False
+                
+                # Retry loop (up to 3 attempts) for idempotency verification
+                for attempt in range(1, 4):
+                    try:
+                        await asyncio.sleep(1.5 * attempt)
+                        coin_after_exc = await self.indodax.get_balance(coin_symbol)
+                        if side.lower() == "buy" and (coin_after_exc - coin_before) > 1e-8:
+                            acquired_c = coin_after_exc - coin_before
+                            logger.info(f"✅ IDEMPOTENCY RECOVERY (Attempt {attempt}): Order succeeded despite exception! Acquired coin: {acquired_c}")
                             res = {
                                 "success": 1,
                                 "return": {
-                                    "filled_rp": 0.0,
-                                    "filled_coin": 0.0,
+                                    "filled_rp": budget,
+                                    "filled_coin": acquired_c,
                                     "price": price,
-                                    "order_id": oid
+                                    "order_id": f"recovered_exc_{int(time.time())}"
                                 }
                             }
-                except Exception as verify_err:
-                    logger.error(f"❌ Idempotency verification failed after exception: {verify_err}")
+                            verification_successful = True
+                            break
+                        else:
+                            # Check open orders
+                            oo_exc = await self.indodax.get_open_orders(pair)
+                            if oo_exc and oo_exc.get("success") == 1:
+                                orders_list = oo_exc.get("return", {}).get("orders", [])
+                                if orders_list:
+                                    existing_o = orders_list[0]
+                                    oid = str(existing_o.get("order_id") or existing_o.get("orderId") or "")
+                                    logger.info(f"✅ IDEMPOTENCY RECOVERY (Attempt {attempt}): Open order found on Indodax (order_id={oid})")
+                                    res = {
+                                        "success": 1,
+                                        "return": {
+                                            "filled_rp": 0.0,
+                                            "filled_coin": 0.0,
+                                            "price": price,
+                                            "order_id": oid
+                                        }
+                                    }
+                                    verification_successful = True
+                                    break
+                                else:
+                                    # Balance did not increase AND open_orders successfully returned empty list -> Order confirmed NOT placed!
+                                    logger.info(f"ℹ️ IDEMPOTENCY VERIFIED (Attempt {attempt}): Balance unchanged & no open orders. Order confirmed NOT placed.")
+                                    verification_successful = True
+                                    res = {"success": 0, "error": f"order_not_placed: {exc}"}
+                                    break
+                    except Exception as verify_err:
+                        logger.warning(f"⚠️ Idempotency verification attempt {attempt}/3 failed for {symbol}: {verify_err}")
+
+                if not verification_successful:
+                    # AMBIGUOUS EXECUTION STATE: Both balance check and open_orders check failed after 3 retries!
+                    logger.critical(
+                        f"🚨 CRITICAL AMBIGUOUS EXECUTION STATE for {symbol}! Trade call threw exception ({exc}) "
+                        f"AND 3 verification attempts failed. SETTING 10-MINUTE VERIFICATION COOLDOWN."
+                    )
+                    # Block trading for this symbol for 10 minutes (600s) to prevent double order
+                    self.verification_cooldowns[symbol] = time.time() + 600.0
+                    res = {"success": -1, "error": f"ambiguous_verification_failed: {exc}", "verification_failed": True}
 
             if res.get("success") == 1:
                 trade_data = res.get("return", {})
