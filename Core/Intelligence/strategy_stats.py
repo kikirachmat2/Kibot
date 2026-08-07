@@ -177,6 +177,14 @@ class StrategyStatsAggregator:
                         st = str(row.get("state") or row.get("status") or "").upper()
                         evt = str(row.get("event_type") or row.get("trade_event_type") or "").upper()
                         if st == "RECONCILED" or evt in ("ORDER_RECONCILED", "SELL_FILLED", "EXIT_FILLED"):
+                            # Filter corrupt/invalid valuation trades retroactively
+                            exit_reason = str(row.get("exit_reason") or "").upper()
+                            entry_px = float(row.get("entry_price_idr") or 0.0)
+                            exit_px = float(row.get("exit_price_idr") or 0.0)
+                            is_invalid = bool(row.get("is_invalid_valuation")) or exit_reason == "TIMEOUT_PRICE_UNAVAILABLE" or (exit_reason == "MAX_HOLD_TIME_EXPIRED" and entry_px > 0 and entry_px == exit_px)
+                            if is_invalid:
+                                continue
+
                             pnl_pct = float(row.get("realized_pnl_pct") or row.get("pnl_pct") or 0.0)
                             if abs(pnl_pct) >= 0.05:  # Convert % format to decimal fraction
                                 pnl_pct = pnl_pct / 100.0

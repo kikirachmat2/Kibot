@@ -141,3 +141,65 @@ def test_paper_trade_rr_ratio_safety_check(temp_paper_env):
     invalid_cand = {"symbol": "BAD/IDR", "pair": "BAD/IDR", "price_idr": 100.0}
     blocked_trade = tracker.open_paper_trade(invalid_cand, take_profit_pct=0.02, stop_loss_pct=0.015)
     assert blocked_trade is None
+
+
+def test_paper_trade_exit_valuation_scenarios(temp_paper_env, monkeypatch):
+    tracker, _, history_dir, _ = temp_paper_env
+    cand = {"symbol": "VAL/IDR", "pair": "VAL/IDR", "price_idr": 100.0}
+    
+    # Open trade with 1 sec max hold
+    trade = tracker.open_paper_trade(cand, take_profit_pct=0.035, stop_loss_pct=0.01, max_hold_seconds=0.1)
+    assert trade is not None
+    import time
+    time.sleep(0.15)
+    
+    # Scenario A: Pair in price_map -> exit price taken from price_map
+    closed_a = tracker.evaluate_open_trades({"VAL/IDR": 102.0})
+    assert len(closed_a) == 1
+    assert closed_a[0]["exit_price_idr"] == 102.0
+    assert closed_a[0]["exit_reason"] == "MAX_HOLD_TIME_EXPIRED"
+    assert closed_a[0]["is_invalid_valuation"] is False
+
+    # Scenario B: Pair NOT in price_map, but HTTP fallback fetch succeeds
+    trade_b = tracker.open_paper_trade(cand, take_profit_pct=0.035, stop_loss_pct=0.01, max_hold_seconds=0.1)
+    time.sleep(0.15)
+
+    class MockResp:
+        status_code = 200
+        def json(self):
+            return {"ticker": {"last": 103.5}}
+
+    import httpx
+    monkeypatch.setattr(httpx, "get", lambda url, timeout=5.0: MockResp())
+    closed_b = tracker.evaluate_open_trades({})  # Empty price_map
+    assert len(closed_b) == 1
+    assert closed_b[0]["exit_price_idr"] == 103.5
+    assert closed_b[0]["exit_reason"] == "MAX_HOLD_TIME_EXPIRED"
+    assert closed_b[0]["is_invalid_valuation"] is False
+
+    # Scenario C: Pair NOT in price_map AND HTTP fallback fails -> Retry extension / Invalid valuation
+    trade_c = tracker.open_paper_trade(cand, take_profit_pct=0.035, stop_loss_pct=0.01, max_hold_seconds=0.1)
+    time.sleep(0.15)
+    monkeypatch.setattr(httpx, "get", lambda url, timeout=5.0: (_ for _ in ()).throw(Exception("API Error")))
+    
+    # First call: Not hard expired yet (now < 2x max_hold), so expire_ts extended by 300s, trade remains open
+    closed_c1 = tracker.evaluate_open_trades({})
+    assert len(closed_c1) == 0
+    open_c = tracker.get_open_paper_trades()
+    assert len(open_c) == 1
+    
+    # Simulate reaching hard 2x limit
+    open_c[0]["entry_time_ts"] = time.time() - 20000.0  # Far past
+    open_c[0]["expire_ts"] = time.time() - 100.0
+    tracker.open_dir.glob("*.json")
+    for f in tracker.open_dir.glob("*.json"):
+        import json
+        d = json.loads(f.read_text())
+        d["entry_time_ts"] = time.time() - 20000.0
+        d["expire_ts"] = time.time() - 100.0
+        f.write_text(json.dumps(d))
+
+    closed_c2 = tracker.evaluate_open_trades({})
+    assert len(closed_c2) == 1
+    assert closed_c2[0]["exit_reason"] == "TIMEOUT_PRICE_UNAVAILABLE"
+    assert closed_c2[0]["is_invalid_valuation"] is True

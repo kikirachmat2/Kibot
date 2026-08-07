@@ -246,8 +246,42 @@ class PaperTradeTracker:
                     exit_reason = "TAKE_PROFIT_TARGET_HIT"
 
             if not should_close and now >= expire_ts:
-                should_close = True
-                exit_reason = "MAX_HOLD_TIME_EXPIRED"
+                # Attempt live ticker fetch if missing from price_map
+                live_price = 0.0
+                try:
+                    import httpx
+                    clean_pair = pair.lower().replace("/", "_")
+                    resp = httpx.get(f"https://indodax.com/api/ticker/{clean_pair}", timeout=5.0)
+                    if resp.status_code == 200:
+                        data = resp.json().get("ticker", {})
+                        live_price = float(data.get("last") or data.get("buy") or 0.0)
+                except Exception as err:
+                    logger.warning(f"[PaperTrade] Live ticker fallback failed for {pair}: {err}")
+
+                if live_price > 0:
+                    exit_price = live_price
+                    should_close = True
+                    exit_reason = "MAX_HOLD_TIME_EXPIRED"
+                elif current_price and current_price > 0:
+                    exit_price = current_price
+                    should_close = True
+                    exit_reason = "MAX_HOLD_TIME_EXPIRED"
+                else:
+                    # Fallback failed completely
+                    max_hard_expire_ts = float(trade.get("entry_time_ts", expire_ts)) + (float(trade.get("max_hold_seconds", 7200.0)) * 2)
+                    if now < max_hard_expire_ts:
+                        # Option A: Extend hold time by 5 minutes for next cycle retry
+                        trade["expire_ts"] = now + 300.0
+                        trade_file = self.open_dir / f"{trade.get('trade_id')}.json"
+                        if trade_file.exists():
+                            _atomic_write_json(trade_file, trade)
+                        logger.warning(f"[PaperTrade] Extended expire_ts for {pair} due to missing price; will retry next cycle.")
+                    else:
+                        # Option B: Reached 2x hard limit, force close with TIMEOUT_PRICE_UNAVAILABLE and is_invalid_valuation
+                        should_close = True
+                        exit_reason = "TIMEOUT_PRICE_UNAVAILABLE"
+                        exit_price = entry_price
+                        trade["is_invalid_valuation"] = True
 
             if should_close:
                 closed_record = self.close_paper_trade(trade, exit_price=exit_price, exit_reason=exit_reason)
@@ -278,11 +312,13 @@ class PaperTradeTracker:
         now_iso = _now_wib().isoformat()
         date_str = _today_date_str()
 
+        is_invalid = bool(trade.get("is_invalid_valuation")) or (exit_reason == "TIMEOUT_PRICE_UNAVAILABLE") or (exit_reason == "MAX_HOLD_TIME_EXPIRED" and exit_price == entry_price)
         var_id = str(trade.get("variant_id") or self.variant_id).upper().strip()
         closed_record = {
             "event_type": "ORDER_RECONCILED",
             "trade_event_type": "ORDER_RECONCILED",
             "is_paper": True,
+            "is_invalid_valuation": is_invalid,
             "trade_id": trade_id,
             "variant_id": var_id,
             "pair": trade.get("pair"),
