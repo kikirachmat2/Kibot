@@ -240,8 +240,8 @@
 | [market_heatmap.py](file:///Users/kiki/Documents/Web%20Develop/KiBot/Core/Intelligence/market_heatmap.py) | 114 | Generates market sector heatmap | **PARTIAL** | 2026-05-15 |
 | [market_rotation.py](file:///Users/kiki/Documents/Web%20Develop/KiBot/Core/Intelligence/market_rotation.py) | 97 | Detects sector rotation patterns | **PARTIAL** | 2026-06-06 |
 | [kibot_whatif_engine.py](file:///Users/kiki/Documents/Web%20Develop/KiBot/Core/Intelligence/kibot_whatif_engine.py) | 339 | What-if scenario simulator for hypothetical trades | **PARTIAL** | 2026-05-15 |
-| [kibot_ollama_gateway.py](file:///Users/kiki/Documents/Web%20Develop/KiBot/Core/Intelligence/kibot_ollama_gateway.py) | 257 | Gateway to local Ollama LLM for AI features | **INDIRECT / SCRIPTS** (referenced by inventory scripts only) | 2026-05-13 |
-| [kibot_rag.py](file:///Users/kiki/Documents/Web%20Develop/KiBot/Core/Intelligence/kibot_rag.py) | 96 | RAG (Retrieval-Augmented Generation) for market knowledge | **INDIRECT / SCRIPTS** (referenced by inventory scripts only) | 2026-05-11 |
+| [_deprecated/Intelligence/kibot_ollama_gateway.py](file:///Users/kiki/Documents/Web%20Develop/KiBot/Core/_deprecated/Intelligence/kibot_ollama_gateway.py) | 257 | Unreferenced Ollama gateway wrapper | **CONFIRMED DEAD** (moved to `Core/_deprecated/` on 2026-08-08) | 2026-05-13 |
+| [_deprecated/Intelligence/kibot_rag.py](file:///Users/kiki/Documents/Web%20Develop/KiBot/Core/_deprecated/Intelligence/kibot_rag.py) | 96 | Unreferenced market knowledge RAG | **CONFIRMED DEAD** (moved to `Core/_deprecated/` on 2026-08-08) | 2026-05-11 |
 | [no_idle_director.py](file:///Users/kiki/Documents/Web%20Develop/KiBot/Core/Intelligence/no_idle_director.py) | 34 | Thin wrapper to prevent idle loops in director | **ACTIVE** | 2026-05-19 |
 | [_deprecated/Intelligence/strategy/deadline_profit_enforcer.py](file:///Users/kiki/Documents/Web%20Develop/KiBot/Core/_deprecated/Intelligence/strategy/deadline_profit_enforcer.py) | 108 | Legacy profit enforcer | **CONFIRMED DEAD** (moved to `Core/_deprecated/` on 2026-08-07) | 2026-05-19 |
 
