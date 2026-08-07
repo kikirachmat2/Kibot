@@ -258,7 +258,7 @@ class RiskGate:
         if side == "BUY" and balance_idr < budget:
             return False, f"Insufficient balance for sovereign greed (Need Rp{budget}, have Rp{balance_idr})"
 
-        fee_roundtrip_pct = float(signal.get("fee_roundtrip_pct", 1.02)) / 100.0
+        fee_roundtrip_pct = float(signal.get("fee_roundtrip_pct", KiConfig.KIBOT_TAKER_FEE_ROUNDTRIP_PCT * 100.0)) / 100.0
         effective_budget = budget * (1 - fee_roundtrip_pct)
         total_equity_idr = float(
             signal.get("total_equity_idr")

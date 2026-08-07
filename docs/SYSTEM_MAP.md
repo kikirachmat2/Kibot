@@ -3,7 +3,7 @@
 > **Purpose**: Single reference document for understanding the full KiBot system architecture.
 > Anyone (including a new AI session) should be able to read this and understand what every file does, how data flows, and what has been fixed.
 >
-> **Last Updated**: 2026-08-07 01:36 WIB
+> **Last Updated**: 2026-08-07 02:00 WIB
 
 ---
 
@@ -69,7 +69,7 @@
 │  Core/Intelligence/expected_value.py :: compute_ev()                        │
 │    └─ EV = P(win) × net_win - P(loss) × net_loss                           │
 │    └─ Gates: EV > 0, R:R ≥ 1.50, Kelly > 0                                │
-│    └─ Default friction: fee 0.3%/leg + slippage 0.1%/leg = 0.4%/leg        │
+│    └─ Default friction: fee 0.31%/leg + slippage 0.10%/leg                 │
 │                                                                              │
 │  Core/Intelligence/strategy_stats.py :: StrategyStatsAggregator             │
 │    └─ Tracks per-strategy win_rate, avg_profit, avg_loss, sample_size       │
@@ -89,13 +89,13 @@
                │                     │    └─ Council-of-advisors evaluation  │
                │                     │                                      │
                │                     │  Core/risk_gate.py :: RiskGate       │
-               │                     │    └─ Validates notional min (₹10k)  │
+               │                     │    └─ Validates notional min (Rp10k) │
                │                     │    └─ Daily drawdown cap (1.5%)      │
                │                     │    └─ Capital Governor reconciled?   │
                │                     │                                      │
                │                     │  Core/Trading/autonomous_sizing.py   │
                │                     │    └─ Calculates budget_idr          │
-               │                     │    └─ Min trade ₹10,000              │
+               │                     │    └─ Min trade Rp10,000             │
                │                     │                                      │
                │                     │  Core/Executors/Indodax/              │
                │                     │    indodax_executor.py                │
@@ -188,7 +188,10 @@
 
 ### Legend
 - **ACTIVE**: Called in production pipeline, registered in a scanner/controller registry
-- **DEAD**: Not imported/called by any other module (self-contained or orphaned)
+- **CONFIRMED DEAD**: Confirmed duplicate or unreferenced file (retained for safety, superseded by production version)
+- **INDIRECT / SCRIPTS**: Referenced by audit scripts / state generators only, not in hotpath
+- **TESTS ONLY**: Only referenced by unit tests
+- **FEATURE-FLAGGED**: Active only when specific feature flag enabled (e.g. `SCANNER_ENABLE_UNIVERSAL`)
 - **PARTIAL**: Imported somewhere but rarely triggered in current production flow
 
 ### Core/Scanner/ — Signal Acquisition Layer
@@ -198,7 +201,7 @@
 | [engine.py](file:///Users/kiki/Documents/Web%20Develop/KiBot/Core/Scanner/engine.py) | 471 | Scanner orchestrator; builds scanners, dispatches `collect_signals()`, stamps `exchange` field | **ACTIVE** | 2026-06-06 |
 | [indodax_market_scanner.py](file:///Users/kiki/Documents/Web%20Develop/KiBot/Core/Scanner/indodax_market_scanner.py) | 481 | Primary Indodax scanner; scans 180+ pairs for volume/pump signals | **ACTIVE** | 2026-08-05 |
 | [ki_indodax_smallcap_scanner.py](file:///Users/kiki/Documents/Web%20Develop/KiBot/Core/Scanner/ki_indodax_smallcap_scanner.py) | 771 | Fallback smallcap scanner; targets micro/low-cap Indodax pairs | **PARTIAL** (fallback only) | 2026-05-15 |
-| [ki_universal_leadlag_scanner.py](file:///Users/kiki/Documents/Web%20Develop/KiBot/Core/Scanner/ki_universal_leadlag_scanner.py) | 128 | Global lead-lag scanner across 18+ sources (disabled by default via `SCANNER_ENABLE_UNIVERSAL`) | **PARTIAL** | 2026-08-05 |
+| [ki_universal_leadlag_scanner.py](file:///Users/kiki/Documents/Web%20Develop/KiBot/Core/Scanner/ki_universal_leadlag_scanner.py) | 128 | Global lead-lag scanner across 18+ sources (disabled by default via `SCANNER_ENABLE_UNIVERSAL`) | **FEATURE-FLAGGED** | 2026-08-05 |
 | [indodax_binance_leadlag_scanner.py](file:///Users/kiki/Documents/Web%20Develop/KiBot/Core/Scanner/indodax_binance_leadlag_scanner.py) | 711 | Embedded lead-lag detection within IndodaxMarketScanner | **ACTIVE** (used internally) | 2026-05-21 |
 | [scanner_executor_contract.py](file:///Users/kiki/Documents/Web%20Develop/KiBot/Core/Scanner/scanner_executor_contract.py) | 137 | Validates that scanner output matches expected contract schema | **ACTIVE** | 2026-06-06 |
 | [scanner_health.py](file:///Users/kiki/Documents/Web%20Develop/KiBot/Core/Scanner/scanner_health.py) | 35 | Scanner health metrics writer | **PARTIAL** | 2026-05-20 |
@@ -237,10 +240,10 @@
 | [market_heatmap.py](file:///Users/kiki/Documents/Web%20Develop/KiBot/Core/Intelligence/market_heatmap.py) | 114 | Generates market sector heatmap | **PARTIAL** | 2026-05-15 |
 | [market_rotation.py](file:///Users/kiki/Documents/Web%20Develop/KiBot/Core/Intelligence/market_rotation.py) | 97 | Detects sector rotation patterns | **PARTIAL** | 2026-06-06 |
 | [kibot_whatif_engine.py](file:///Users/kiki/Documents/Web%20Develop/KiBot/Core/Intelligence/kibot_whatif_engine.py) | 339 | What-if scenario simulator for hypothetical trades | **PARTIAL** | 2026-05-15 |
-| [kibot_ollama_gateway.py](file:///Users/kiki/Documents/Web%20Develop/KiBot/Core/Intelligence/kibot_ollama_gateway.py) | 257 | Gateway to local Ollama LLM for AI features | **DEAD** (not imported anywhere) | 2026-05-13 |
-| [kibot_rag.py](file:///Users/kiki/Documents/Web%20Develop/KiBot/Core/Intelligence/kibot_rag.py) | 96 | RAG (Retrieval-Augmented Generation) for market knowledge | **DEAD** (not imported anywhere) | 2026-05-11 |
+| [kibot_ollama_gateway.py](file:///Users/kiki/Documents/Web%20Develop/KiBot/Core/Intelligence/kibot_ollama_gateway.py) | 257 | Gateway to local Ollama LLM for AI features | **INDIRECT / SCRIPTS** (referenced by inventory scripts only) | 2026-05-13 |
+| [kibot_rag.py](file:///Users/kiki/Documents/Web%20Develop/KiBot/Core/Intelligence/kibot_rag.py) | 96 | RAG (Retrieval-Augmented Generation) for market knowledge | **INDIRECT / SCRIPTS** (referenced by inventory scripts only) | 2026-05-11 |
 | [no_idle_director.py](file:///Users/kiki/Documents/Web%20Develop/KiBot/Core/Intelligence/no_idle_director.py) | 34 | Thin wrapper to prevent idle loops in director | **ACTIVE** | 2026-05-19 |
-| [strategy/deadline_profit_enforcer.py](file:///Users/kiki/Documents/Web%20Develop/KiBot/Core/Intelligence/strategy/deadline_profit_enforcer.py) | 108 | Strategy-level profit deadline enforcement | **PARTIAL** (duplicate of Decision/ version) | 2026-05-19 |
+| [strategy/deadline_profit_enforcer.py](file:///Users/kiki/Documents/Web%20Develop/KiBot/Core/Intelligence/strategy/deadline_profit_enforcer.py) | 108 | Legacy profit enforcer | **CONFIRMED DEAD** (duplicate, superseded by `Core/Decision/` version) | 2026-05-19 |
 
 ### Core/Decision/ — Decision & Trading Brain Layer
 
@@ -251,13 +254,13 @@
 | [live_opportunity_tier.py](file:///Users/kiki/Documents/Web%20Develop/KiBot/Core/Decision/live_opportunity_tier.py) | 159 | Tiers opportunities by quality for live trading prioritization | **ACTIVE** | 2026-06-02 |
 | [live_order_dispatcher.py](file:///Users/kiki/Documents/Web%20Develop/KiBot/Core/Decision/live_order_dispatcher.py) | 282 | Dispatches approved orders to exchange executor | **ACTIVE** | 2026-06-06 |
 | [autonomous_trading_brain.py](file:///Users/kiki/Documents/Web%20Develop/KiBot/Core/Decision/autonomous_trading_brain.py) | 265 | Autonomous trading brain coordinating sizing + decision | **ACTIVE** | 2026-08-04 |
-| [deadline_profit_enforcer.py](file:///Users/kiki/Documents/Web%20Develop/KiBot/Core/Decision/deadline_profit_enforcer.py) | 224 | Enforces profit targets with time-based escalation | **ACTIVE** | 2026-08-05 |
+| [deadline_profit_enforcer.py](file:///Users/kiki/Documents/Web%20Develop/KiBot/Core/Decision/deadline_profit_enforcer.py) | 224 | Enforces profit targets with time-based escalation & paper bypass | **ACTIVE** | 2026-08-05 |
 | [daily_reset_coordinator.py](file:///Users/kiki/Documents/Web%20Develop/KiBot/Core/Decision/daily_reset_coordinator.py) | 267 | Daily state reset at WIB midnight boundary | **ACTIVE** | 2026-05-27 |
 | [indodax_target_board.py](file:///Users/kiki/Documents/Web%20Develop/KiBot/Core/Decision/indodax_target_board.py) | 269 | Target price board for Indodax positions | **PARTIAL** | 2026-05-27 |
 | [indodax_live_brain.py](file:///Users/kiki/Documents/Web%20Develop/KiBot/Core/Decision/indodax_live_brain.py) | 150 | Indodax-specific live trading brain wrapper | **PARTIAL** | 2026-08-04 |
-| [indodax_no_idle_loop.py](file:///Users/kiki/Documents/Web%20Develop/KiBot/Core/Decision/indodax_no_idle_loop.py) | 96 | Anti-idle loop for Indodax scanning | **DEAD** (not imported) | 2026-05-21 |
-| [no_idle_script_director.py](file:///Users/kiki/Documents/Web%20Develop/KiBot/Core/Decision/no_idle_script_director.py) | 152 | Script-based no-idle director | **DEAD** (not imported) | 2026-06-06 |
-| [script_adaptation_engine.py](file:///Users/kiki/Documents/Web%20Develop/KiBot/Core/Decision/script_adaptation_engine.py) | 116 | Adapts trading scripts dynamically | **DEAD** (not imported) | 2026-05-19 |
+| [indodax_no_idle_loop.py](file:///Users/kiki/Documents/Web%20Develop/KiBot/Core/Decision/indodax_no_idle_loop.py) | 96 | Anti-idle loop for Indodax scanning | **TESTS ONLY** (referenced only in `tests/test_indodax_no_idle_loop.py`) | 2026-05-21 |
+| [no_idle_script_director.py](file:///Users/kiki/Documents/Web%20Develop/KiBot/Core/Decision/no_idle_script_director.py) | 152 | Script-based no-idle director | **CONFIRMED DEAD** (0 references across repo) | 2026-06-06 |
+| [script_adaptation_engine.py](file:///Users/kiki/Documents/Web%20Develop/KiBot/Core/Decision/script_adaptation_engine.py) | 116 | Adapts trading scripts dynamically | **INDIRECT / SCRIPTS** (referenced in docstrings & review test) | 2026-05-19 |
 | [target_board_runner.py](file:///Users/kiki/Documents/Web%20Develop/KiBot/Core/Decision/target_board_runner.py) | 94 | Runner for target board updates | **PARTIAL** | 2026-06-06 |
 | [engine_independence.py](file:///Users/kiki/Documents/Web%20Develop/KiBot/Core/Decision/engine_independence.py) | 45 | Engine independence assertion helper | **PARTIAL** | 2026-06-06 |
 
@@ -283,7 +286,7 @@
 | [pnl_reconciliation.py](file:///Users/kiki/Documents/Web%20Develop/KiBot/Core/Treasury/pnl_reconciliation.py) | 200 | Reconciles computed PnL vs actual exchange balance | **ACTIVE** | 2026-06-06 |
 | [deposit_event_manager.py](file:///Users/kiki/Documents/Web%20Develop/KiBot/Core/Treasury/deposit_event_manager.py) | 111 | Handles deposit-notify events from operator CLI | **ACTIVE** | 2026-07-29 |
 | [accounting_truth.py](file:///Users/kiki/Documents/Web%20Develop/KiBot/Core/Treasury/accounting_truth.py) | 133 | Source-of-truth accounting state validation | **ACTIVE** | 2026-06-06 |
-| [allocation_policy.py](file:///Users/kiki/Documents/Web%20Develop/KiBot/Core/Treasury/allocation_policy.py) | 17 | Stub for future allocation policy | **DEAD** (trivial stub) | 2026-06-06 |
+| [allocation_policy.py](file:///Users/kiki/Documents/Web%20Develop/KiBot/Core/Treasury/allocation_policy.py) | 17 | Hardcoded allocation ratio helper (`{"indodax": 0.85, "reserve": 0.15}`) | **PARTIAL / TREASURY INIT** (imported in `Core/Treasury/__init__.py` & `capital_governor.py`, static helper) | 2026-06-06 |
 | [capital_commander.py](file:///Users/kiki/Documents/Web%20Develop/KiBot/Core/Treasury/capital_commander.py) | 75 | Capital deployment commander | **PARTIAL** | 2026-06-06 |
 
 ### Core/Trading/ — Position Sizing
@@ -312,7 +315,7 @@
 | [ki_storage.py](file:///Users/kiki/Documents/Web%20Develop/KiBot/Core/Support/ki_storage.py) | 26 | Simple JSON file read/write wrapper | **ACTIVE** | 2026-08-05 |
 | [deposit_cli.py](file:///Users/kiki/Documents/Web%20Develop/KiBot/Core/Support/deposit_cli.py) | 40 | CLI interface for deposit-notify command | **ACTIVE** | 2026-07-29 |
 | [dynamic_config.py](file:///Users/kiki/Documents/Web%20Develop/KiBot/Core/Support/dynamic_config.py) | 73 | Runtime-reloadable config from JSON files | **ACTIVE** | 2026-08-05 |
-| [server_telemetry.py](file:///Users/kiki/Documents/Web%20Develop/KiBot/Core/Support/server_telemetry.py) | 102 | Server hardware telemetry (CPU, RAM, disk) | **PARTIAL** | 2026-06-06 |
+| [server_telemetry.py](file:///Users/kiki/Documents/Web%20Develop/KiBot/Core/Support/server_telemetry.py) | 102 | Server hardware & systemd service telemetry (CPU, RAM, disk, services) | **ACTIVE** | 2026-06-06 |
 | [server_telemetry_runner.py](file:///Users/kiki/Documents/Web%20Develop/KiBot/Core/Support/server_telemetry_runner.py) | 26 | Runner wrapper for telemetry | **PARTIAL** | 2026-05-20 |
 | [perf.py](file:///Users/kiki/Documents/Web%20Develop/KiBot/Core/Support/perf.py) | 113 | Performance measurement decorators | **PARTIAL** | 2026-05-17 |
 | [populate_intelligence.py](file:///Users/kiki/Documents/Web%20Develop/KiBot/Core/Support/populate_intelligence.py) | 46 | Initial intelligence state population helper | **PARTIAL** | 2026-05-11 |
@@ -333,20 +336,20 @@
 | File | Lines | Function | Status | Last Modified |
 |------|-------|----------|--------|---------------|
 | [kibot_security.py](file:///Users/kiki/Documents/Web%20Develop/KiBot/Core/Security/kibot_security.py) | 174 | Security hardening, input validation, API key protection | **PARTIAL** | 2026-05-11 |
-| [kibot_sentinel.py](file:///Users/kiki/Documents/Web%20Develop/KiBot/Core/Security/kibot_sentinel.py) | 92 | Sentinel monitoring for unauthorized access attempts | **DEAD** (not imported) | 2026-05-11 |
+| [kibot_sentinel.py](file:///Users/kiki/Documents/Web%20Develop/KiBot/Core/Security/kibot_sentinel.py) | 92 | Sentinel monitoring for unauthorized access attempts | **CONFIRMED DEAD** (0 references across repo) | 2026-05-11 |
 
 ### Core/Research/ — Backtesting (Offline)
 
 | File | Lines | Function | Status | Last Modified |
 |------|-------|----------|--------|---------------|
-| [backtest_engine.py](file:///Users/kiki/Documents/Web%20Develop/KiBot/Core/Research/backtest_engine.py) | 240 | Offline backtesting engine for strategy evaluation | **DEAD** (only referenced by walk_forward) | 2026-05-18 |
-| [walk_forward.py](file:///Users/kiki/Documents/Web%20Develop/KiBot/Core/Research/walk_forward.py) | 201 | Walk-forward optimization framework | **DEAD** (self-referential only) | 2026-05-18 |
+| [backtest_engine.py](file:///Users/kiki/Documents/Web%20Develop/KiBot/Core/Research/backtest_engine.py) | 240 | Offline backtesting engine for strategy evaluation | **TESTS ONLY** (referenced by `walk_forward.py` and unit tests) | 2026-05-18 |
+| [walk_forward.py](file:///Users/kiki/Documents/Web%20Develop/KiBot/Core/Research/walk_forward.py) | 201 | Walk-forward optimization framework | **TESTS ONLY** (referenced by `test_walk_forward.py`) | 2026-05-18 |
 
 ### Core/Runtime/
 
 | File | Lines | Function | Status | Last Modified |
 |------|-------|----------|--------|---------------|
-| [server_telemetry.py](file:///Users/kiki/Documents/Web%20Develop/KiBot/Core/Runtime/server_telemetry.py) | 68 | Runtime server telemetry (duplicate of Support/ version) | **PARTIAL** | 2026-05-20 |
+| [server_telemetry.py](file:///Users/kiki/Documents/Web%20Develop/KiBot/Core/Runtime/server_telemetry.py) | 68 | Legacy server telemetry | **CONFIRMED DEAD** (duplicate, superseded by `Core/Support/` version) | 2026-05-20 |
 
 ### Core Root — Top-Level Modules
 
@@ -356,7 +359,7 @@
 | [sovereign_council.py](file:///Users/kiki/Documents/Web%20Develop/KiBot/Core/sovereign_council.py) | 1840 | Council-of-advisors pattern for trade approval (multiple evaluators) | **ACTIVE** | 2026-06-06 |
 | [sovereign_notifier.py](file:///Users/kiki/Documents/Web%20Develop/KiBot/Core/sovereign_notifier.py) | 278 | Telegram notification sender (trade alerts, daily reports) | **ACTIVE** | 2026-06-06 |
 | [sovereign_state.py](file:///Users/kiki/Documents/Web%20Develop/KiBot/Core/sovereign_state.py) | 242 | Loads/saves sovereign state (strategy config, urgency flags) | **ACTIVE** | 2026-08-05 |
-| [risk_gate.py](file:///Users/kiki/Documents/Web%20Develop/KiBot/Core/risk_gate.py) | 395 | RiskGate: notional checks, daily drawdown cap, venue validation | **ACTIVE** | 2026-06-06 |
+| [risk_gate.py](file:///Users/kiki/Documents/Web%20Develop/KiBot/Core/risk_gate.py) | 395 | RiskGate: notional checks, daily drawdown cap, venue validation | **ACTIVE** | 2026-08-06 |
 | [sovereign_disk_cleaner.py](file:///Users/kiki/Documents/Web%20Develop/KiBot/Core/sovereign_disk_cleaner.py) | 545 | Disk space cleanup for log/state file rotation | **PARTIAL** | 2026-05-12 |
 | [circuit_breaker.py](file:///Users/kiki/Documents/Web%20Develop/KiBot/Core/circuit_breaker.py) | 66 | Circuit breaker for cascading failure prevention | **ACTIVE** | 2026-05-11 |
 
@@ -404,23 +407,23 @@ Files with **>300 lines**, status **ACTIVE**, and **NOT YET fully audited** in p
 | 3 | **LEADLAG_ALPHA Metadata Unknown** | LEADLAG_ALPHA candidates lacked microstructure fields (`spread_pct`, `volume_ratio`, `daily_volatility_pct`), causing signal_quality to grade them all as REJECT | Implemented `_IndodaxSummariesFetcher` with 10s TTL cache in `signal_quality.py` for real-time enrichment | `ed8d01f` | LEADLAG_ALPHA candidates can now be properly graded instead of blanket REJECT |
 | 4 | **Paper Trade TP/SL Deadlock** | With correct 0.61% fee, old TP=+3.0%/SL=-1.0% params yielded net R:R=1.34, below MIN_NET_RR_BUFFER=1.60, blocking ALL new paper trades | Recalibrated defaults to TP=+3.5%/SL=-1.0% → net R:R=1.63 ≥ 1.60 | `3b5796d` | Paper trades can open again with fee-accurate parameters |
 | 5 | **18 Bare-Except Statements** | 9 files had bare `except:` catching SystemExit/KeyboardInterrupt | Replaced all 18 with explicit exception types | `f458588` | Clean exception handling across codebase |
+| 6 | **RiskGate Hardcoded 1.02 Fee Fallback** | `risk_gate.py` line 261 used hardcoded `1.02` fallback when signal dictionary omitted `fee_roundtrip_pct` | Refactored fallback to `KiConfig.KIBOT_TAKER_FEE_ROUNDTRIP_PCT * 100.0` (0.61%) | Local edit | Aligned RiskGate fee fallback with KiConfig SSOT |
 
 ### Previously Identified Issues (July 2026)
 
 | # | Issue | Root Cause | Fix | Status |
 |---|-------|-----------|-----|--------|
-| 6 | **EV Gate Permanently Dead** | `collect_signals()` returned `[]` instead of actual signals from `detect_pump()` | Fixed to return `self.detected_signals` | Fixed (prior session) |
-| 7 | **Equity Anchor Stale** | Capital governor equity anchor not refreshing on new day boundary | Fixed stale-date check logic in capital_governor.py | Fixed (prior session) |
+| 7 | **EV Gate Permanently Dead** | `collect_signals()` returned `[]` instead of actual signals from `detect_pump()` | Fixed to return `self.detected_signals` | Fixed (prior session) |
+| 8 | **Equity Anchor Stale** | Capital governor equity anchor not refreshing on new day boundary | Fixed stale-date check logic in capital_governor.py | Fixed (prior session) |
 
 ### Architectural Observations (Not Bugs, For Awareness)
 
 | # | Observation | Notes |
 |---|------------|-------|
 | A | LEADLAG_ALPHA covers only 4 pairs (BTC/ETH/SOL/XRP); by design it is a momentum confirmation supplement, not the primary signal source | IndodaxMarketScanner is the primary source (180+ pairs, 99.6% of signals) |
-| B | `risk_gate.py` line 261 still has hardcoded `1.02` fallback for `fee_roundtrip_pct` from signal dict | Low risk (signal dict overrides with correct value from KiConfig in executor), but should be cleaned up |
-| C | `kibot_ollama_gateway.py` and `kibot_rag.py` are DEAD code (never imported) | Candidates for removal or future LLM integration |
-| D | Duplicate `server_telemetry.py` exists in both `Core/Runtime/` and `Core/Support/` | Should consolidate to one location |
-| E | `Core/Intelligence/strategy/deadline_profit_enforcer.py` duplicates `Core/Decision/deadline_profit_enforcer.py` | Same logic in two places; should consolidate |
+| B | Confirmed duplicate: `Core/Intelligence/strategy/deadline_profit_enforcer.py` (108 lines) vs `Core/Decision/deadline_profit_enforcer.py` (224 lines) | Confirmed `Core/Decision/` is the active production version; `Core/Intelligence/` version is dead |
+| C | Confirmed duplicate: `Core/Runtime/server_telemetry.py` (68 lines) vs `Core/Support/server_telemetry.py` (102 lines) | Confirmed `Core/Support/` is the active production version; `Core/Runtime/` version is dead |
+| D | `kibot_sentinel.py` and `no_idle_script_director.py` are confirmed dead (0 references across repo) | Retained for safety; candidate for cleanup |
 
 ---
 
@@ -451,8 +454,8 @@ All canonical values live in [Core/Support/ki_config.py](file:///Users/kiki/Docu
 ### Safety Gates
 | Gate | Value | Location |
 |------|-------|----------|
-| `min_order_notional_idr` | ₹10,000 | risk_gate.py |
-| `KIBOT_MIN_TRADE_IDR` | ₹10,000 | autonomous_sizing.py |
+| `min_order_notional_idr` | Rp 10,000 | risk_gate.py |
+| `KIBOT_MIN_TRADE_IDR` | Rp 10,000 | autonomous_sizing.py |
 | `MAX_DAILY_LOSS_PERCENT` | 1.5% | ki_config.py |
 | `CANARY_MAX_DAILY_LOSS_IDR` | Per config | ki_config.py |
 
@@ -469,20 +472,20 @@ All canonical values live in [Core/Support/ki_config.py](file:///Users/kiki/Docu
 
 ## File Statistics Summary
 
-| Category | Files | Total Lines | ACTIVE | PARTIAL | DEAD |
-|----------|-------|-------------|--------|---------|------|
+| Category | Files | Total Lines | ACTIVE | PARTIAL / FEATURE / STUB | CONFIRMED DEAD / TESTS / INDIRECT |
+|----------|-------|-------------|--------|--------------------------|-----------------------------------|
 | Core/Scanner/ | 9 | 2,941 | 4 | 4 | 1 |
-| Core/Intelligence/ | 28 | 10,206 | 20 | 6 | 2 |
+| Core/Intelligence/ | 28 | 10,206 | 20 | 5 | 3 |
 | Core/Decision/ | 13 | 2,535 | 7 | 3 | 3 |
 | Core/Executors/ | 1 | 2,427 | 1 | 0 | 0 |
 | Core/Exchange/ | 1 | 368 | 1 | 0 | 0 |
-| Core/Treasury/ | 8 | 2,213 | 6 | 1 | 1 |
+| Core/Treasury/ | 8 | 2,213 | 6 | 2 | 0 |
 | Core/Trading/ | 1 | 202 | 1 | 0 | 0 |
-| Core/Support/ | 24 | 3,996 | 16 | 7 | 1 |
+| Core/Support/ | 24 | 3,996 | 17 | 7 | 0 |
 | Core/Notifications/ | 1 | 161 | 1 | 0 | 0 |
 | Core/Security/ | 2 | 266 | 0 | 1 | 1 |
 | Core/Research/ | 2 | 441 | 0 | 0 | 2 |
-| Core/Runtime/ | 1 | 68 | 0 | 1 | 0 |
+| Core/Runtime/ | 1 | 68 | 0 | 0 | 1 |
 | Core Root | 6 | 5,573 | 5 | 1 | 0 |
 | Entrypoint+Tools | 2 | 1,391 | 2 | 0 | 0 |
-| **TOTAL** | **99** | **32,788** | **64** | **24** | **11** |
+| **TOTAL** | **99** | **32,788** | **65** | **23** | **11** |
