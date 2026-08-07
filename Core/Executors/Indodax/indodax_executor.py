@@ -2037,15 +2037,69 @@ class IndodaxExecutor:
             pair = symbol.lower().replace("/", "_")
             if "_" not in pair: pair = f"{pair}_idr"
 
+            # Pre-trade Idempotency Check: check for existing open orders for this pair on Indodax
+            try:
+                open_orders_res = await self.indodax.get_open_orders(pair)
+                if open_orders_res and open_orders_res.get("success") == 1:
+                    orders_list = open_orders_res.get("return", {}).get("orders", [])
+                    if orders_list:
+                        logger.warning(
+                            f"🛡️ IDEMPOTENCY GUARD: Open order already exists on Indodax for {symbol} ({len(orders_list)} order(s)). Aborting new submit."
+                        )
+                        return
+            except Exception as oo_err:
+                logger.warning(f"⚠️ Idempotency check (get_open_orders) warning for {symbol}: {oo_err}")
+
             coin_symbol = pair.split("_")[0]
             coin_before = await self.indodax.get_balance(coin_symbol)
-            res = await self.indodax.trade(
-                pair=pair,
-                type=side.lower(),
-                price=price,
-                amount_idr=budget if side.lower() == "buy" else None,
-                amount_coin=amount if side.lower() == "sell" else None
-            )
+
+            # Execution with Timeout / Network Error Idempotency Recovery
+            trade_error = None
+            try:
+                res = await self.indodax.trade(
+                    pair=pair,
+                    type=side.lower(),
+                    price=price,
+                    amount_idr=budget if side.lower() == "buy" else None,
+                    amount_coin=amount if side.lower() == "sell" else None
+                )
+            except Exception as exc:
+                logger.error(f"⚠️ Trade API call raised exception for {symbol}: {exc}. Performing idempotency verification...")
+                res = {"success": 0, "error": str(exc)}
+                # Verify if order was actually placed despite network error/timeout
+                try:
+                    await asyncio.sleep(2.0)
+                    coin_after_exc = await self.indodax.get_balance(coin_symbol)
+                    if side.lower() == "buy" and (coin_after_exc - coin_before) > 1e-8:
+                        acquired_c = coin_after_exc - coin_before
+                        logger.info(f"✅ IDEMPOTENCY RECOVERY: Order succeeded despite exception! Acquired coin: {acquired_c}")
+                        res = {
+                            "success": 1,
+                            "return": {
+                                "filled_rp": budget,
+                                "filled_coin": acquired_c,
+                                "price": price,
+                                "order_id": f"recovered_exc_{int(time.time())}"
+                            }
+                        }
+                    else:
+                        # Check open orders
+                        oo_exc = await self.indodax.get_open_orders(pair)
+                        if oo_exc and oo_exc.get("success") == 1 and oo_exc.get("return", {}).get("orders"):
+                            existing_o = oo_exc["return"]["orders"][0]
+                            oid = str(existing_o.get("order_id") or existing_o.get("orderId") or "")
+                            logger.info(f"✅ IDEMPOTENCY RECOVERY: Open order found on Indodax after exception (order_id={oid})")
+                            res = {
+                                "success": 1,
+                                "return": {
+                                    "filled_rp": 0.0,
+                                    "filled_coin": 0.0,
+                                    "price": price,
+                                    "order_id": oid
+                                }
+                            }
+                except Exception as verify_err:
+                    logger.error(f"❌ Idempotency verification failed after exception: {verify_err}")
 
             if res.get("success") == 1:
                 trade_data = res.get("return", {})
