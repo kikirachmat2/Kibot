@@ -395,12 +395,12 @@ class CouncilDataAggregator:
         brain_snap = {}
         if hasattr(self.master, "brain") and self.master.brain:
             if hasattr(self.master.brain, "snapshot") and callable(self.master.brain.snapshot):
-                # Check if it's async
-                import inspect
-                if inspect.iscoroutinefunction(self.master.brain.snapshot):
-                    brain_snap = await self.master.brain.snapshot()
+                import inspect, asyncio
+                snap_res = self.master.brain.snapshot()
+                if asyncio.iscoroutine(snap_res) or inspect.isawaitable(snap_res):
+                    brain_snap = await snap_res
                 else:
-                    brain_snap = self.master.brain.snapshot()
+                    brain_snap = snap_res
             elif isinstance(self.master.brain, dict):
                 brain_snap = self.master.brain
             
