@@ -243,7 +243,7 @@
 | [kibot_ollama_gateway.py](file:///Users/kiki/Documents/Web%20Develop/KiBot/Core/Intelligence/kibot_ollama_gateway.py) | 257 | Gateway to local Ollama LLM for AI features | **INDIRECT / SCRIPTS** (referenced by inventory scripts only) | 2026-05-13 |
 | [kibot_rag.py](file:///Users/kiki/Documents/Web%20Develop/KiBot/Core/Intelligence/kibot_rag.py) | 96 | RAG (Retrieval-Augmented Generation) for market knowledge | **INDIRECT / SCRIPTS** (referenced by inventory scripts only) | 2026-05-11 |
 | [no_idle_director.py](file:///Users/kiki/Documents/Web%20Develop/KiBot/Core/Intelligence/no_idle_director.py) | 34 | Thin wrapper to prevent idle loops in director | **ACTIVE** | 2026-05-19 |
-| [strategy/deadline_profit_enforcer.py](file:///Users/kiki/Documents/Web%20Develop/KiBot/Core/Intelligence/strategy/deadline_profit_enforcer.py) | 108 | Legacy profit enforcer | **CONFIRMED DEAD** (duplicate, superseded by `Core/Decision/` version) | 2026-05-19 |
+| [_deprecated/Intelligence/strategy/deadline_profit_enforcer.py](file:///Users/kiki/Documents/Web%20Develop/KiBot/Core/_deprecated/Intelligence/strategy/deadline_profit_enforcer.py) | 108 | Legacy profit enforcer | **CONFIRMED DEAD** (moved to `Core/_deprecated/` on 2026-08-07) | 2026-05-19 |
 
 ### Core/Decision/ — Decision & Trading Brain Layer
 
@@ -259,7 +259,7 @@
 | [indodax_target_board.py](file:///Users/kiki/Documents/Web%20Develop/KiBot/Core/Decision/indodax_target_board.py) | 269 | Target price board for Indodax positions | **PARTIAL** | 2026-05-27 |
 | [indodax_live_brain.py](file:///Users/kiki/Documents/Web%20Develop/KiBot/Core/Decision/indodax_live_brain.py) | 150 | Indodax-specific live trading brain wrapper | **PARTIAL** | 2026-08-04 |
 | [indodax_no_idle_loop.py](file:///Users/kiki/Documents/Web%20Develop/KiBot/Core/Decision/indodax_no_idle_loop.py) | 96 | Anti-idle loop for Indodax scanning | **TESTS ONLY** (referenced only in `tests/test_indodax_no_idle_loop.py`) | 2026-05-21 |
-| [no_idle_script_director.py](file:///Users/kiki/Documents/Web%20Develop/KiBot/Core/Decision/no_idle_script_director.py) | 152 | Script-based no-idle director | **CONFIRMED DEAD** (0 references across repo) | 2026-06-06 |
+| [_deprecated/Decision/no_idle_script_director.py](file:///Users/kiki/Documents/Web%20Develop/KiBot/Core/_deprecated/Decision/no_idle_script_director.py) | 152 | Script-based no-idle director | **CONFIRMED DEAD** (moved to `Core/_deprecated/` on 2026-08-07) | 2026-06-06 |
 | [script_adaptation_engine.py](file:///Users/kiki/Documents/Web%20Develop/KiBot/Core/Decision/script_adaptation_engine.py) | 116 | Adapts trading scripts dynamically | **INDIRECT / SCRIPTS** (referenced in docstrings & review test) | 2026-05-19 |
 | [target_board_runner.py](file:///Users/kiki/Documents/Web%20Develop/KiBot/Core/Decision/target_board_runner.py) | 94 | Runner for target board updates | **PARTIAL** | 2026-06-06 |
 | [engine_independence.py](file:///Users/kiki/Documents/Web%20Develop/KiBot/Core/Decision/engine_independence.py) | 45 | Engine independence assertion helper | **PARTIAL** | 2026-06-06 |
@@ -336,7 +336,7 @@
 | File | Lines | Function | Status | Last Modified |
 |------|-------|----------|--------|---------------|
 | [kibot_security.py](file:///Users/kiki/Documents/Web%20Develop/KiBot/Core/Security/kibot_security.py) | 174 | Security hardening, input validation, API key protection | **PARTIAL** | 2026-05-11 |
-| [kibot_sentinel.py](file:///Users/kiki/Documents/Web%20Develop/KiBot/Core/Security/kibot_sentinel.py) | 92 | Sentinel monitoring for unauthorized access attempts | **CONFIRMED DEAD** (0 references across repo) | 2026-05-11 |
+| [_deprecated/Security/kibot_sentinel.py](file:///Users/kiki/Documents/Web%20Develop/KiBot/Core/_deprecated/Security/kibot_sentinel.py) | 92 | Sentinel monitoring for unauthorized access attempts | **CONFIRMED DEAD** (moved to `Core/_deprecated/` on 2026-08-07) | 2026-05-11 |
 
 ### Core/Research/ — Backtesting (Offline)
 
@@ -349,7 +349,7 @@
 
 | File | Lines | Function | Status | Last Modified |
 |------|-------|----------|--------|---------------|
-| [server_telemetry.py](file:///Users/kiki/Documents/Web%20Develop/KiBot/Core/Runtime/server_telemetry.py) | 68 | Legacy server telemetry | **CONFIRMED DEAD** (duplicate, superseded by `Core/Support/` version) | 2026-05-20 |
+| [_deprecated/Runtime/server_telemetry.py](file:///Users/kiki/Documents/Web%20Develop/KiBot/Core/_deprecated/Runtime/server_telemetry.py) | 68 | Legacy server telemetry | **CONFIRMED DEAD** (moved to `Core/_deprecated/` on 2026-08-07) | 2026-05-20 |
 
 ### Core Root — Top-Level Modules
 
