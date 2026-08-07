@@ -891,7 +891,7 @@ class CapitalGovernor:
 
             self.last_reset_date = today
             self.start_total_equity_idr = total_equity_idr
-            self.max_daily_loss_idr = total_equity_idr * (KiConfig.MAX_DAILY_LOSS_PERCENT / 100.0)
+            self.max_daily_loss_idr = max(total_equity_idr, KiConfig.MIN_EQUITY_FLOOR_IDR) * (KiConfig.MAX_DAILY_LOSS_PERCENT / 100.0)
             self.reset_deposits_offset = 0.0
             self.reset_withdrawals_offset = 0.0
             self.pending_daily_reset = False
@@ -1027,7 +1027,8 @@ class CapitalGovernor:
             if self.start_indodax_equity_idr <= 0.0:
                 self.start_indodax_equity_idr = float(primary_indodax_balance or 0.0)
 
-            self.max_daily_loss_idr = max(self.start_total_equity_idr, self.start_indodax_equity_idr) * (KiConfig.MAX_DAILY_LOSS_PERCENT / 100.0)
+            effective_equity_base = max(self.start_total_equity_idr, self.start_indodax_equity_idr, KiConfig.MIN_EQUITY_FLOOR_IDR)
+            self.max_daily_loss_idr = effective_equity_base * (KiConfig.MAX_DAILY_LOSS_PERCENT / 100.0)
             indodax_daily_loss_cap_idr = self.max_daily_loss_idr
             self.indodax_daily_pnl_idr = primary_indodax_balance - self.start_indodax_equity_idr
             self.indodax_daily_pnl_pct = (self.indodax_daily_pnl_idr / max(self.start_indodax_equity_idr, 1.0)) * 100.0
