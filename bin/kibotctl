@@ -49,6 +49,7 @@ Usage:
   kibotctl deposit-notify <amount_idr> [note]
   kibotctl reset-pnl
   kibotctl learn-status
+  kibotctl variant-compare
   kibotctl up
   kibotctl down
   kibotctl restart
@@ -438,12 +439,60 @@ else:
 "
 }
 
+cmd_variant_compare() {
+  python3 -c "
+import json
+from pathlib import Path
+from Core.Intelligence.strategy_stats import get_stats_aggregator
+from Core.Intelligence.paper_trade_tracker import VARIANT_CONFIGS
+
+agg = get_stats_aggregator()
+agg.refresh_if_needed(force=True)
+
+variants = ['CONSERVATIVE', 'AGGRESSIVE', 'DEFAULT']
+state_dir = Path('state')
+
+print('\n========================================================================================')
+print('                         KIBOT MULTI-VARIANT PAPER TRADING PERFORMANCE')
+print('========================================================================================')
+printf_fmt = '%-15s | %-12s | %-10s | %-12s | %-12s | %-12s\n'
+print(printf_fmt % ('VARIANT', 'BANKROLL', 'CLOSED', 'WIN RATE', 'AVG PNL', 'EQUITY (IDR)'))
+print('-' * 88)
+
+for var in variants:
+    summary = agg.get_variant_summary(var)
+    eq_file = state_dir / ('paper_equity.json' if var == 'DEFAULT' else f'paper_equity_{var.lower()}.json')
+    bankroll = 5000000.0
+    equity = bankroll
+    total_pnl = 0.0
+    
+    if eq_file.exists():
+        try:
+            eq = json.loads(eq_file.read_text(encoding='utf-8'))
+            bankroll = float(eq.get('initial_bankroll_idr', bankroll))
+            equity = float(eq.get('current_equity_idr', bankroll))
+            total_pnl = float(eq.get('total_pnl_idr', 0.0))
+        except Exception:
+            pass
+            
+    wr_str = f'{summary.win_rate * 100:.1f}%' if summary.total_trades > 0 else 'N/A'
+    pnl_str = f'Rp{total_pnl:+,.0f}'
+    eq_str = f'Rp{equity:,.0f}'
+    bkr_str = f'Rp{bankroll:,.0f}'
+    
+    print(printf_fmt % (var, bkr_str, summary.total_trades, wr_str, pnl_str, eq_str))
+
+print('========================================================================================\n')
+"
+}
+
 case "${1:-}" in
   status) shift; cmd_status "$@" ;;
   doctor) shift; cmd_doctor "$@" ;;
   deposit-notify) shift; cmd_deposit_notify "$@" ;;
   reset-pnl) shift; cmd_reset_pnl "$@" ;;
   learn-status) shift; cmd_learn_status "$@" ;;
+  variant-compare) shift; cmd_variant_compare "$@" ;;
   up) shift; cmd_up "$@" ;;
   down) shift; cmd_down "$@" ;;
   restart) shift; cmd_restart "$@" ;;

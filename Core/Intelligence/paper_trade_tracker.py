@@ -36,6 +36,29 @@ MIN_NET_RR_BUFFER = 1.60  # Must be >= 1.6 to safely pass MIN_RR_RATIO (1.5) in 
 DEFAULT_PAPER_BANKROLL_IDR = float(os.getenv("KIBOT_PAPER_BANKROLL_IDR", "5000000.0"))  # Rp 5,000,000 IDR paper balance
 DEFAULT_PAPER_TRADE_SIZE_IDR = float(os.getenv("KIBOT_PAPER_TRADE_SIZE_IDR", "250000.0")) # 5% per trade (Rp 250,000)
 
+VARIANT_CONFIGS = {
+    "CONSERVATIVE": {
+        "variant_id": "CONSERVATIVE",
+        "take_profit_pct": 0.025,  # +2.5% TP
+        "stop_loss_pct": 0.008,    # -0.8% SL (Net RR ~ 1.20? Wait: (2.5 - 0.71)/(0.8 + 0.71) = 1.79 / 1.51 = 1.185 -> need net RR >= 1.6)
+        # Let's verify net RR: (0.025 - 0.0071)/(0.006 + 0.0071) = 0.0179 / 0.0131 = 1.36.
+        # To get net RR >= 1.60:
+        # e.g. TP +2.5%, SL -0.5%: (2.5 - 0.71) / (0.5 + 0.71) = 1.79 / 1.21 = 1.47
+        # e.g. TP +2.6%, SL -0.45%: (2.6 - 0.71) / (0.45 + 0.71) = 1.89 / 1.16 = 1.629 -> PASS!
+        "take_profit_pct": 0.026,
+        "stop_loss_pct": 0.0045,
+        "allowed_grades": {"STRONG"},
+        "min_volume_ratio": 2.0,  # Filter high volume ratio
+    },
+    "AGGRESSIVE": {
+        "variant_id": "AGGRESSIVE",
+        "take_profit_pct": 0.050,  # +5.0% TP
+        "stop_loss_pct": 0.015,    # -1.5% SL -> (5.0 - 0.71)/(1.5 + 0.71) = 4.29 / 2.21 = 1.94 -> PASS!
+        "allowed_grades": {"STRONG", "ACCEPTABLE"},
+        "min_volume_ratio": 0.0,   # No volume ratio filter
+    },
+}
+
 
 def compute_net_rr_ratio(
     take_profit_pct: float = 0.035,  # +3.5% TP for safe net R:R >= 1.60
@@ -68,13 +91,26 @@ def _atomic_write_json(path: Path, data: Any) -> None:
 class PaperTradeTracker:
     def __init__(
         self,
-        open_dir: Path = PAPER_OPEN_DIR,
-        history_dir: Path = TRADE_HISTORY_DIR,
+        variant_id: str = "DEFAULT",
+        open_dir: Optional[Path] = None,
+        history_dir: Optional[Path] = None,
         fee_pct: float = KiConfig.KIBOT_TAKER_FEE_ROUNDTRIP_PCT,
         bankroll_idr: float = DEFAULT_PAPER_BANKROLL_IDR,
     ):
-        self.open_dir = open_dir
-        self.history_dir = history_dir
+        self.variant_id = (variant_id or "DEFAULT").upper().strip()
+        if open_dir is not None:
+            self.open_dir = open_dir
+        else:
+            if self.variant_id == "DEFAULT":
+                self.open_dir = PAPER_OPEN_DIR
+            else:
+                self.open_dir = STATE_DIR / "paper_trades" / self.variant_id.lower() / "open"
+
+        if history_dir is not None:
+            self.history_dir = history_dir
+        else:
+            self.history_dir = TRADE_HISTORY_DIR
+
         self.fee_pct = fee_pct
         self.bankroll_idr = bankroll_idr
         self.open_dir.mkdir(parents=True, exist_ok=True)
@@ -87,30 +123,33 @@ class PaperTradeTracker:
         stop_loss_pct: float = 0.010,   # -1.0% stop loss
         take_profit_pct: float = 0.035, # +3.5% take profit (calibrated for net R:R >= 1.63)
         max_hold_seconds: float = 7200.0,
+        variant_id: Optional[str] = None,
     ) -> Optional[Dict[str, Any]]:
         """Open a virtual paper trade for a candidate with PAPER_ONLY verdict."""
+        effective_variant = (variant_id or self.variant_id).upper().strip()
+
         # Enforce safety check: Net R:R ratio must be >= 1.6
         net_rr = compute_net_rr_ratio(take_profit_pct, stop_loss_pct, self.fee_pct, DEFAULT_SLIPPAGE_PCT)
         if net_rr < MIN_NET_RR_BUFFER:
             logger.warning(
-                f"[PaperTrade] Cannot open trade: net R:R ratio {net_rr:.2f} is below minimum required buffer {MIN_NET_RR_BUFFER:.2f}"
+                f"[PaperTrade-{effective_variant}] Cannot open trade: net R:R ratio {net_rr:.2f} is below minimum required buffer {MIN_NET_RR_BUFFER:.2f}"
             )
             return None
         pair = str(candidate.get("pair") or candidate.get("symbol") or "").upper().strip()
         if not pair:
             return None
 
-        # Check if pair already has an active open paper trade to avoid spamming
+        # Check if pair already has an active open paper trade for this variant
         for existing in self.get_open_paper_trades():
             if existing.get("pair", "").upper() == pair:
                 return None
 
         entry_price = float(candidate.get("price_idr") or candidate.get("price") or candidate.get("last_price") or 0.0)
         if entry_price <= 0:
-            # Fallback price default
             entry_price = 100.0
 
-        trade_id = f"paper_{pair.lower().replace('/', '_')}_{int(time.time())}_{uuid.uuid4().hex[:6]}"
+        var_prefix = f"paper_{effective_variant.lower()}" if effective_variant != "DEFAULT" else "paper"
+        trade_id = f"{var_prefix}_{pair.lower().replace('/', '_')}_{int(time.time())}_{uuid.uuid4().hex[:6]}"
         now = time.time()
         now_iso = _now_wib().isoformat()
 
@@ -119,6 +158,7 @@ class PaperTradeTracker:
 
         trade_record = {
             "trade_id": trade_id,
+            "variant_id": effective_variant,
             "is_paper": True,
             "pair": pair,
             "symbol": pair,
@@ -140,7 +180,7 @@ class PaperTradeTracker:
 
         filepath = self.open_dir / f"{trade_id}.json"
         _atomic_write_json(filepath, trade_record)
-        logger.info(f"[PaperTrade] Opened virtual position for {pair} at {entry_price:.2f} IDR (ID: {trade_id})")
+        logger.info(f"[PaperTrade-{effective_variant}] Opened virtual position for {pair} at {entry_price:.2f} IDR (ID: {trade_id})")
         return trade_record
 
     def get_open_paper_trades(self) -> List[Dict[str, Any]]:
@@ -238,11 +278,13 @@ class PaperTradeTracker:
         now_iso = _now_wib().isoformat()
         date_str = _today_date_str()
 
+        var_id = str(trade.get("variant_id") or self.variant_id).upper().strip()
         closed_record = {
             "event_type": "ORDER_RECONCILED",
             "trade_event_type": "ORDER_RECONCILED",
             "is_paper": True,
             "trade_id": trade_id,
+            "variant_id": var_id,
             "pair": trade.get("pair"),
             "symbol": trade.get("symbol"),
             "strategy_id": trade.get("strategy_id"),
@@ -263,15 +305,24 @@ class PaperTradeTracker:
             "date_wib": date_str,
         }
 
-        # 1. Append to state/trade_history/paper_<date>.jsonl
-        history_file = self.history_dir / f"paper_{date_str}.jsonl"
+        # 1. Append to state/trade_history/paper_{variant}_{date}.jsonl (or paper_{date}.jsonl if DEFAULT)
+        if var_id == "DEFAULT":
+            history_file = self.history_dir / f"paper_{date_str}.jsonl"
+        else:
+            history_file = self.history_dir / f"paper_{var_id.lower()}_{date_str}.jsonl"
+
         with open(history_file, "a", encoding="utf-8") as f:
             f.write(json.dumps(closed_record, ensure_ascii=False) + "\n")
 
-        # 1b. Update cumulative paper equity curve file (state/paper_equity.json)
+        # 1b. Update cumulative paper equity curve file (state/paper_equity_{variant}.json)
         try:
-            equity_file = STATE_DIR / "paper_equity.json"
+            if var_id == "DEFAULT":
+                equity_file = STATE_DIR / "paper_equity.json"
+            else:
+                equity_file = STATE_DIR / f"paper_equity_{var_id.lower()}.json"
+
             eq_data = {
+                "variant_id": var_id,
                 "initial_bankroll_idr": self.bankroll_idr,
                 "current_equity_idr": self.bankroll_idr,
                 "total_pnl_idr": 0.0,
@@ -302,7 +353,7 @@ class PaperTradeTracker:
 
             _atomic_write_json(equity_file, eq_data)
         except Exception as err:
-            logger.warning(f"[PaperTrade] Failed to update paper equity curve file: {err}")
+            logger.warning(f"[PaperTrade-{var_id}] Failed to update paper equity curve file: {err}")
 
         # 2. Delete open position file
         open_file = self.open_dir / f"{trade_id}.json"
@@ -346,11 +397,11 @@ class PaperTradeTracker:
         return closed_record
 
 
-_tracker_instance: Optional[PaperTradeTracker] = None
+_tracker_instances: Dict[str, PaperTradeTracker] = {}
 
 
-def get_paper_trade_tracker() -> PaperTradeTracker:
-    global _tracker_instance
-    if _tracker_instance is None:
-        _tracker_instance = PaperTradeTracker()
-    return _tracker_instance
+def get_paper_trade_tracker(variant_id: str = "DEFAULT") -> PaperTradeTracker:
+    key = (variant_id or "DEFAULT").upper().strip()
+    if key not in _tracker_instances:
+        _tracker_instances[key] = PaperTradeTracker(variant_id=key)
+    return _tracker_instances[key]

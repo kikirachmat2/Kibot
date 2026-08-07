@@ -65,15 +65,14 @@ class StrategyStatsAggregator:
         self.ttl_seconds = ttl_seconds
         self._last_refresh: float = 0.0
         self._cache: Dict[str, StrategyMetrics] = {}
+        self._variant_cache: Dict[str, Dict[str, StrategyMetrics]] = {}  # variant_id -> {key -> metrics}
         self._global_metrics: StrategyMetrics = StrategyMetrics(insufficient_data=True)
 
-    def get_metrics_for_candidate(self, candidate: Dict[str, Any]) -> Tuple[StrategyMetrics, bool]:
+    def get_metrics_for_candidate(self, candidate: Dict[str, Any], variant_id: Optional[str] = None) -> Tuple[StrategyMetrics, bool]:
         """Look up metrics matching candidate keys (strategy_id, pattern, pair).
 
         Returns:
             Tuple of (metrics, is_specific_match)
-            is_specific_match is True ONLY if matched to a specific strategy_id/pattern/pair,
-            and False if using global fallback.
         """
         self.refresh_if_needed()
         keys_to_try = [
@@ -82,15 +81,33 @@ class StrategyStatsAggregator:
             str(candidate.get("pair") or candidate.get("symbol") or "").strip().upper().replace("_", "/"),
             str(candidate.get("pair") or candidate.get("symbol") or "").strip().upper().replace("/", "_"),
         ]
+        
+        target_cache = self._cache
+        if variant_id and variant_id.upper().strip() in self._variant_cache:
+            target_cache = self._variant_cache[variant_id.upper().strip()]
+
         for key in keys_to_try:
-            if key and key in self._cache and key != "_GLOBAL_" and self._cache[key].total_trades > 0:
-                return self._cache[key], True
+            if key and key in target_cache and key != "_GLOBAL_" and target_cache[key].total_trades > 0:
+                return target_cache[key], True
+
+        if variant_id and variant_id.upper().strip() in self._variant_cache:
+            v_global = self._variant_cache[variant_id.upper().strip()].get("_GLOBAL_")
+            if v_global:
+                return v_global, False
 
         return self._global_metrics, False
 
-    def inject_stats(self, candidate: Dict[str, Any]) -> Dict[str, Any]:
+    def get_variant_summary(self, variant_id: str) -> StrategyMetrics:
+        """Get overall metrics for a specific variant_id."""
+        self.refresh_if_needed()
+        v_key = variant_id.upper().strip()
+        if v_key in self._variant_cache:
+            return self._variant_cache[v_key].get("_GLOBAL_", StrategyMetrics(insufficient_data=True))
+        return StrategyMetrics(insufficient_data=True)
+
+    def inject_stats(self, candidate: Dict[str, Any], variant_id: Optional[str] = None) -> Dict[str, Any]:
         """Inject historical statistics directly into the candidate dict."""
-        metrics, is_specific_match = self.get_metrics_for_candidate(candidate)
+        metrics, is_specific_match = self.get_metrics_for_candidate(candidate, variant_id=variant_id)
         candidate["historical_sample_size"] = metrics.total_trades
         candidate["sample_size"] = metrics.total_trades
         candidate["sample_size_live"] = metrics.sample_size_live
@@ -110,11 +127,12 @@ class StrategyStatsAggregator:
 
     def _rebuild_cache(self) -> None:
         stats_acc: Dict[str, Dict[str, Any]] = {}
+        variant_stats_acc: Dict[str, Dict[str, Dict[str, Any]]] = {}  # variant_id -> key -> acc
 
         def _init_acc() -> Dict[str, Any]:
             return {"wins": [], "losses": [], "total": 0, "live_count": 0, "paper_count": 0}
 
-        def _record_trade(key: str, pnl_pct: float, is_paper: bool = False) -> None:
+        def _record_trade(key: str, pnl_pct: float, is_paper: bool = False, variant_id: str = "DEFAULT") -> None:
             if not key:
                 return
             acc = stats_acc.setdefault(key, _init_acc())
@@ -128,6 +146,21 @@ class StrategyStatsAggregator:
                 acc["wins"].append(pnl_pct)
             elif pnl_pct < 0:
                 acc["losses"].append(abs(pnl_pct))
+
+            # Record per variant
+            v_key = (variant_id or "DEFAULT").upper().strip()
+            v_dict = variant_stats_acc.setdefault(v_key, {})
+            v_acc = v_dict.setdefault(key, _init_acc())
+            v_acc["total"] += 1
+            if is_paper:
+                v_acc["paper_count"] += 1
+            else:
+                v_acc["live_count"] += 1
+
+            if pnl_pct > 0:
+                v_acc["wins"].append(pnl_pct)
+            elif pnl_pct < 0:
+                v_acc["losses"].append(abs(pnl_pct))
 
         # 1. Scan trade_history directory (*.jsonl including paper_*.jsonl)
         if TRADE_HISTORY_DIR.exists():
@@ -149,17 +182,24 @@ class StrategyStatsAggregator:
                                 pnl_pct = pnl_pct / 100.0
 
                             is_paper = is_paper_file or bool(row.get("is_paper"))
+                            row_variant = str(row.get("variant_id") or "DEFAULT").upper().strip()
+                            if is_paper_file and row_variant == "DEFAULT":
+                                # Extract variant from filename if paper_<variant>_<date>.jsonl
+                                parts = filepath.stem.split("_")
+                                if len(parts) >= 3 and parts[0] == "paper":
+                                    row_variant = parts[1].upper()
+
                             pair = str(row.get("pair") or row.get("symbol") or "").upper().strip()
                             pair_slash = pair.replace("_", "/")
                             pair_underscore = pair.replace("/", "_")
                             strat = str(row.get("strategy_id") or row.get("trade_profile") or "").strip()
                             pattern = str(row.get("trade_grade") or row.get("pattern") or "").strip()
 
-                            _record_trade(pair_slash, pnl_pct, is_paper=is_paper)
-                            _record_trade(pair_underscore, pnl_pct, is_paper=is_paper)
-                            _record_trade(strat, pnl_pct, is_paper=is_paper)
-                            _record_trade(pattern, pnl_pct, is_paper=is_paper)
-                            _record_trade("_GLOBAL_", pnl_pct, is_paper=is_paper)
+                            _record_trade(pair_slash, pnl_pct, is_paper=is_paper, variant_id=row_variant)
+                            _record_trade(pair_underscore, pnl_pct, is_paper=is_paper, variant_id=row_variant)
+                            _record_trade(strat, pnl_pct, is_paper=is_paper, variant_id=row_variant)
+                            _record_trade(pattern, pnl_pct, is_paper=is_paper, variant_id=row_variant)
+                            _record_trade("_GLOBAL_", pnl_pct, is_paper=is_paper, variant_id=row_variant)
                 except Exception as e:
                     logger.warning(f"Error reading trade history {filepath}: {e}")
 
@@ -186,29 +226,25 @@ class StrategyStatsAggregator:
                         pair_underscore = pair.replace("/", "_")
                         strat = str(order.get("strategy_id") or order.get("trade_profile") or "").strip()
 
-                        _record_trade(pair_slash, pnl_val)
-                        _record_trade(pair_underscore, pnl_val)
-                        _record_trade(strat, pnl_val)
-                        _record_trade("_GLOBAL_", pnl_val)
+                        _record_trade(pair_slash, pnl_val, is_paper=False, variant_id="LIVE")
+                        _record_trade(pair_underscore, pnl_val, is_paper=False, variant_id="LIVE")
+                        _record_trade(strat, pnl_val, is_paper=False, variant_id="LIVE")
+                        _record_trade("_GLOBAL_", pnl_val, is_paper=False, variant_id="LIVE")
                 except Exception:
                     pass
 
         # Build StrategyMetrics objects
-        new_cache: Dict[str, StrategyMetrics] = {}
-        for key, acc in stats_acc.items():
+        def _acc_to_metrics(acc: Dict[str, Any]) -> StrategyMetrics:
             total = acc["total"]
             if total == 0:
-                continue
+                return StrategyMetrics(insufficient_data=True)
             wins = acc["wins"]
             losses = acc["losses"]
             win_rate = len(wins) / total
-            
-            # Conservative defaults if all wins or all losses
-            avg_win = sum(wins) / len(wins) if wins else 0.005  # conservative 0.5%
-            avg_loss = sum(losses) / len(losses) if losses else 0.02  # conservative 2.0%
+            avg_win = sum(wins) / len(wins) if wins else 0.005
+            avg_loss = sum(losses) / len(losses) if losses else 0.02
             insufficient_data = (len(wins) == 0 or len(losses) == 0)
-
-            metrics = StrategyMetrics(
+            return StrategyMetrics(
                 total_trades=total,
                 sample_size_live=acc.get("live_count", 0),
                 sample_size_paper=acc.get("paper_count", 0),
@@ -219,11 +255,25 @@ class StrategyStatsAggregator:
                 avg_loss_pct=avg_loss,
                 insufficient_data=insufficient_data,
             )
-            new_cache[key] = metrics
+
+        new_cache: Dict[str, StrategyMetrics] = {}
+        for key, acc in stats_acc.items():
+            if acc["total"] > 0:
+                new_cache[key] = _acc_to_metrics(acc)
+
+        new_variant_cache: Dict[str, Dict[str, StrategyMetrics]] = {}
+        for v_key, keys_map in variant_stats_acc.items():
+            v_dict: Dict[str, StrategyMetrics] = {}
+            for k, acc in keys_map.items():
+                if acc["total"] > 0:
+                    v_dict[k] = _acc_to_metrics(acc)
+            new_variant_cache[v_key] = v_dict
 
         self._cache = new_cache
+        self._variant_cache = new_variant_cache
         self._global_metrics = new_cache.get("_GLOBAL_", StrategyMetrics(insufficient_data=True))
-        logger.info(f"[StrategyStats] Cache rebuilt with {len(new_cache)} keys. Global sample size: {self._global_metrics.total_trades}")
+        logger.info(f"[StrategyStats] Cache rebuilt with {len(new_cache)} global keys and {len(new_variant_cache)} variants. Global sample size: {self._global_metrics.total_trades}")
+        self.evaluate_and_update_graduations()
         self.evaluate_and_update_graduations()
 
     def evaluate_and_update_graduations(self) -> Dict[str, Any]:

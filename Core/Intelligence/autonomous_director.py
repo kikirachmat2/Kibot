@@ -109,24 +109,50 @@ class AutonomousDirector:
             else:
                 rejected.append(c)
 
-        # Step 5.5 — Paper Trade Tracker Integration (Virtual Execution for PAPER_ONLY candidates)
+        # Step 5.5 — Multi-Variant Paper Trade Tracker Integration (Virtual Execution for PAPER_ONLY candidates)
         try:
-            from .paper_trade_tracker import get_paper_trade_tracker
-            paper_tracker = get_paper_trade_tracker()
+            from .paper_trade_tracker import get_paper_trade_tracker, VARIANT_CONFIGS
 
-            # Open virtual positions for candidates in shadow list
-            for s_cand in shadow:
-                paper_tracker.open_paper_trade(s_cand)
-
-            # Build price map from current candidates to evaluate open paper trades
+            # Build price map from current candidates to evaluate open paper trades across all variants
             price_map = {}
             for c in raw_candidates:
                 pair = str(c.get("pair") or c.get("symbol") or "").upper().strip()
                 px = float(c.get("price_idr") or c.get("price") or c.get("last_price") or 0.0)
                 if pair and px > 0:
                     price_map[pair] = px
-            if price_map:
-                paper_tracker.evaluate_open_trades(price_map)
+
+            # Evaluate each variant in parallel
+            variants_to_process = ["CONSERVATIVE", "AGGRESSIVE", "DEFAULT"]
+            for var_id in variants_to_process:
+                p_tracker = get_paper_trade_tracker(var_id)
+                var_cfg = VARIANT_CONFIGS.get(var_id, {})
+
+                # Open virtual positions for candidates matching variant filter rules
+                for s_cand in shadow:
+                    # Filter check per variant
+                    sig_quality = s_cand.get("signal_quality") or {}
+                    grade = str(sig_quality.get("grade") or "REJECT").upper()
+
+                    allowed_grades = var_cfg.get("allowed_grades")
+                    if allowed_grades and grade not in allowed_grades:
+                        continue
+
+                    min_vol = float(var_cfg.get("min_volume_ratio", 0.0))
+                    vol_ratio = float(s_cand.get("volume_ratio") or 0.0)
+                    if min_vol > 0 and vol_ratio < min_vol:
+                        continue
+
+                    tp_pct = float(var_cfg.get("take_profit_pct", 0.035))
+                    sl_pct = float(var_cfg.get("stop_loss_pct", 0.010))
+                    p_tracker.open_paper_trade(
+                        s_cand,
+                        take_profit_pct=tp_pct,
+                        stop_loss_pct=sl_pct,
+                        variant_id=var_id,
+                    )
+
+                if price_map:
+                    p_tracker.evaluate_open_trades(price_map)
         except Exception as err:
             log.warning(f"[AutonomousDirector] PaperTradeTracker error: {err}")
 

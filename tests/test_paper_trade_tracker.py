@@ -92,7 +92,7 @@ def test_full_paper_trade_lifecycle(temp_paper_env):
 def test_autonomous_director_paper_trading_pipeline(temp_paper_env, monkeypatch):
     tracker, aggregator, history_dir, open_dir = temp_paper_env
     import Core.Intelligence.paper_trade_tracker as ptt_mod
-    monkeypatch.setattr(ptt_mod, "_tracker_instance", tracker)
+    monkeypatch.setattr(ptt_mod, "_tracker_instances", {"DEFAULT": tracker, "CONSERVATIVE": tracker, "AGGRESSIVE": tracker})
 
     # Mock get_paper_trade_tracker inside director to use test tracker
     import Core.Intelligence.autonomous_director as ad_mod
