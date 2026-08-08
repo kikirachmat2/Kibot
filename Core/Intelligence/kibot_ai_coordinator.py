@@ -90,152 +90,19 @@ PROVIDERS = {
         "base_url": OLLAMA_CHAT_URL,
         "priority": 99,
     },
-    "finnhub": {
-        "daily_limit": 1000,
-        "model": "finnhub-news",
-        "api_key_envs": ["FINNHUB_API_KEY"],
-        "base_url": "https://finnhub.io/api/v1",
-        "priority": 50,
-    },
-    "groq": {
-        "daily_limit": 14400,
-        "model": "llama-3.1-8b-instant",
-        "api_key_envs": ["GROQ_API_KEY", "BINANCE_GROQ_API_KEY"],
-        "base_url": "https://api.groq.com/openai/v1/chat/completions",
-        "priority": 2,
-    },
     "gemini": {
         "daily_limit": 1500,
         "model": os.getenv("GEMINI_SUPPORT_MODEL", os.getenv("GEMINI_MODEL", "gemini-2.0-flash-lite")),
-        "api_key_envs": ["GEMINI_API_KEY", "GOOGLE_API_KEY", "GEMINI_SUPPORT_API_KEY"],
+        "api_key_envs": ["GEMINI_API_KEY", "GOOGLE_API_KEY"],
         "base_url": "https://generativelanguage.googleapis.com/v1beta/models",
         "priority": 3,
-    },
-    "deepseek": {
-        "daily_limit": 5000,
-        "model": "deepseek-chat",
-        "api_key_envs": ["DEEPSEEK_API_KEY"],
-        "base_url": "https://api.deepseek.com/chat/completions",
-        "priority": 4,
-    },
-    "sambanova": {
-        "daily_limit": 5000,
-        "model": "Meta-Llama-3.1-8B-Instruct",
-        "api_key_envs": ["SAMBANOVA_API_KEY"],
-        "base_url": "https://api.sambanova.ai/v1/chat/completions",
-        "priority": 5,
-    },
-    "cerebras": {
-        "daily_limit": 50000,
-        "model": "llama3.1-8b",
-        "api_key_envs": ["CEREBRAS_API_KEY", "KIBOT_CEREBRAS_KEY"],
-        "base_url": "https://api.cerebras.ai/v1/chat/completions",
-        "priority": 1,
-    },
-    "together": {
-        "daily_limit": 3000,
-        "model": "meta-llama/Llama-3-8b-chat-hf",
-        "api_key_envs": ["TOGETHER_API_KEY"],
-        "base_url": "https://api.together.xyz/v1/chat/completions",
-        "priority": 7,
-    },
-    "fireworks": {
-        "daily_limit": 2000,
-        "model": "accounts/fireworks/models/llama-v3-8b-instruct",
-        "api_key_envs": ["FIREWORKS_API_KEY"],
-        "base_url": "https://api.fireworks.ai/inference/v1/chat/completions",
-        "priority": 8,
     },
     "mistral": {
         "daily_limit": 5000,
         "model": "mistral-tiny",
-        "api_key_envs": ["MISTRAL_API_KEY", "KIBOT_MISTRAL_KEY"],
+        "api_key_envs": ["MISTRAL_API_KEY"],
         "base_url": "https://api.mistral.ai/v1/chat/completions",
         "priority": 5,
-    },
-    "nvidia": {
-        "daily_limit": 1000,
-        "model": "meta/llama-3.1-70b-instruct",
-        "api_key_envs": ["NVIDIA_API_KEY"],
-        "base_url": "https://integrate.api.nvidia.com/v1/chat/completions",
-        "priority": 10,
-    },
-    "openrouter": {
-        "daily_limit": 200,
-        "model": os.getenv("OPENROUTER_MODEL", "meta-llama/llama-3.1-8b-instruct"),
-        "api_key_envs": ["OPENROUTER_API_KEY"],
-        "base_url": "https://openrouter.ai/api/v1/chat/completions",
-        "priority": 11,
-    },
-    "deepinfra": {
-        "daily_limit": 500,
-        "model": "meta-llama/Meta-Llama-3-8B-Instruct",
-        "api_key_envs": ["DEEPINFRA_API_KEY"],
-        "base_url": "https://api.deepinfra.com/v1/openai/chat/completions",
-        "priority": 12,
-    },
-    "octoai": {
-        "daily_limit": 500,
-        "model": "meta-llama-3-8b-instruct",
-        "api_key_envs": ["OCTOAI_API_KEY"],
-        "base_url": "https://api.octoai.cloud/v1/chat/completions",
-        "priority": 13,
-    },
-    "novita": {
-        "daily_limit": 500,
-        "model": "meta-llama/llama-3-8b-instruct",
-        "api_key_envs": ["NOVITA_API_KEY"],
-        "base_url": "https://api.novita.ai/v3/openai/chat/completions",
-        "priority": 14,
-    },
-    "perplexity": {
-        "daily_limit": 100,
-        "model": "llama-3-sonar-small-32k-online",
-        "api_key_envs": ["PERPLEXITY_API_KEY"],
-        "base_url": "https://api.perplexity.ai/chat/completions",
-        "priority": 15,
-    },
-    "cohere": {
-        "daily_limit": 100,
-        "model": "command-a-03-2025",
-        "api_key_envs": ["COHERE_API_KEY"],
-        "base_url": "https://api.cohere.ai/v1/chat",
-        "priority": 16,
-    },
-    "jina": {
-        "daily_limit": 100,
-        "model": "jina-embeddings-v3",
-        "api_key_envs": ["JINA_API_KEY", "BINANCE_JINA_API_KEY"],
-        "base_url": "https://api.jina.ai/v1/embeddings",
-        "priority": 17,
-    },
-    "huggingface": {
-        "daily_limit": 1000,
-        "model": "meta-llama/Meta-Llama-3-8B-Instruct",
-        "api_key_envs": ["HUGGINGFACE_API_KEY"],
-        "base_url": "https://api-inference.huggingface.co/models/meta-llama/Meta-Llama-3-8B-Instruct/v1/chat/completions",
-        "priority": 18,
-    },
-    "friendliai": {
-        "daily_limit": 500,
-        "model": "llama-3-8b-instruct",
-        "api_key_envs": ["FRIENDLIAI_API_KEY"],
-        "base_url": "https://api.friendli.ai/v1/chat/completions",
-        "priority": 19,
-    },
-    "lepton": {
-        "daily_limit": 500,
-        "model": "llama3-8b",
-        "api_key_envs": ["LEPTON_API_KEY"],
-        "base_url": "https://llama3.lepton.run/api/v1/chat/completions",
-        "priority": 20,
-    },
-    "together_turbo": {
-        "daily_limit": 3000,
-        "model": "meta-llama/Llama-3-70b-chat-hf",
-        "api_key_envs": ["TOGETHER_API_KEY"],
-        "base_url": "https://api.together.xyz/v1/chat/completions",
-        "priority": 21,
     },
     "mistral_large": {
         "daily_limit": 500,
@@ -244,89 +111,25 @@ PROVIDERS = {
         "base_url": "https://api.mistral.ai/v1/chat/completions",
         "priority": 22,
     },
-    "cloudflare_ai": {
-        "daily_limit": 1000,
-        "model": "@cf/meta/llama-3-8b-instruct",
-        "api_key_envs": ["CLOUDFLARE_API_KEY", "CF_AI_TOKEN"],
-        "base_url": "https://api.cloudflare.com/client/v4/accounts/{account_id}/ai/run/@cf/meta/llama-3-8b-instruct",
-        "priority": 23,
-    },
-    "perplexity_pro": {
-        "daily_limit": 1000,
-        "model": "llama-3.1-sonar-large-128k-online",
-        "api_key_envs": ["PERPLEXITY_API_KEY"],
-        "base_url": "https://api.perplexity.ai/chat/completions",
-        "priority": 24,
-    },
-    "github_experimental": {
-        "daily_limit": 100,
-        "model": "gpt-4o",
-        "api_key_envs": ["GITHUB_TOKEN"],
-        "base_url": "https://models.inference.ai.azure.com/chat/completions",
-        "priority": 25,
-    },
-    # --- OpenRouter Gateway Bypass (One Key, Multiple Models) ---
-    "or_claude_free": {
-        "daily_limit": 1000,
-        "model": "anthropic/claude-3-haiku:free",
-        "api_key_envs": ["OPENROUTER_API_KEY", "BINANCE_OPENROUTER_API_KEY"],
-        "base_url": "https://openrouter.ai/api/v1/chat/completions",
-        "priority": 30,
-    },
-    "or_gpt4o_mini_free": {
-        "daily_limit": 1000,
-        "model": "openai/gpt-4o-mini:free",
-        "api_key_envs": ["OPENROUTER_API_KEY", "BINANCE_OPENROUTER_API_KEY"],
-        "base_url": "https://openrouter.ai/api/v1/chat/completions",
-        "priority": 31,
-    },
-    "or_llama3_1_70b_free": {
-        "daily_limit": 1000,
-        "model": "meta-llama/llama-3.1-70b-instruct:free",
-        "api_key_envs": ["OPENROUTER_API_KEY", "BINANCE_OPENROUTER_API_KEY"],
-        "base_url": "https://openrouter.ai/api/v1/chat/completions",
-        "priority": 32,
-    },
-    "or_phi3_medium_free": {
-        "daily_limit": 1000,
-        "model": "microsoft/phi-3-medium-128k-instruct:free",
-        "api_key_envs": ["OPENROUTER_API_KEY", "BINANCE_OPENROUTER_API_KEY"],
-        "base_url": "https://openrouter.ai/api/v1/chat/completions",
-        "priority": 33,
-    },
-    "or_qwen2_72b_free": {
-        "daily_limit": 1000,
-        "model": "qwen/qwen-2-72b-instruct:free",
-        "api_key_envs": ["OPENROUTER_API_KEY", "BINANCE_OPENROUTER_API_KEY"],
-        "base_url": "https://openrouter.ai/api/v1/chat/completions",
-        "priority": 34,
-    },
-    "or_gemini_flash_free": {
-        "daily_limit": 1000,
-        "model": "google/gemini-flash-1.5:free",
-        "api_key_envs": ["OPENROUTER_API_KEY", "BINANCE_OPENROUTER_API_KEY"],
-        "base_url": "https://openrouter.ai/api/v1/chat/completions",
-        "priority": 35,
-    }
 }
 
 PROMPT_PROVIDER_ORDER = {
-    "COUNCIL_WATCHMAN": ["ollama", "groq", "gemini", "or_claude_free"],
-    "COUNCIL_STRATEGIST": ["ollama", "gemini", "groq", "mistral_large"],
-    "STRATEGY_DEAN": ["ollama", "cerebras", "nvidia", "gemini", "groq", "deepseek", "mistral_large", "openrouter"],
-    "MOMENTUM_HAWK": ["ollama", "groq", "together_turbo", "cerebras"],
-    "RISK_SENTINEL": ["ollama", "gemini", "mistral_large", "or_llama3_1_70b_free"],
-    "COUNCIL_SPEAKER": ["ollama", "gemini", "nvidia", "mistral_large", "groq"],
-    "COUNCIL_ANTAGONIST": ["ollama", "gemini", "nvidia", "mistral_large", "groq"],
-    "INTELLIGENCE_SYNTHESIS": ["groq", "gemini", "deepseek", "together_turbo", "mistral_large", "cloudflare_ai", "perplexity_pro", "github_experimental", "or_claude_free", "or_gpt4o_mini_free", "or_llama3_1_70b_free", "or_gemini_flash_free", "or_qwen2_72b_free", "fireworks", "nvidia", "openrouter", "deepinfra", "octoai", "novita", "perplexity", "cohere", "jina", "huggingface", "friendliai", "lepton", "ollama"],
-    "TARGETED_VALIDATION": ["groq", "gemini", "deepseek", "together_turbo", "mistral_large", "perplexity_pro", "or_claude_free", "or_gpt4o_mini_free", "ollama"],
-    "BRAIN_CRITIC": ["gemini", "groq", "deepseek", "together_turbo", "mistral_large", "or_claude_free", "ollama"],
-    "POSSIBILITY_MINING": ["perplexity_pro", "gemini", "groq", "together_turbo", "mistral_large", "or_llama3_1_70b_free", "ollama"],
-    "PAIR_DISCOVERY": ["ollama", "groq", "gemini", "deepseek"],
-    "VETO_ANALYSIS": ["ollama", "groq", "gemini", "deepseek"],
-    "SOVEREIGN_DAILY_REVIEW": ["ollama", "groq", "gemini", "deepseek"],
-    "OPS_CHAT": ["ollama", "groq", "gemini", "deepseek"],
-    "OPS_CHAT_LOCAL": ["ollama", "groq", "gemini", "deepseek"],
+    "COUNCIL_WATCHMAN": ["ollama", "gemini", "mistral"],
+    "COUNCIL_STRATEGIST": ["ollama", "gemini", "mistral_large"],
+    "STRATEGY_DEAN": ["ollama", "gemini", "mistral_large"],
+    "MOMENTUM_HAWK": ["ollama", "gemini", "mistral"],
+    "RISK_SENTINEL": ["ollama", "gemini", "mistral_large"],
+    "COUNCIL_SPEAKER": ["ollama", "gemini", "mistral_large"],
+    "COUNCIL_ANTAGONIST": ["ollama", "gemini", "mistral_large"],
+    "INTELLIGENCE_SYNTHESIS": ["ollama", "gemini", "mistral_large"],
+    "TARGETED_VALIDATION": ["ollama", "gemini", "mistral_large"],
+    "BRAIN_CRITIC": ["ollama", "gemini", "mistral_large"],
+    "POSSIBILITY_MINING": ["ollama", "gemini", "mistral_large"],
+    "PAIR_DISCOVERY": ["ollama", "gemini", "mistral"],
+    "VETO_ANALYSIS": ["ollama", "gemini", "mistral"],
+    "SOVEREIGN_DAILY_REVIEW": ["ollama", "gemini", "mistral_large"],
+    "OPS_CHAT": ["ollama", "gemini", "mistral"],
+    "OPS_CHAT_LOCAL": ["ollama", "gemini", "mistral"],
 }
 
 PROMPT_TEMPLATES = {
@@ -1150,30 +953,19 @@ async def _call_provider(provider_raw: str, prompt: str, prompt_type: str = "") 
                 response = await client.post(url, json=payload, headers=headers)
             else:
                 url = config["base_url"]
-                if provider == "cohere":
-                    payload = {
-                        "model": model,
-                        "message": f"{PROMPT_SYSTEM}\n\nUser Request: {prompt}",
-                        "temperature": 0.3,
-                    }
-                    headers = {"Content-Type": "application/json", "Authorization": f"Bearer {api_key}"}
-                else:
-                    payload = {
-                        "model": model,
-                        "messages": [
-                            {"role": "system", "content": PROMPT_SYSTEM},
-                            {"role": "user", "content": prompt}
-                        ],
-                        "max_tokens": 800,
-                        "temperature": 0.3,
-                    }
-                    headers = {
-                        "Content-Type": "application/json",
-                        "Authorization": f"Bearer {api_key}",
-                    }
-                    if provider == "openrouter":
-                        headers["HTTP-Referer"] = "https://github.com/frahmat68-beep/KiBot"
-                        headers["X-Title"] = "KiBot"
+                payload = {
+                    "model": model,
+                    "messages": [
+                        {"role": "system", "content": PROMPT_SYSTEM},
+                        {"role": "user", "content": prompt}
+                    ],
+                    "max_tokens": 800,
+                    "temperature": 0.3,
+                }
+                headers = {
+                    "Content-Type": "application/json",
+                    "Authorization": f"Bearer {api_key}",
+                }
                 response = await client.post(url, json=payload, headers=headers)
 
             latency = time.time() - start_time
@@ -1195,9 +987,6 @@ async def _call_provider(provider_raw: str, prompt: str, prompt_type: str = "") 
             if provider == "gemini":
                 _clear_provider_cooldown(provider, latency=latency)
                 return data["candidates"][0]["content"]["parts"][0]["text"]
-            if provider == "cohere":
-                _clear_provider_cooldown(provider, latency=latency)
-                return data.get("text") or data.get("message", {}).get("content", [{}])[0].get("text")
             
             _clear_provider_cooldown(provider, latency=latency)
             return data["choices"][0]["message"]["content"]
