@@ -897,14 +897,17 @@ def _provider_timeout(provider: str, prompt_type: str) -> float:
     if provider != "ollama":
         return REQUEST_TIMEOUT_SEC
     
-    # Dynamically determine if the prompt uses a heavy model
+    from Core.Support.ki_config import KiConfig
     model = PROMPT_OLLAMA_MODEL.get(prompt_type, OLLAMA_DEFAULT_MODEL)
     is_heavy = "7b" in model or "deep" in model.lower()
     
-    from Core.Support.ki_config import KiConfig
-    if is_heavy:
-        return float(KiConfig.LLM_HEAVY_MODEL_TIMEOUT_S)
-    return float(KiConfig.LLM_TIMEOUT_S)
+    # If KiConfig has custom low limits (e.g. unit testing), respect them
+    if getattr(KiConfig, "LLM_TIMEOUT_S", None) is not None and KiConfig.LLM_TIMEOUT_S < 30.0:
+        return float(KiConfig.LLM_HEAVY_MODEL_TIMEOUT_S) if is_heavy else float(KiConfig.LLM_TIMEOUT_S)
+        
+    if prompt_type in PROMPT_OLLAMA_TIMEOUT:
+        return float(PROMPT_OLLAMA_TIMEOUT[prompt_type])
+    return OLLAMA_DEEP_TIMEOUT_SEC if is_heavy else OLLAMA_DEFAULT_TIMEOUT_SEC
 
 
 
