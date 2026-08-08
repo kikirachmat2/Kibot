@@ -25,6 +25,34 @@ AUTO_REPAIRABLE_MARKERS = (
     "daily_rollover_exit_pending",
 )
 
+PERSISTENT_ALERT_STATE_FILE = STATE / "persistent_blocker_state.json"
+PERSISTENT_BREACH_THRESHOLD_SEC = 900.0  # Alert after 15 minutes of continuous API failure
+
+
+def _check_persistent_api_breach(blockers: Any) -> bool:
+    """Returns True if indodax_balance_unavailable has been persistent for >15 minutes."""
+    text = _blocker_text(blockers)
+    if "indodax_balance_unavailable" not in text:
+        # Reset tracker if error is cleared
+        if PERSISTENT_ALERT_STATE_FILE.exists():
+            try:
+                PERSISTENT_ALERT_STATE_FILE.unlink()
+            except Exception:
+                pass
+        return False
+
+    now = time.time()
+    state = _read_json(PERSISTENT_ALERT_STATE_FILE, {})
+    first_seen = float(state.get("first_seen_ts") or now)
+    if "first_seen_ts" not in state:
+        _write_json(PERSISTENT_ALERT_STATE_FILE, {"first_seen_ts": now, "reason": "indodax_balance_unavailable"})
+        return False
+
+    # Persistent for > 15 minutes?
+    if (now - first_seen) >= PERSISTENT_BREACH_THRESHOLD_SEC:
+        return True
+    return False
+
 CRITICAL_SERVICES = [
     "kibot-capital-governor",
     "kibot-scanner",
@@ -404,18 +432,22 @@ def build_workflow_automation_state() -> dict[str, Any]:
 
 
 SUPERVISOR_ALERT_STATE_FILE = STATE / "supervisor_alert_state.json"
-MIN_ALERT_REPEAT_INTERVAL_SEC = 7200  # 2 hours minimum interval for unchanged blocker status
+MIN_ALERT_REPEAT_INTERVAL_SEC = 21600  # 6 hours minimum interval for unchanged blocker status
 
 
 async def notify_if_needed(payload: dict[str, Any]) -> bool:
     blockers = payload.get("blockers")
     if not blockers:
         return False
+        
+    is_persistent_api_breach = _check_persistent_api_breach(blockers)
+    
     auto_repair = payload.get("auto_repair") if isinstance(payload.get("auto_repair"), dict) else {}
-    if auto_repair.get("attempted") and not auto_repair.get("operator_alert_required"):
-        return False
-    if _is_auto_repairable_blocker(blockers) and not auto_repair.get("operator_alert_required"):
-        return False
+    if not is_persistent_api_breach:
+        if auto_repair.get("attempted") and not auto_repair.get("operator_alert_required"):
+            return False
+        if _is_auto_repairable_blocker(blockers) and not auto_repair.get("operator_alert_required"):
+            return False
 
     current_status = str(payload.get("overall_status") or "")
     reasons = "; ".join(str(item.get("reason") or item.get("source")) for item in blockers[:3] if isinstance(item, dict))

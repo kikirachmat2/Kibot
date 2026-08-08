@@ -434,25 +434,26 @@ PROMPT_TEMPLATES = {
 }
 
 PROMPT_OLLAMA_MODEL = {
-    "STRATEGY_DEAN": OLLAMA_DEEP_MODEL,
-    "MARKET_SCOUT": OLLAMA_DEFAULT_MODEL,
-    "ACTIVE_GUARDIAN": OLLAMA_PRO_MODEL,
-    "SYSTEM_ENGINEER": OLLAMA_FAST_MODEL,
-    "COUNCIL_ORACLE": OLLAMA_DEEP_MODEL,
+    "STRATEGY_DEAN": OLLAMA_DEEP_MODEL,         # deepseek-r1:7b — Architect (600s timeout, async)
+    "SOVEREIGN_DAILY_REVIEW": OLLAMA_DEEP_MODEL, # deepseek-r1:7b — Midnight Oracle (600s timeout, async)
+    
+    "MARKET_SCOUT": OLLAMA_DEFAULT_MODEL,       # qwen2.5:1.5b
+    "ACTIVE_GUARDIAN": OLLAMA_PRO_MODEL,         # qwen2.5:3b
+    "SYSTEM_ENGINEER": OLLAMA_FAST_MODEL,        # qwen2.5:0.5b
+    "COUNCIL_ORACLE": OLLAMA_PRO_MODEL,          # qwen2.5:3b
     "CODE_INTEGRITY_OFFICER": OLLAMA_DEFAULT_MODEL,
     "LIQUIDITY_HUNTER": OLLAMA_PRO_MODEL,
-    "SENTIMENT_SYNTHESIZER": OLLAMA_SMART_MODEL,
+    "SENTIMENT_SYNTHESIZER": OLLAMA_PRO_MODEL,   # qwen2.5:3b
     "WHALE_WATCHER": OLLAMA_DEFAULT_MODEL,
-    "CROSS_MARKET_STRATEGIST": OLLAMA_SYNTHESIS_MODEL,
-    "COUNCIL_ANTAGONIST": OLLAMA_PRO_MODEL,
-    "POSSIBILITY_MINING": OLLAMA_PRO_MODEL,
+    "CROSS_MARKET_STRATEGIST": OLLAMA_PRO_MODEL,
+    "COUNCIL_ANTAGONIST": OLLAMA_PRO_MODEL,      # qwen2.5:3b
+    "POSSIBILITY_MINING": OLLAMA_PRO_MODEL,      # qwen2.5:3b
     
     # Legacy / Utility
     "COUNCIL_WATCHMAN": OLLAMA_FAST_MODEL,
     "COUNCIL_STRATEGIST": OLLAMA_FAST_MODEL,
     "BRAIN_CRITIC": OLLAMA_FAST_MODEL,
     "OPS_CHAT": OLLAMA_FAST_MODEL,
-    "SOVEREIGN_DAILY_REVIEW": OLLAMA_DEEP_MODEL,
     "MOMENTUM_HAWK": OLLAMA_FAST_MODEL,
     "RISK_SENTINEL": OLLAMA_FAST_MODEL,
 
@@ -461,7 +462,7 @@ PROMPT_OLLAMA_MODEL = {
     "fast_risk_officer": OLLAMA_DEFAULT_MODEL,   # qwen2.5:1.5b — quick risk filter
 
     # ── §13.2 Deep Council roles ──
-    "antagonist":        OLLAMA_DEEP_MODEL,      # deepseek-r1:7b — adversarial devil's advocate
+    "antagonist":        OLLAMA_PRO_MODEL,       # qwen2.5:3b — adversarial check
     "regime_analyst":    OLLAMA_PRO_MODEL,       # qwen2.5:3b — regime/macro context
     "historian":         OLLAMA_PRO_MODEL,       # qwen2.5:3b — pair history awareness
 }
@@ -831,17 +832,47 @@ def _latest_prompt_cache(prompt_type: str, max_age_minutes: int = 180) -> Option
     return best_payload
 
 
+def _trim_payload_element(val: Any, max_items: int = 5, max_depth: int = 2) -> Any:
+    """Helper to trim heavy structures (dict/list) for clean token-bounded prompts."""
+    if isinstance(val, dict):
+        if max_depth <= 0:
+            return f"<dict with {len(val)} keys>"
+        trimmed = {}
+        for k, v in list(val.items())[:max_items]:
+            trimmed[k] = _trim_payload_element(v, max_items=max_items, max_depth=max_depth-1)
+        if len(val) > max_items:
+            trimmed["_truncated_keys_count"] = len(val) - max_items
+        return trimmed
+    elif isinstance(val, (list, tuple)):
+        if max_depth <= 0:
+            return f"<list with {len(val)} items>"
+        trimmed = [_trim_payload_element(item, max_items=max_items, max_depth=max_depth-1) for item in val[:max_items]]
+        if len(val) > max_items:
+            trimmed.append(f"...<{len(val) - max_items} more items>")
+        return trimmed
+    elif isinstance(val, str) and len(val) > 1500:
+        return val[:1500] + f"...<truncated {len(val)-1500} chars>"
+    return val
+
+
 def _render_prompt(template: str, context: Dict[str, Any]) -> str:
     prepared: Dict[str, Any] = {}
     for key, value in context.items():
         if isinstance(value, (dict, list, tuple)):
-            prepared[key] = json.dumps(value, ensure_ascii=False)
+            # Trim large payloads to avoid Ollama context overflow
+            trimmed_val = _trim_payload_element(value, max_items=5, max_depth=3)
+            prepared[key] = json.dumps(trimmed_val, ensure_ascii=False)
         else:
             prepared[key] = value
     try:
-        return template.format(**prepared)
+        rendered = template.format(**prepared)
     except Exception:
-        return f"{template}\n\nContext:\n{json.dumps(context, ensure_ascii=False, indent=2)}"
+        rendered = f"{template}\n\nContext:\n{json.dumps(prepared, ensure_ascii=False, indent=2)}"
+    
+    # Hard cap rendered prompt to ~2200 words (~2500 tokens max)
+    if len(rendered) > 9000:
+        rendered = rendered[:9000] + "\n...[PROMPT_TRIMMED_TO_2500_TOKENS]"
+    return rendered
 
 
 def _ollama_think_value() -> Any:
@@ -1098,23 +1129,18 @@ def _response_has_minimum_schema(prompt_type: str, parsed: Dict[str, Any]) -> bo
         return True
     return False
 
-# --- GLOBAL CONCURRENCY LOCK ---
+# --- GLOBAL OLLAMA CONCURRENCY LOCK (Strict 1-Request At A Time) ---
 _OLLAMA_LOCK = asyncio.Lock()
 
 async def query_ai(prompt_type: str, context: Dict[str, Any], cache_ttl_minutes: int = 60, force_refresh: bool = False) -> Optional[Dict[str, Any]]:
-    """Main entry point with CPU Protection for Batam."""
+    """Main entry point with strict 1-Concurrency Lock for Batam."""
     from Core.Support.ki_config import KiConfig
     if not KiConfig.LLM_ENABLED:
         logger.warning("AI coordination bypassed: KiConfig.LLM_ENABLED is False. Returning AI_SAFE_FALLBACK.")
         return AI_SAFE_FALLBACK
 
-    model = PROMPT_OLLAMA_MODEL.get(prompt_type, OLLAMA_DEFAULT_MODEL)
-    is_heavy = "7b" in model or "deep" in model.lower()
-
-    if is_heavy:
-        async with _OLLAMA_LOCK:
-            return await _execute_query_logic(prompt_type, context, cache_ttl_minutes, force_refresh)
-    else:
+    # Acquire global lock to guarantee ONLY 1 Ollama runner processes at a time
+    async with _OLLAMA_LOCK:
         return await _execute_query_logic(prompt_type, context, cache_ttl_minutes, force_refresh)
 
 

@@ -29,8 +29,8 @@ def test_llm_provider_timeouts():
         timeout_std = _provider_timeout("ollama", "fast_hunter")
         assert timeout_std == 4.0
 
-        # Test a heavy model containing "7b" or "deep" (e.g. antagonist or COUNCIL_ORACLE)
-        timeout_heavy = _provider_timeout("ollama", "antagonist")
+        # Test a heavy model containing "7b" or "deep" (e.g. STRATEGY_DEAN or SOVEREIGN_DAILY_REVIEW)
+        timeout_heavy = _provider_timeout("ollama", "STRATEGY_DEAN")
         assert timeout_heavy == 8.0
 
 @pytest.mark.anyio
