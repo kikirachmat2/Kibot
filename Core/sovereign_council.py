@@ -56,7 +56,7 @@ class SovereignCouncil:
         # Load environment
         load_sovereign_env()
 
-    async def _query_ai_guarded(self, role: str, payload: Dict[str, Any], *, timeout: float = 18.0) -> Dict[str, Any]:
+    async def _query_ai_guarded(self, role: str, payload: Dict[str, Any], *, timeout: float = 35.0) -> Dict[str, Any]:
         """Bound AI calls so one slow provider cannot freeze the trading loop."""
         try:
             result = await asyncio.wait_for(query_ai(role, payload), timeout=timeout)
@@ -834,14 +834,14 @@ class SovereignCouncil:
             "minutes_to_midnight": minutes_to_midnight,
             "deadline_pressure": deadline_pressure,
             "current_strategy": current,
-        }, timeout=14)
+        }, timeout=35)
         possibility_view = await self._query_ai_guarded("POSSIBILITY_MINING", {
             "raw_data": market_snapshot,
             "current_strategy": current,
             "daily_state": runtime_daily_state,
             "deadline_pressure": deadline_pressure,
             "minutes_to_midnight": minutes_to_midnight,
-        }, timeout=14)
+        }, timeout=35)
         
         dean_res = await self._query_ai_guarded("STRATEGY_DEAN", {
             "market_data": scout_res,
@@ -858,7 +858,7 @@ class SovereignCouncil:
             "antagonist_view": antagonist_view,
             "possibility_view": possibility_view,
             "philosophy": "ORGANIZED_GREED" # Never satisfied
-        }, timeout=20)
+        }, timeout=60)
 
         if not isinstance(dean_res, dict):
             logger.error(f"❌ [FATAL] AI Strategy Dean returned invalid response type: {type(dean_res)}")
