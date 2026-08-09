@@ -449,7 +449,7 @@ from Core.Intelligence.paper_trade_tracker import VARIANT_CONFIGS
 agg = get_stats_aggregator()
 agg.refresh_if_needed(force=True)
 
-variants = ['CONSERVATIVE', 'AGGRESSIVE', 'DEFAULT']
+variants = ['CONSERVATIVE', 'AGGRESSIVE', 'DEFAULT', 'AI_ASSISTED']
 state_dir = Path('state')
 
 print('\n========================================================================================')

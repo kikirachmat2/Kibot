@@ -122,13 +122,13 @@ class AutonomousDirector:
                     price_map[pair] = px
 
             # Evaluate each variant in parallel
-            variants_to_process = ["CONSERVATIVE", "AGGRESSIVE", "DEFAULT"]
+            variants_to_process = ["CONSERVATIVE", "AGGRESSIVE", "DEFAULT", "AI_ASSISTED"]
             for var_id in variants_to_process:
                 p_tracker = get_paper_trade_tracker(var_id)
                 var_cfg = VARIANT_CONFIGS.get(var_id, {})
 
-                # Open virtual positions for candidates matching variant filter rules
                 for s_cand in shadow:
+                    cand_to_open = s_cand
                     # Filter check per variant
                     sig_quality = s_cand.get("signal_quality") or {}
                     grade = str(sig_quality.get("grade") or "REJECT").upper()
@@ -142,10 +142,67 @@ class AutonomousDirector:
                     if min_vol > 0 and vol_ratio < min_vol:
                         continue
 
+                    # Special AI filter for AI_ASSISTED variant
+                    if var_id == "AI_ASSISTED":
+                        try:
+                            from .kibot_ai_coordinator import query_ai
+                            pair_sym = str(s_cand.get("pair") or s_cand.get("symbol") or "").upper()
+                            ev_pct = (s_cand.get("ev_analysis") or {}).get("ev_pct", 0.0)
+                            
+                            ai_payload = {
+                                "news_context": f"Institutional crypto news for {pair_sym}",
+                                "pair": pair_sym,
+                                "grade": grade,
+                                "ev_pct": ev_pct,
+                                "regime": regime,
+                            }
+                            # Sync wrapper / call for AI filter
+                            import asyncio
+                            loop = None
+                            try:
+                                loop = asyncio.get_event_loop()
+                            except Exception:
+                                loop = None
+
+                            ai_res = None
+                            coro = query_ai("AI_ASSISTED_FILTER", ai_payload)
+                            import inspect
+                            if inspect.iscoroutine(coro):
+                                if loop and loop.is_running():
+                                    import nest_asyncio
+                                    nest_asyncio.apply()
+                                    ai_res = loop.run_until_complete(coro)
+                                else:
+                                    ai_res = asyncio.run(coro)
+                            else:
+                                ai_res = coro
+
+                            if not ai_res or ai_res.get("is_fallback"):
+                                # Fail-closed: Mistral call failed / fallback -> skip AI_ASSISTED entry
+                                log.info(f"[AutonomousDirector] AI_ASSISTED skip {pair_sym}: Mistral call failed or timeout (fail-closed)")
+                                continue
+
+                            score = float(ai_res.get("confidence_score") or ai_res.get("confidence") or 0.0)
+                            has_red_flag = bool(ai_res.get("has_red_flag", False))
+                            reasoning = str(ai_res.get("reasoning") or ai_res.get("reason") or "")
+
+                            if score < 50.0 or has_red_flag:
+                                log.info(f"[AutonomousDirector] AI_ASSISTED skip {pair_sym}: score={score}, red_flag={has_red_flag}, reason={reasoning}")
+                                continue
+
+                            # Attach AI metadata to candidate record
+                            s_cand["ai_confidence_score"] = score
+                            s_cand["ai_reasoning"] = reasoning
+                            cand_to_open = s_cand
+
+                        except Exception as ai_err:
+                            log.warning(f"[AutonomousDirector] AI_ASSISTED filter exception (fail-closed): {ai_err}")
+                            continue
+
                     tp_pct = float(var_cfg.get("take_profit_pct", 0.035))
                     sl_pct = float(var_cfg.get("stop_loss_pct", 0.010))
                     p_tracker.open_paper_trade(
-                        s_cand,
+                        cand_to_open,
                         take_profit_pct=tp_pct,
                         stop_loss_pct=sl_pct,
                         variant_id=var_id,

@@ -203,3 +203,77 @@ def test_paper_trade_exit_valuation_scenarios(temp_paper_env, monkeypatch):
     assert len(closed_c2) == 1
     assert closed_c2[0]["exit_reason"] == "TIMEOUT_PRICE_UNAVAILABLE"
     assert closed_c2[0]["is_invalid_valuation"] is True
+
+
+def test_ai_assisted_variant_gate(monkeypatch, tmp_path):
+    import Core.Intelligence.paper_trade_tracker as ptt_mod
+    state_dir = tmp_path / "state"
+    open_dir = state_dir / "paper_trades" / "ai_assisted" / "open"
+    history_dir = state_dir / "trade_history"
+    open_dir.mkdir(parents=True, exist_ok=True)
+    history_dir.mkdir(parents=True, exist_ok=True)
+
+    open_dir_gen = lambda var_id: state_dir / "paper_trades" / var_id.lower() / "open"
+    ptt_mod._tracker_instances.clear()
+    ai_tracker = ptt_mod.get_paper_trade_tracker("AI_ASSISTED")
+    ai_tracker.open_dir = open_dir
+    ai_tracker.history_dir = history_dir
+    
+    # Patch factory to return custom dirs
+    def mock_get_tracker(var_id="DEFAULT"):
+        key = (var_id or "DEFAULT").upper().strip()
+        if key not in ptt_mod._tracker_instances:
+            t = ptt_mod.PaperTradeTracker(variant_id=key, open_dir=open_dir if key == "AI_ASSISTED" else (state_dir / "paper_trades" / key.lower() / "open"), history_dir=history_dir)
+            ptt_mod._tracker_instances[key] = t
+        return ptt_mod._tracker_instances[key]
+
+    monkeypatch.setattr(ptt_mod, "get_paper_trade_tracker", mock_get_tracker)
+
+    director = AutonomousDirector()
+    
+    monkeypatch.setattr("Core.Intelligence.autonomous_director.run_scorecard", lambda c, market_regime=None: c.update({"scorecard_verdict": "PAPER_ONLY"}))
+    monkeypatch.setattr("Core.Intelligence.autonomous_director.batch_evaluate_ev", lambda c: c)
+
+    cand = {
+        "symbol": "BTC/IDR",
+        "pair": "BTC/IDR",
+        "price_idr": 1000000000.0,
+        "signal_quality": {"grade": "STRONG"},
+        "volume_ratio": 2.5,
+        "scorecard_verdict": "PAPER_ONLY",
+    }
+
+    from Core.Intelligence import kibot_ai_coordinator
+
+    # 1. Mistral approve (confidence=85, no red flag) -> trade opened
+    async def mock_ai_approve(*args, **kwargs):
+        return {"confidence_score": 85, "has_red_flag": False, "reasoning": "Strong momentum"}
+
+    monkeypatch.setattr(kibot_ai_coordinator, "query_ai", mock_ai_approve)
+    res_approve = director.evaluate_cycle([cand])
+    ai_tracker = ptt_mod.get_paper_trade_tracker("AI_ASSISTED")
+    open_trades = ai_tracker.get_open_paper_trades()
+    assert len(open_trades) == 1
+    assert open_trades[0]["ai_confidence_score"] == 85
+
+    # Clean open dir
+    for f in open_dir.glob("*.json"):
+        f.unlink()
+
+    # 2. Mistral reject (confidence=30) -> trade skipped
+    async def mock_ai_reject(*args, **kwargs):
+        return {"confidence_score": 30, "has_red_flag": False, "reasoning": "Weak fundamental backdrop"}
+
+    monkeypatch.setattr(kibot_ai_coordinator, "query_ai", mock_ai_reject)
+    director.evaluate_cycle([cand])
+    open_trades_rej = ai_tracker.get_open_paper_trades()
+    assert len(open_trades_rej) == 0
+
+    # 3. Mistral fails/timeout (fallback) -> trade skipped (fail-closed)
+    async def mock_ai_fail(*args, **kwargs):
+        return {"is_fallback": True}
+
+    monkeypatch.setattr(kibot_ai_coordinator, "query_ai", mock_ai_fail)
+    director.evaluate_cycle([cand])
+    open_trades_fail = ai_tracker.get_open_paper_trades()
+    assert len(open_trades_fail) == 0

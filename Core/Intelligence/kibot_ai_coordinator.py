@@ -123,9 +123,18 @@ PROMPT_PROVIDER_ORDER = {
     "SOVEREIGN_DAILY_REVIEW": ["ollama", "mistral_large"],
     "OPS_CHAT": ["ollama", "mistral"],
     "OPS_CHAT_LOCAL": ["ollama", "mistral"],
+    "AI_ASSISTED_FILTER": ["mistral", "ollama"],
 }
 
 PROMPT_TEMPLATES = {
+    "AI_ASSISTED_FILTER": (
+        "You are KiBot's AI Assisted Candidate Gatekeeper.\n"
+        "Analyze the news summary and technical candidate parameters:\n"
+        "News Context: {news_context}\n"
+        "Candidate Data: pair={pair}, grade={grade}, ev_pct={ev_pct}, regime={regime}\n"
+        "Task: Evaluate if there are any red flags (pump-dump, severe negative news, manipulation) or if entry is supported.\n"
+        "Return strict JSON only: {{\"confidence_score\": 0..100, \"has_red_flag\": false, \"reasoning\": \"one line reason\"}}"
+    ),
     "COUNCIL_WATCHMAN": (
         "You are KiBot's Watchman.\n"
         "Review the system snapshot: {snapshot}\n"

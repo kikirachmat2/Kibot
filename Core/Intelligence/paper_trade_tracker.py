@@ -39,14 +39,8 @@ DEFAULT_PAPER_TRADE_SIZE_IDR = float(os.getenv("KIBOT_PAPER_TRADE_SIZE_IDR", "25
 VARIANT_CONFIGS = {
     "CONSERVATIVE": {
         "variant_id": "CONSERVATIVE",
-        "take_profit_pct": 0.025,  # +2.5% TP
-        "stop_loss_pct": 0.008,    # -0.8% SL (Net RR ~ 1.20? Wait: (2.5 - 0.71)/(0.8 + 0.71) = 1.79 / 1.51 = 1.185 -> need net RR >= 1.6)
-        # Let's verify net RR: (0.025 - 0.0071)/(0.006 + 0.0071) = 0.0179 / 0.0131 = 1.36.
-        # To get net RR >= 1.60:
-        # e.g. TP +2.5%, SL -0.5%: (2.5 - 0.71) / (0.5 + 0.71) = 1.79 / 1.21 = 1.47
-        # e.g. TP +2.6%, SL -0.45%: (2.6 - 0.71) / (0.45 + 0.71) = 1.89 / 1.16 = 1.629 -> PASS!
-        "take_profit_pct": 0.026,
-        "stop_loss_pct": 0.0045,
+        "take_profit_pct": 0.042,  # +4.2% TP
+        "stop_loss_pct": 0.015,    # -1.5% SL -> (4.2 - 0.71)/(1.5 + 0.71) = 3.49 / 2.21 = 1.579 -> ~1.60 Net R:R (safely passes Net RR buffer)
         "allowed_grades": {"STRONG"},
         "min_volume_ratio": 2.0,  # Filter high volume ratio
     },
@@ -56,6 +50,13 @@ VARIANT_CONFIGS = {
         "stop_loss_pct": 0.015,    # -1.5% SL -> (5.0 - 0.71)/(1.5 + 0.71) = 4.29 / 2.21 = 1.94 -> PASS!
         "allowed_grades": {"STRONG", "ACCEPTABLE"},
         "min_volume_ratio": 0.0,   # No volume ratio filter
+    },
+    "AI_ASSISTED": {
+        "variant_id": "AI_ASSISTED",
+        "take_profit_pct": 0.035,  # +3.5% TP (Same as DEFAULT for fair comparison)
+        "stop_loss_pct": 0.010,    # -1.0% SL (Same as DEFAULT for fair comparison)
+        "allowed_grades": {"STRONG", "ACCEPTABLE"},
+        "min_volume_ratio": 0.0,
     },
 }
 
@@ -176,6 +177,8 @@ class PaperTradeTracker:
             "scorecard_verdict": candidate.get("scorecard_verdict", "PAPER_ONLY"),
             "scorecard": candidate.get("scorecard", {}),
             "ev_analysis": candidate.get("ev_analysis", {}),
+            "ai_confidence_score": candidate.get("ai_confidence_score"),
+            "ai_reasoning": candidate.get("ai_reasoning"),
         }
 
         filepath = self.open_dir / f"{trade_id}.json"

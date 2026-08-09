@@ -66,15 +66,22 @@ def cleanup_expired(data: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     return data
 
 
+PERMANENT_BLOCKED_PAIRS = {"TRX/IDR", "TRX_IDR", "SHIB/IDR", "SHIB_IDR", "BNB/IDR", "BNB_IDR"}
+
+
 def is_quarantined(pair: str) -> bool:
-    """Check if a pair is currently quarantined (with TTL-aware expiry)."""
+    """Check if a pair is currently quarantined or permanently blacklisted (with TTL-aware expiry)."""
+    pair_u = str(pair or "").upper()
+    if pair_u in PERMANENT_BLOCKED_PAIRS or pair_u.replace("/", "_") in PERMANENT_BLOCKED_PAIRS or pair_u.replace("_", "/") in PERMANENT_BLOCKED_PAIRS:
+        return True
+
     data = load_pair_quarantine()
     data = cleanup_expired(data)
     _save_pair_quarantine(data)
     blocked = data.get("blocked_pairs", [])
     if not isinstance(blocked, list):
         return False
-    return str(pair or "").upper() in {str(x).upper() for x in blocked}
+    return pair_u in {str(x).upper() for x in blocked}
 
 
 def quarantine_pair(pair: str, reason: str, seconds: int = COOLDOWN_SECONDS) -> Dict[str, Any]:
