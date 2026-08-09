@@ -731,6 +731,41 @@ def _provider_api_key(provider: str) -> str:
     return key
 
 
+_SLIDING_WINDOW_FILE = STATE_DIR / "provider_rpm_window.json"
+
+def _is_provider_rpm_exceeded(provider: str) -> bool:
+    """Check if provider exceeds its conservative 60-second sliding window RPM threshold."""
+    from Core.Support.ki_config import KiConfig
+    max_rpm_map = {
+        "gemini": KiConfig.GEMINI_MAX_RPM,
+        "mistral": KiConfig.MISTRAL_MAX_RPM,
+        "mistral_large": KiConfig.MISTRAL_MAX_RPM,
+        "finnhub": KiConfig.FINNHUB_MAX_RPM,
+    }
+    max_rpm = max_rpm_map.get(str(provider).lower())
+    if not max_rpm:
+        return False
+        
+    now = time.time()
+    state = _read_json(_SLIDING_WINDOW_FILE, {}) if hasattr(Path, "exists") and _SLIDING_WINDOW_FILE.exists() else {}
+    if not isinstance(state, dict):
+        state = {}
+    timestamps = [t for t in state.get(provider, []) if (now - float(t)) < 60.0]
+    return len(timestamps) >= max_rpm
+
+
+def _record_provider_rpm_request(provider: str) -> None:
+    """Record request timestamp for 60-second sliding window counter."""
+    now = time.time()
+    state = _read_json(_SLIDING_WINDOW_FILE, {}) if hasattr(Path, "exists") and _SLIDING_WINDOW_FILE.exists() else {}
+    if not isinstance(state, dict):
+        state = {}
+    timestamps = [t for t in state.get(provider, []) if (now - float(t)) < 60.0]
+    timestamps.append(now)
+    state[provider] = timestamps
+    _atomic_write(_SLIDING_WINDOW_FILE, state)
+
+
 def _candidate_providers(prompt_type: str) -> List[str]:
     state = _load_rate_state()
     counts = state.get("counts", {})
@@ -752,11 +787,15 @@ def _candidate_providers(prompt_type: str) -> List[str]:
             continue
         if _provider_cooldown_remaining(name) > 0:
             continue
+        if _is_provider_rpm_exceeded(name):
+            logger.info(f"⏳ Provider {name} skipped: 60s sliding window RPM limit reached.")
+            continue
         ordered.append(name)
     return ordered
 
 
 def _increment_usage(provider: str) -> None:
+    _record_provider_rpm_request(provider)
     state = _load_rate_state()
     counts = state.setdefault("counts", {})
     counts[provider] = counts.get(provider, 0) + 1

@@ -142,6 +142,11 @@ class KiConfig:
     LLM_BLOCK_EXECUTOR = _env_flag("KIBOT_LLM_BLOCK_EXECUTOR", "false")
     LLM_ALLOWED_TO_PLACE_ORDER = _env_flag("KIBOT_LLM_ALLOWED_TO_PLACE_ORDER", "false")
     
+    # --- RATE LIMIT GUARDRAILS (Requests Per Minute - Conservative Buffer) ---
+    GEMINI_MAX_RPM = int(os.getenv("KIBOT_GEMINI_MAX_RPM", "10"))      # Cap at 10 RPM (Buffer below 15 RPM free tier)
+    MISTRAL_MAX_RPM = int(os.getenv("KIBOT_MISTRAL_MAX_RPM", "45"))    # Cap at 45 RPM (Buffer below 60 RPM free tier)
+    FINNHUB_MAX_RPM = int(os.getenv("KIBOT_FINNHUB_MAX_RPM", "55"))    # Cap at 55 RPM (Buffer below 60 RPM free tier)
+    
     
     TELEGRAM_GLOBAL_MIN_INTERVAL_SEC = int(os.getenv("KIBOT_TELEGRAM_MIN_INTERVAL_SEC", "30"))
     TELEGRAM_DEDUPE_WINDOW_SEC = int(os.getenv("KIBOT_TELEGRAM_DEDUPE_WINDOW_SEC", "900"))
