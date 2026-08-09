@@ -381,7 +381,8 @@ class SovereignCouncil:
             return 0.0, f"fallback_requires_idr_pair:{symbol_text}"
         try:
             confidence = float(signal.get("confidence", 0.0) or 0.0)
-            change = abs(float(signal.get("change_5m_pct", signal.get("change_pct", 0.0)) or 0.0))
+            c5m = signal.get("change_5m_pct")
+            change = abs(float(c5m)) if c5m is not None else 0.50
             vol_ratio = float(signal.get("vol_ratio", 1.0) or 1.0)
             spread = float(signal.get("spread_pct", 9.9) if signal.get("spread_pct") is not None else 9.9)
             tick = float(signal.get("tick_size_pct", 99.0) if signal.get("tick_size_pct") is not None else 99.0)
@@ -547,7 +548,7 @@ class SovereignCouncil:
             "trailing_stop_pct": max(0.25, min(float(base.get("trailing_stop_pct", 0.35) or 0.35), 1.20)),
             "hard_stop_pct": max(1.2, min(float(base.get("hard_stop_pct", 2.0) or 2.0), 3.0)),
             "max_exposure_idr": float(base.get("max_exposure_idr", 0) or 0),
-            "max_slots": max(1, min(int(base.get("max_slots", 3) or 3), 5)),
+            "max_slots": max(1, min(int(base.get("max_slots", 100) or 100), 100)),
             "min_confidence": max(0.70, min(float(base.get("min_confidence", 0.74) or 0.74), 0.88)),
             "take_profit_pct": round(take_profit, 3),
             "fee_roundtrip_pct": fee_roundtrip,
