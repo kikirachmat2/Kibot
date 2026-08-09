@@ -90,13 +90,6 @@ PROVIDERS = {
         "base_url": OLLAMA_CHAT_URL,
         "priority": 99,
     },
-    "gemini": {
-        "daily_limit": 1500,
-        "model": os.getenv("GEMINI_SUPPORT_MODEL", os.getenv("GEMINI_MODEL", "gemini-2.0-flash-lite")),
-        "api_key_envs": ["GEMINI_API_KEY", "GOOGLE_API_KEY"],
-        "base_url": "https://generativelanguage.googleapis.com/v1beta/models",
-        "priority": 3,
-    },
     "mistral": {
         "daily_limit": 5000,
         "model": "mistral-tiny",
@@ -114,22 +107,22 @@ PROVIDERS = {
 }
 
 PROMPT_PROVIDER_ORDER = {
-    "COUNCIL_WATCHMAN": ["ollama", "gemini", "mistral"],
-    "COUNCIL_STRATEGIST": ["ollama", "gemini", "mistral_large"],
-    "STRATEGY_DEAN": ["ollama", "gemini", "mistral_large"],
-    "MOMENTUM_HAWK": ["ollama", "gemini", "mistral"],
-    "RISK_SENTINEL": ["ollama", "gemini", "mistral_large"],
-    "COUNCIL_SPEAKER": ["ollama", "gemini", "mistral_large"],
-    "COUNCIL_ANTAGONIST": ["ollama", "gemini", "mistral_large"],
-    "INTELLIGENCE_SYNTHESIS": ["ollama", "gemini", "mistral_large"],
-    "TARGETED_VALIDATION": ["ollama", "gemini", "mistral_large"],
-    "BRAIN_CRITIC": ["ollama", "gemini", "mistral_large"],
-    "POSSIBILITY_MINING": ["ollama", "gemini", "mistral_large"],
-    "PAIR_DISCOVERY": ["ollama", "gemini", "mistral"],
-    "VETO_ANALYSIS": ["ollama", "gemini", "mistral"],
-    "SOVEREIGN_DAILY_REVIEW": ["ollama", "gemini", "mistral_large"],
-    "OPS_CHAT": ["ollama", "gemini", "mistral"],
-    "OPS_CHAT_LOCAL": ["ollama", "gemini", "mistral"],
+    "COUNCIL_WATCHMAN": ["ollama", "mistral"],
+    "COUNCIL_STRATEGIST": ["ollama", "mistral_large"],
+    "STRATEGY_DEAN": ["ollama", "mistral_large"],
+    "MOMENTUM_HAWK": ["ollama", "mistral"],
+    "RISK_SENTINEL": ["ollama", "mistral_large"],
+    "COUNCIL_SPEAKER": ["ollama", "mistral_large"],
+    "COUNCIL_ANTAGONIST": ["ollama", "mistral_large"],
+    "INTELLIGENCE_SYNTHESIS": ["ollama", "mistral_large"],
+    "TARGETED_VALIDATION": ["ollama", "mistral_large"],
+    "BRAIN_CRITIC": ["ollama", "mistral_large"],
+    "POSSIBILITY_MINING": ["ollama", "mistral_large"],
+    "PAIR_DISCOVERY": ["ollama", "mistral"],
+    "VETO_ANALYSIS": ["ollama", "mistral"],
+    "SOVEREIGN_DAILY_REVIEW": ["ollama", "mistral_large"],
+    "OPS_CHAT": ["ollama", "mistral"],
+    "OPS_CHAT_LOCAL": ["ollama", "mistral"],
 }
 
 PROMPT_TEMPLATES = {
@@ -1016,14 +1009,6 @@ async def _call_provider(provider_raw: str, prompt: str, prompt_type: str = "") 
                     "Authorization": f"Bearer {api_key}",
                 }
                 response = await client.post(url, json=payload, headers=headers)
-            elif provider == "gemini":
-                url = f"{config['base_url']}/{config['model']}:generateContent?key={api_key}"
-                payload = {
-                    "system_instruction": {"parts": [{"text": PROMPT_SYSTEM}]},
-                    "contents": [{"parts": [{"text": prompt}]}]
-                }
-                headers = {"Content-Type": "application/json"}
-                response = await client.post(url, json=payload, headers=headers)
             else:
                 url = config["base_url"]
                 payload = {
@@ -1057,9 +1042,6 @@ async def _call_provider(provider_raw: str, prompt: str, prompt_type: str = "") 
                 content = data.get("message", {}).get("content")
                 _clear_provider_cooldown(provider, latency=latency)
                 return content
-            if provider == "gemini":
-                _clear_provider_cooldown(provider, latency=latency)
-                return data["candidates"][0]["content"]["parts"][0]["text"]
             
             _clear_provider_cooldown(provider, latency=latency)
             return data["choices"][0]["message"]["content"]
