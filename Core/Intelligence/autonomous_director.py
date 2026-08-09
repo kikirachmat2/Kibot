@@ -127,7 +127,16 @@ class AutonomousDirector:
                 p_tracker = get_paper_trade_tracker(var_id)
                 var_cfg = VARIANT_CONFIGS.get(var_id, {})
 
-                for s_cand in shadow:
+                # For AI_ASSISTED: throttle to top 2 composite score candidates to protect Mistral RPM
+                candidates_to_eval = shadow
+                if var_id == "AI_ASSISTED" and len(shadow) > 2:
+                    candidates_to_eval = sorted(
+                        shadow,
+                        key=lambda c: c.get("scorecard", {}).get("composite_score", 0.0),
+                        reverse=True
+                    )[:2]
+
+                for s_cand in candidates_to_eval:
                     cand_to_open = s_cand
                     # Filter check per variant
                     sig_quality = s_cand.get("signal_quality") or {}
@@ -145,9 +154,18 @@ class AutonomousDirector:
                     # Special AI filter for AI_ASSISTED variant
                     if var_id == "AI_ASSISTED":
                         try:
-                            from .kibot_ai_coordinator import query_ai
+                            from .kibot_ai_coordinator import query_ai, _is_provider_rpm_exceeded, _provider_cooldown_remaining
                             pair_sym = str(s_cand.get("pair") or s_cand.get("symbol") or "").upper()
                             ev_pct = (s_cand.get("ev_analysis") or {}).get("ev_pct", 0.0)
+
+                            if _is_provider_rpm_exceeded("mistral"):
+                                log.info(f"[AutonomousDirector] AI_ASSISTED skip {pair_sym}: Mistral local RPM limit (55 RPM) exceeded")
+                                continue
+
+                            cd_rem = _provider_cooldown_remaining("mistral")
+                            if cd_rem > 0:
+                                log.info(f"[AutonomousDirector] AI_ASSISTED skip {pair_sym}: Mistral in cooldown state ({int(cd_rem)}s remaining)")
+                                continue
                             
                             ai_payload = {
                                 "news_context": f"Institutional crypto news for {pair_sym}",
@@ -178,8 +196,8 @@ class AutonomousDirector:
                                 ai_res = coro
 
                             if not ai_res or ai_res.get("is_fallback"):
-                                # Fail-closed: Mistral call failed / fallback -> skip AI_ASSISTED entry
-                                log.info(f"[AutonomousDirector] AI_ASSISTED skip {pair_sym}: Mistral call failed or timeout (fail-closed)")
+                                reason = ai_res.get("reason", "unknown") if isinstance(ai_res, dict) else "no response"
+                                log.info(f"[AutonomousDirector] AI_ASSISTED skip {pair_sym}: Mistral execution failed ({reason})")
                                 continue
 
                             score = float(ai_res.get("confidence_score") or ai_res.get("confidence") or 0.0)

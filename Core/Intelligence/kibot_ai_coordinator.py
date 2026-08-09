@@ -749,7 +749,12 @@ def _is_provider_rpm_exceeded(provider: str) -> bool:
         return False
         
     now = time.time()
-    state = _read_json(_SLIDING_WINDOW_FILE, {}) if hasattr(Path, "exists") and _SLIDING_WINDOW_FILE.exists() else {}
+    state = {}
+    if hasattr(Path, "exists") and _SLIDING_WINDOW_FILE.exists():
+        try:
+            state = json.loads(_SLIDING_WINDOW_FILE.read_text(encoding="utf-8"))
+        except Exception:
+            state = {}
     if not isinstance(state, dict):
         state = {}
     timestamps = [t for t in state.get(provider, []) if (now - float(t)) < 60.0]
@@ -759,7 +764,12 @@ def _is_provider_rpm_exceeded(provider: str) -> bool:
 def _record_provider_rpm_request(provider: str) -> None:
     """Record request timestamp for 60-second sliding window counter."""
     now = time.time()
-    state = _read_json(_SLIDING_WINDOW_FILE, {}) if hasattr(Path, "exists") and _SLIDING_WINDOW_FILE.exists() else {}
+    state = {}
+    if hasattr(Path, "exists") and _SLIDING_WINDOW_FILE.exists():
+        try:
+            state = json.loads(_SLIDING_WINDOW_FILE.read_text(encoding="utf-8"))
+        except Exception:
+            state = {}
     if not isinstance(state, dict):
         state = {}
     timestamps = [t for t in state.get(provider, []) if (now - float(t)) < 60.0]
