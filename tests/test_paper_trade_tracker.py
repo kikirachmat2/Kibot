@@ -205,6 +205,24 @@ def test_paper_trade_exit_valuation_scenarios(temp_paper_env, monkeypatch):
     assert closed_c2[0]["is_invalid_valuation"] is True
 
 
+def test_paper_trade_stop_loss_exit_price(temp_paper_env):
+    tracker, _, _, _ = temp_paper_env
+    cand = {"symbol": "TESTSL/IDR", "pair": "TESTSL/IDR", "price_idr": 100.0}
+
+    # Open trade with entry=100.0, stop_loss_pct=0.01 (-1.0%), so stop_loss_price = 99.0
+    trade = tracker.open_paper_trade(cand, take_profit_pct=0.035, stop_loss_pct=0.01)
+    assert trade is not None
+    assert trade["stop_loss_price"] == 99.0
+
+    # Force current_price = 98.5 (below stop_loss_price of 99.0)
+    closed = tracker.evaluate_open_trades({"TESTSL/IDR": 98.5})
+    assert len(closed) == 1
+    assert closed[0]["exit_reason"] == "STOP_LOSS_BREACHED"
+    # Verify exit_price_idr is EXACTLY 98.5 (current_price), which is strictly < entry_price_idr (100.0)
+    assert closed[0]["exit_price_idr"] == 98.5
+    assert closed[0]["exit_price_idr"] < closed[0]["entry_price_idr"]
+
+
 def test_ai_assisted_variant_gate(monkeypatch, tmp_path):
     import Core.Intelligence.paper_trade_tracker as ptt_mod
     state_dir = tmp_path / "state"

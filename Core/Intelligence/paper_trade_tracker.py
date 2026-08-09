@@ -244,9 +244,11 @@ class PaperTradeTracker:
                 if current_price <= stop_price:
                     should_close = True
                     exit_reason = "STOP_LOSS_BREACHED"
+                    exit_price = current_price
                 elif current_price >= tp_price:
                     should_close = True
                     exit_reason = "TAKE_PROFIT_TARGET_HIT"
+                    exit_price = current_price
 
             if not should_close and now >= expire_ts:
                 # Attempt live ticker fetch if missing from price_map
