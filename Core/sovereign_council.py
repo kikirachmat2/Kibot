@@ -1001,6 +1001,7 @@ class SovereignCouncil:
                 )
                 venue = str(top.get("venue") or top.get("exchange") or "indodax").lower()
 
+            minutes_to_midnight = self._minutes_to_midnight_wib()
             decision_trace = {
                 "updated_at": datetime.now(timezone.utc).isoformat(),
                 "objective": "maximize_risk_adjusted_profit_for_boss",
