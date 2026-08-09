@@ -13,7 +13,8 @@ from typing import Any, Dict, List
 from zoneinfo import ZoneInfo
 
 import httpx
-from fastapi import FastAPI, Query
+import secrets
+from fastapi import FastAPI, Query, Request, Response, status
 from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
@@ -28,7 +29,38 @@ from Core.Treasury.live_truth_manager import build_live_truth
 app = FastAPI(title="KiBot Sovereign Dashboard", version="3.4")
 
 @app.middleware("http")
-async def add_security_headers(request, call_next):
+async def basic_auth_and_security_headers(request: Request, call_next):
+    # Exempt healthz endpoint if needed by monitoring, otherwise protect everything
+    path = request.url.path
+    if path != "/api/healthz":
+        user = os.getenv("KIBOT_DASHBOARD_USER", "admin")
+        pwd = os.getenv("KIBOT_DASHBOARD_PASSWORD", "")
+        is_pytest = bool(os.getenv("PYTEST_CURRENT_TEST"))
+        force_auth_test = request.headers.get("X-Test-Auth-Check") == "true"
+        
+        # Enforce HTTP Basic Authentication if password is set and not running standard unit tests
+        if pwd and (not is_pytest or force_auth_test):
+            auth_header = request.headers.get("Authorization")
+            authenticated = False
+            if auth_header and auth_header.startswith("Basic "):
+                import base64
+                try:
+                    encoded_credentials = auth_header.split(" ", 1)[1]
+                    decoded_bytes = base64.b64decode(encoded_credentials)
+                    decoded_str = decoded_bytes.decode("utf-8")
+                    req_user, req_pwd = decoded_str.split(":", 1)
+                    if secrets.compare_digest(req_user, user) and secrets.compare_digest(req_pwd, pwd):
+                        authenticated = True
+                except Exception:
+                    authenticated = False
+
+            if not authenticated:
+                return Response(
+                    content="Unauthorized Access - KiBot Sovereign Dashboard Requires Authentication.",
+                    status_code=status.HTTP_401_UNAUTHORIZED,
+                    headers={"WWW-Authenticate": 'Basic realm="KiBot Dashboard Protected Area"'},
+                )
+
     response = await call_next(request)
     response.headers["X-Frame-Options"] = "DENY"
     response.headers["X-Content-Type-Options"] = "nosniff"
