@@ -39,8 +39,8 @@ DEFAULT_PAPER_TRADE_SIZE_IDR = float(os.getenv("KIBOT_PAPER_TRADE_SIZE_IDR", "25
 VARIANT_CONFIGS = {
     "CONSERVATIVE": {
         "variant_id": "CONSERVATIVE",
-        "take_profit_pct": 0.042,  # +4.2% TP
-        "stop_loss_pct": 0.015,    # -1.5% SL -> (4.2 - 0.71)/(1.5 + 0.71) = 3.49 / 2.21 = 1.579 -> ~1.60 Net R:R (safely passes Net RR buffer)
+        "take_profit_pct": 0.0435, # +4.35% TP
+        "stop_loss_pct": 0.0150,   # -1.50% SL -> compute_net_rr_ratio(0.0435, 0.0150) = 1.6471 (>= 1.60 MIN_NET_RR_BUFFER)
         "allowed_grades": {"STRONG"},
         "min_volume_ratio": 2.0,  # Filter high volume ratio
     },
