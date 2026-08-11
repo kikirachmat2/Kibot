@@ -251,18 +251,6 @@ class DecisionAuthority:
                     "trade_profile": "RECOVERY" if daily_color == "RECOVERY" else "STANDARD",
                 }
             else:
-                if daily_color == "RECOVERY" and best_score >= max(0.45, min_score - 0.05) and best_conf >= max(0.55, confidence_floor - 0.05):
-                    return {
-                        "status": "EXECUTING",
-                        "action": "BUY",
-                        "ticker": best["ticker"],
-                        "confidence": round(max(best_conf, min(0.95, best_score)), 4),
-                        "logic": f"Recovery-mode execution: candidate kept active with lighter floors (score={best_score:.2f}, conf={best_conf:.2f})",
-                        "source": "DECISION_AUTHORITY",
-                        "source_signal": best_sig,
-                        "ranked_candidates": ranked[:5],
-                        "trade_profile": "RECOVERY",
-                    }
                 return {
                     "status": "WAIT",
                     "action": "NONE",

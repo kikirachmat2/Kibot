@@ -157,11 +157,11 @@ class DeadlineProfitEnforcer:
         if stage == "FATAL_BLOCKED" and not locked:
             locked = True
         if stage == "RECOVERY" and not locked and not current_breach:
-            reason = "RECOVERY: day is red; widen scan, lower nonfatal thresholds, keep searching"
+            reason = "RECOVERY: day is red; maintain strict standard thresholds and risk controls"
         elif stage == "GREEN" and not locked:
             reason = "GREEN: profits present; keep hunting for continuation setups"
         elif stage == "AGGRESSIVE_SEARCH" and not locked:
-            reason = f"AGGRESSIVE_SEARCH: {minutes_to_midnight}m left; continue hunting with tighter execution"
+            reason = f"AGGRESSIVE_SEARCH: {minutes_to_midnight}m left; continue hunting with standard execution"
 
         required_action = "SCAN_NEXT"
         if stage == "FATAL_BLOCKED":
