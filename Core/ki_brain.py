@@ -393,12 +393,8 @@ class BrainManager:
             return "APPROVE", f"sniper_error: {e}"
 
     def _gemini_api_key(self) -> str:
-        return (
-            os.getenv("GEMINI_API_KEY")
-            or os.getenv("GOOGLE_API_KEY")
-            or os.getenv("GEMINI_SUPPORT_API_KEY")
-            or ""
-        )
+        # Gemini API has been fully removed from KiBot in favor of Ollama -> Mistral
+        return ""
 
     def _load_indodax_pairs_cache(self) -> Dict[str, str]:
         try:
@@ -1894,7 +1890,7 @@ class BrainManager:
                 "active_cryptocurrencies": int(data.get("active_cryptocurrencies") or 0),
             }
 
-        return self._cached_payload("stablecoin_flow", self.stablecoin_flow_ttl_sec, loader)
+        return await self._cached_payload_async("stablecoin_flow", self.stablecoin_flow_ttl_sec, loader)
 
     def _provider_status(self) -> Dict[str, Dict[str, Any]]:
         out: Dict[str, Dict[str, Any]] = {}

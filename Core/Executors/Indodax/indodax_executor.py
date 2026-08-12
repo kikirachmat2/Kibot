@@ -29,7 +29,7 @@ from Core.Decision.deterministic_decision_gate import evaluate_live_trade
 from Core.Treasury.live_truth_manager import load_live_truth
 from Core.Intelligence.pair_quarantine import is_quarantined
 from Core.Support.ki_config import KiConfig
-DEFAULT_FEE_ROUNDTRIP_PCT = KiConfig.KIBOT_TAKER_FEE_ROUNDTRIP_PCT * 100.0  # 0.61% official Indodax taker roundtrip fee
+DEFAULT_FEE_ROUNDTRIP_PCT = KiConfig.KIBOT_TAKER_FEE_ROUNDTRIP_PCT * 100.0  # Official Indodax taker roundtrip fee from KiConfig SSOT
 
 # ── Phase 5: Order lifecycle tracking ──
 try:
