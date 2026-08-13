@@ -1108,7 +1108,7 @@ def _extract_json_object(response: str) -> Optional[Dict[str, Any]]:
     if "```json" in response:
         try:
             content = response.split("```json")[1].split("```")[0].strip()
-            parsed = json.loads(content)
+            parsed = json.loads(content, strict=False)
             return parsed if isinstance(parsed, dict) else None
         except Exception:
             pass
@@ -1141,13 +1141,21 @@ def _extract_json_object(response: str) -> Optional[Dict[str, Any]]:
                 end = index
                 break
     if end == -1:
+        end = response.rfind("}")
+    if end == -1 or end <= start:
         return None
     candidate = response[start : end + 1]
     try:
-        parsed = json.loads(candidate)
+        parsed = json.loads(candidate, strict=False)
         return parsed if isinstance(parsed, dict) else None
     except Exception:
-        return None
+        try:
+            import re
+            fixed = re.sub(r'":\s*"([^"]*)"', lambda m: '": "' + m.group(1).replace('\n', '\\n') + '"', candidate, flags=re.DOTALL)
+            parsed = json.loads(fixed, strict=False)
+            return parsed if isinstance(parsed, dict) else None
+        except Exception:
+            return None
 
 
 def _response_has_minimum_schema(prompt_type: str, parsed: Dict[str, Any]) -> bool:
