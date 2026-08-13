@@ -139,9 +139,9 @@ def collect_performance_metrics() -> Dict[str, Any]:
 
 
 def _call_mistral_analyst(metrics: Dict[str, Any]) -> Optional[Dict[str, Any]]:
-    """Invokes Mistral via _call_provider with rate-limit protection and fail-safe handling."""
+    """Invokes Mistral via query_ai with rate-limit protection and fail-safe handling."""
     import asyncio
-    from Core.Intelligence.kibot_ai_coordinator import _call_provider, _extract_json_object
+    from Core.Intelligence.kibot_ai_coordinator import query_ai
 
     compact_metrics = {}
     for var, stats in metrics.get("variant_stats", {}).items():
@@ -154,42 +154,15 @@ def _call_mistral_analyst(metrics: Dict[str, Any]) -> Optional[Dict[str, Any]]:
             "top_losses": stats.get("top_losing_pairs", [])[:3],
         }
 
-    prompt = (
-        "You are an expert quantitative crypto analyst for KiBot, an automated trading system.\n"
-        "Review the paper trading variant metrics below and provide a concise structured report in Bahasa Indonesia.\n"
-        "IMPORTANT DIRECTIVE: Your output is strictly OBSERVATIONAL and HYPOTHETICAL for human operators to review.\n"
-        "You MUST NOT give direct operational instructions or assume your hypotheses will automatically alter bot code/thresholds.\n"
-        "OUTPUT FORMAT: Return STRICT COMPACT JSON ONLY starting with { and ending with }, with exact keys:\n"
-        "- summary_text (string, 150-250 words in Bahasa Indonesia)\n"
-        "- observations (list of short strings)\n"
-        "- hypotheses (list of short strings)\n"
-        "- suggested_investigation_areas (list of short strings)\n\n"
-        f"Metrics:\n{json.dumps(compact_metrics, indent=2)}"
-    )
+    context = {
+        "metrics_json": json.dumps(compact_metrics, indent=2, ensure_ascii=False)
+    }
 
     try:
-        raw_res = asyncio.run(_call_provider("mistral", prompt, prompt_type="AI_PERFORMANCE_ANALYST"))
-        if not raw_res:
-            logger.warning("[AI Analyst] Mistral call returned empty response.")
+        parsed = asyncio.run(query_ai("AI_PERFORMANCE_ANALYST", context, force_refresh=True))
+        if not parsed or parsed.get("is_fallback"):
+            logger.warning("[AI Analyst] query_ai call returned empty response or fallback.")
             return None
-
-        parsed = _extract_json_object(raw_res)
-        if not parsed:
-            # Fallback regex extraction if raw_res had multiline strings or markdown blocks
-            try:
-                import re
-                text = str(raw_res).strip()
-                if "```json" in text:
-                    text = text.split("```json")[1].split("```")[0].strip()
-                elif "```" in text:
-                    text = text.split("```")[1].split("```")[0].strip()
-                parsed = json.loads(text, strict=False)
-            except Exception:
-                try:
-                    fixed = re.sub(r'":\s*"([^"]*)"', lambda m: '": "' + m.group(1).replace('\n', '\\n') + '"', text, flags=re.DOTALL)
-                    parsed = json.loads(fixed, strict=False)
-                except Exception:
-                    parsed = None
 
         if isinstance(parsed, dict) and ("summary_text" in parsed or "observations" in parsed):
             # Normalize dictionary outputs to lists if Mistral returns object instead of array
