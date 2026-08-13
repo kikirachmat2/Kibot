@@ -50,6 +50,7 @@ Usage:
   kibotctl reset-pnl
   kibotctl learn-status
   kibotctl variant-compare
+  kibotctl ai-report [--refresh]
   kibotctl up
   kibotctl down
   kibotctl restart
@@ -484,6 +485,64 @@ for var in variants:
 
 print('========================================================================================\n')
 "
+cmd_ai_report() {
+  local refresh=0
+  if [[ "${1:-}" == "--refresh" ]]; then
+    refresh=1
+  fi
+  local py_bin="/home/ubuntu/KiBot/.venv/bin/python3"
+  if [[ ! -x "$py_bin" ]]; then
+    py_bin="python3"
+  fi
+  $py_bin - "$refresh" <<'PY'
+import sys
+import json
+from pathlib import Path
+from Core.Intelligence.ai_performance_analyst import run_performance_analysis, get_latest_report
+
+refresh = sys.argv[1] == "1" if len(sys.argv) > 1 else False
+
+if refresh:
+    print("⏳ Running on-demand AI performance analysis via Mistral...")
+    res = run_performance_analysis(send_telegram=False)
+else:
+    res = get_latest_report()
+    if not res:
+        print("ℹ️ No cached AI report found. Generating fresh report...")
+        res = run_performance_analysis(send_telegram=False)
+
+print('\n========================================================================================')
+print('                         KIBOT AI PERFORMANCE ANALYST REPORT')
+print('========================================================================================')
+ts = res.get('timestamp_wib') or res.get('metrics', {}).get('collected_at', 'N/A')
+print(f'Report Timestamp (WIB): {ts}')
+print(f'Report Status         : {res.get("status", "UNKNOWN")}')
+print('-' * 88)
+
+ai_rep = res.get('ai_report') or {}
+print('\n📝 ANALISIS & OBSERVASI (Mistral Out-of-Band Analyst):')
+print(ai_rep.get('summary_text', 'Laporan tidak tersedia.'))
+
+obs = ai_rep.get('observations') or []
+if obs:
+    print('\n🔍 POIN OBSERVASI:')
+    for item in obs:
+        print(f'  • {item}')
+
+hyp = ai_rep.get('hypotheses') or []
+if hyp:
+    print('\n💡 HIPOTESIS PENYEBAB (Bukan Kesimpulan Pasti):')
+    for item in hyp:
+        print(f'  • {item}')
+
+sug = ai_rep.get('suggested_investigation_areas') or []
+if sug:
+    print('\n🎯 REKOMENDASI AREA INVESTIGASI OPERATOR:')
+    for item in sug:
+        print(f'  • {item}')
+
+print('\n========================================================================================\n')
+PY
 }
 
 case "${1:-}" in
@@ -493,6 +552,7 @@ case "${1:-}" in
   reset-pnl) shift; cmd_reset_pnl "$@" ;;
   learn-status) shift; cmd_learn_status "$@" ;;
   variant-compare) shift; cmd_variant_compare "$@" ;;
+  ai-report) shift; cmd_ai_report "$@" ;;
   up) shift; cmd_up "$@" ;;
   down) shift; cmd_down "$@" ;;
   restart) shift; cmd_restart "$@" ;;
