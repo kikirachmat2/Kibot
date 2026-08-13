@@ -955,6 +955,8 @@ def _provider_model(provider: str, prompt_type: str) -> str:
 
 def _provider_timeout(provider: str, prompt_type: str) -> float:
     if provider != "ollama":
+        if prompt_type in ("AI_PERFORMANCE_ANALYST", "SOVEREIGN_DAILY_REVIEW"):
+            return 35.0
         return REQUEST_TIMEOUT_SEC
     
     from Core.Support.ki_config import KiConfig
