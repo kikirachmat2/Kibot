@@ -344,6 +344,9 @@ class PaperTradeTracker:
             "exit_time_wib": now_iso,
             "timestamp_wib": now_iso,
             "date_wib": date_str,
+            "scorecard_verdict": trade.get("scorecard_verdict"),
+            "ai_confidence_score": trade.get("ai_confidence_score"),
+            "ai_reasoning": trade.get("ai_reasoning"),
         }
 
         # 1. Append to state/trade_history/paper_{variant}_{date}.jsonl (or paper_{date}.jsonl if DEFAULT)

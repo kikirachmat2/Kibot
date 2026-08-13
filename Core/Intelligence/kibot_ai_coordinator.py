@@ -1184,6 +1184,7 @@ def _response_has_minimum_schema(prompt_type: str, parsed: Dict[str, Any]) -> bo
         "TRADE_POSTMORTEM": {"summary"},
         "WEEKLY_SUMMARY": {"summary"},
         "AI_PERFORMANCE_ANALYST": {"summary_text", "observations"},
+        "AI_ASSISTED_FILTER": {"confidence_score", "reasoning"},
     }
     required = required_by_prompt.get(prompt_type, set())
     if not required:
