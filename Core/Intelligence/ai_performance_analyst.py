@@ -147,7 +147,8 @@ def _call_mistral_analyst(metrics: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         f"{ANALYST_SYSTEM_PROMPT}\n\n"
         f"METRIKS KINERJA BOT HARI INI:\n"
         f"{json.dumps(metrics.get('variant_stats', {}), indent=2, ensure_ascii=False)}\n\n"
-        "Minta: Berikan hasil analisis dalam format JSON terstruktur persis sesuai schema yang diminta."
+        "Minta: Berikan hasil analisis dalam format JSON terstruktur persis sesuai schema yang diminta. "
+        "PENTING: Jangan masukkan unescaped newline di dalam string JSON summary_text (gunakan \\n jika perlu) agar JSON valid."
     )
 
     try:
@@ -158,7 +159,20 @@ def _call_mistral_analyst(metrics: Dict[str, Any]) -> Optional[Dict[str, Any]]:
             return None
 
         parsed = _extract_json_object(raw_res)
-        if isinstance(parsed, dict) and "summary_text" in parsed:
+        if not parsed:
+            # Fallback regex extraction if raw_res had unescaped newlines inside quotes
+            try:
+                import re
+                cleaned = str(raw_res).strip()
+                if "```json" in cleaned:
+                    cleaned = cleaned.split("```json")[1].split("```")[0].strip()
+                elif "```" in cleaned:
+                    cleaned = cleaned.split("```")[1].split("```")[0].strip()
+                parsed = json.loads(cleaned, strict=False)
+            except Exception:
+                pass
+
+        if isinstance(parsed, dict) and ("summary_text" in parsed or "observations" in parsed):
             return parsed
         else:
             logger.warning("[AI Analyst] Mistral response JSON missing expected keys: %s", parsed)
