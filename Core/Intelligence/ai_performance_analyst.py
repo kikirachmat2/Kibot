@@ -192,6 +192,13 @@ def _call_mistral_analyst(metrics: Dict[str, Any]) -> Optional[Dict[str, Any]]:
                     parsed = None
 
         if isinstance(parsed, dict) and ("summary_text" in parsed or "observations" in parsed):
+            # Normalize dictionary outputs to lists if Mistral returns object instead of array
+            for k in ("observations", "hypotheses", "suggested_investigation_areas"):
+                val = parsed.get(k)
+                if isinstance(val, dict):
+                    parsed[k] = [f"{sub_k}: {json.dumps(sub_v, ensure_ascii=False)}" if isinstance(sub_v, (dict, list)) else f"{sub_k}: {sub_v}" for sub_k, sub_v in val.items()]
+                elif isinstance(val, list):
+                    parsed[k] = [json.dumps(item, ensure_ascii=False) if isinstance(item, (dict, list)) else str(item) for item in val]
             return parsed
         else:
             logger.warning("[AI Analyst] Mistral response JSON missing expected keys: %s", parsed)
