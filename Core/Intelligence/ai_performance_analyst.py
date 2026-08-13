@@ -143,17 +143,13 @@ def _call_mistral_analyst(metrics: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     import asyncio
     from Core.Intelligence.kibot_ai_coordinator import _call_provider, _extract_json_object
 
-    prompt = (
-        f"{ANALYST_SYSTEM_PROMPT}\n\n"
-        f"METRIKS KINERJA BOT HARI INI:\n"
-        f"{json.dumps(metrics.get('variant_stats', {}), indent=2, ensure_ascii=False)}\n\n"
-        "Minta: Berikan hasil analisis dalam format JSON terstruktur persis sesuai schema yang diminta. "
-        "PENTING: Jangan masukkan unescaped newline di dalam string JSON summary_text (gunakan \\n jika perlu) agar JSON valid."
-    )
+    context = {
+        "metrics_json": json.dumps(metrics.get("variant_stats", {}), indent=2, ensure_ascii=False)
+    }
 
     try:
-        # Use _call_provider with provider="mistral"
-        raw_res = asyncio.run(_call_provider("mistral", prompt, prompt_type="PERFORMANCE_ANALYST"))
+        # Use _call_provider with provider="mistral" and prompt_type="AI_PERFORMANCE_ANALYST"
+        raw_res = asyncio.run(_call_provider("mistral", json.dumps(context, ensure_ascii=False), prompt_type="AI_PERFORMANCE_ANALYST"))
         if not raw_res:
             logger.warning("[AI Analyst] Mistral call returned empty response.")
             return None
@@ -163,14 +159,19 @@ def _call_mistral_analyst(metrics: Dict[str, Any]) -> Optional[Dict[str, Any]]:
             # Fallback regex extraction if raw_res had unescaped newlines inside quotes
             try:
                 import re
-                cleaned = str(raw_res).strip()
-                if "```json" in cleaned:
-                    cleaned = cleaned.split("```json")[1].split("```")[0].strip()
-                elif "```" in cleaned:
-                    cleaned = cleaned.split("```")[1].split("```")[0].strip()
-                parsed = json.loads(cleaned, strict=False)
+                text = str(raw_res).strip()
+                if "```json" in text:
+                    text = text.split("```json")[1].split("```")[0].strip()
+                elif "```" in text:
+                    text = text.split("```")[1].split("```")[0].strip()
+                parsed = json.loads(text, strict=False)
             except Exception:
-                pass
+                try:
+                    # Sanitize raw unescaped newlines inside JSON string values
+                    fixed = re.sub(r'":\s*"([^"]*)"', lambda m: '": "' + m.group(1).replace('\n', '\\n') + '"', text, flags=re.DOTALL)
+                    parsed = json.loads(fixed, strict=False)
+                except Exception:
+                    parsed = None
 
         if isinstance(parsed, dict) and ("summary_text" in parsed or "observations" in parsed):
             return parsed
