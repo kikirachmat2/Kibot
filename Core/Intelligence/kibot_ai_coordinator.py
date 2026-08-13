@@ -1039,13 +1039,14 @@ async def _call_provider(provider_raw: str, prompt: str, prompt_type: str = "") 
                 response = await client.post(url, json=payload, headers=headers)
             else:
                 url = config["base_url"]
+                max_tok = 2000 if prompt_type in ("PERFORMANCE_ANALYST", "SOVEREIGN_DAILY_REVIEW") else 800
                 payload = {
                     "model": model,
                     "messages": [
                         {"role": "system", "content": PROMPT_SYSTEM},
                         {"role": "user", "content": prompt}
                     ],
-                    "max_tokens": 800,
+                    "max_tokens": max_tok,
                     "temperature": 0.3,
                 }
                 headers = {
