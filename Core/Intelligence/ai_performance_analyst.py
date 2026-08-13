@@ -143,20 +143,39 @@ def _call_mistral_analyst(metrics: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     import asyncio
     from Core.Intelligence.kibot_ai_coordinator import _call_provider, _extract_json_object
 
-    context = {
-        "metrics_json": json.dumps(metrics.get("variant_stats", {}), indent=2, ensure_ascii=False)
-    }
+    compact_metrics = {}
+    for var, stats in metrics.get("variant_stats", {}).items():
+        compact_metrics[var] = {
+            "trades": stats.get("total_trades", 0),
+            "win_rate_pct": stats.get("win_rate_pct", 0.0),
+            "total_pnl_idr": stats.get("total_pnl_idr", 0.0),
+            "exit_reasons": stats.get("exit_reasons", {}),
+            "top_wins": stats.get("top_winning_pairs", [])[:3],
+            "top_losses": stats.get("top_losing_pairs", [])[:3],
+        }
+
+    prompt = (
+        "You are an expert quantitative crypto analyst for KiBot, an automated trading system.\n"
+        "Review the paper trading variant metrics below and provide a concise structured report in Bahasa Indonesia.\n"
+        "IMPORTANT DIRECTIVE: Your output is strictly OBSERVATIONAL and HYPOTHETICAL for human operators to review.\n"
+        "You MUST NOT give direct operational instructions or assume your hypotheses will automatically alter bot code/thresholds.\n"
+        "OUTPUT FORMAT: Return STRICT COMPACT JSON ONLY starting with { and ending with }, with exact keys:\n"
+        "- summary_text (string, 150-250 words in Bahasa Indonesia)\n"
+        "- observations (list of short strings)\n"
+        "- hypotheses (list of short strings)\n"
+        "- suggested_investigation_areas (list of short strings)\n\n"
+        f"Metrics:\n{json.dumps(compact_metrics, indent=2)}"
+    )
 
     try:
-        # Use _call_provider with provider="mistral" and prompt_type="AI_PERFORMANCE_ANALYST"
-        raw_res = asyncio.run(_call_provider("mistral", json.dumps(context, ensure_ascii=False), prompt_type="AI_PERFORMANCE_ANALYST"))
+        raw_res = asyncio.run(_call_provider("mistral", prompt, prompt_type="AI_PERFORMANCE_ANALYST"))
         if not raw_res:
             logger.warning("[AI Analyst] Mistral call returned empty response.")
             return None
 
         parsed = _extract_json_object(raw_res)
         if not parsed:
-            # Fallback regex extraction if raw_res had unescaped newlines inside quotes
+            # Fallback regex extraction if raw_res had multiline strings or markdown blocks
             try:
                 import re
                 text = str(raw_res).strip()
@@ -167,7 +186,6 @@ def _call_mistral_analyst(metrics: Dict[str, Any]) -> Optional[Dict[str, Any]]:
                 parsed = json.loads(text, strict=False)
             except Exception:
                 try:
-                    # Sanitize raw unescaped newlines inside JSON string values
                     fixed = re.sub(r'":\s*"([^"]*)"', lambda m: '": "' + m.group(1).replace('\n', '\\n') + '"', text, flags=re.DOTALL)
                     parsed = json.loads(fixed, strict=False)
                 except Exception:
