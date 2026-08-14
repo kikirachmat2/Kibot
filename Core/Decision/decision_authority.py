@@ -113,10 +113,10 @@ class DecisionAuthority:
             except Exception:
                 pass
         
-        confidence_floor = adaptive_cfg.get("confidence_floor", cfg.get("confidence_floor", 0.70))
-        min_score = adaptive_cfg.get("min_score", cfg.get("min_score", 0.58))
-        max_spread = adaptive_cfg.get("max_spread_pct", cfg.get("max_spread_pct", 1.20))
-        max_risk = adaptive_cfg.get("max_risk_penalty", cfg.get("max_risk_penalty", 0.60))
+        confidence_floor = float(adaptive_cfg.get("confidence_floor") or cfg.get("confidence_floor", 0.70) or 0.70)
+        min_score = float(adaptive_cfg.get("min_score") or cfg.get("min_score", 0.58) or 0.58)
+        max_spread = float(adaptive_cfg.get("max_spread_pct") or cfg.get("max_spread_pct", 1.20) or 1.20)
+        max_risk = float(adaptive_cfg.get("max_risk_penalty") or cfg.get("max_risk_penalty", 0.60) or 0.60)
         daily_color = str(daily_context.get("daily_color", "FLAT")).upper()
         urgency = str(daily_context.get("urgency_level", "LOW")).upper()
 
@@ -243,7 +243,8 @@ class DecisionAuthority:
                     "status": "EXECUTING",
                     "action": "BUY",
                     "ticker": best["ticker"],
-                    "confidence": round(max(best_conf, min(0.95, best_score)), 4),
+                    "confidence": round(best_conf, 4),
+                    "score": round(best_score, 4),
                     "logic": f"Deterministic execution: Candidate cleared score ({best_score:.2f} >= {min_score:.2f}) and confidence ({best_conf:.2f} >= {confidence_floor:.2f})",
                     "source": "DECISION_AUTHORITY",
                     "source_signal": best_sig,

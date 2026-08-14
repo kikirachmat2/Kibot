@@ -635,20 +635,25 @@ def update_source_metrics(source: str, success: bool, latency_ms: float, error: 
     if not isinstance(entry, dict):
         entry = {"success_count": 0, "fail_count": 0, "avg_latency_ms": 0.0, "last_latency_ms": 0.0, "status": "UNKNOWN", "last_error": ""}
     
+    success_cnt = int(entry.get("success_count", 0))
+    fail_cnt = int(entry.get("fail_count", 0))
     if success:
-        entry["success_count"] += 1
+        success_cnt += 1
+        entry["success_count"] = success_cnt
         entry["status"] = "HEALTHY"
         entry["last_error"] = ""
     else:
-        entry["fail_count"] += 1
+        fail_cnt += 1
+        entry["fail_count"] = fail_cnt
         entry["status"] = "DEGRADED"
         entry["last_error"] = str(error)[:200]
     
     # Simple rolling average
-    total_reqs = entry["success_count"] + entry["fail_count"]
-    old_avg = entry.get("avg_latency_ms", 0.0)
-    entry["avg_latency_ms"] = old_avg + (latency_ms - old_avg) / max(1, min(total_reqs, 50))
-    entry["last_latency_ms"] = latency_ms
+    total_reqs = success_cnt + fail_cnt
+    old_avg = float(entry.get("avg_latency_ms", 0.0) or 0.0)
+    lat = float(latency_ms)
+    entry["avg_latency_ms"] = old_avg + (lat - old_avg) / max(1, min(total_reqs, 50))
+    entry["last_latency_ms"] = lat
     entry["last_updated"] = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
     
     sources[source] = entry
@@ -802,7 +807,8 @@ def _candidate_providers(prompt_type: str) -> List[str]:
         if name not in PROVIDERS or name in ordered:
             continue
         config = PROVIDERS[name]
-        if counts.get(name, 0) >= int(config["daily_limit"]):
+        limit = int(config.get("daily_limit", 0) or 0)
+        if limit > 0 and int(counts.get(name, 0) or 0) >= limit:
             continue
         if not _provider_api_key(name):
             continue
@@ -1038,9 +1044,9 @@ async def _call_provider(provider_raw: str, prompt: str, prompt_type: str = "") 
                     "Content-Type": "application/json",
                     "Authorization": f"Bearer {api_key}",
                 }
-                response = await client.post(url, json=payload, headers=headers)
+                response = await client.post(str(url), json=payload, headers=headers)
             else:
-                url = config["base_url"]
+                url = str(config["base_url"])
                 max_tok = 2000 if prompt_type in ("AI_PERFORMANCE_ANALYST", "PERFORMANCE_ANALYST", "SOVEREIGN_DAILY_REVIEW") else 800
                 payload = {
                     "model": model,
@@ -1055,7 +1061,7 @@ async def _call_provider(provider_raw: str, prompt: str, prompt_type: str = "") 
                     "Content-Type": "application/json",
                     "Authorization": f"Bearer {api_key}",
                 }
-                response = await client.post(url, json=payload, headers=headers)
+                response = await client.post(str(url), json=payload, headers=headers)
 
             latency = time.time() - start_time
             

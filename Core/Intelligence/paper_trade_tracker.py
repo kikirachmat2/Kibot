@@ -388,8 +388,8 @@ class PaperTradeTracker:
             elif net_pnl_idr < 0:
                 eq_data["losing_trades"] = int(eq_data.get("losing_trades", 0)) + 1
 
-            total_trades = eq_data["total_paper_trades"]
-            wins = eq_data["winning_trades"]
+            total_trades = int(eq_data.get("total_paper_trades", 0))
+            wins = int(eq_data.get("winning_trades", 0))
             eq_data["win_rate_pct"] = round((wins / total_trades) * 100.0, 2) if total_trades > 0 else 0.0
             eq_data["total_pnl_idr"] = round(float(eq_data.get("total_pnl_idr", 0.0)) + net_pnl_idr, 2)
             eq_data["current_equity_idr"] = round(float(eq_data.get("initial_bankroll_idr", self.bankroll_idr)) + eq_data["total_pnl_idr"], 2)

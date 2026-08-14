@@ -268,6 +268,8 @@ def test_ai_assisted_variant_gate(monkeypatch, tmp_path):
         return {"confidence_score": 85, "has_red_flag": False, "reasoning": "Strong momentum"}
 
     monkeypatch.setattr(kibot_ai_coordinator, "query_ai", mock_ai_approve)
+    monkeypatch.setattr(kibot_ai_coordinator, "_is_provider_rpm_exceeded", lambda p: False)
+    monkeypatch.setattr(kibot_ai_coordinator, "_provider_cooldown_remaining", lambda p: 0.0)
     res_approve = director.evaluate_cycle([cand])
     ai_tracker = ptt_mod.get_paper_trade_tracker("AI_ASSISTED")
     open_trades = ai_tracker.get_open_paper_trades()
