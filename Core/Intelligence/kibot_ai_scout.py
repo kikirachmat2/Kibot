@@ -221,13 +221,15 @@ class WorldScout:
                 semantic_alerts.append(f"dispatcher_blocked:{reason}")
                 blockers.append({"source": "live_order_dispatcher", "reason": reason})
 
-        canonical_blockers = canonical_risk.get("canonical_blockers") if isinstance(canonical_risk.get("canonical_blockers"), list) else []
+        raw_canonical_blockers = canonical_risk.get("canonical_blockers")
+        canonical_blockers: list = list(raw_canonical_blockers) if isinstance(raw_canonical_blockers, list) else []
         if canonical_state in {"LOCKED", "EMERGENCY"}:
             for item in canonical_blockers:
                 if isinstance(item, dict):
                     blockers.append({"source": f"canonical:{item.get('source')}", "reason": str(item.get("reason") or "")})
         else:
-            ignored = canonical_risk.get("ignored_stale_blockers") if isinstance(canonical_risk.get("ignored_stale_blockers"), list) else []
+            raw_ignored = canonical_risk.get("ignored_stale_blockers")
+            ignored: list = list(raw_ignored) if isinstance(raw_ignored, list) else []
             for item in ignored:
                 if isinstance(item, dict):
                     semantic_alerts.append(

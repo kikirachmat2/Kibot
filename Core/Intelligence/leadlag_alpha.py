@@ -63,14 +63,14 @@ class LeadLagAlphaEngine:
     async def fetch_binance_tickers(self) -> Dict[str, float]:
         """Fetch prices from Binance with resilient fallbacks."""
         cached = self.binance_cache.get("tickers")
-        if cached is not None:
+        if isinstance(cached, dict):
             return cached
             
-        prices = {}
+        prices: Dict[str, float] = {}
         try:
             url = "https://api.binance.com/api/v3/ticker/price"
             async with aiohttp.ClientSession() as session:
-                async with session.get(url, timeout=1.5) as resp:
+                async with session.get(url, timeout=aiohttp.ClientTimeout(total=1.5)) as resp:
                     if resp.status == 200:
                         data = loads_json(await resp.read())
                         for item in data:
@@ -96,14 +96,14 @@ class LeadLagAlphaEngine:
     async def fetch_indodax_tickers(self) -> Dict[str, Dict[str, Any]]:
         """Fetch tickers and volume from Indodax summaries API."""
         cached = self.indodax_cache.get("tickers")
-        if cached is not None:
+        if isinstance(cached, dict):
             return cached
             
-        tickers = {}
+        tickers: Dict[str, Dict[str, Any]] = {}
         try:
             url = "https://indodax.com/api/summaries"
             async with aiohttp.ClientSession() as session:
-                async with session.get(url, timeout=1.5) as resp:
+                async with session.get(url, timeout=aiohttp.ClientTimeout(total=1.5)) as resp:
                     if resp.status == 200:
                         data = loads_json(await resp.read())
                         raw_tickers = data.get("tickers", {})
@@ -121,7 +121,8 @@ class LeadLagAlphaEngine:
         except Exception as e:
             logger.debug(f"Error fetching Indodax summaries: {e}")
             
-        return tickers or self.indodax_cache.get("tickers", {})
+        fallback = self.indodax_cache.get("tickers")
+        return tickers or (fallback if isinstance(fallback, dict) else {})
 
     async def calculate_opportunities(self) -> List[Dict[str, Any]]:
         """Scout opportunities comparing leading assets and follower assets."""
@@ -150,10 +151,10 @@ class LeadLagAlphaEngine:
             lag_gap_pct = leader_change_pct - follower_change_pct
             
             # Calculate spread
-            buy = indodax_info.get("buy", follower_price)
-            sell = indodax_info.get("sell", follower_price)
-            spread_pct = ((sell - buy) / buy * 100.0) if buy > 0 else 0.0
-            vol_idr = indodax_info.get("vol_idr", 0.0)
+            buy = float(indodax_info.get("buy") or follower_price or 0.0)
+            sell = float(indodax_info.get("sell") or follower_price or 0.0)
+            spread_pct = ((sell - buy) / buy * 100.0) if buy > 0.0 else 0.0
+            vol_idr = float(indodax_info.get("vol_idr") or 0.0)
             
             from Core.Support.ki_config import KiConfig
             # Fee Taker adjustment (0.31% official Indodax taker buy fee)

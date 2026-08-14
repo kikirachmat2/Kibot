@@ -404,8 +404,11 @@ class CouncilDataAggregator:
             elif isinstance(self.master.brain, dict):
                 brain_snap = self.master.brain
             
+        brain_dict = brain_snap if isinstance(brain_snap, dict) else {}
+        pulse = brain_dict.get("market_pulse", {})
+        pulse_dict = pulse if isinstance(pulse, dict) else {}
         return {
             "mood": mood,
-            "regime": brain_snap.get("market_pulse", {}).get("risk_bias", "UNKNOWN"),
-            "fear_greed": brain_snap.get("fear_greed", "N/A")
+            "regime": pulse_dict.get("risk_bias", "UNKNOWN"),
+            "fear_greed": brain_dict.get("fear_greed", "N/A")
         }

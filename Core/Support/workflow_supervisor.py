@@ -123,7 +123,8 @@ def _update_repair_tracking(key: str, *, attempted: bool, resolved: bool) -> dic
     previous = _read_json(REPAIR_STATE_FILE, {})
     if not isinstance(previous, dict):
         previous = {}
-    current = previous.get(key) if isinstance(previous.get(key), dict) else {}
+    raw_curr = previous.get(key)
+    current: dict[str, Any] = raw_curr if isinstance(raw_curr, dict) else {}
     if resolved:
         current = {
             "key": key,
@@ -442,7 +443,8 @@ async def notify_if_needed(payload: dict[str, Any]) -> bool:
         
     is_persistent_api_breach = _check_persistent_api_breach(blockers)
     
-    auto_repair = payload.get("auto_repair") if isinstance(payload.get("auto_repair"), dict) else {}
+    raw_auto_repair = payload.get("auto_repair")
+    auto_repair: dict[str, Any] = raw_auto_repair if isinstance(raw_auto_repair, dict) else {}
     if not is_persistent_api_breach:
         if auto_repair.get("attempted") and not auto_repair.get("operator_alert_required"):
             return False

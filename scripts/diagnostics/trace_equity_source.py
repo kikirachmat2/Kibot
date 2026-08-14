@@ -61,11 +61,12 @@ def load_sources() -> Dict[str, Any]:
 
 
 def build_reconciliation(data: Dict[str, Any]) -> Tuple[List[Row], Dict[str, Any]]:
-    truth = data["live_truth"] if isinstance(data["live_truth"], dict) else {}
-    gov = data["capital_governor"] if isinstance(data["capital_governor"], dict) else {}
-    anchor = data["daily_anchor"] if isinstance(data["daily_anchor"], dict) else {}
-    telemetry = data["telemetry_snapshot"] if isinstance(data["telemetry_snapshot"], dict) else {}
-    portfolio = telemetry.get("portfolio") if isinstance(telemetry.get("portfolio"), dict) else {}
+    truth: Dict[str, Any] = data["live_truth"] if isinstance(data.get("live_truth"), dict) else {}
+    gov: Dict[str, Any] = data["capital_governor"] if isinstance(data.get("capital_governor"), dict) else {}
+    anchor: Dict[str, Any] = data["daily_anchor"] if isinstance(data.get("daily_anchor"), dict) else {}
+    telemetry: Dict[str, Any] = data["telemetry_snapshot"] if isinstance(data.get("telemetry_snapshot"), dict) else {}
+    raw_portfolio = telemetry.get("portfolio")
+    portfolio: Dict[str, Any] = raw_portfolio if isinstance(raw_portfolio, dict) else {}
 
     cash = safe_float(
         truth.get("cash_idr"),

@@ -48,7 +48,7 @@ class CircuitBreaker:
         if self.state == "CLOSED":
             return True
         if self.state == "OPEN":
-            if time.time() - self.opened_at > self.reset_after:
+            if self.opened_at is not None and (time.time() - self.opened_at > self.reset_after):
                 self.logger.info(f"[{self.name}] Reset timeout reached. Moving to HALF_OPEN")
                 self.state = "HALF_OPEN"
                 return True

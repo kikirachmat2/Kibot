@@ -42,7 +42,8 @@ def _mem_usage_pct() -> float:
 def _cpu_usage_pct() -> float:
     if psutil is not None:
         try:
-            return float(psutil.cpu_percent(interval=None))
+            raw_cpu = psutil.cpu_percent(interval=None)
+            return float(raw_cpu if isinstance(raw_cpu, (int, float)) else 0.0)
         except Exception:
             return 0.0
     return 0.0

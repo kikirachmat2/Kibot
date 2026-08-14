@@ -23,9 +23,10 @@ if VAULT_PATH.exists():
     try:
         import importlib.util
         spec = importlib.util.spec_from_file_location("ki_vault", str(VAULT_PATH))
-        ki_vault = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(ki_vault)
-        get_vault = ki_vault.get_vault
+        if spec and spec.loader:
+            ki_vault = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(ki_vault)
+            get_vault = getattr(ki_vault, "get_vault", lambda: None)
     except Exception as e:
         print(f"⚠️ [SECURITY] Failed to load vault from path: {e}", file=sys.stderr)
 else:

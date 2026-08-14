@@ -122,14 +122,14 @@ class AutonomousDirector:
                     price_map[pair] = px
 
             # Evaluate each variant in parallel
-            variants_to_process = ["CONSERVATIVE", "AGGRESSIVE", "DEFAULT", "AI_ASSISTED"]
+            variants_to_process = ["CONSERVATIVE", "AGGRESSIVE", "DEFAULT", "AI_ASSISTED", "AI_RANKER"]
             for var_id in variants_to_process:
                 p_tracker = get_paper_trade_tracker(var_id)
                 var_cfg = VARIANT_CONFIGS.get(var_id, {})
 
-                # For AI_ASSISTED: throttle to top 2 composite score candidates to protect Mistral RPM
+                # For AI_ASSISTED & AI_RANKER: throttle to top 2 composite score candidates to protect Mistral RPM
                 candidates_to_eval = shadow
-                if var_id == "AI_ASSISTED" and len(shadow) > 2:
+                if var_id in {"AI_ASSISTED", "AI_RANKER"} and len(shadow) > 2:
                     candidates_to_eval = sorted(
                         shadow,
                         key=lambda c: c.get("scorecard", {}).get("composite_score", 0.0),
@@ -159,7 +159,7 @@ class AutonomousDirector:
                             ev_pct = (s_cand.get("ev_analysis") or {}).get("ev_pct", 0.0)
 
                             if _is_provider_rpm_exceeded("mistral"):
-                                log.info(f"[AutonomousDirector] AI_ASSISTED skip {pair_sym}: Mistral local RPM limit (55 RPM) exceeded")
+                                log.info(f"[AutonomousDirector] AI_ASSISTED skip {pair_sym}: Mistral local RPM limit (45 RPM) exceeded")
                                 continue
 
                             cd_rem = _provider_cooldown_remaining("mistral")
@@ -215,6 +215,81 @@ class AutonomousDirector:
 
                         except Exception as ai_err:
                             log.warning(f"[AutonomousDirector] AI_ASSISTED filter exception (fail-closed): {ai_err}")
+                            continue
+
+                    # Special AI ranker for AI_RANKER variant (Enriched Prompt & Historical Track Record)
+                    elif var_id == "AI_RANKER":
+                        try:
+                            from .kibot_ai_coordinator import query_ai, _is_provider_rpm_exceeded, _provider_cooldown_remaining
+                            pair_sym = str(s_cand.get("pair") or s_cand.get("symbol") or "").upper()
+                            ev_pct = (s_cand.get("ev_analysis") or {}).get("ev_pct", 0.0)
+                            composite_score = float(s_cand.get("scorecard", {}).get("composite_score", 0.0))
+                            win_rate = float(s_cand.get("win_rate", 0.5))
+                            sample_size = int(s_cand.get("historical_sample_size", 0))
+                            distance_to_high = float(s_cand.get("distance_to_high", 0.0))
+
+                            if _is_provider_rpm_exceeded("mistral"):
+                                log.info(f"[AutonomousDirector] AI_RANKER skip {pair_sym}: Mistral local RPM limit (45 RPM) exceeded")
+                                continue
+
+                            cd_rem = _provider_cooldown_remaining("mistral")
+                            if cd_rem > 0:
+                                log.info(f"[AutonomousDirector] AI_RANKER skip {pair_sym}: Mistral in cooldown state ({int(cd_rem)}s remaining)")
+                                continue
+
+                            ai_payload = {
+                                "news_context": f"Institutional crypto market news for {pair_sym}",
+                                "pair": pair_sym,
+                                "grade": grade,
+                                "composite_score": composite_score,
+                                "volume_ratio": vol_ratio,
+                                "distance_to_high": distance_to_high,
+                                "win_rate": round(win_rate, 4),
+                                "sample_size": sample_size,
+                                "ev_pct": ev_pct,
+                                "regime": regime,
+                            }
+                            # Sync wrapper / call for AI ranker
+                            import asyncio
+                            loop = None
+                            try:
+                                loop = asyncio.get_event_loop()
+                            except Exception:
+                                loop = None
+
+                            ai_res = None
+                            coro = query_ai("AI_RANKER", ai_payload)
+                            import inspect
+                            if inspect.iscoroutine(coro):
+                                if loop and loop.is_running():
+                                    import nest_asyncio
+                                    nest_asyncio.apply()
+                                    ai_res = loop.run_until_complete(coro)
+                                else:
+                                    ai_res = asyncio.run(coro)
+                            else:
+                                ai_res = coro
+
+                            if not ai_res or ai_res.get("is_fallback"):
+                                reason = ai_res.get("reason", "unknown") if isinstance(ai_res, dict) else "no response"
+                                log.info(f"[AutonomousDirector] AI_RANKER skip {pair_sym}: Mistral execution failed ({reason})")
+                                continue
+
+                            score = float(ai_res.get("confidence_score") or ai_res.get("confidence") or 0.0)
+                            has_red_flag = bool(ai_res.get("has_red_flag", False))
+                            reasoning = str(ai_res.get("reasoning") or ai_res.get("reason") or "")
+
+                            if score < 50.0 or has_red_flag:
+                                log.info(f"[AutonomousDirector] AI_RANKER skip {pair_sym}: score={score}, red_flag={has_red_flag}, reason={reasoning}")
+                                continue
+
+                            # Attach AI metadata to candidate record
+                            s_cand["ai_confidence_score"] = score
+                            s_cand["ai_reasoning"] = reasoning
+                            cand_to_open = s_cand
+
+                        except Exception as ai_err:
+                            log.warning(f"[AutonomousDirector] AI_RANKER filter exception (fail-closed): {ai_err}")
                             continue
 
                     tp_pct = float(var_cfg.get("take_profit_pct", 0.035))

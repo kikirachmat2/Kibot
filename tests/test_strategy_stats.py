@@ -2,6 +2,7 @@
 
 import json
 from pathlib import Path
+from typing import Dict, Any
 import pytest
 
 from Core.Intelligence.strategy_stats import StrategyStatsAggregator, StrategyMetrics
@@ -51,13 +52,13 @@ def test_strategy_stats_aggregation(temp_history_dir):
     aggregator = StrategyStatsAggregator(ttl_seconds=0)
     aggregator.refresh_if_needed(force=True)
 
-    cand = {"strategy_id": "MOMENTUM", "pair": "EDENA/IDR"}
+    cand: Dict[str, Any] = {"strategy_id": "MOMENTUM", "pair": "EDENA/IDR"}
     aggregator.inject_stats(cand)
 
     assert cand["historical_sample_size"] == 25
-    assert round(cand["win_rate"], 2) == 0.72  # 18/25
-    assert round(cand["avg_profit_pct"], 3) == 0.03
-    assert round(cand["avg_loss_pct"], 3) == 0.01
+    assert round(float(cand["win_rate"]), 2) == 0.72  # 18/25
+    assert round(float(cand["avg_profit_pct"]), 3) == 0.03
+    assert round(float(cand["avg_loss_pct"]), 3) == 0.01
 
 
 def test_ev_gating_verdicts():

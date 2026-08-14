@@ -16,6 +16,7 @@ async def test_llm_disabled_fallback():
     """Asserts that when KIBOT_LLM_ENABLED is False, query_ai returns AI_SAFE_FALLBACK immediately."""
     with patch.object(KiConfig, "LLM_ENABLED", False):
         res = await query_ai("MARKET_SCOUT", {"ticker": "BTC/IDR"})
+        assert res is not None
         assert res == AI_SAFE_FALLBACK
         assert res["verdict"] == "REJECTED"
         assert res["is_fallback"] is True

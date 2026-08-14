@@ -148,7 +148,7 @@ async def evaluate_daily_reset() -> Dict[str, Any]:
 
     if restore_required and not has_open_inventory and not governor_pending and governor_date == today:
         restore_strategy = state.get("previous_strategy") if isinstance(state.get("previous_strategy"), dict) else {}
-        restore_mode = str(state.get("previous_global_mode") or restore_strategy.get("global_mode") or "").upper().strip()
+        restore_mode = str(state.get("previous_global_mode") or (restore_strategy.get("global_mode") if isinstance(restore_strategy, dict) else "") or "").upper().strip()
         if not restore_mode or restore_mode == "EXIT_ALL":
             restore_mode = "LIVE_AUTONOMOUS_TRADING"
         if restore_strategy:

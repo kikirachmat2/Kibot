@@ -10,6 +10,7 @@ Tests and verifies the core safety invariants of the KiBot system:
 
 import os
 import sys
+import asyncio
 import logging
 import pytest
 from unittest.mock import patch, MagicMock

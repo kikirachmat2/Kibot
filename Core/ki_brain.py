@@ -209,15 +209,17 @@ class BrainManager:
                 from Core.Intelligence.kibot_ai_search import AISearchService
                 self.ai_search = AISearchService()
             except ImportError:
-                # pyrefly: ignore [missing-import]
-                import kibot_ai_search
-                self.ai_search = kibot_ai_search.AISearchService()
+                try:
+                    from kibot_ai_search import AISearchService  # type: ignore
+                    self.ai_search = AISearchService()
+                except Exception:
+                    self.ai_search = None
                 
             logger.info("[KiBrain] AI Search Service initialized successfully.")
         except Exception as e:
             logger.debug(f"[KiBrain] AI Search deferred (optional): {e}")
 
-    async def veto_signal(self, pair: str, msg_type: str = "SIGNAL", regime: str = "UNKNOWN", obi: float = 0.0, session: str = "UNKNOWN", signal_context: dict = None) -> Tuple[str, str]:
+    async def veto_signal(self, pair: str, msg_type: str = "SIGNAL", regime: str = "UNKNOWN", obi: float = 0.0, session: str = "UNKNOWN", signal_context: Optional[dict] = None) -> Tuple[str, str]:
         """
         Sovereign Veto Logic v2.
         Decides if a signal should be approved based on world model intelligence,
@@ -445,7 +447,8 @@ class BrainManager:
         if now < self._indodax_pairs_cooldown_until:
             if self._indodax_pairs_cache:
                 return [{"base_currency": base, "ticker_id": pair_id} for base, pair_id in self._indodax_pairs_cache.items()]
-            return self._load_indodax_pairs_cache()
+            cached = self._load_indodax_pairs_cache()
+            return [{"base_currency": base, "ticker_id": pair_id} for base, pair_id in cached.items()]
         if self._indodax_pairs_cache and (now - self._indodax_pairs_cache_at) < max(900, self.review_ttl_sec):
             return [{"base_currency": base, "ticker_id": pair_id} for base, pair_id in self._indodax_pairs_cache.items()]
         try:
@@ -536,14 +539,16 @@ class BrainManager:
             return False, "technical_score_too_weak"
 
         intel = self.get_market_intel(symbol)
-        if not intel.get("listed_on_indodax"):
+        intel_dict: Dict[str, Any] = dict(intel) if isinstance(intel, dict) else {}
+        if not intel_dict.get("listed_on_indodax"):
             return False, "symbol_not_listed_on_indodax"
 
-        quote_volume = self._safe_float(intel.get("quote_volume_usdt"))
+        quote_volume = self._safe_float(intel_dict.get("quote_volume_usdt"))
         if quote_volume <= 0:
             return False, "missing_or_zero_quote_volume"
 
-        research = intel.get("external_research") if isinstance(intel.get("external_research"), dict) else {}
+        raw_res = intel_dict.get("external_research")
+        research: Dict[str, Any] = raw_res if isinstance(raw_res, dict) else {}
         risk_bias = str(research.get("risk_bias") or "UNKNOWN")
         if risk_bias == "RISK_OFF" and tech_score < 0.75:
             return False, "external_research_risk_off"
@@ -554,23 +559,20 @@ class BrainManager:
         watch_symbols: Optional[Iterable[str]] = None,
         context: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
-        """
-        Asynchronous background connectivity / research pulse.
-        """
-        context = context or {}
-        symbols = self._normalize_symbols(watch_symbols or self._default_watch_symbols())[: self.max_watch_symbols]
-        
-        # Parallel fetch for core pulse components
+        """Async version of the think loop."""
+        symbols = self._normalize_symbols(watch_symbols or [])
         tasks = [
             self._get_market_pulse_async(symbols),
             self._get_fear_greed_index_async(),
             self._get_binance_funding_rate_async(),
             self._get_stablecoin_flow_async(),
         ]
-        
         market_pulse, fear_greed, funding_rate, stablecoin_flow = await asyncio.gather(*tasks)
-        
-        world_model = self._build_world_model(symbols, market_pulse, context)
+        world_model = self._build_world_model(
+            symbols=symbols,
+            market_pulse=market_pulse,
+            context=context or {},
+        )
         
         snapshot = {
             "checked_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
@@ -590,7 +592,7 @@ class BrainManager:
                 "mexc": await self._status_code_async("https://api.mexc.com/api/v3/ticker/24hr"),
                 "indodax": await self._status_code_async("https://indodax.com/api/pairs"),
             },
-            "daily_target": self._daily_target_snapshot(context),
+            "daily_target": self._daily_target_snapshot(context or {}),
             "market_pulse": market_pulse,
             "fear_greed": fear_greed,
             "funding_rate": funding_rate,
@@ -600,18 +602,18 @@ class BrainManager:
             "watch_reviews": [],
         }
         
-        snapshot["ai_critic"] = await self._get_ai_critic_async(symbols, market_pulse, world_model, context)
+        snapshot["ai_critic"] = await self._get_ai_critic_async(symbols, market_pulse, world_model, context or {})
         
         # Parallel market intel and veto checks
         intel_tasks = []
         for symbol in symbols[: self.max_external_symbols]:
-            intel_tasks.append(self.get_market_intel_async(symbol))
+            intel_tasks.append(asyncio.to_thread(self.get_market_intel, symbol))
             
         veto_tasks = []
         for symbol in symbols[: self.max_external_symbols]:
-             veto_tasks.append(self.veto_signal(symbol, 0.70))
+             veto_tasks.append(self.veto_signal(symbol, obi=0.70))
              
-        await asyncio.gather(*intel_tasks, *veto_tasks)
+        await asyncio.gather(*intel_tasks, *veto_tasks, return_exceptions=True)
         
         return snapshot
 
@@ -907,12 +909,14 @@ class BrainManager:
                 risk_bias = "MIXED"
 
             summary = ""
-            if tavily_brief.get("answer"):
+            if isinstance(tavily_brief, dict) and tavily_brief.get("answer"):
                 summary = str(tavily_brief.get("answer")).strip()
-            elif serper_brief.get("organic"):
-                first = serper_brief.get("organic")[0]
-                if isinstance(first, dict):
-                    summary = str(first.get("snippet") or first.get("title") or "").strip()
+            elif isinstance(serper_brief, dict) and serper_brief.get("organic"):
+                serper_org = serper_brief.get("organic")
+                if isinstance(serper_org, list) and serper_org:
+                    first = serper_org[0]
+                    if isinstance(first, dict):
+                        summary = str(first.get("snippet") or first.get("title") or "").strip()
             if deduped_headlines:
                 summary = deduped_headlines[0]
 
@@ -951,8 +955,8 @@ class BrainManager:
         if not isinstance(candidates, list) or not candidates:
             return ""
         first = candidates[0] if isinstance(candidates[0], dict) else {}
-        content = first.get("content") if isinstance(first.get("content"), dict) else {}
-        parts = content.get("parts")
+        content = first.get("content") if isinstance(first, dict) and isinstance(first.get("content"), dict) else {}
+        parts = content.get("parts") if isinstance(content, dict) else []
         if not isinstance(parts, list) or not parts:
             return ""
         first_part = parts[0] if isinstance(parts[0], dict) else {}
@@ -1026,17 +1030,18 @@ class BrainManager:
         }
 
         def loader() -> Dict[str, Any]:
-            try:
-                # In sync context, we use asyncio.run because query_ai_debate is async
-                critic = asyncio.run(_coordinator_query_ai_debate_fn(
-                    "BRAIN_CRITIC",
-                    critic_context,
-                    cache_ttl_minutes=max(1, int(self.gemini_ttl_sec / 60)),
-                ))
-                if isinstance(critic, dict) and critic:
-                    return critic
-            except Exception as e:
-                logger.error(f"[KiBrain] AI Critic Error (Sync Path): {e}")
+            if self.ai_coordinator_enabled and _coordinator_query_ai_debate_fn is not None:
+                try:
+                    # In sync context, we use asyncio.run because query_ai_debate is async
+                    critic = asyncio.run(_coordinator_query_ai_debate_fn(
+                        "BRAIN_CRITIC",
+                        critic_context,
+                        cache_ttl_minutes=max(1, int(self.gemini_ttl_sec / 60)),
+                    ))
+                    if isinstance(critic, dict) and critic:
+                        return critic
+                except Exception as e:
+                    logger.error(f"[KiBrain] AI Critic Error (Sync Path): {e}")
             
             if not self._gemini_api_key():
                 return {}
@@ -1159,19 +1164,23 @@ class BrainManager:
 
             summary = ""
             provider = "finnhub"
-            if tavily_brief.get("answer"):
+            if isinstance(tavily_brief, dict) and tavily_brief.get("answer"):
                 summary = str(tavily_brief.get("answer")).strip()
                 provider = "tavily"
-            elif serper_brief.get("organic"):
-                first = serper_brief.get("organic")[0]
-                if isinstance(first, dict):
-                    summary = str(first.get("snippet") or first.get("title") or "").strip()
-                    provider = "serper"
-            elif ddg_brief.get("results"):
-                first = ddg_brief.get("results")[0]
-                if isinstance(first, dict):
-                    summary = str(first.get("content") or first.get("title") or "").strip()
-                    provider = "ddg"
+            elif isinstance(serper_brief, dict) and serper_brief.get("organic"):
+                serper_org = serper_brief.get("organic")
+                if isinstance(serper_org, list) and serper_org:
+                    first = serper_org[0]
+                    if isinstance(first, dict):
+                        summary = str(first.get("snippet") or first.get("title") or "").strip()
+                        provider = "serper"
+            elif isinstance(ddg_brief, dict) and ddg_brief.get("results"):
+                ddg_res = ddg_brief.get("results")
+                if isinstance(ddg_res, list) and ddg_res:
+                    first = ddg_res[0]
+                    if isinstance(first, dict):
+                        summary = str(first.get("content") or first.get("title") or "").strip()
+                        provider = "ddg"
             elif headlines:
                 summary = headlines[0]
 
@@ -1228,11 +1237,13 @@ class BrainManager:
                 },
                 headers={"Authorization": f"Bearer {self._x_bearer_token()}"},
             )
+            payload_dict: Dict[str, Any] = payload if isinstance(payload, dict) else {}
             rows = []
-            for item in list(payload.get("data") or [])[:10]:
+            for item in list(payload_dict.get("data") or [])[:10]:
                 if not isinstance(item, dict):
                     continue
-                metrics = item.get("public_metrics") if isinstance(item.get("public_metrics"), dict) else {}
+                raw_metrics = item.get("public_metrics")
+                metrics: Dict[str, Any] = raw_metrics if isinstance(raw_metrics, dict) else {}
                 engagement = sum(
                     int(metrics.get(name) or 0)
                     for name in ("like_count", "retweet_count", "reply_count", "quote_count")
@@ -1246,7 +1257,7 @@ class BrainManager:
                 )
             return {
                 "query": query,
-                "meta": payload.get("meta") if isinstance(payload.get("meta"), dict) else {},
+                "meta": payload_dict.get("meta") if isinstance(payload_dict.get("meta"), dict) else {},
                 "results": rows,
             }
 
@@ -1375,9 +1386,12 @@ class BrainManager:
     ) -> Dict[str, Any]:
         if not self.world_model_enabled:
             return {}
-        daily_target = self._daily_target_snapshot(context)
-        capital_profile = context.get("capital_profile") if isinstance(context.get("capital_profile"), dict) else {}
-        risk_bias = str(market_pulse.get("risk_bias") or "UNKNOWN").upper()
+        ctx_dict: Dict[str, Any] = context if isinstance(context, dict) else {}
+        pulse_dict: Dict[str, Any] = market_pulse if isinstance(market_pulse, dict) else {}
+        daily_target: Dict[str, Any] = self._daily_target_snapshot(ctx_dict)
+        raw_cap_prof = ctx_dict.get("capital_profile")
+        capital_profile: Dict[str, Any] = raw_cap_prof if isinstance(raw_cap_prof, dict) else {}
+        risk_bias = str(pulse_dict.get("risk_bias") or "UNKNOWN").upper()
         cache_key = (
             f"world_model:{risk_bias}:{str(capital_profile.get('mode') or 'UNKNOWN').upper()}:"
             f"{'-'.join(list(symbols)[:3])}"
@@ -1386,7 +1400,8 @@ class BrainManager:
         def loader() -> Dict[str, Any]:
             x_brief = self._get_x_market_brief()
             gdelt_brief = self._get_gdelt_market_brief()
-            coingecko_trending = self._get_coingecko_trending()
+            raw_cg_trend = self._get_coingecko_trending()
+            coingecko_trending: Dict[str, Any] = raw_cg_trend if isinstance(raw_cg_trend, dict) else {}
             fear_greed = self._get_fear_greed_index()
             funding_rate = self._get_binance_funding_rate()
             stablecoin_flow = self._get_stablecoin_flow()
@@ -1496,8 +1511,10 @@ class BrainManager:
                     opportunity_map[pair] = item
 
             for symbol in list(symbols)[: self.max_external_symbols]:
-                intel = self.get_market_intel(symbol)
-                research = intel.get("external_research") if isinstance(intel.get("external_research"), dict) else {}
+                raw_intel = self.get_market_intel(symbol)
+                intel: Dict[str, Any] = raw_intel if isinstance(raw_intel, dict) else {}
+                raw_res = intel.get("external_research")
+                research: Dict[str, Any] = raw_res if isinstance(raw_res, dict) else {}
                 if not bool(intel.get("listed_on_indodax")):
                     continue
                 opportunity_score = 0.52
@@ -1513,7 +1530,7 @@ class BrainManager:
                         "symbol": symbol,
                         "kind": "watch_symbol",
                         "score": min(0.88, round(opportunity_score, 4)),
-                        "thesis": str(research.get("summary") or market_pulse.get("summary") or "watch symbol aligned")[:140],
+                        "thesis": str(research.get("summary") or pulse_dict.get("summary") or "watch symbol aligned")[:140],
                         "budget_hint_idr": float(capital_profile.get("max_position_idr") or 0.0),
                     }
                 )
@@ -1883,9 +1900,14 @@ class BrainManager:
             )
             if not isinstance(payload, dict):
                 return {}
-            data = payload.get("data") if isinstance(payload.get("data"), dict) else {}
-            total_mcap = self._safe_float(data.get("total_market_cap", {}).get("usd"))
-            total_volume = self._safe_float(data.get("total_volume", {}).get("usd"))
+            raw_data = payload.get("data")
+            data: Dict[str, Any] = raw_data if isinstance(raw_data, dict) else {}
+            raw_mcap = data.get("total_market_cap")
+            mcap_dict: Dict[str, Any] = raw_mcap if isinstance(raw_mcap, dict) else {}
+            raw_vol = data.get("total_volume")
+            vol_dict: Dict[str, Any] = raw_vol if isinstance(raw_vol, dict) else {}
+            total_mcap = self._safe_float(mcap_dict.get("usd"))
+            total_volume = self._safe_float(vol_dict.get("usd"))
             mcap_change_24h = self._safe_float(data.get("market_cap_change_percentage_24h_usd"))
             # Liquidity signal interpretation
             if mcap_change_24h > 2.0:
@@ -1907,6 +1929,24 @@ class BrainManager:
             }
 
         return await self._cached_payload_async("stablecoin_flow", self.stablecoin_flow_ttl_sec, loader)
+
+    def _get_fear_greed_index(self) -> Dict[str, Any]:
+        try:
+            return asyncio.run(self._get_fear_greed_index_async())
+        except Exception:
+            return {}
+
+    def _get_binance_funding_rate(self) -> Dict[str, Any]:
+        try:
+            return asyncio.run(self._get_binance_funding_rate_async())
+        except Exception:
+            return {}
+
+    def _get_stablecoin_flow(self) -> Dict[str, Any]:
+        try:
+            return asyncio.run(self._get_stablecoin_flow_async())
+        except Exception:
+            return {}
 
     def _provider_status(self) -> Dict[str, Dict[str, Any]]:
         out: Dict[str, Dict[str, Any]] = {}
@@ -1968,9 +2008,11 @@ class BrainManager:
         }
 
     def _daily_target_snapshot(self, context: Dict[str, Any]) -> Dict[str, Any]:
-        daily_pnl_pct = self._safe_float(context.get("daily_pnl_pct"))
+        context_dict: Dict[str, Any] = context if isinstance(context, dict) else {}
+        daily_pnl_pct = self._safe_float(context_dict.get("daily_pnl_pct"))
         target_gap_pct = max(self.green_target_daily_pct - daily_pnl_pct, 0.0)
-        capital_profile = context.get("capital_profile") if isinstance(context.get("capital_profile"), dict) else {}
+        raw_cap_prof = context_dict.get("capital_profile")
+        capital_profile: Dict[str, Any] = raw_cap_prof if isinstance(raw_cap_prof, dict) else {}
         green_state = "GREEN" if daily_pnl_pct > 0 else "FLAT" if daily_pnl_pct == 0.0 else "RECOVERY"
         if green_state == "GREEN":
             status = "GREEN"
@@ -2007,6 +2049,19 @@ class BrainManager:
             "active_positions_count": int(context.get("active_positions_count") or 0),
         }
 
+    def _request_json(
+        self,
+        url: str,
+        *,
+        headers: Optional[Dict[str, str]] = None,
+        timeout: Optional[float] = None,
+    ) -> Any:
+        try:
+            return asyncio.run(self._request_json_async(url, headers=headers, timeout=timeout))
+        except Exception as e:
+            logger.debug(f"[KiBrain] _request_json error for {url}: {e}")
+            return None
+
     def _get_json(
         self,
         url: str,
@@ -2017,6 +2072,17 @@ class BrainManager:
     ) -> Any:
         request_url = f"{url}?{urlencode(params)}" if params else url
         return self._request_json(request_url, headers=headers, timeout=timeout)
+
+    async def _get_json_async(
+        self,
+        url: str,
+        *,
+        params: Optional[Dict[str, Any]] = None,
+        headers: Optional[Dict[str, str]] = None,
+        timeout: Optional[float] = None,
+    ) -> Any:
+        request_url = f"{url}?{urlencode(params)}" if params else url
+        return await self._request_json_async(request_url, headers=headers, timeout=timeout)
 
     async def _post_json_async(self, url: str, *, body: Dict[str, Any], headers: Optional[Dict[str, str]] = None, timeout: Optional[float] = None) -> Any:
         merged_headers = {

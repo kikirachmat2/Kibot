@@ -51,7 +51,7 @@ class AISearchService:
         self.state_dir.mkdir(parents=True, exist_ok=True)
         self.cache_file = self.state_dir / "ai_search_cache.json"
 
-    async def _get_json_async(self, url: str, params: Dict = None, headers: Dict = None) -> Any:
+    async def _get_json_async(self, url: str, params: Optional[Dict[str, Any]] = None, headers: Optional[Dict[str, Any]] = None) -> Any:
         try:
             async with httpx.AsyncClient(timeout=self.timeout) as client:
                 resp = await client.get(url, params=params, headers=headers)
@@ -61,11 +61,11 @@ class AISearchService:
             pass
         return {}
 
-    def _get_json(self, url: str, params: Dict = None, headers: Dict = None) -> Any:
+    def _get_json(self, url: str, params: Optional[Dict[str, Any]] = None, headers: Optional[Dict[str, Any]] = None) -> Any:
         # Keep for backward compatibility if needed, but internally it's now blocking call to async
         return asyncio.run(self._get_json_async(url, params, headers))
 
-    async def _cached_async(self, key: str, ttl: int, loader, source_name: str = None) -> Any:
+    async def _cached_async(self, key: str, ttl: int, loader, source_name: Optional[str] = None) -> Any:
         now = time.time()
         cache = {}
         if self.cache_file.exists():

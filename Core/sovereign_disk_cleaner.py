@@ -61,12 +61,13 @@ logger = logging.getLogger("SovereignDiskCleaner")
 # ───────────────────────────────────────────────
 #  HELPER
 # ───────────────────────────────────────────────
-def human_size(size_bytes: int) -> str:
+def human_size(size_bytes: float | int) -> str:
+    size = float(size_bytes)
     for unit in ["B", "KB", "MB", "GB"]:
-        if abs(size_bytes) < 1024.0:
-            return f"{size_bytes:.1f} {unit}"
-        size_bytes /= 1024.0
-    return f"{size_bytes:.1f} TB"
+        if abs(size) < 1024.0:
+            return f"{size:.1f} {unit}"
+        size /= 1024.0
+    return f"{size:.1f} TB"
 
 
 def disk_usage_pct(path: str = "/") -> Tuple[int, int, float]:

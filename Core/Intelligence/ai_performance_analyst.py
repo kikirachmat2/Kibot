@@ -217,7 +217,7 @@ def run_performance_analysis(send_telegram: bool = False) -> Dict[str, Any]:
     # Send Telegram notification if requested
     if send_telegram and report_data.get("ai_report"):
         try:
-            from Core.Support.telegram_helper import send_telegram_message
+            from Core.Support.telegram_throttle import telegram_send as send_telegram_message
 
             summary_short = report_data["ai_report"].get("summary_text", "")[:350]
             msg = f"📊 *KiBot AI Performance Report*\n\n{summary_short}\n\n_Gunakan `./bin/kibotctl ai-report` untuk analisis lengkap._"

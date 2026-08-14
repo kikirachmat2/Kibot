@@ -41,8 +41,8 @@ def _top_processes(limit: int = 5) -> List[Dict[str, Any]]:
         procs = []
         for p in psutil.process_iter(["pid", "name", "cpu_percent", "memory_percent", "cmdline"]):
             try:
-                info = p.info
-                if not info.get("name"):
+                info = getattr(p, "info", {}) if hasattr(p, "info") else {}
+                if not info or not info.get("name"):
                     continue
                 procs.append({
                     "pid": info.get("pid"),
@@ -63,7 +63,8 @@ def collect_server_telemetry() -> Dict[str, Any]:
     if psutil is not None:
         mem = psutil.virtual_memory()
         disk = psutil.disk_usage("/")
-        cpu = psutil.cpu_percent(interval=None)
+        raw_cpu = psutil.cpu_percent(interval=None)
+        cpu = float(raw_cpu if isinstance(raw_cpu, (int, float)) else 0.0)
         load_1m, load_5m, load_15m = os.getloadavg() if hasattr(os, "getloadavg") else (0.0, 0.0, 0.0)
         uptime = max(0.0, datetime.now(timezone.utc).timestamp() - psutil.boot_time())
         total_proc = len(psutil.pids())
@@ -83,9 +84,9 @@ def collect_server_telemetry() -> Dict[str, Any]:
     ]}
     return {
         "updated_at": datetime.now(timezone.utc).isoformat(),
-        "cpu": {"percent": round(float(cpu), 2), "load_1m": round(load_1m, 3), "load_5m": round(load_5m, 3), "load_15m": round(load_15m, 3)},
-        "ram": {"total_gb": _gb(float(mem.total)), "used_gb": _gb(float(mem.used)), "available_gb": _gb(float(mem.available)), "percent": round(float(mem.percent), 2)},
-        "disk": {"total_gb": _gb(float(disk.total)), "used_gb": _gb(float(disk.used)), "free_gb": _gb(float(disk.free)), "percent": round(float(disk.percent), 2)},
+        "cpu": {"percent": round(float(cpu or 0.0), 2), "load_1m": round(load_1m, 3), "load_5m": round(load_5m, 3), "load_15m": round(load_15m, 3)},
+        "ram": {"total_gb": _gb(float(getattr(mem, "total", 0.0) or 0.0)), "used_gb": _gb(float(getattr(mem, "used", 0.0) or 0.0)), "available_gb": _gb(float(getattr(mem, "available", 0.0) or 0.0)), "percent": round(float(getattr(mem, "percent", 0.0) or 0.0), 2)},
+        "disk": {"total_gb": _gb(float(getattr(disk, "total", 0.0) or 0.0)), "used_gb": _gb(float(getattr(disk, "used", 0.0) or 0.0)), "free_gb": _gb(float(getattr(disk, "free", 0.0) or 0.0)), "percent": round(float(getattr(disk, "percent", 0.0) or 0.0), 2)},
         "uptime_seconds": int(uptime),
         "process_count": int(total_proc),
         "services": services,

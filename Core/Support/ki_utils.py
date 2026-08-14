@@ -9,15 +9,17 @@ from typing import Any, Optional
 root = Path(__file__).resolve().parent.parent.parent
 
 try:
-    from Support.ki_config import WIB, TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID
+    from Core.Support.ki_config import WIB, TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID
 except ImportError:
-    # Fallback to local import if run as a script in the Support directory
     try:
-        from ki_config import WIB, TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID
+        from Support.ki_config import WIB, TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID
     except ImportError:
-        WIB = None
-        TELEGRAM_BOT_TOKEN = None
-        TELEGRAM_CHAT_ID = None
+        try:
+            from ki_config import WIB, TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID
+        except ImportError:
+            WIB = None
+            TELEGRAM_BOT_TOKEN = None
+            TELEGRAM_CHAT_ID = None
 
 try:
     from Core.Support.telegram_throttle import telegram_send as _telegram_send
@@ -33,7 +35,7 @@ def get_wib_now() -> datetime:
 def get_wib_str() -> str:
     return get_wib_now().strftime('%Y-%m-%d %H:%M:%S WIB')
 
-def telegram_send(message: str, token: str = None, chat_id: str = None, **kwargs):
+def telegram_send(message: str, token: Optional[str] = None, chat_id: Optional[str] = None, **kwargs):
     if _telegram_send is None:
         return False
     return _telegram_send(

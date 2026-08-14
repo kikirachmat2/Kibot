@@ -211,6 +211,7 @@ def _build_order_record(
         # Risk governance
         "lifecycle":         signal.get("lifecycle", "UNKNOWN") if signal else "UNKNOWN",
         "trade_grade":       signal.get("trade_grade", "?") if signal else "?",
+        "regime":            signal.get("regime", signal.get("market_regime", mandate.get("market_regime", "NORMAL"))) if signal else mandate.get("market_regime", "NORMAL"),
         "confidence":        signal.get("confidence", 0.0) if signal else 0.0,
         "exit_plan":         exit_plan or {},
         "max_hold_minutes":  int((exit_plan or {}).get("max_hold_minutes", 120)),
@@ -450,8 +451,20 @@ class OrderTracker:
             pair_key = reconciled_record["pair"].lower().replace("/", "_")
             won = pnl_idr > 0
             gain_pct = pnl_pct / 100.0
-            engine.record_trade(pair_key, gain_pct, regime=reconciled_record.get("trade_grade", "NORMAL"), won=won, pnl_idr=pnl_idr)
-            logger.info(f"[OrderTracker] Recorded trade to learning engine: {pair_key} PnL={pnl_idr:+.0f} IDR")
+
+            # Resolve true market regime (not trade_grade)
+            regime = str(reconciled_record.get("regime") or "NORMAL").upper()
+            if regime in {"UNKNOWN", "NORMAL", "?", ""}:
+                try:
+                    from Core.Intelligence.daily_context import get_daily_context
+                    d_ctx = get_daily_context()
+                    if isinstance(d_ctx, dict) and d_ctx.get("market_regime"):
+                        regime = str(d_ctx.get("market_regime")).upper()
+                except Exception:
+                    pass
+
+            engine.record_trade(pair_key, gain_pct, regime=regime, won=won, pnl_idr=pnl_idr)
+            logger.info(f"[OrderTracker] Recorded trade to learning engine: {pair_key} (regime={regime}) PnL={pnl_idr:+.0f} IDR")
         except Exception as e:
             logger.warning(f"[OrderTracker] Learning engine update failed: {e}")
 

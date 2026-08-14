@@ -264,8 +264,14 @@ async def test_stream_endpoint():
     
     # Read only the first element from the async body iterator generator
     async for chunk in response.body_iterator:
-        assert chunk.startswith("data: ")
-        json_data = json.loads(chunk[6:].strip())  # strip data: and trailing whitespace
+        if isinstance(chunk, memoryview):
+            chunk_str = chunk.tobytes().decode("utf-8")
+        elif isinstance(chunk, bytes):
+            chunk_str = chunk.decode("utf-8")
+        else:
+            chunk_str = str(chunk)
+        assert chunk_str.startswith("data: ")
+        json_data = json.loads(chunk_str[6:].strip())  # strip data: and trailing whitespace
         assert "mode" in json_data
         assert "portfolio" in json_data
         assert "venues" in json_data

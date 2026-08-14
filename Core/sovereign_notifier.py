@@ -4,6 +4,7 @@ import asyncio
 import logging
 from pathlib import Path
 from datetime import datetime
+from typing import Optional
 
 # Load environment
 from pathlib import Path
@@ -44,7 +45,7 @@ class SovereignNotifier:
     async def send_message(
         self,
         text,
-        parse_mode='Markdown',
+        parse_mode: Optional[str] = 'Markdown',
         *,
         incident_key=None,
         channel='general',

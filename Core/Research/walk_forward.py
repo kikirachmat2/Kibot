@@ -130,7 +130,8 @@ def run_walk_forward(
         if len(is_bars_slice) < lookback + 1 or len(oos_bars_slice) < 2:
             continue
 
-        kwargs = dict(
+        is_res = run_backtest(
+            is_bars_slice,
             strategy_id=f"{strategy_id}_fold{fold_i}",
             take_profit_pct=take_profit_pct,
             stop_loss_pct=stop_loss_pct,
@@ -138,9 +139,15 @@ def run_walk_forward(
             entry_signal_fn=entry_signal_fn,
             lookback=lookback,
         )
-
-        is_res = run_backtest(is_bars_slice, **kwargs)
-        oos_res = run_backtest(oos_bars_slice, **kwargs)
+        oos_res = run_backtest(
+            oos_bars_slice,
+            strategy_id=f"{strategy_id}_fold{fold_i}",
+            take_profit_pct=take_profit_pct,
+            stop_loss_pct=stop_loss_pct,
+            fee_pct=fee_pct,
+            entry_signal_fn=entry_signal_fn,
+            lookback=lookback,
+        )
 
         if is_res.expectancy_pct != 0:
             eff = oos_res.expectancy_pct / is_res.expectancy_pct

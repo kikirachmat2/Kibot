@@ -105,6 +105,7 @@ async def test_leadlag_rejection_gates():
          
         opps = await engine.calculate_opportunities()
         btc_opp = next((o for o in opps if o["symbol"] == "BTC/IDR"), None)
+        assert btc_opp is not None
         assert btc_opp["trade_grade"] == "REJECT"
         assert any("Leader move too small" in r for r in btc_opp["reasons"])
 
@@ -124,5 +125,6 @@ async def test_leadlag_rejection_gates():
          
         opps = await engine.calculate_opportunities()
         btc_opp = next((o for o in opps if o["symbol"] == "BTC/IDR"), None)
+        assert btc_opp is not None
         assert btc_opp["trade_grade"] == "REJECT"
         assert any("volume too low" in r for r in btc_opp["reasons"])

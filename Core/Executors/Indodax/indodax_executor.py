@@ -26,6 +26,7 @@ from Core.risk_gate import RiskGate
 from Core.Support.ki_vault import load_sovereign_env
 from Core.sovereign_state import load_strategy, check_urgency
 from Core.Decision.deterministic_decision_gate import evaluate_live_trade
+from Core.Decision.live_opportunity_tier import classify_live_opportunity
 from Core.Treasury.live_truth_manager import load_live_truth
 from Core.Intelligence.pair_quarantine import is_quarantined
 from Core.Support.ki_config import KiConfig
@@ -447,7 +448,7 @@ class IndodaxExecutor:
                                 if partial.get("should_partial") and float(partial.get("fraction", 0) or 0) > 0:
                                     logger.info(
                                         f"💚 EXIT PLAN PARTIAL: {symbol} {partial.get('reason')} "
-                                        f"fraction={float(partial.get('fraction')):.2f}"
+                                        f"fraction={float(partial.get('fraction') or 0.0):.2f}"
                                     )
                                     await self.execute_exit(
                                         symbol,
@@ -2145,6 +2146,7 @@ class IndodaxExecutor:
                     order_id = str(trade_data.get("order_id") or trade_data.get("orderId") or "")
                     pending_budget = filled_rp or budget
                     sovereign_order_id = None
+                    ep = None
                     if _ORDER_TRACKER_AVAILABLE:
                         try:
                             daily_ctx = signal.get("daily_context") if isinstance(signal.get("daily_context"), dict) else {}

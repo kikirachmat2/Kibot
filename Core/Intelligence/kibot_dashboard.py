@@ -618,10 +618,11 @@ def _build_portfolio(telemetry: Dict[str, Any]) -> Dict[str, Any]:
     daily_pnl_pct = _safe_float(accounting_view.get("daily_pnl_pct"), live_daily_pnl_pct)
     reset_total_balance = _safe_float(accounting_view.get("reset_total_balance_idr"), _safe_float(gov_data.get("reset_total_balance_idr"), _safe_float(gov_data.get("start_total_equity_idr"), combined_equity - daily_pnl)))
 
-    daily_state = portfolio.get("daily_state") if isinstance(portfolio.get("daily_state"), dict) else {}
+    raw_daily_state = portfolio.get("daily_state")
+    daily_state_dict: dict[str, Any] = raw_daily_state if isinstance(raw_daily_state, dict) else {}
     daily_color = "GREEN" if daily_pnl > 0 else "RECOVERY" if daily_pnl < 0 else "FLAT"
     daily_state = {
-        **daily_state,
+        **daily_state_dict,
         "color": daily_color,
         "hold_winners": daily_color == "GREEN",
         "take_profit_multiplier": 1.75 if daily_color == "GREEN" else 1.0,
@@ -1644,7 +1645,7 @@ def _build_control_plane_payload() -> Dict[str, Any]:
             if not fresh:
                 stale_states.append(f.replace(".json", ""))
 
-    data_quality_dict = {f.replace(".json", ""): _check_file_quality(f) for f in files_to_check}
+    data_quality_dict: dict[str, Any] = {f.replace(".json", ""): _check_file_quality(f) for f in files_to_check}
     data_quality_dict.update({
         "complete": len(missing_states) == 0,
         "missing_states": missing_states,

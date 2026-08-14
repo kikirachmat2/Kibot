@@ -52,6 +52,7 @@ class SovereignCouncil:
         self.CONFIDENCE_AUTO_THRESHOLD = 0.85
         self.RISK_LEVELS = ["LOW", "MEDIUM", "HIGH", "CRITICAL"]
         self.search_service = AISearchService(timeout=6)
+        self.brain: Any = None
         
         # Load environment
         load_sovereign_env()
@@ -447,7 +448,8 @@ class SovereignCouncil:
     ) -> Dict[str, Any]:
         """Make a bounded local decision when online AI deliberation cannot finish."""
         signals = [sig for sig in list(signals_context.get("signals") or []) if isinstance(sig, dict)]
-        daily_context = signals_context.get("daily_context") if isinstance(signals_context.get("daily_context"), dict) else {}
+        raw_daily_ctx = signals_context.get("daily_context")
+        daily_context: dict[str, Any] = raw_daily_ctx if isinstance(raw_daily_ctx, dict) else {}
         daily_color = str(daily_context.get("daily_color") or "FLAT").upper()
         ranked = []
         for signal in signals:
@@ -458,8 +460,9 @@ class SovereignCouncil:
             ranked.append({"signal": signal, "score": score, "reject_reason": reason})
 
         ranked.sort(key=lambda row: row.get("score", 0.0), reverse=True)
-        best = ranked[0] if ranked else {}
-        best_signal = best.get("signal") if isinstance(best.get("signal"), dict) else {}
+        best: dict[str, Any] = ranked[0] if (ranked and isinstance(ranked[0], dict)) else {}
+        raw_best_sig = best.get("signal")
+        best_signal: dict[str, Any] = raw_best_sig if isinstance(raw_best_sig, dict) else {}
         best_score = float(best.get("score", 0.0) or 0.0)
         best_conf = float(best_signal.get("confidence", 0.0) or 0.0)
         has_trade_today = int(today_trade_activity.get("entries", 0) or 0) > 0
@@ -801,7 +804,7 @@ class SovereignCouncil:
                     "reason": "CPU spike without memory/disk exhaustion; continue with guardrails.",
                 }
             else:
-                set_urgency("EMERGENCY_PAUSE", health.get("reason"))
+                set_urgency("EMERGENCY_PAUSE", str(health.get("reason") or "system_engineer_pause"))
                 return {"status": "PAUSED", "reason": health.get("reason")}
 
         # 2. Market Synthesis
@@ -816,7 +819,8 @@ class SovereignCouncil:
         # 3. Final Strategic Decision (Strategy Dean)
         current = load_strategy()
         pnl_history = load_pnl_history()
-        runtime_daily_state = current.get("daily_state") if isinstance(current.get("daily_state"), dict) else portfolio_ctx.get("daily_state", {})
+        raw_daily_state = current.get("daily_state") if isinstance(current.get("daily_state"), dict) else portfolio_ctx.get("daily_state", {})
+        runtime_daily_state: dict[str, Any] = dict(raw_daily_state) if isinstance(raw_daily_state, dict) else {}
         
         # [MIDNIGHT ORACLE LOGIC]
         now = self._now_wib()
@@ -1354,8 +1358,16 @@ class SovereignCouncil:
                 f"exit posture signaled: score {decision.get('exit_score', 0):.1f}"
             )
 
-        source_signal = decision.get("source_signal") if isinstance(decision.get("source_signal"), dict) else {}
-        two_phase = decision.get("two_phase_council") if isinstance(decision.get("two_phase_council"), dict) else {}
+        raw_source_signal = decision.get("source_signal")
+        source_signal: dict[str, Any] = raw_source_signal if isinstance(raw_source_signal, dict) else {}
+        raw_two_phase = decision.get("two_phase_council")
+        two_phase: dict[str, Any] = raw_two_phase if isinstance(raw_two_phase, dict) else {}
+        raw_hist_prof = source_signal.get("historian_profile")
+        hist_prof: dict[str, Any] = raw_hist_prof if isinstance(raw_hist_prof, dict) else {}
+        raw_antag_view = decision.get("antagonist_view")
+        antag_view: dict[str, Any] = raw_antag_view if isinstance(raw_antag_view, dict) else {}
+        daily_ctx: dict[str, Any] = daily_context if isinstance(daily_context, dict) else {}
+
         decision["role_votes"] = [
             {
                 "role": "Hunter",
@@ -1369,18 +1381,18 @@ class SovereignCouncil:
             },
             {
                 "role": "Historian",
-                "vote": (source_signal.get("historian_profile") or {}).get("verdict", "UNKNOWN") if isinstance(source_signal.get("historian_profile"), dict) else "UNKNOWN",
+                "vote": hist_prof.get("verdict", "UNKNOWN"),
                 "reason": "pair memory verdict",
             },
             {
                 "role": "DeadlineKeeper",
-                "vote": daily_context.get("deadline_mode", "PATIENT"),
-                "reason": f"{daily_context.get('minutes_to_midnight')}m left, color={daily_context.get('daily_color')}",
+                "vote": daily_ctx.get("deadline_mode", "PATIENT"),
+                "reason": f"{daily_ctx.get('minutes_to_midnight')}m left, color={daily_ctx.get('daily_color')}",
             },
             {
                 "role": "Antagonist",
                 "vote": "VETO" if two_phase.get("veto_by") == "Antagonist" else "CHALLENGE",
-                "reason": str((decision.get("antagonist_view") or {}).get("reason") or two_phase.get("reason") or "searched for failure mode")[:160],
+                "reason": str(antag_view.get("reason") or two_phase.get("reason") or "searched for failure mode")[:160],
             },
             {
                 "role": "Auditor",

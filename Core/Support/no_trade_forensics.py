@@ -52,9 +52,12 @@ def build_no_trade_forensics() -> Dict[str, Any]:
     canonical_state = str(canonical.get("canonical_risk_state") or "UNKNOWN")
     live_truth_state = str(live_truth.get("risk_state") or "").upper()
     allow_new_orders = bool(canonical.get("allow_new_orders", False))
-    blockers = canonical.get("canonical_blockers") if isinstance(canonical.get("canonical_blockers"), list) else []
-    advisories = canonical.get("advisory_warnings") if isinstance(canonical.get("advisory_warnings"), list) else []
-    ignored = canonical.get("ignored_stale_blockers") if isinstance(canonical.get("ignored_stale_blockers"), list) else []
+    raw_blockers = canonical.get("canonical_blockers")
+    blockers: list = list(raw_blockers) if isinstance(raw_blockers, list) else []
+    raw_advisories = canonical.get("advisory_warnings")
+    advisories: list = list(raw_advisories) if isinstance(raw_advisories, list) else []
+    raw_ignored = canonical.get("ignored_stale_blockers")
+    ignored: list = list(raw_ignored) if isinstance(raw_ignored, list) else []
     reasons = " ".join(
         f"{str(item.get('source') or '')} {str(item.get('reason') or '')}"
         for item in blockers

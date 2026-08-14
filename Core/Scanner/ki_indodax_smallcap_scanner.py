@@ -673,7 +673,7 @@ class IndodaxSmallCapScanner:
         confidence       = sig.get("confidence", 0.5)
         base_symbol      = sig.get("base_symbol") or str(sig.get("symbol", "")).split("/")[0]
         category_policy  = classify_coin_category(base_symbol)
-        category_adjust  = category_score_adjustment(category_policy.get("category"), sig)
+        category_adjust  = category_score_adjustment(str(category_policy.get("category") or "UNKNOWN"), sig)
 
         lifecycle = self._map_lifecycle(pump_stage, distance_to_high, obi)
 

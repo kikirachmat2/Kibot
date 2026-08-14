@@ -41,7 +41,7 @@ def _load_env_file(env_path: str = ".env") -> None:
 
 
 from Core.Support.ki_vault import load_sovereign_env
-from Core.Support.ki_config import *
+from Core.Support.ki_config import KiConfig, OLLAMA_CHAT_URL
 from Core.Support.ki_utils import _env_first
 from Core.Support.ki_utils import telegram_send, load_json, save_json
 
@@ -124,6 +124,7 @@ PROMPT_PROVIDER_ORDER = {
     "OPS_CHAT": ["ollama", "mistral"],
     "OPS_CHAT_LOCAL": ["ollama", "mistral"],
     "AI_ASSISTED_FILTER": ["mistral", "ollama"],
+    "AI_RANKER": ["mistral", "ollama"],
 }
 
 PROMPT_TEMPLATES = {
@@ -134,6 +135,15 @@ PROMPT_TEMPLATES = {
         "Candidate Data: pair={pair}, grade={grade}, ev_pct={ev_pct}, regime={regime}\n"
         "Task: Evaluate if there are any red flags (pump-dump, severe negative news, manipulation) or if entry is supported.\n"
         "Return strict JSON only: {{\"confidence_score\": 0..100, \"has_red_flag\": false, \"reasoning\": \"one line reason\"}}"
+    ),
+    "AI_RANKER": (
+        "You are KiBot's AI Opportunity Ranker.\n"
+        "Evaluate and rank the following trading candidates using technical, statistical, and news data:\n"
+        "Market Regime: {regime}\n"
+        "Candidate Data: pair={pair}, grade={grade}, composite_score={composite_score}, volume_ratio={volume_ratio}, distance_to_high={distance_to_high}, historical_win_rate={win_rate}, sample_size={sample_size}, ev_pct={ev_pct}\n"
+        "News Context: {news_context}\n"
+        "Task: Score this candidate on a 0-100 scale based on edge strength, risk-reward profile, and historical reliability. Identify any red flags.\n"
+        "Return strict JSON only: {{\"confidence_score\": 0..100, \"has_red_flag\": false, \"reasoning\": \"one line justification\"}}"
     ),
     "COUNCIL_WATCHMAN": (
         "You are KiBot's Watchman.\n"
@@ -1191,6 +1201,7 @@ def _response_has_minimum_schema(prompt_type: str, parsed: Dict[str, Any]) -> bo
         "WEEKLY_SUMMARY": {"summary"},
         "AI_PERFORMANCE_ANALYST": {"summary_text", "observations"},
         "AI_ASSISTED_FILTER": {"confidence_score", "reasoning"},
+        "AI_RANKER": {"confidence_score", "reasoning"},
     }
     required = required_by_prompt.get(prompt_type, set())
     if not required:

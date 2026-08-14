@@ -8,7 +8,7 @@ URL = "http://127.0.0.1:8787/"
 
 def main() -> int:
     try:
-        from playwright.sync_api import sync_playwright
+        from playwright.sync_api import sync_playwright  # type: ignore
     except Exception:
         print("SKIP:PLAYWRIGHT_NOT_INSTALLED")
         return 0

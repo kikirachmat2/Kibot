@@ -187,3 +187,8 @@ async def simulate_pre_trade(
         "orderbook_age_s": round(time.time() - started, 3),
         "source": "INDODAX_ORDERBOOK_SIM",
     }
+
+
+# Alias for backward compatibility
+async def simulate_indodax_entry(*args: Any, **kwargs: Any) -> Dict[str, Any]:
+    return await simulate_pre_trade(*args, **kwargs)

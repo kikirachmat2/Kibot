@@ -25,15 +25,19 @@ def main():
     mgr = get_deposit_manager()
     event = mgr.record_deposit(amount_idr=amount_idr, note=note)
 
-    # Immediately trigger CapitalGovernor reconciliation
+    import asyncio
     gov = get_capital_governor()
-    gov.evaluate()
+    try:
+        asyncio.run(gov.reconcile_governor())
+    except Exception:
+        gov._load_governor_state()
 
     print(f"✅ Deposit notification recorded successfully!")
     print(f"   Event ID   : {event['event_id']}")
     print(f"   Amount IDR : Rp{amount_idr:,.2f}")
     print(f"   Note       : {event['note']}")
-    print(f"   Governor Status : {gov.status} (Allow orders: {gov.allow_new_orders})")
+    allow_orders = gov.status not in ("HALTED", "DRAWDOWN_HALT")
+    print(f"   Governor Status : {gov.status} (Allow orders: {allow_orders})")
 
 
 if __name__ == "__main__":

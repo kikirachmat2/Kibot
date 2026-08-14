@@ -15,6 +15,7 @@ import sys
 import logging
 from pathlib import Path
 import tempfile
+from typing import Any
 
 # Ensure project root is in the path
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
@@ -84,7 +85,7 @@ def safe_exit(code: int, reason: str = ""):
         trigger_rollback(reason or "Unknown Healthcheck Failure")
     sys.exit(code)
 
-def check_imports():
+def check_imports() -> tuple[Any, Any]:
     logger.info("Step 1/8: Checking core system imports...")
     try:
         from Core.Support.ki_config import KiConfig, PROJECT_ROOT, STATE_DIR
@@ -95,6 +96,7 @@ def check_imports():
     except Exception as exc:
         logger.error(f"❌ Core imports failed: {exc}")
         safe_exit(1, f"Core imports failed: {exc}")
+        raise SystemExit(1)
 
 def check_drawdown_bounds(KiConfig):
     logger.info("Step 2/8: Verifying daily drawdown bounds...")
@@ -435,8 +437,10 @@ def check_network_bindings():
                             conns = net_connections(kind='all')
                         else:
                             conns = p.connections(kind='all')
-                        if conns:
+                        if isinstance(conns, list):
                             connections.extend(conns)
+                        elif isinstance(conns, (tuple, set)):
+                            connections.extend(list(conns))
                     except (psutil.NoSuchProcess, psutil.AccessDenied):
                         continue
             else:
@@ -608,7 +612,7 @@ def check_json_states(state_dir):
                     logger.error(f"❌ CRITICAL STATE ERROR: ai_decision_trace.json is missing required schema keys: {missing_keys}")
                     safe_exit(22, f"ai_decision_trace.json is missing required schema keys: {missing_keys}")
 
-            if state_file == "scanner_runtime.json":
+            if state_file == "scanner_runtime.json" and isinstance(data, dict):
                 mode = data.get("mode")
                 if mode not in {"FAST", "NORMAL", "SLOW"}:
                     logger.error(f"❌ CRITICAL STATE ERROR: Invalid mode in scanner_runtime.json: '{mode}' (must be FAST, NORMAL, or SLOW).")
@@ -657,7 +661,7 @@ def check_json_states(state_dir):
                         logger.error(f"❌ CRITICAL STATE ERROR: CPU percent is > {cpu_threshold}% for 3 consecutive samples/checks ({cpu_pct}%)!")
                         safe_exit(16, f"CPU percent is > {cpu_threshold}% for 3 consecutive samples/checks ({cpu_pct}%)!")
             
-            if state_file == "leadlag_alpha.json":
+            if state_file == "leadlag_alpha.json" and isinstance(data, dict):
                 leadlag_enabled = os.getenv("KIBOT_LEADLAG_ENABLED", "true").lower() == "true"
                 if leadlag_enabled:
                     opportunities = data.get("opportunities", data.get("qualified_signals", []))

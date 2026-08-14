@@ -339,7 +339,7 @@ class LearningEngine:
     def get_stats(self, pair: str) -> PairStats:
         if self.use_redis:
             data = self.redis.get(f"kibot:learning:{pair}")
-            if data: return PairStats.from_dict(json.loads(data))
+            if data: return PairStats.from_dict(json.loads(str(data)))
         if pair not in self._cache:
             # New Pair: Use Bayesian Seeds
             is_large_cap = pair.lower() in ["btc_idr", "eth_idr", "sol_idr", "xrp_idr", "bnb_idr"]
@@ -462,7 +462,7 @@ class LearningEngine:
         
         if self.use_redis:
             raw = self.redis.get(active_key)
-            if raw: trade = json.loads(raw)
+            if raw: trade = json.loads(str(raw))
         
         if not trade and TRADE_LOG_FILE.exists():
             with open(TRADE_LOG_FILE, "r") as f:

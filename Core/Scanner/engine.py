@@ -210,13 +210,14 @@ class ScannerEngine:
             except Exception as e:
                 logger.debug(f"[Scanner] LeadLag calculation/persist failed: {e}")
 
-        # Evaluate CPU & Memory Telemetry for Adaptive Mode
-        cpu_pct = 20.0
+        # Evaluate CPU & Memo        cpu_pct = 10.0
         mem_pct = 20.0
         try:
             import psutil
-            cpu_pct = psutil.cpu_percent()
-            mem_pct = psutil.virtual_memory().percent
+            raw_cpu = psutil.cpu_percent()
+            cpu_pct = float(raw_cpu if isinstance(raw_cpu, (int, float)) else 10.0)
+            raw_mem = psutil.virtual_memory().percent
+            mem_pct = float(raw_mem if isinstance(raw_mem, (int, float)) else 20.0)
         except Exception:
             pass
             
@@ -272,9 +273,10 @@ class ScannerEngine:
             logger.debug(f"[Scanner] scanner_runtime.json write failed: {e}")
 
         # Compute and persist optimal market rotation allocation
-        if getattr(self, "rotation_engine", None):
+        rotation_engine = getattr(self, "rotation_engine", None)
+        if rotation_engine is not None and hasattr(rotation_engine, "compute_optimal_allocation"):
             try:
-                await self.rotation_engine.compute_optimal_allocation()
+                await rotation_engine.compute_optimal_allocation()
             except Exception as e:
                 logger.debug(f"[Scanner] Market rotation allocation computation failed: {e}")
 

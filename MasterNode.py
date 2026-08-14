@@ -244,7 +244,7 @@ class KiBotMaster:
                 _ot_summary = _ot.get_today_summary()
                 if _stale:
                     _stale_pairs = ", ".join(
-                        str(o.get("pair") or o.get("symbol") or o.get("id") or "?").upper()
+                        str(o.get("pair") if isinstance(o, dict) else getattr(o, "pair", str(o))).upper()
                         for o in _stale[:5]
                     )
                     logger.warning(f"⏰ [OrderTracker] {len(_stale)} stale order(s): {_stale_pairs}")
@@ -352,6 +352,7 @@ class KiBotMaster:
             # Using tail -F to handle log rotation
             proc = subprocess.Popen(['tail', '-n', '0', '-F', path], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
             while self.is_running:
+                if proc.stdout is None: break
                 line = proc.stdout.readline().decode('utf-8')
                 if not line: break
                 if any(x in line for x in ['ERROR', 'CRITICAL', 'Exception', 'Traceback']):
@@ -593,13 +594,14 @@ class KiBotMaster:
 
     async def invoke_council(self, target: str, issue_type: str):
         """Invoke the Sovereign Council for complex decision making."""
+        breaker = self.breakers.get(target.split("_")[-1])
         context = {
             "type": issue_type,
             "target": target,
             "snapshot": {
                 "node": target,
                 "timestamp": time.time(),
-                "failures": self.breakers.get(target.split("_")[-1], {}).get_status() if self.breakers.get(target.split("_")[-1]) else {}
+                "failures": breaker.get_status() if (breaker and hasattr(breaker, "get_status")) else {}
             }
         }
         

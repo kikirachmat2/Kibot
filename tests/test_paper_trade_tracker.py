@@ -297,3 +297,76 @@ def test_ai_assisted_variant_gate(monkeypatch, tmp_path):
     director.evaluate_cycle([cand])
     open_trades_fail = ai_tracker.get_open_paper_trades()
     assert len(open_trades_fail) == 0
+
+
+def test_ai_ranker_variant_enriched_prompt(monkeypatch, tmp_path):
+    import Core.Intelligence.paper_trade_tracker as ptt_mod
+    state_dir = tmp_path / "state"
+    open_dir = state_dir / "paper_trades" / "ai_ranker" / "open"
+    history_dir = state_dir / "trade_history"
+    open_dir.mkdir(parents=True, exist_ok=True)
+    history_dir.mkdir(parents=True, exist_ok=True)
+
+    ptt_mod._tracker_instances.clear()
+    ranker_tracker = ptt_mod.get_paper_trade_tracker("AI_RANKER")
+    ranker_tracker.open_dir = open_dir
+    ranker_tracker.history_dir = history_dir
+
+    def mock_get_tracker(var_id="DEFAULT"):
+        key = (var_id or "DEFAULT").upper().strip()
+        if key not in ptt_mod._tracker_instances:
+            t = ptt_mod.PaperTradeTracker(variant_id=key, open_dir=open_dir if key == "AI_RANKER" else (state_dir / "paper_trades" / key.lower() / "open"), history_dir=history_dir)
+            ptt_mod._tracker_instances[key] = t
+        return ptt_mod._tracker_instances[key]
+
+    monkeypatch.setattr(ptt_mod, "get_paper_trade_tracker", mock_get_tracker)
+
+    director = AutonomousDirector()
+    monkeypatch.setattr("Core.Intelligence.autonomous_director.run_scorecard", lambda c, market_regime=None: c.update({"scorecard_verdict": "PAPER_ONLY", "scorecard": {"composite_score": 0.82}}))
+    monkeypatch.setattr("Core.Intelligence.autonomous_director.batch_evaluate_ev", lambda c: c)
+    monkeypatch.setattr("Core.Intelligence.strategy_stats.StrategyStatsAggregator.inject_stats", lambda self, c, **kw: c)
+
+    cand = {
+        "symbol": "SOL/IDR",
+        "pair": "SOL/IDR",
+        "price_idr": 2500000.0,
+        "signal_quality": {"grade": "STRONG"},
+        "volume_ratio": 3.2,
+        "distance_to_high": 0.05,
+        "win_rate": 0.75,
+        "historical_sample_size": 28,
+        "scorecard_verdict": "PAPER_ONLY",
+    }
+
+    from Core.Intelligence import kibot_ai_coordinator
+    captured_prompts = []
+
+    async def mock_ai_ranker(prompt_type, payload, *args, **kwargs):
+        captured_prompts.append((prompt_type, payload))
+        if prompt_type == "AI_RANKER":
+            return {"confidence_score": 88, "has_red_flag": False, "reasoning": "High historical win rate and volume breakout"}
+        return {"confidence_score": 50, "has_red_flag": False, "reasoning": "baseline"}
+
+    monkeypatch.setattr(kibot_ai_coordinator, "query_ai", mock_ai_ranker)
+    monkeypatch.setattr(kibot_ai_coordinator, "_is_provider_rpm_exceeded", lambda p: False)
+    monkeypatch.setattr(kibot_ai_coordinator, "_provider_cooldown_remaining", lambda p: 0.0)
+
+    director.evaluate_cycle([cand])
+
+    # Verify AI_RANKER was queried with enriched metadata
+    ranker_calls = [p for p in captured_prompts if p[0] == "AI_RANKER"]
+    assert len(ranker_calls) == 1
+    ranker_payload = ranker_calls[0][1]
+    assert ranker_payload["pair"] == "SOL/IDR"
+    assert ranker_payload["win_rate"] == 0.75
+    assert ranker_payload["sample_size"] == 28
+    assert ranker_payload["volume_ratio"] == 3.2
+    assert ranker_payload["composite_score"] == 0.82
+
+    # Verify trade was opened with attached AI metadata
+    ranker_tracker = ptt_mod.get_paper_trade_tracker("AI_RANKER")
+    open_trades = ranker_tracker.get_open_paper_trades()
+    assert len(open_trades) == 1
+    assert open_trades[0]["ai_confidence_score"] == 88
+    assert "High historical win rate" in open_trades[0]["ai_reasoning"]
+

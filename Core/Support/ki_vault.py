@@ -7,7 +7,7 @@ from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
 
 class KiVault:
-    def __init__(self, secret_key: str = None):
+    def __init__(self, secret_key: str | None = None):
         # Support a single explicit root of trust. Legacy node-agent secret is
         # accepted only if it is configured; there is no baked-in default.
         self.secret = secret_key or os.getenv("KIBOT_SECRET") or os.getenv("KIBOT_NODE_AGENT_SECRET")

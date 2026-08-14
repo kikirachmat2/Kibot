@@ -2,13 +2,14 @@ import sys
 import asyncio
 import time
 import psutil
+from typing import Any
 
 # 1. uvloop helper
 def install_uvloop_if_available():
     """Install uvloop event loop policy on non-Windows platforms if available."""
     if sys.platform != "win32":
         try:
-            import uvloop
+            import uvloop  # type: ignore
             asyncio.set_event_loop_policy(uvloop.EventLoopPolicy())
             return True
         except ImportError:
@@ -17,7 +18,7 @@ def install_uvloop_if_available():
 
 # 2. orjson hotpath parser helper
 try:
-    import orjson
+    import orjson  # type: ignore
     def dumps_json(data) -> str:
         """Fast serialize json to string using orjson."""
         return orjson.dumps(data).decode('utf-8')
@@ -39,7 +40,7 @@ except ImportError:
 
 # 3. TTL Cache helper
 try:
-    from cachetools import TTLCache
+    from cachetools import TTLCache  # type: ignore
 except ImportError:
     class TTLCache(dict):
         """Standard fallback TTLCache if cachetools is not installed."""
@@ -50,29 +51,25 @@ except ImportError:
             self._expire_times = {}
 
         def __setitem__(self, key, value):
-            self.expire()
-            if len(self) >= self.maxsize and key not in self:
-                first_key = next(iter(self.keys()))
-                self.pop(first_key, None)
-                self._expire_times.pop(first_key, None)
             self._expire_times[key] = time.time() + self.ttl
+            if len(self) >= self.maxsize:
+                self._purge()
             super().__setitem__(key, value)
 
         def __getitem__(self, key):
-            self.expire()
-            if key not in self:
+            if key in self._expire_times and time.time() > self._expire_times[key]:
+                del self[key]
+                del self._expire_times[key]
                 raise KeyError(key)
             return super().__getitem__(key)
 
         def get(self, key, default=None):
-            self.expire()
-            return super().get(key, default)
+            try:
+                return self[key]
+            except KeyError:
+                return default
 
-        def __contains__(self, key):
-            self.expire()
-            return super().__contains__(key)
-
-        def expire(self):
+        def _purge(self):
             now = time.time()
             expired = [k for k, exp in self._expire_times.items() if now > exp]
             for k in expired:
@@ -91,7 +88,8 @@ async def bounded_gather(*aws, limit=4):
 # 5. Runtime budget checker
 def get_runtime_budget() -> dict:
     """Assess system state (CPU load, memory) to estimate ideal computation budget."""
-    cpu_percent = psutil.cpu_percent()
+    raw_cpu = psutil.cpu_percent()
+    cpu_percent = float(raw_cpu if isinstance(raw_cpu, (int, float)) else 0.0)
     mem = psutil.virtual_memory()
     load_avg = psutil.getloadavg() if hasattr(psutil, "getloadavg") else (0.0, 0.0, 0.0)
     
@@ -107,7 +105,7 @@ def get_runtime_budget() -> dict:
         
     return {
         "cpu_percent": cpu_percent,
-        "mem_percent": mem.percent,
+        "mem_percent": float(getattr(mem, "percent", 0.0) or 0.0),
         "load_avg": load_avg,
         "budget_ms": budget_ms
     }

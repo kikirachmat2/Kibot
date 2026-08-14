@@ -191,7 +191,8 @@ def reconcile_risk_truth(
                 {"source": "ai_patrol", "reason": "global_daily_loss_cap_breached"}
             )
 
-    ai_alerts = ai_patrol.get("alerts") if isinstance(ai_patrol.get("alerts"), list) else []
+    raw_ai_alerts = ai_patrol.get("alerts")
+    ai_alerts: list = list(raw_ai_alerts) if isinstance(raw_ai_alerts, list) else []
     ai_runtime = ai_patrol.get("runtime_semantics") if isinstance(ai_patrol.get("runtime_semantics"), dict) else {}
     for alert in ai_alerts:
         text = str(alert or "")

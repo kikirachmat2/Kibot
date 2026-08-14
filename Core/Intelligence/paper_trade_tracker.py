@@ -58,6 +58,13 @@ VARIANT_CONFIGS = {
         "allowed_grades": {"STRONG", "ACCEPTABLE"},
         "min_volume_ratio": 0.0,
     },
+    "AI_RANKER": {
+        "variant_id": "AI_RANKER",
+        "take_profit_pct": 0.035,  # +3.5% TP (Same as DEFAULT/AI_ASSISTED for fair comparison)
+        "stop_loss_pct": 0.010,    # -1.0% SL (Same as DEFAULT/AI_ASSISTED for fair comparison)
+        "allowed_grades": {"STRONG", "ACCEPTABLE"},
+        "min_volume_ratio": 0.0,
+    },
 }
 
 

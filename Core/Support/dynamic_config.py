@@ -58,8 +58,8 @@ def sync_from_performance(pnl_metrics: dict):
     AI Logic to adjust parameters based on performance.
     Example: If WinRate < 40%, increase Z-Score threshold.
     """
-    win_rate = pnl_metrics.get("win_rate", 1.0)
-    current_z = get_param("KIBOT_Z_SCORE_THRESHOLD")
+    win_rate = float(pnl_metrics.get("win_rate", 1.0) or 1.0)
+    current_z = float(get_param("KIBOT_Z_SCORE_THRESHOLD") or 2.0)
     
     if win_rate < 0.40:
         # Too many losses, be stricter

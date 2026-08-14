@@ -48,6 +48,7 @@ async def test_pending_exit_reprices_stale_open_sell(monkeypatch):
     assert handled is True
     executor.indodax.cancel_order.assert_awaited_once_with(symbol, "SELL-1", "sell")
     executor.execute_exit.assert_awaited_once()
+    assert executor.execute_exit.await_args is not None
     args = executor.execute_exit.await_args.args
     assert args[0] == symbol
     assert args[1] == 947.0
@@ -125,6 +126,7 @@ async def test_hard_stop_detail_bypasses_profitable_floor(monkeypatch):
     await executor.execute_exit(symbol, 108.0, "HARD_STOP (-4.00% < -2.5%)")
 
     executor.indodax.trade.assert_awaited_once()
+    assert executor.indodax.trade.await_args is not None
     assert executor.indodax.trade.await_args.kwargs["price"] == 108.0
     assert executor.active_trades[symbol]["exit_pending_order_id"] == "SELL-2"
 

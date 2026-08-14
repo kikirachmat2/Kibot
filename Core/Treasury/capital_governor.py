@@ -1188,6 +1188,43 @@ class CapitalGovernor:
             self.save()
             raise e
 
+def get_capital_governor() -> CapitalGovernor:
+    return CapitalGovernor()
+
+
+async def run_governor_service(reset_only=False):
+    # Instantiate gateways
+    try:
+        from Core.Exchange.indodax import IndodaxGateway
+        indodax = IndodaxGateway()
+    except Exception as e:
+        logger.error(f"Failed to import/instantiate IndodaxGateway: {e}")
+        indodax = None
+        
+    gov = CapitalGovernor(indodax, None)
+    
+    if reset_only:
+        logger.info("Executing initial reconciliation to get current consolidated equity...")
+        await gov.reconcile_governor()
+        gov.manual_pnl_reset()
+        logger.info("✅ Manual Daily PnL Reset completed successfully.")
+        return
+
+    logger.info("Initializing Capital Governor standalone service loop...")
+    # Infinite reconciliation loop (every 10 seconds)
+    while True:
+        try:
+            logger.info("Executing capital reconciliation cycle...")
+            res = await gov.reconcile_governor()
+            logger.info(
+                f"Consolidated Reconciled: Total Equity Rp{res['current_total_equity_idr']:,.2f} | "
+                f"Daily PnL Rp{res['daily_pnl_idr']:+,.2f} | Date: {res['date']}"
+            )
+        except Exception as e:
+            logger.error(f"Error in reconciliation cycle: {e}", exc_info=True)
+        await asyncio.sleep(10)
+
+
 if __name__ == "__main__":
     import asyncio
     import argparse
@@ -1202,38 +1239,6 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="KiBot Capital Governor CLI/Service")
     parser.add_argument("--reset-pnl", action="store_true", help="Trigger manual PnL reset to current reconciled equity")
     args = parser.parse_args()
-    
-    async def run_governor_service(reset_only=False):
-        # Instantiate gateways
-        try:
-            from Core.Exchange.indodax import IndodaxGateway
-            indodax = IndodaxGateway()
-        except Exception as e:
-            logger.error(f"Failed to import/instantiate IndodaxGateway: {e}")
-            indodax = None
-            
-        gov = CapitalGovernor(indodax, None)
-        
-        if reset_only:
-            logger.info("Executing initial reconciliation to get current consolidated equity...")
-            await gov.reconcile_governor()
-            gov.manual_pnl_reset()
-            logger.info("✅ Manual Daily PnL Reset completed successfully.")
-            return
-
-        logger.info("Initializing Capital Governor standalone service loop...")
-        # Infinite reconciliation loop (every 10 seconds)
-        while True:
-            try:
-                logger.info("Executing capital reconciliation cycle...")
-                res = await gov.reconcile_governor()
-                logger.info(
-                    f"Consolidated Reconciled: Total Equity Rp{res['current_total_equity_idr']:,.2f} | "
-                    f"Daily PnL Rp{res['daily_pnl_idr']:+,.2f} | Date: {res['date']}"
-                )
-            except Exception as e:
-                logger.error(f"Error in reconciliation cycle: {e}", exc_info=True)
-            await asyncio.sleep(10)
 
     try:
         if args.reset_pnl:
