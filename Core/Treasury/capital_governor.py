@@ -724,7 +724,7 @@ class CapitalGovernor:
     def _reconcile_operator_deposits(self) -> float:
         """Process unreconciled operator deposit events, adjusting starting baseline equity."""
         try:
-            from .deposit_event_manager import get_deposit_manager
+            from Core.Treasury.deposit_event_manager import get_deposit_manager
             dep_mgr = get_deposit_manager()
             unreconciled = dep_mgr.get_unreconciled_deposits()
             if not unreconciled:

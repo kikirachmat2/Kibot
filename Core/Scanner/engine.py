@@ -175,7 +175,18 @@ class ScannerEngine:
             "data": data,
             "signature": sign_payload(data, secret)
         }).encode("utf-8")
-        self.udp_sock.sendto(payload, (self.target_host, port))
+        if len(payload) > 60000:
+            trimmed_data = dict(data)
+            if "signals" in trimmed_data and isinstance(trimmed_data["signals"], list):
+                trimmed_data["signals"] = trimmed_data["signals"][:20]
+            payload = json.dumps({
+                "data": trimmed_data,
+                "signature": sign_payload(trimmed_data, secret)
+            }).encode("utf-8")
+        try:
+            self.udp_sock.sendto(payload, (self.target_host, port))
+        except Exception as e:
+            logger.warning(f"[SCANNER] UDP dispatch to {self.target_host}:{port} failed: {e}")
 
     async def run_once_async(self) -> None:
         """Single scanning cycle."""
