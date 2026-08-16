@@ -441,7 +441,11 @@ else:
 }
 
 cmd_variant_compare() {
-  python3 -c "
+  local py_bin="/home/ubuntu/KiBot/.venv/bin/python3"
+  if [[ ! -x "$py_bin" ]]; then
+    py_bin="python3"
+  fi
+  PYTHONPATH="." $py_bin - <<'PY'
 import json
 from pathlib import Path
 from Core.Intelligence.strategy_stats import get_stats_aggregator
@@ -450,7 +454,7 @@ from Core.Intelligence.paper_trade_tracker import VARIANT_CONFIGS
 agg = get_stats_aggregator()
 agg.refresh_if_needed(force=True)
 
-variants = list(VARIANT_CONFIGS.keys()) if "DEFAULT" in VARIANT_CONFIGS else list(VARIANT_CONFIGS.keys()) + ["DEFAULT"]
+variants = list(VARIANT_CONFIGS.keys())
 if "DEFAULT" not in variants:
     variants.insert(2, "DEFAULT")
 state_dir = Path('state')
@@ -458,7 +462,7 @@ state_dir = Path('state')
 print('\n========================================================================================')
 print('                         KIBOT MULTI-VARIANT PAPER TRADING PERFORMANCE')
 print('========================================================================================')
-printf_fmt = '%-15s | %-12s | %-10s | %-12s | %-12s | %-12s\n'
+printf_fmt = '%-15s | %-12s | %-10s | %-12s | %-12s | %-12s'
 print(printf_fmt % ('VARIANT', 'BANKROLL', 'CLOSED', 'WIN RATE', 'AVG PNL', 'EQUITY (IDR)'))
 print('-' * 88)
 
@@ -486,7 +490,7 @@ for var in variants:
     print(printf_fmt % (var, bkr_str, summary.total_trades, wr_str, pnl_str, eq_str))
 
 print('========================================================================================\n')
-"
+PY
 }
 
 cmd_ai_report() {
