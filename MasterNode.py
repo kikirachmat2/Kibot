@@ -380,7 +380,7 @@ class KiBotMaster:
         loop = asyncio.get_event_loop()
         while self.is_running:
             try:
-                data, addr = await loop.sock_recvfrom(sock, 8192)
+                data, addr = await loop.sock_recvfrom(sock, 65536)
                 envelope = json.loads(data.decode())
                 payload = envelope.get("data", {})
                 signature = envelope.get("signature", "")
