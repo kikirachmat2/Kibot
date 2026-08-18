@@ -152,9 +152,22 @@ class PaperTradeTracker:
             if existing.get("pair", "").upper() == pair:
                 return None
 
-        entry_price = float(candidate.get("price_idr") or candidate.get("price") or candidate.get("last_price") or 0.0)
-        if entry_price <= 0:
-            entry_price = 100.0
+        # Strict validation: require explicit positive price_idr / last_price_idr
+        source = str(candidate.get("source") or candidate.get("strategy_id") or "").upper()
+        raw_price = candidate.get("price_idr") or candidate.get("last_price_idr")
+        if raw_price is None and "LEADLAG" not in source and ("IDR" in pair or candidate.get("exchange") == "INDODAX"):
+            raw_price = candidate.get("price") or candidate.get("last_price")
+
+        try:
+            entry_price = float(raw_price or 0.0)
+        except (ValueError, TypeError):
+            entry_price = 0.0
+
+        if entry_price <= 0.0:
+            logger.warning(
+                f"[PaperTrade-{effective_variant}] Rejected candidate {pair}: missing or non-positive explicit price_idr (source={source}, raw={raw_price})"
+            )
+            return None
 
         var_prefix = f"paper_{effective_variant.lower()}" if effective_variant != "DEFAULT" else "paper"
         trade_id = f"{var_prefix}_{pair.lower().replace('/', '_')}_{int(time.time())}_{uuid.uuid4().hex[:6]}"
@@ -310,6 +323,7 @@ class PaperTradeTracker:
     ) -> Dict[str, Any]:
         """Close a paper trade, compute fee-aware PnL, save to paper trade history, and remove open file."""
         trade_id = trade.get("trade_id")
+        var_id = str(trade.get("variant_id") or self.variant_id).upper().strip()
         entry_price = float(trade.get("entry_price_idr", 1.0))
         if entry_price <= 0:
             entry_price = 1.0
@@ -320,12 +334,46 @@ class PaperTradeTracker:
 
         budget_idr = float(trade.get("budget_idr", 10000.0))
         net_pnl_idr = budget_idr * net_pct
+        realized_pnl_pct = round(net_pct * 100.0, 4)
 
         now_iso = _now_wib().isoformat()
         date_str = _today_date_str()
 
-        is_invalid = bool(trade.get("is_invalid_valuation")) or (exit_reason == "TIMEOUT_PRICE_UNAVAILABLE") or (exit_reason == "MAX_HOLD_TIME_EXPIRED" and exit_price == entry_price)
-        var_id = str(trade.get("variant_id") or self.variant_id).upper().strip()
+        # Circuit breaker: check for absurd valuation anomalies (> 500% gain or < -100% loss)
+        is_absurd_valuation = (realized_pnl_pct > 500.0) or (realized_pnl_pct < -100.0)
+        is_invalid = (
+            bool(trade.get("is_invalid_valuation"))
+            or (exit_reason == "TIMEOUT_PRICE_UNAVAILABLE")
+            or (exit_reason == "MAX_HOLD_TIME_EXPIRED" and exit_price == entry_price)
+            or is_absurd_valuation
+        )
+
+        if is_absurd_valuation:
+            logger.critical(
+                f"[PaperTrade-{var_id}] 🚨 CRITICAL ANOMALY: Trade {trade_id} on {trade.get('pair')} generated absurd PnL {realized_pnl_pct:+.2f}% "
+                f"(entry={entry_price}, exit={exit_price}, net_pnl={net_pnl_idr:+.2f} IDR). "
+                f"Flagged as is_invalid_valuation=True and EXCLUDED from equity accumulator & stats."
+            )
+            try:
+                from Core.sovereign_notifier import SovereignNotifier
+                import asyncio
+                notifier = SovereignNotifier()
+                alert_text = (
+                    f"Paper Trade `{trade_id}` ({trade.get('pair')}) generated abnormal PnL: `{realized_pnl_pct:+.2f}%`.\n"
+                    f"Entry: `{entry_price:,.2f}` IDR | Exit: `{exit_price:,.2f}` IDR\n"
+                    f"Action: Flagged `is_invalid_valuation=True`, EXCLUDED from equity accumulator."
+                )
+                try:
+                    loop = asyncio.get_event_loop()
+                    if loop.is_running():
+                        loop.create_task(notifier.send_urgent_alert(alert_text, incident_key=f"pnl_anomaly:{trade_id}"))
+                    else:
+                        loop.run_until_complete(notifier.send_urgent_alert(alert_text, incident_key=f"pnl_anomaly:{trade_id}"))
+                except Exception:
+                    pass
+            except Exception as alert_err:
+                logger.debug(f"[PaperTrade] Anomaly alert dispatch failed: {alert_err}")
+
         closed_record = {
             "event_type": "ORDER_RECONCILED",
             "trade_event_type": "ORDER_RECONCILED",
@@ -344,7 +392,7 @@ class PaperTradeTracker:
             "exit_price_idr": exit_price,
             "amount_idr": budget_idr,
             "realized_pnl_idr": round(net_pnl_idr, 2),
-            "realized_pnl_pct": round(net_pct * 100.0, 4),  # % format
+            "realized_pnl_pct": realized_pnl_pct,  # % format
             "fee_pct": self.fee_pct,
             "exit_reason": exit_reason,
             "entry_time_wib": trade.get("entry_time_wib"),
@@ -366,45 +414,48 @@ class PaperTradeTracker:
             f.write(json.dumps(closed_record, ensure_ascii=False) + "\n")
 
         # 1b. Update cumulative paper equity curve file (state/paper_equity_{variant}.json)
-        try:
-            if var_id == "DEFAULT":
-                equity_file = STATE_DIR / "paper_equity.json"
-            else:
-                equity_file = STATE_DIR / f"paper_equity_{var_id.lower()}.json"
+        if not is_invalid:
+            try:
+                if var_id == "DEFAULT":
+                    equity_file = STATE_DIR / "paper_equity.json"
+                else:
+                    equity_file = STATE_DIR / f"paper_equity_{var_id.lower()}.json"
 
-            eq_data = {
-                "variant_id": var_id,
-                "initial_bankroll_idr": self.bankroll_idr,
-                "current_equity_idr": self.bankroll_idr,
-                "total_pnl_idr": 0.0,
-                "total_paper_trades": 0,
-                "winning_trades": 0,
-                "losing_trades": 0,
-                "win_rate_pct": 0.0,
-                "updated_at": now_iso,
-            }
-            if equity_file.exists():
-                try:
-                    eq_data = json.loads(equity_file.read_text(encoding="utf-8"))
-                except Exception:
-                    pass
+                eq_data = {
+                    "variant_id": var_id,
+                    "initial_bankroll_idr": self.bankroll_idr,
+                    "current_equity_idr": self.bankroll_idr,
+                    "total_pnl_idr": 0.0,
+                    "total_paper_trades": 0,
+                    "winning_trades": 0,
+                    "losing_trades": 0,
+                    "win_rate_pct": 0.0,
+                    "updated_at": now_iso,
+                }
+                if equity_file.exists():
+                    try:
+                        eq_data = json.loads(equity_file.read_text(encoding="utf-8"))
+                    except Exception:
+                        pass
 
-            eq_data["total_paper_trades"] = int(eq_data.get("total_paper_trades", 0)) + 1
-            if net_pnl_idr > 0:
-                eq_data["winning_trades"] = int(eq_data.get("winning_trades", 0)) + 1
-            elif net_pnl_idr < 0:
-                eq_data["losing_trades"] = int(eq_data.get("losing_trades", 0)) + 1
+                eq_data["total_paper_trades"] = int(eq_data.get("total_paper_trades", 0)) + 1
+                if net_pnl_idr > 0:
+                    eq_data["winning_trades"] = int(eq_data.get("winning_trades", 0)) + 1
+                elif net_pnl_idr < 0:
+                    eq_data["losing_trades"] = int(eq_data.get("losing_trades", 0)) + 1
 
-            total_trades = int(eq_data.get("total_paper_trades", 0))
-            wins = int(eq_data.get("winning_trades", 0))
-            eq_data["win_rate_pct"] = round((wins / total_trades) * 100.0, 2) if total_trades > 0 else 0.0
-            eq_data["total_pnl_idr"] = round(float(eq_data.get("total_pnl_idr", 0.0)) + net_pnl_idr, 2)
-            eq_data["current_equity_idr"] = round(float(eq_data.get("initial_bankroll_idr", self.bankroll_idr)) + eq_data["total_pnl_idr"], 2)
-            eq_data["updated_at"] = now_iso
+                total_trades = int(eq_data.get("total_paper_trades", 0))
+                wins = int(eq_data.get("winning_trades", 0))
+                eq_data["win_rate_pct"] = round((wins / total_trades) * 100.0, 2) if total_trades > 0 else 0.0
+                eq_data["total_pnl_idr"] = round(float(eq_data.get("total_pnl_idr", 0.0)) + net_pnl_idr, 2)
+                eq_data["current_equity_idr"] = round(float(eq_data.get("initial_bankroll_idr", self.bankroll_idr)) + eq_data["total_pnl_idr"], 2)
+                eq_data["updated_at"] = now_iso
 
-            _atomic_write_json(equity_file, eq_data)
-        except Exception as err:
-            logger.warning(f"[PaperTrade-{var_id}] Failed to update paper equity curve file: {err}")
+                _atomic_write_json(equity_file, eq_data)
+            except Exception as err:
+                logger.warning(f"[PaperTrade-{var_id}] Failed to update paper equity curve file: {err}")
+        else:
+            logger.warning(f"[PaperTrade-{var_id}] Skipped equity accumulator update for trade {trade_id} (is_invalid_valuation=True)")
 
         # 2. Delete open position file
         open_file = self.open_dir / f"{trade_id}.json"
@@ -421,26 +472,28 @@ class PaperTradeTracker:
         except Exception as e:
             logger.warning(f"Failed to refresh strategy stats on paper trade close: {e}")
 
-        # 4. Feed to Bayesian KiBot Learning Engine
-        try:
-            from Core.Intelligence.kibot_learning_engine import get_engine
-            learning = get_engine()
-            pair_key = str(trade.get("pair") or "").lower().replace("/", "_")
-            won = net_pnl_idr > 0
-            learning.record_trade(pair_key, net_pct, regime=trade.get("pattern", "NORMAL"), won=won, pnl_idr=net_pnl_idr)
-            logger.info(f"[PaperTrade] Recorded paper trade to Bayesian learning engine: {pair_key} PnL={net_pnl_idr:+.2f} IDR")
-        except Exception as e:
-            logger.warning(f"[PaperTrade] Learning engine update failed: {e}")
+        # 4. Feed to Bayesian KiBot Learning Engine (only if valid)
+        if not is_invalid:
+            try:
+                from Core.Intelligence.kibot_learning_engine import get_engine
+                learning = get_engine()
+                pair_key = str(trade.get("pair") or "").lower().replace("/", "_")
+                won = net_pnl_idr > 0
+                learning.record_trade(pair_key, net_pct, regime=trade.get("pattern", "NORMAL"), won=won, pnl_idr=net_pnl_idr)
+                logger.info(f"[PaperTrade] Recorded paper trade to Bayesian learning engine: {pair_key} PnL={net_pnl_idr:+.2f} IDR")
+            except Exception as e:
+                logger.warning(f"[PaperTrade] Learning engine update failed: {e}")
 
-        # 5. Feed to Pair Quarantine System
-        try:
-            from Core.Intelligence.pair_quarantine import record_pair_outcome
-            pair_display = str(trade.get("pair") or "")
-            quarantined = record_pair_outcome(pair_display, net_pnl_idr)
-            if quarantined:
-                logger.warning(f"[PaperTrade] Pair {pair_display} QUARANTINED after consecutive paper losses")
-        except Exception as e:
-            logger.warning(f"[PaperTrade] Pair quarantine update failed: {e}")
+        # 5. Feed to Pair Quarantine System (only if valid)
+        if not is_invalid:
+            try:
+                from Core.Intelligence.pair_quarantine import record_pair_outcome
+                pair_display = str(trade.get("pair") or "")
+                quarantined = record_pair_outcome(pair_display, net_pnl_idr)
+                if quarantined:
+                    logger.warning(f"[PaperTrade] Pair {pair_display} QUARANTINED after consecutive paper losses")
+            except Exception as e:
+                logger.warning(f"[PaperTrade] Pair quarantine update failed: {e}")
 
         logger.info(
             f"[PaperTrade] Closed virtual position for {trade.get('pair')} — Reason: {exit_reason}, PnL: {net_pnl_idr:+.2f} IDR ({net_pct*100:+.2f}%)"

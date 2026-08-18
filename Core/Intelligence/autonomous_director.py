@@ -117,7 +117,15 @@ class AutonomousDirector:
             price_map = {}
             for c in raw_candidates:
                 pair = str(c.get("pair") or c.get("symbol") or "").upper().strip()
-                px = float(c.get("price_idr") or c.get("price") or c.get("last_price") or 0.0)
+                # Strict sanity check: require explicit price_idr or last_price_idr
+                px_raw = c.get("price_idr") or c.get("last_price_idr")
+                source = str(c.get("source") or c.get("strategy_id") or "").upper()
+                if px_raw is None and "LEADLAG" not in source and ("IDR" in pair or c.get("exchange") == "INDODAX"):
+                    px_raw = c.get("price") or c.get("last_price")
+                try:
+                    px = float(px_raw or 0.0)
+                except (ValueError, TypeError):
+                    px = 0.0
                 if pair and px > 0:
                     price_map[pair] = px
 

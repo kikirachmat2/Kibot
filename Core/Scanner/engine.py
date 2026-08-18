@@ -313,11 +313,11 @@ class ScannerEngine:
         # Append qualified lead-lag opportunities to indo_signals
         for opp in leadlag_opportunities:
             if opp.get("trade_grade") in {"A", "B"}:
+                px_idr = float(opp.get("price_idr") or opp.get("follower_price") or 0.0)
                 sig = {
                     "exchange": "INDODAX",
                     "source": "LEADLAG_ALPHA",
                     "symbol": opp["symbol"],
-                    "price": opp["expected_net_pct"], # expected net yield proxy
                     "opportunity_score": opp["opportunity_score"],
                     "confidence": opp["confidence"],
                     "trade_grade": opp["trade_grade"],
@@ -325,6 +325,9 @@ class ScannerEngine:
                     "leadlag_pass": True,
                     "ts": int(started_at * 1000)
                 }
+                if px_idr > 0:
+                    sig["price_idr"] = px_idr
+                    sig["price"] = px_idr
                 indo_signals.append(sig)
 
         from Core.Support.ki_utils import sign_payload

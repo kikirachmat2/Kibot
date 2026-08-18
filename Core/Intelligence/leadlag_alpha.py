@@ -194,6 +194,8 @@ class LeadLagAlphaEngine:
                 "source": "LEADLAG_ALPHA",
                 "symbol": follower,
                 "leader_symbol": leader,
+                "price_idr": follower_price,
+                "follower_price": follower_price,
                 "leader_change_pct": round(leader_change_pct, 4),
                 "follower_change_pct": round(follower_change_pct, 4),
                 "lag_gap_pct": round(lag_gap_pct, 4),
