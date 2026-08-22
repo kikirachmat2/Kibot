@@ -49,8 +49,10 @@ Usage:
   kibotctl deposit-notify <amount_idr> [note]
   kibotctl reset-pnl
   kibotctl learn-status
-  kibotctl variant-compare
   kibotctl ai-report [--refresh]
+  kibotctl hunt-status
+  kibotctl hunt-follow
+  kibotctl singapore-status
   kibotctl up
   kibotctl down
   kibotctl restart
@@ -66,18 +68,21 @@ EOF
   exit 1
 fi
 
-if ! command -v systemctl >/dev/null 2>&1; then
-  echo "kibotctl requires systemd. Run this on the Batam server host." >&2
-  exit 1
-fi
+case "${1:-}" in
+  hunt-status|hunt-follow|singapore-status)
+    ;; # Remote commands allowed without local systemd
+  *)
+    if ! command -v systemctl >/dev/null 2>&1; then
+      echo "kibotctl requires systemd. Run this on the server host." >&2
+      exit 1
+    fi
+    ;;
+esac
 
 SYSTEMCTL_PREFIX=()
-if [[ "${EUID:-$(id -u)}" -ne 0 ]]; then
+if command -v systemctl >/dev/null 2>&1 && [[ "${EUID:-$(id -u)}" -ne 0 ]]; then
   if command -v sudo >/dev/null 2>&1; then
     SYSTEMCTL_PREFIX=(sudo)
-  else
-    echo "root or sudo is required for systemctl operations." >&2
-    exit 1
   fi
 fi
 
@@ -553,6 +558,48 @@ print('\n=======================================================================
 PY
 }
 
+cmd_hunt_status() {
+  local host="152.69.218.198"
+  local key="$HOME/.ssh/kibot/ssh-key-batam-active.pem"
+  echo "📡 Querying Batam Hunter status from Singapore Cloud Node ($host)..."
+  if [[ -f "$key" ]]; then
+    ssh -o ConnectTimeout=5 -i "$key" "ubuntu@$host" "
+      echo '=== Service Status ==='
+      sudo systemctl status kibot-batam-hunter.service --no-pager -n 3 2>&1 || true
+      echo -e '\n=== Recent Hunter Logs ==='
+      cat /home/ubuntu/KiBot/logs/batam_hunter.log 2>/dev/null | tail -n 12 || echo 'No logs yet.'
+    "
+  else
+    echo "⚠️ SSH key not found at $key" >&2
+  fi
+}
+
+cmd_hunt_follow() {
+  local host="152.69.218.198"
+  local key="$HOME/.ssh/kibot/ssh-key-batam-active.pem"
+  echo "📡 Streaming Batam Hunter logs live from Singapore ($host)... (Ctrl+C to exit)"
+  if [[ -f "$key" ]]; then
+    ssh -t -o ConnectTimeout=5 -i "$key" "ubuntu@$host" "tail -f /home/ubuntu/KiBot/logs/batam_hunter.log"
+  else
+    echo "⚠️ SSH key not found at $key" >&2
+  fi
+}
+
+cmd_singapore_status() {
+  local host="152.69.218.198"
+  local key="$HOME/.ssh/kibot/ssh-key-batam-active.pem"
+  echo "🏰 Checking Singapore Node Services ($host)..."
+  if [[ -f "$key" ]]; then
+    ssh -o ConnectTimeout=5 -i "$key" "ubuntu@$host" "
+      echo 'Node Uptime:' \$(uptime)
+      echo -e '\n=== Active KiBot Services ==='
+      systemctl list-units --type=service --state=running | grep -i kibot || true
+    "
+  else
+    echo "⚠️ SSH key not found at $key" >&2
+  fi
+}
+
 case "${1:-}" in
   status) shift; cmd_status "$@" ;;
   doctor) shift; cmd_doctor "$@" ;;
@@ -561,6 +608,9 @@ case "${1:-}" in
   learn-status) shift; cmd_learn_status "$@" ;;
   variant-compare) shift; cmd_variant_compare "$@" ;;
   ai-report) shift; cmd_ai_report "$@" ;;
+  hunt-status) shift; cmd_hunt_status "$@" ;;
+  hunt-follow) shift; cmd_hunt_follow "$@" ;;
+  singapore-status) shift; cmd_singapore_status "$@" ;;
   up) shift; cmd_up "$@" ;;
   down) shift; cmd_down "$@" ;;
   restart) shift; cmd_restart "$@" ;;
