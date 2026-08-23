@@ -46,12 +46,34 @@ def send_telegram(text):
         except Exception as e:
             print(f"  [!] Telegram error: {e}", flush=True)
 
-def migrate_and_activate_batam(public_ip, ocpus, ram, fd_name):
+def try_upgrade_shape(compute, instance_id, target_ocpu=4.0, target_ram=24.0):
+    print(f"\n[*] 🚀 Attempting automatic in-place shape upgrade to {target_ocpu:.0f} OCPU / {target_ram:.0f}GB RAM...", flush=True)
+    try:
+        update_details = oci.core.models.UpdateInstanceDetails(
+            shape_config=oci.core.models.UpdateInstanceShapeConfigDetails(
+                ocpus=target_ocpu,
+                memory_in_gbs=target_ram
+            )
+        )
+        upgraded = compute.update_instance(instance_id, update_details).data
+        print(f"  🎉 [AUTO-UPGRADE SUCCESS] Instance successfully upgraded to {target_ocpu:.0f} OCPU / {target_ram:.0f}GB RAM!", flush=True)
+        return True, target_ocpu, target_ram
+    except Exception as e:
+        print(f"  [i] Auto-upgrade to 4/24 deferred (will run on 1/6 until host capacity permits): {e}", flush=True)
+        return False, None, None
+
+def migrate_and_activate_batam(compute, instance_id, public_ip, ocpus, ram, fd_name):
     print(f"\n{'='*70}", flush=True)
     print(f"  🚀 COMMENCING AUTO-MIGRATION & HANDOVER TO BATAM MASTER: {public_ip}", flush=True)
     print(f"{'='*70}\n", flush=True)
 
-    send_telegram(f"🎉 *Batam Server Claimed & Booted!*\n\n• *Public IP*: `{public_ip}`\n• *Shape*: `{ocpus:.0f} OCPU / {ram:.0f}GB RAM` ({fd_name})\n\n⏳ *Memulai auto-migrasi & eksekusi Langkah 2...*")
+    # 1. Attempt immediate auto-upgrade to 4 OCPU / 24 GB
+    upgraded, new_ocpu, new_ram = try_upgrade_shape(compute, instance_id, 4.0, 24.0)
+    current_ocpu = new_ocpu if upgraded else ocpus
+    current_ram = new_ram if upgraded else ram
+    shape_label = f"{current_ocpu:.0f} OCPU / {current_ram:.0f}GB RAM (Auto-Upgraded to 4/24 🎉)" if upgraded else f"{current_ocpu:.0f} OCPU / {current_ram:.0f}GB RAM"
+
+    send_telegram(f"🎉 *Batam Server Claimed & Booted!*\n\n• *Public IP*: `{public_ip}`\n• *Shape*: `{shape_label}` ({fd_name})\n\n⏳ *Memulai auto-migrasi & eksekusi Langkah 2...*")
 
     ssh_key = str(Path.home() / ".ssh" / "ssh-key-batam-active.pem")
     ssh_cmd_base = [
@@ -100,7 +122,7 @@ pytest -k "test_valuation_circuit_breaker" || true
     final_msg = f"""🏰 *KIBOT SOVEREIGN BATAM MASTER FULLY ONLINE!*
 
 • *Master IP*: `{public_ip}`
-• *Shape*: `{ocpus:.0f} OCPU / {ram:.0f}GB RAM` ({fd_name})
+• *Shape*: `{shape_label}` ({fd_name})
 • *Langkah 2 Cleanup*: `SELESAI (Equity Terkoreksi)`
 • *Role Handover*: `Batam Master ACTIVE` (Singapore master diistirahatkan)
 • *Status*: `HEALTHY & SOVEREIGN` 🚀"""
@@ -186,7 +208,7 @@ def main():
                             if vnics:
                                 vnic = network.get_vnic(vnics[0].vnic_id).data
                                 public_ip = vnic.public_ip
-                                migrate_and_activate_batam(public_ip, ocpus, ram, fd_name)
+                                migrate_and_activate_batam(compute, new_instance.id, public_ip, ocpus, ram, fd_name)
                                 return
                     except Exception as poll_err:
                         print(f"Polling warning: {poll_err}", flush=True)
