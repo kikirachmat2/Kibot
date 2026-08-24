@@ -142,6 +142,8 @@ class SovereignNotifier:
                 if v < 70: return "🟢"
                 if v < 90: return "🟡"
                 return "🔴"
+            except Exception:
+                return "⚪"
         # Helper for Financial Emojis (Positive > 0, Negative < 0, Zero = Neutral)
         def get_fin_emoji(val):
             try:
