@@ -754,8 +754,19 @@ class KiBotMaster:
         except Exception as e:
             logger.error(f"Failed to aggregate council data: {e}")
         
-        # Telemetry is now purely local for the Sovereign Node
-        telemetry["mesh_nodes"]["BATAM_MASTER"] = "ONLINE"
+        # Telemetry node identification based on actual host context
+        hostname = socket.gethostname().lower()
+        is_batam = ("batam" in hostname) or (os.getenv("KIBOT_NODE_ROLE") == "BATAM_MASTER") or (not any(h in hostname for h in ["scanner", "executor", "manake", "lazarus"]))
+        if is_batam:
+            telemetry["mesh_nodes"]["BATAM_MASTER"] = "ONLINE"
+        else:
+            telemetry["mesh_nodes"]["BATAM_MASTER"] = "OFFLINE"
+            if "scanner" in hostname or "manake" in hostname:
+                telemetry["mesh_nodes"]["SINGAPORE_SCANNER"] = "ONLINE"
+                telemetry["system_stats"]["SINGAPORE_SCANNER"] = telemetry["system_stats"].get("BATAM_MASTER", {})
+            elif "executor" in hostname or "lazarus" in hostname:
+                telemetry["mesh_nodes"]["SINGAPORE_EXECUTOR"] = "ONLINE"
+                telemetry["system_stats"]["SINGAPORE_EXECUTOR"] = telemetry["system_stats"].get("BATAM_MASTER", {})
 
         # Check Local Redis via redis-cli as final authority
         redis_path = shutil.which("redis-cli")

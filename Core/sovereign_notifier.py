@@ -142,18 +142,21 @@ class SovereignNotifier:
                 if v < 70: return "🟢"
                 if v < 90: return "🟡"
                 return "🔴"
-            except: return "🔴"
-
-        # Helper for Financial Emojis (Positive > 0)
+        # Helper for Financial Emojis (Positive > 0, Negative < 0, Zero = Neutral)
         def get_fin_emoji(val):
             try:
-                # Remove symbols if string
                 if isinstance(val, str):
                     v = float(val.replace('%', '').replace('+', '').replace('Rp', '').replace(',', ''))
                 else:
                     v = float(val)
-                return "🟢" if v > 0 else "🔴"
-            except: return "🔴"
+                if v > 0:
+                    return "🟢"
+                elif v < 0:
+                    return "🔴"
+                else:
+                    return "⚪"
+            except Exception:
+                return "⚪"
 
         # 1. Mesh Data
         mesh = data.get("mesh_nodes", {})
@@ -164,16 +167,20 @@ class SovereignNotifier:
             stats = sys_stats.get(node_key, {"cpu": 0, "ram": 0, "disk": 0})
             
             s_emoji = "🟢" if status == "ONLINE" else "🔴"
-            c_emoji = get_stat_emoji(stats.get("cpu", 0))
-            r_emoji = get_stat_emoji(stats.get("ram", 0))
-            d_emoji = get_stat_emoji(stats.get("disk", 0))
+            c_emoji = get_stat_emoji(stats.get("cpu", 0)) if status == "ONLINE" else "⚪"
+            r_emoji = get_stat_emoji(stats.get("ram", 0)) if status == "ONLINE" else "⚪"
+            d_emoji = get_stat_emoji(stats.get("disk", 0)) if status == "ONLINE" else "⚪"
+            
+            cpu_val = f"{stats.get('cpu', 0)}%" if status == "ONLINE" else "N/A (Offline)"
+            ram_val = f"{stats.get('ram', 0)}%" if status == "ONLINE" else "N/A (Offline)"
+            disk_val = f"{stats.get('disk', 0)}%" if status == "ONLINE" else "N/A (Offline)"
             
             return (
                 f"{emoji_icon} {label}\n"
                 f"{s_emoji} Status: {status.capitalize()}\n"
-                f"{c_emoji} CPU   : {stats.get('cpu', 0)}%\n"
-                f"{r_emoji} RAM   : {stats.get('ram', 0)}%\n"
-                f"{d_emoji} DISK  : {stats.get('disk', 0)}%"
+                f"{c_emoji} CPU   : {cpu_val}\n"
+                f"{r_emoji} RAM   : {ram_val}\n"
+                f"{d_emoji} DISK  : {disk_val}"
             )
 
         batam_str = format_node("BATAM_MASTER", "SERVER BATAM", "🖥️")
@@ -200,7 +207,14 @@ class SovereignNotifier:
             ret_num = float(ret_pct or 0)
         except Exception:
             ret_num = 0.0
-        daily_color = str(daily_state.get("color") or ("GREEN" if pnl_num > 0 else "RECOVERY" if pnl_num < 0 else "FLAT")).upper()
+
+        # Sanitize dust balance / zero-trade distortion
+        if float(combined_equity or 0) < 10000.0 and abs(pnl_num) < 5000.0:
+            daily_color = "FLAT"
+            ret_num = 0.0
+            pnl_num = 0.0
+        else:
+            daily_color = str(daily_state.get("color") or ("GREEN" if pnl_num > 0 else "RECOVERY" if pnl_num < 0 else "FLAT")).upper()
         wl_ratio = portfolio.get("wl_ratio", "0W / 0L")
         pnl_emoji = get_fin_emoji(pnl_num)
         ret_emoji = get_fin_emoji(ret_num)
