@@ -20,13 +20,10 @@ CORE_SERVICES=(
   kibot-telemetry
   kibot-workflow-supervisor
   kibot-daily-reset
-  kibot-pumpfun
-  kibot-base
-  kibot-future-web3
-  kibot-web3-exit
+  # Note: web3/pumpfun services were architectural drafts and never implemented as systemd units.
+  # Note: kibot-dashboard is permanently disabled; operator monitors via Telegram & CLI.
   kibot-ai-scout
   kibot-janitor
-  kibot-dashboard
   kibot-cloudflared
 )
 
