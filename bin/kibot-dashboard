@@ -1,9 +1,0 @@
-#!/usr/bin/env bash
-set -euo pipefail
-ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-exec /home/ubuntu/KiBot/.venv/bin/python3 -m uvicorn Core.Intelligence.kibot_dashboard:app \
-  --host "${KIBOT_DASHBOARD_HOST:-127.0.0.1}" \
-  --port "${KIBOT_DASHBOARD_PORT:-8787}" \
-  --app-dir "$ROOT_DIR" \
-  --timeout-keep-alive 5 \
-  --timeout-graceful-shutdown 3
