@@ -8,6 +8,7 @@
 *.key
 *.kiv
 *.pid
+scripts/relaunch_batam_node.py
 
 # AI & Data State
 Logs/
