@@ -17,8 +17,7 @@ import signal
 import logging
 from datetime import date
 from pathlib import Path
-from typing import Any, Dict, Iterable, List, Optional
-import sys
+from typing import Any, Dict, List, Optional
 
 logger = logging.getLogger("AICoordinator")
 
