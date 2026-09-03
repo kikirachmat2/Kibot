@@ -96,6 +96,7 @@ class KiBotMaster:
         from Core.Treasury.capital_commander import CapitalCommander
         self.capital_commander = None # Will be initialized after IndodaxGateway
         self.is_running = True
+        self._deliberation_lock = asyncio.Lock()
         self.last_state = {"portfolio": {"equity_idr": 0, "daily_pnl": "0.0%", "active_positions": []}}
         self.market_mood = "NEUTRAL"
         self.breakers = {
@@ -389,6 +390,21 @@ class KiBotMaster:
                     if payload.get("type") == "COUNCIL_SIGNAL_DATA":
                         signals = payload.get("signals", [])
                         
+                        # Concurrency guard: Drop stale signal slate if previous deliberation is still active
+                        if self._deliberation_lock.locked():
+                            logger.info(f"⏳ [COUNCIL BUSY] Deliberation in progress. Dropping stale signal slate ({len(signals)} signals) from {addr}")
+                            try:
+                                from Core.Intelligence.decision_journal import log_event
+                                log_event("SIGNAL_DROPPED_BUSY", {
+                                    "source": addr[0] if isinstance(addr, (list, tuple)) else str(addr),
+                                    "signal_count": len(signals),
+                                    "tickers": [s.get("symbol") or s.get("pair") for s in signals[:5]],
+                                    "reason": "council_deliberation_lock_active",
+                                })
+                            except Exception as j_err:
+                                logger.debug(f"Failed to record SIGNAL_DROPPED_BUSY to journal: {j_err}")
+                            continue
+
                         # [G-001] Sovereign Execution Block (Live order execution gate)
                         sys_state = self.system_commander.get_system_state({})
                         is_system_unsafe = sys_state.get("system_state") in ["UNSAFE", "BLIND"]
@@ -398,90 +414,94 @@ class KiBotMaster:
                         logger.info(f"🏛️ Received {len(signals)} signed signals from {addr}. Deliberating...")
 
                         async def deliberate_and_dispatch(sigs):
-                            now = datetime.now(WIB)
-                            is_midnight = (now.hour == 23 and now.minute >= 45)
-                            minutes_to_midnight = self.council._minutes_to_midnight_wib()
-                            portfolio_state = dict(self.last_state.get("portfolio", {}) or {})
-                            market_context = await self.aggregator._get_market_context()
-                            decision = await self.council.deliberate_trading({
-                                "signals": sigs, 
-                                "source": addr[0],
-                                "is_midnight_approaching": is_midnight,
-                                "minutes_to_midnight": minutes_to_midnight,
-                                "portfolio_state": portfolio_state,
-                                "current_strategy": load_strategy(),
-                                "market_context": market_context,
-                            })
+                            async with self._deliberation_lock:
+                                try:
+                                    now = datetime.now(WIB)
+                                    is_midnight = (now.hour == 23 and now.minute >= 45)
+                                    minutes_to_midnight = self.council._minutes_to_midnight_wib()
+                                    portfolio_state = dict(self.last_state.get("portfolio", {}) or {})
+                                    market_context = await self.aggregator._get_market_context()
+                                    decision = await self.council.deliberate_trading({
+                                        "signals": sigs, 
+                                        "source": addr[0],
+                                        "is_midnight_approaching": is_midnight,
+                                        "minutes_to_midnight": minutes_to_midnight,
+                                        "portfolio_state": portfolio_state,
+                                        "current_strategy": load_strategy(),
+                                        "market_context": market_context,
+                                    })
 
-                            if not decision or not isinstance(decision, dict):
-                                logger.warning("⚠️ Council returned invalid or empty decision.")
-                                return
+                                    if not decision or not isinstance(decision, dict):
+                                        logger.warning("⚠️ Council returned invalid or empty decision.")
+                                        return
 
-                            if decision.get("status") == "EXECUTING":
-                                if is_system_unsafe:
-                                    logger.warning(f"🚨 [COMMANDER BLOCK] System is {sys_state['system_state']}. Live order mandate for {decision.get('action')} {decision.get('ticker')} BLOCKED.")
-                                    return
-                                action = decision.get("action", "UNKNOWN")
-                                ticker = decision.get("ticker", "UNKNOWN")
-                                logger.info(f"🚀 [MANDATE] Council approved {action} {ticker}.")
-                                
-                                source_signal = decision.get("source_signal", {})
-                                if not isinstance(source_signal, dict):
-                                    source_signal = {}
+                                    if decision.get("status") == "EXECUTING":
+                                        if is_system_unsafe:
+                                            logger.warning(f"🚨 [COMMANDER BLOCK] System is {sys_state['system_state']}. Live order mandate for {decision.get('action')} {decision.get('ticker')} BLOCKED.")
+                                            return
+                                        action = decision.get("action", "UNKNOWN")
+                                        ticker = decision.get("ticker", "UNKNOWN")
+                                        logger.info(f"🚀 [MANDATE] Council approved {action} {ticker}.")
+                                        
+                                        source_signal = decision.get("source_signal", {})
+                                        if not isinstance(source_signal, dict):
+                                            source_signal = {}
 
-                                # Prepare mandate for the Indodax executor. Start with the
-                                # source signal so quality, spread, and provenance survive
-                                # the Council hop.
-                                mandate_data = dict(source_signal)
-                                mandate_data.update({
-                                    "type": "COUNCIL_MANDATE",
-                                    "symbol": decision.get("ticker") or source_signal.get("symbol"),
-                                    "side": decision["action"],
-                                    "price": source_signal.get("price", decision.get("price", 0)),
-                                    "confidence": decision.get("confidence", 0),
-                                    "reason": decision.get("logic", "Council Mandate")[:100],
-                                    "learning_probe": bool(decision.get("learning_probe", False)),
-                                    "probe_confidence_floor": float(decision.get("probe_confidence_floor", 0.0) or 0.0),
-                                    "trade_profile": decision.get("trade_profile", "STANDARD"),
-                                    "daily_state": dict(self.last_state.get("portfolio", {}).get("daily_state", {}) or {}),
-                                    "daily_context": decision.get("daily_context", {}),
-                                    "deadline_mode": decision.get("deadline_mode"),
-                                    "capital_state": decision.get("capital_state"),
-                                    "budget_fraction": decision.get("budget_fraction"),
-                                    "trade_grade": decision.get("trade_grade") or source_signal.get("trade_grade"),
-                                    "lifecycle": source_signal.get("lifecycle") or source_signal.get("pump_stage"),
-                                    "exit_plan": decision.get("exit_plan", {}),
-                                    "green_probability": decision.get("green_probability", {}),
-                                    "confidence_breakdown": decision.get("confidence_breakdown") or source_signal.get("confidence_breakdown", {}),
-                                    "fallback_category": decision.get("fallback_category") or source_signal.get("fallback_category"),
-                                    "category_policy": decision.get("category_policy") or source_signal.get("category_policy", {}),
-                                    "unit_price_rule": decision.get("unit_price_rule") or {
-                                        "must_be_below_total_equity": True,
-                                        "basis": "total_equity_idr",
-                                    },
-                                    "role_votes": decision.get("role_votes", []),
-                                    "two_phase_council": decision.get("two_phase_council", {}),
-                                    "council_score": decision.get("decision_score"),
-                                    "council_wait_reason": decision.get("wait_reason", ""),
-                                })
+                                        # Prepare mandate for the Indodax executor. Start with the
+                                        # source signal so quality, spread, and provenance survive
+                                        # the Council hop.
+                                        mandate_data = dict(source_signal)
+                                        mandate_data.update({
+                                            "type": "COUNCIL_MANDATE",
+                                            "symbol": decision.get("ticker") or source_signal.get("symbol"),
+                                            "side": decision["action"],
+                                            "price": source_signal.get("price", decision.get("price", 0)),
+                                            "confidence": decision.get("confidence", 0),
+                                            "reason": decision.get("logic", "Council Mandate")[:100],
+                                            "learning_probe": bool(decision.get("learning_probe", False)),
+                                            "probe_confidence_floor": float(decision.get("probe_confidence_floor", 0.0) or 0.0),
+                                            "trade_profile": decision.get("trade_profile", "STANDARD"),
+                                            "daily_state": dict(self.last_state.get("portfolio", {}).get("daily_state", {}) or {}),
+                                            "daily_context": decision.get("daily_context", {}),
+                                            "deadline_mode": decision.get("deadline_mode"),
+                                            "capital_state": decision.get("capital_state"),
+                                            "budget_fraction": decision.get("budget_fraction"),
+                                            "trade_grade": decision.get("trade_grade") or source_signal.get("trade_grade"),
+                                            "lifecycle": source_signal.get("lifecycle") or source_signal.get("pump_stage"),
+                                            "exit_plan": decision.get("exit_plan", {}),
+                                            "green_probability": decision.get("green_probability", {}),
+                                            "confidence_breakdown": decision.get("confidence_breakdown") or source_signal.get("confidence_breakdown", {}),
+                                            "fallback_category": decision.get("fallback_category") or source_signal.get("fallback_category"),
+                                            "category_policy": decision.get("category_policy") or source_signal.get("category_policy", {}),
+                                            "unit_price_rule": decision.get("unit_price_rule") or {
+                                                "must_be_below_total_equity": True,
+                                                "basis": "total_equity_idr",
+                                            },
+                                            "role_votes": decision.get("role_votes", []),
+                                            "two_phase_council": decision.get("two_phase_council", {}),
+                                            "council_score": decision.get("decision_score"),
+                                            "council_wait_reason": decision.get("wait_reason", ""),
+                                        })
 
-                                exchange = str(source_signal.get("exchange") or "").upper()
-                                mandate_symbol = str(mandate_data.get("symbol") or "").upper()
-                                if exchange == "INDODAX" or mandate_symbol.endswith("/IDR") or mandate_symbol.endswith("_IDR"):
-                                    target_port = KiConfig.INDO_SIGNAL_PORT
-                                else:
-                                    logger.warning(
-                                        f"⚠️ Council mandate has unsupported route: exchange={exchange}, ticker={mandate_symbol}"
-                                    )
-                                    return
-                                
-                                # Send HMAC-signed mandate to the selected executor.
-                                envelope_out = {
-                                    "data": mandate_data,
-                                    "signature": sign_payload(mandate_data, secret)
-                                }
-                                sock_out = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-                                sock_out.sendto(json.dumps(envelope_out).encode(), ("127.0.0.1", target_port))
+                                        exchange = str(source_signal.get("exchange") or "").upper()
+                                        mandate_symbol = str(mandate_data.get("symbol") or "").upper()
+                                        if exchange == "INDODAX" or mandate_symbol.endswith("/IDR") or mandate_symbol.endswith("_IDR"):
+                                            target_port = KiConfig.INDO_SIGNAL_PORT
+                                        else:
+                                            logger.warning(
+                                                f"⚠️ Council mandate has unsupported route: exchange={exchange}, ticker={mandate_symbol}"
+                                            )
+                                            return
+                                        
+                                        # Send HMAC-signed mandate to the selected executor.
+                                        envelope_out = {
+                                            "data": mandate_data,
+                                            "signature": sign_payload(mandate_data, secret)
+                                        }
+                                        sock_out = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+                                        sock_out.sendto(json.dumps(envelope_out).encode(), ("127.0.0.1", target_port))
+                                except Exception as dispatch_err:
+                                    logger.error(f"Deliberate and dispatch error: {dispatch_err}", exc_info=False)
                                 
                         asyncio.create_task(deliberate_and_dispatch(signals))
                 else:

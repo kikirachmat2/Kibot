@@ -208,6 +208,8 @@ def summarize_today() -> Dict[str, Any]:
             summary["ai_accuracy_events"] += 1
         elif et == "REJECTED_CANDIDATE":
             summary["rejected_candidates"] += 1
+        elif et == "SIGNAL_DROPPED_BUSY":
+            summary["signals_dropped_busy"] = summary.get("signals_dropped_busy", 0) + 1
         elif et == "TRADE_EVENT" or str(row.get("trade_event_type") or "").strip():
             summary["trade_events"] += 1
             summary["latest_trade_event"] = row

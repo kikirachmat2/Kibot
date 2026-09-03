@@ -1,5 +1,4 @@
 from __future__ import annotations
-import nest_asyncio
 import asyncio
 from Core.Intelligence.kibot_ai_search import ROOT_DIR
 import sys
@@ -16,7 +15,6 @@ import time
 import inspect
 from pathlib import Path
 import httpx
-import asyncio
 from urllib.request import Request, urlopen
 from urllib.parse import urlencode
 from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
@@ -131,12 +129,7 @@ except Exception:
     _coordinator_query_ai_fn = None
     _coordinator_query_ai_consensus_fn = None
     _coordinator_query_ai_debate_fn = None
-    
-    # Initialize nest_asyncio to allow nested event loops in sync contexts
-    try:
-        nest_asyncio.apply()
-    except Exception:
-        pass
+
 
 
 class BrainManager:
@@ -627,11 +620,10 @@ class BrainManager:
             # Try to run async version in a one-off loop if not running
             return asyncio.run(self.think_async(watch_symbols, context))
         except RuntimeError:
-            # Fallback if loop is already running (e.g. from within an async task)
-            # This is a bit of a hack for legacy code support
-            import nest_asyncio
-            nest_asyncio.apply()
-            return asyncio.run(self.think_async(watch_symbols, context))
+            # Fallback if loop is already running in current thread: run in isolated thread
+            from concurrent.futures import ThreadPoolExecutor
+            with ThreadPoolExecutor(max_workers=1) as executor:
+                return executor.submit(asyncio.run, self.think_async(watch_symbols, context)).result()
         except Exception as e:
             logger.error(f"Brain think failed: {e}")
             return self._last_snapshot

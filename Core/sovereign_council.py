@@ -950,7 +950,7 @@ class SovereignCouncil:
             director = AutonomousDirector(market_regime=regime or "UNKNOWN")
             
             raw_candidates = list(signals_context.get("signals") or [])
-            evaluation = director.evaluate_cycle(raw_candidates)
+            evaluation = await director.evaluate_cycle_async(raw_candidates)
             
             # Persist separate state output JSON files as mandated in Phase 4
             self.state_dir.mkdir(parents=True, exist_ok=True)

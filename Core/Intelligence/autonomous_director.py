@@ -48,13 +48,13 @@ class AutonomousDirector:
     def update_regime(self, regime: str) -> None:
         self.market_regime = regime.upper()
 
-    def evaluate_cycle(
+    async def evaluate_cycle_async(
         self,
         raw_candidates: List[Dict[str, Any]],
         *,
         market_regime: Optional[str] = None,
     ) -> Dict[str, Any]:
-        """Full evaluation pipeline for one scanner cycle.
+        """Full evaluation pipeline for one scanner cycle (native async).
 
         Returns a summary dict with approved, shadow, rejected lists
         and a cycle_stats block.
@@ -176,32 +176,14 @@ class AutonomousDirector:
                                 continue
                             
                             ai_payload = {
-                                "news_context": f"Institutional crypto news for {pair_sym}",
+                                "news_context": f"Institutional crypto market news for {pair_sym}",
                                 "pair": pair_sym,
                                 "grade": grade,
                                 "ev_pct": ev_pct,
                                 "regime": regime,
                             }
-                            # Sync wrapper / call for AI filter
-                            import asyncio
-                            loop = None
-                            try:
-                                loop = asyncio.get_event_loop()
-                            except Exception:
-                                loop = None
 
-                            ai_res = None
-                            coro = query_ai("AI_ASSISTED_FILTER", ai_payload)
-                            import inspect
-                            if inspect.iscoroutine(coro):
-                                if loop and loop.is_running():
-                                    import nest_asyncio
-                                    nest_asyncio.apply()
-                                    ai_res = loop.run_until_complete(coro)
-                                else:
-                                    ai_res = asyncio.run(coro)
-                            else:
-                                ai_res = coro
+                            ai_res = await query_ai("AI_ASSISTED_FILTER", ai_payload)
 
                             if not ai_res or ai_res.get("is_fallback"):
                                 reason = ai_res.get("reason", "unknown") if isinstance(ai_res, dict) else "no response"
@@ -257,26 +239,8 @@ class AutonomousDirector:
                                 "ev_pct": ev_pct,
                                 "regime": regime,
                             }
-                            # Sync wrapper / call for AI ranker
-                            import asyncio
-                            loop = None
-                            try:
-                                loop = asyncio.get_event_loop()
-                            except Exception:
-                                loop = None
 
-                            ai_res = None
-                            coro = query_ai("AI_RANKER", ai_payload)
-                            import inspect
-                            if inspect.iscoroutine(coro):
-                                if loop and loop.is_running():
-                                    import nest_asyncio
-                                    nest_asyncio.apply()
-                                    ai_res = loop.run_until_complete(coro)
-                                else:
-                                    ai_res = asyncio.run(coro)
-                            else:
-                                ai_res = coro
+                            ai_res = await query_ai("AI_RANKER", ai_payload)
 
                             if not ai_res or ai_res.get("is_fallback"):
                                 reason = ai_res.get("reason", "unknown") if isinstance(ai_res, dict) else "no response"
@@ -359,6 +323,35 @@ class AutonomousDirector:
                 "evaluated_at": start,
             },
         }
+
+    def evaluate_cycle(
+        self,
+        raw_candidates: List[Dict[str, Any]],
+        *,
+        market_regime: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """Synchronous wrapper for backwards compatibility with sync test callers.
+
+        Uses ThreadPoolExecutor to run in an isolated event loop if called from within
+        an existing running loop, avoiding any re-entrancy or event loop patching.
+        """
+        import asyncio
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            loop = None
+
+        if loop and loop.is_running():
+            from concurrent.futures import ThreadPoolExecutor
+            with ThreadPoolExecutor(max_workers=1) as executor:
+                return executor.submit(
+                    asyncio.run,
+                    self.evaluate_cycle_async(raw_candidates, market_regime=market_regime)
+                ).result()
+        else:
+            return asyncio.run(
+                self.evaluate_cycle_async(raw_candidates, market_regime=market_regime)
+            )
 
     def record_outcome(self, strategy_id: str, pnl_pct: float) -> None:
         """Feed trade outcomes back into the punishment engine."""

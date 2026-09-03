@@ -157,5 +157,14 @@ class TelegramExceptionNotifier:
         try:
             return asyncio.run(self.notify(event_type, message, payload=payload))
         except RuntimeError:
-            loop = asyncio.get_event_loop()
-            return loop.run_until_complete(self.notify(event_type, message, payload=payload))
+            try:
+                loop = asyncio.get_running_loop()
+            except RuntimeError:
+                loop = None
+            if loop and loop.is_running():
+                loop.create_task(self.notify(event_type, message, payload=payload))
+                return True
+            else:
+                from concurrent.futures import ThreadPoolExecutor
+                with ThreadPoolExecutor(max_workers=1) as executor:
+                    return executor.submit(asyncio.run, self.notify(event_type, message, payload=payload)).result()

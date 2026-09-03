@@ -1212,7 +1212,16 @@ def _response_has_minimum_schema(prompt_type: str, parsed: Dict[str, Any]) -> bo
     return False
 
 # --- GLOBAL OLLAMA CONCURRENCY LOCK (Strict 1-Request At A Time) ---
-_OLLAMA_LOCK = asyncio.Lock()
+_OLLAMA_LOCKS: Dict[Any, asyncio.Lock] = {}
+
+def _get_ollama_lock() -> asyncio.Lock:
+    try:
+        loop = asyncio.get_running_loop()
+    except RuntimeError:
+        loop = None
+    if loop not in _OLLAMA_LOCKS:
+        _OLLAMA_LOCKS[loop] = asyncio.Lock()
+    return _OLLAMA_LOCKS[loop]
 
 async def query_ai(prompt_type: str, context: Dict[str, Any], cache_ttl_minutes: int = 60, force_refresh: bool = False) -> Optional[Dict[str, Any]]:
     """Main entry point with strict 1-Concurrency Lock for Batam."""
@@ -1222,7 +1231,7 @@ async def query_ai(prompt_type: str, context: Dict[str, Any], cache_ttl_minutes:
         return AI_SAFE_FALLBACK
 
     # Acquire global lock to guarantee ONLY 1 Ollama runner processes at a time
-    async with _OLLAMA_LOCK:
+    async with _get_ollama_lock():
         return await _execute_query_logic(prompt_type, context, cache_ttl_minutes, force_refresh)
 
 
