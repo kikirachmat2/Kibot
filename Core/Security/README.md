@@ -3,6 +3,10 @@
 Repository-wide security infrastructure for the sovereign trading cluster.
 
 ## Ringkas
+- `ki_vault.py` memuat secret terenkripsi dari sovereign vault ke environment saat boot (fail-closed jika secret hilang).
+- `ki_vault_cli.py` menyediakan CLI untuk inisialisasi, enkripsi, dekripsi, dan rotasi vault.
+- `kibot_crypto_auth.py` menangani penandatanganan HMAC-SHA256 untuk payload UDP dan inter-node auth.
+- `kibot_security.py` menyediakan log audit terenkripsi dan verifikasi integritas file.
 - HMAC dipakai untuk payload UDP dan state integrity.
 - Vault dipakai untuk secret loading saat boot.
 - Log audit disimpan terpisah agar mudah ditinjau dan diverifikasi.
@@ -12,17 +16,17 @@ Repository-wide security infrastructure for the sovereign trading cluster.
 
 The system operates under a "Paranoid Reconstruction" model, assuming the network environment and persistent storage are potentially compromised.
 
-### 1. Inter-Node HMAC Trust
+### 1. Inter-Node HMAC Trust (`kibot_crypto_auth.py`)
 All signals transmitted over UDP (breakout detections, lead-lag signals) are cryptographically signed using **HMAC-SHA256**.
 - **Emitter**: `SignalUdpEmitter.kt` signs the JSON payload before transmission.
 - **Receiver**: `kibot_manager.py` verifies the signature using a hardware-bound key (`KIBOT_SIGNAL_KEY`).
 - **Bi-directional ACK**: The receiver sends a verified ACK back to the emitter to confirm receipt of a trusted signal.
 
-### 2. Sovereign Vault (KiVault)
+### 2. Sovereign Vault (KiVault: `ki_vault.py` & `ki_vault_cli.py`)
 We have migrated from plaintext `.env` files to encrypted `.env.kiv` containers.
 - **Root of Trust**: Encryption keys are derived from hardware-unique identifiers (MAC + CPU Node).
 - **In-Memory Decryption**: Secrets are decrypted directly into `os.environ` at runtime, ensuring no plaintext API keys are ever written to disk in a readable format.
-- **CLI Usage**: `python3 ki_vault.py setup` to encrypt local `.env` and `python3 ki_vault.py load` to verify.
+- **CLI Usage**: `python3 Core/Security/ki_vault_cli.py setup` to encrypt local `.env` and `python3 Core/Security/ki_vault_cli.py load` to verify.
 
 ### 3. Intelligence Sanitization
 To prevent "Adversarial Data Poisoning", the intelligence layer implements strict input validation:
@@ -41,7 +45,7 @@ To prevent "Adversarial Data Poisoning", the intelligence layer implements stric
 - [x] Telegram Throttle / Dedupe (Shared channel guardrail)
 - [ ] Final Secret Purge (Remove legacy .env files)
 
-### 2. Immutable Logging (`kibot_security.py`)
+### 4. Immutable Logging (`kibot_security.py`)
 Provides a cryptographically verifiable audit trail of all security events.
 - **HMAC-SHA256 Signing**: Every log entry is signed with a hardware-bound key.
 - **Integrity Verification**: Detects unauthorized log tampering or deletions.
@@ -52,7 +56,7 @@ Provides a cryptographically verifiable audit trail of all security events.
 ### Verifying Log Integrity
 To check if logs have been tampered with:
 ```bash
-python3 Security/kibot_security.py --verify
+python3 Core/Security/kibot_security.py --verify
 ```
 
 ### Security Log

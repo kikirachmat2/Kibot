@@ -3,7 +3,7 @@
 > **Purpose**: Single reference document for understanding the full KiBot system architecture.
 > Anyone (including a new AI session) should be able to read this and understand what every file does, how data flows, and what has been fixed.
 >
-> **Last Updated**: 2026-08-07 02:00 WIB
+> **Last Updated**: 2026-09-06 03:00 WIB
 
 ---
 
@@ -81,9 +81,10 @@
 └──────────────┬───────────────────────────────────────────────────────────────┘
                │ verdict
                ├─── APPROVED ──────────────────────────┐
-               │                                        ▼
+               │                                       ▼
                │                     ┌──────────────────────────────────────┐
                │                     │  STAGE 4a — LIVE EXECUTION           │
+               │                     │  (When _LIVE_ENABLED=True & Gov OK)  │
                │                     │                                      │
                │                     │  Core/sovereign_council.py            │
                │                     │    └─ Council-of-advisors evaluation  │
@@ -105,19 +106,32 @@
                │                     │                                      │
                │                     │  Core/Exchange/indodax.py             │
                │                     │    └─ Low-level Indodax REST API     │
+               │                     └──────────────────┬───────────────────┘
+               │                                        │ (If _LIVE_ENABLED=False
+               │                                        │  or CapitalGovernor blocked)
+               │                                        ▼
+               │                     ┌──────────────────────────────────────┐
+               │                     │  STAGE 4a-SHADOW — APPROVED SHADOW   │
+               │                     │                                      │
+               │                     │  Core/Intelligence/                   │
+               │                     │    paper_trade_tracker.py             │
+               │                     │    └─ Dual-gate shadow tracking      │
+               │                     │    └─ state/paper_trades_approved.json│
+               │                     │    └─ TP=+3.5% / SL=-1.0% / Fee=0.61% │
                │                     └──────────────────────────────────────┘
                │
                └─── PAPER_ONLY ────────────────────────┐
                                                         ▼
                                      ┌──────────────────────────────────────┐
-                                     │  STAGE 4b — PAPER TRADING            │
+                                     │  STAGE 4b — PAPER TRADING (REJECTED) │
                                      │                                      │
                                      │  Core/Intelligence/                   │
                                      │    paper_trade_tracker.py             │
-                                     │    └─ Opens virtual trades            │
-                                     │    └─ Enforces net R:R ≥ 1.60 gate  │
-                                     │    └─ TP=+3.5% / SL=-1.0%           │
-                                     │    └─ Fee: 0.61% roundtrip (SSOT)   │
+                                     │    └─ Virtual paper trade lifecycle  │
+                                     │    └─ state/paper_trades.json        │
+                                     │    └─ Enforces net R:R ≥ 1.60 gate   │
+                                     │    └─ TP=+3.5% / SL=-1.0%            │
+                                     │    └─ Fee: 0.61% roundtrip (SSOT)    │
                                      │    └─ Dynamic trailing stop          │
                                      │    └─ Feeds learning engine on close │
                                      └──────────────────────────────────────┘
@@ -151,7 +165,7 @@
 ┌──────────────────────────────────────────────────────────────────────────────┐
 │                  STAGE 6 — REPORTING & NOTIFICATIONS                        │
 │                                                                              │
-│  Core/sovereign_notifier.py                                                  │
+│  Core/Notifications/sovereign_notifier.py (shim: Core/sovereign_notifier.py) │
 │    └─ Telegram notifications (trade opens, closes, daily reports)            │
 │                                                                              │
 │  Core/Support/telegram_throttle.py                                           │
@@ -163,7 +177,7 @@
 │  Core/Intelligence/kibot_dashboard.py                                        │
 │    └─ Rich HTML dashboard (2121 lines, reads state from many modules)        │
 │                                                                              │
-│  Core/ki_brain.py                                                            │
+│  Core/telegram_command_orchestrator.py (shim: Core/ki_brain.py)               │
 │    └─ Telegram command handler (/status, /doctor, /profit, etc.)             │
 │    └─ 2392 lines — routes user commands to appropriate subsystems            │
 └──────────────────────────────────────────────────────────────────────────────┘
@@ -225,7 +239,7 @@
 | [kibot_learning_engine.py](file:///Users/kiki/Documents/Web%20Develop/KiBot/Core/Intelligence/kibot_learning_engine.py) | 700 | Learns from closed trades, adjusts strategy confidence, feeds strategy_stats | **ACTIVE** | 2026-08-05 |
 | [indodax_microstructure.py](file:///Users/kiki/Documents/Web%20Develop/KiBot/Core/Intelligence/indodax_microstructure.py) | 128 | Analyzes orderbook depth, spread quality, taker fee impact | **ACTIVE** | 2026-08-05 |
 | [pre_trade_simulator.py](file:///Users/kiki/Documents/Web%20Develop/KiBot/Core/Intelligence/pre_trade_simulator.py) | 189 | Pre-trade simulation: expected slippage, breakeven, net yield | **ACTIVE** | 2026-08-05 |
-| [aggregator.py](file:///Users/kiki/Documents/Web%20Develop/KiBot/Core/Intelligence/aggregator.py) | 411 | Aggregates signals from multiple scanners into unified candidate list | **ACTIVE** | 2026-06-06 |
+| [council_data_aggregator.py](file:///Users/kiki/Documents/Web%20Develop/KiBot/Core/Intelligence/council_data_aggregator.py) | 411 | Aggregates signals from multiple scanners into unified candidate list | **ACTIVE** | 2026-08-14 |
 | [kibot_dashboard.py](file:///Users/kiki/Documents/Web%20Develop/KiBot/Core/Intelligence/kibot_dashboard.py) | 2121 | Rich HTML dashboard rendering (reads all state files) | **ACTIVE** | 2026-08-04 |
 | [kibot_ai_coordinator.py](file:///Users/kiki/Documents/Web%20Develop/KiBot/Core/Intelligence/kibot_ai_coordinator.py) | 1511 | LLM-based AI coordinator for market analysis; uses Ollama gateway | **PARTIAL** (depends on Ollama availability) | 2026-06-06 |
 | [kibot_ai_scout.py](file:///Users/kiki/Documents/Web%20Develop/KiBot/Core/Intelligence/kibot_ai_scout.py) | 672 | AI-powered market scouting agent | **PARTIAL** (depends on Ollama availability) | 2026-06-06 |
@@ -240,10 +254,10 @@
 | [market_heatmap.py](file:///Users/kiki/Documents/Web%20Develop/KiBot/Core/Intelligence/market_heatmap.py) | 114 | Generates market sector heatmap | **PARTIAL** | 2026-05-15 |
 | [market_rotation.py](file:///Users/kiki/Documents/Web%20Develop/KiBot/Core/Intelligence/market_rotation.py) | 97 | Detects sector rotation patterns | **PARTIAL** | 2026-06-06 |
 | [kibot_whatif_engine.py](file:///Users/kiki/Documents/Web%20Develop/KiBot/Core/Intelligence/kibot_whatif_engine.py) | 339 | What-if scenario simulator for hypothetical trades | **PARTIAL** | 2026-05-15 |
-| [_deprecated/Intelligence/kibot_ollama_gateway.py](file:///Users/kiki/Documents/Web%20Develop/KiBot/Core/_deprecated/Intelligence/kibot_ollama_gateway.py) | 257 | Unreferenced Ollama gateway wrapper | **CONFIRMED DEAD** (moved to `Core/_deprecated/` on 2026-08-08) | 2026-05-13 |
-| [_deprecated/Intelligence/kibot_rag.py](file:///Users/kiki/Documents/Web%20Develop/KiBot/Core/_deprecated/Intelligence/kibot_rag.py) | 96 | Unreferenced market knowledge RAG | **CONFIRMED DEAD** (moved to `Core/_deprecated/` on 2026-08-08) | 2026-05-11 |
+| `Core/_deprecated/Intelligence/kibot_ollama_gateway.py` | 257 | Unreferenced Ollama gateway wrapper | **CONFIRMED DEAD** (purged) | 2026-05-13 |
+| `Core/_deprecated/Intelligence/kibot_rag.py` | 96 | Unreferenced market knowledge RAG | **CONFIRMED DEAD** (purged) | 2026-05-11 |
 | [no_idle_director.py](file:///Users/kiki/Documents/Web%20Develop/KiBot/Core/Intelligence/no_idle_director.py) | 34 | Thin wrapper to prevent idle loops in director | **ACTIVE** | 2026-05-19 |
-| [_deprecated/Intelligence/strategy/deadline_profit_enforcer.py](file:///Users/kiki/Documents/Web%20Develop/KiBot/Core/_deprecated/Intelligence/strategy/deadline_profit_enforcer.py) | 108 | Legacy profit enforcer | **CONFIRMED DEAD** (moved to `Core/_deprecated/` on 2026-08-07) | 2026-05-19 |
+| `Core/_deprecated/Intelligence/strategy/deadline_profit_enforcer.py` | 108 | Legacy profit enforcer | **CONFIRMED DEAD** (purged) | 2026-05-19 |
 
 ### Core/Decision/ — Decision & Trading Brain Layer
 
@@ -259,7 +273,7 @@
 | [indodax_target_board.py](file:///Users/kiki/Documents/Web%20Develop/KiBot/Core/Decision/indodax_target_board.py) | 269 | Target price board for Indodax positions | **PARTIAL** | 2026-05-27 |
 | [indodax_live_brain.py](file:///Users/kiki/Documents/Web%20Develop/KiBot/Core/Decision/indodax_live_brain.py) | 150 | Indodax-specific live trading brain wrapper | **PARTIAL** | 2026-08-04 |
 | [indodax_no_idle_loop.py](file:///Users/kiki/Documents/Web%20Develop/KiBot/Core/Decision/indodax_no_idle_loop.py) | 96 | Anti-idle loop for Indodax scanning | **TESTS ONLY** (referenced only in `tests/test_indodax_no_idle_loop.py`) | 2026-05-21 |
-| [_deprecated/Decision/no_idle_script_director.py](file:///Users/kiki/Documents/Web%20Develop/KiBot/Core/_deprecated/Decision/no_idle_script_director.py) | 152 | Script-based no-idle director | **CONFIRMED DEAD** (moved to `Core/_deprecated/` on 2026-08-07) | 2026-06-06 |
+| `Core/_deprecated/Decision/no_idle_script_director.py` | 152 | Script-based no-idle director | **CONFIRMED DEAD** (purged) | 2026-06-06 |
 | [script_adaptation_engine.py](file:///Users/kiki/Documents/Web%20Develop/KiBot/Core/Decision/script_adaptation_engine.py) | 116 | Adapts trading scripts dynamically | **INDIRECT / SCRIPTS** (referenced in docstrings & review test) | 2026-05-19 |
 | [target_board_runner.py](file:///Users/kiki/Documents/Web%20Develop/KiBot/Core/Decision/target_board_runner.py) | 94 | Runner for target board updates | **PARTIAL** | 2026-06-06 |
 | [engine_independence.py](file:///Users/kiki/Documents/Web%20Develop/KiBot/Core/Decision/engine_independence.py) | 45 | Engine independence assertion helper | **PARTIAL** | 2026-06-06 |
@@ -309,15 +323,16 @@
 | [round_trip_accounting.py](file:///Users/kiki/Documents/Web%20Develop/KiBot/Core/Support/round_trip_accounting.py) | 230 | Tracks round-trip trade accounting (entry → exit) | **ACTIVE** | 2026-06-02 |
 | [no_trade_forensics.py](file:///Users/kiki/Documents/Web%20Develop/KiBot/Core/Support/no_trade_forensics.py) | 134 | Diagnoses why no trades are happening | **ACTIVE** | 2026-06-06 |
 | [runtime_mode_guard.py](file:///Users/kiki/Documents/Web%20Develop/KiBot/Core/Support/runtime_mode_guard.py) | 70 | Guards runtime mode (paper vs live) assertions | **ACTIVE** | 2026-06-06 |
-| [ki_vault.py](file:///Users/kiki/Documents/Web%20Develop/KiBot/Core/Support/ki_vault.py) | 82 | Loads encrypted secrets from sovereign vault | **ACTIVE** | 2026-05-13 |
-| [ki_vault_cli.py](file:///Users/kiki/Documents/Web%20Develop/KiBot/Core/Support/ki_vault_cli.py) | 97 | CLI for vault operations (encrypt, decrypt, rotate) | **PARTIAL** | 2026-05-11 |
+| [sovereign_disk_cleaner.py](file:///Users/kiki/Documents/Web%20Develop/KiBot/Core/Support/sovereign_disk_cleaner.py) | 545 | Disk space cleanup for log/state file rotation (canonical; shim at Core/) | **PARTIAL** | 2026-09-06 |
+| [ki_vault.py](file:///Users/kiki/Documents/Web%20Develop/KiBot/Core/Support/ki_vault.py) | 18 | Backward-compatibility shim pointing to `Core/Security/ki_vault.py` | **ACTIVE** | 2026-09-06 |
+| [ki_vault_cli.py](file:///Users/kiki/Documents/Web%20Develop/KiBot/Core/Support/ki_vault_cli.py) | 18 | Backward-compatibility shim pointing to `Core/Security/ki_vault_cli.py` | **PARTIAL** | 2026-09-06 |
+| [kibot_crypto_auth.py](file:///Users/kiki/Documents/Web%20Develop/KiBot/Core/Support/kibot_crypto_auth.py) | 18 | Backward-compatibility shim pointing to `Core/Security/kibot_crypto_auth.py` | **ACTIVE** | 2026-09-06 |
 | [ki_utils.py](file:///Users/kiki/Documents/Web%20Develop/KiBot/Core/Support/ki_utils.py) | 93 | Utility helpers (timestamp, formatting, etc.) | **ACTIVE** | 2026-05-12 |
-| [ki_storage.py](file:///Users/kiki/Documents/Web%20Develop/KiBot/Core/Support/ki_storage.py) | 26 | Simple JSON file read/write wrapper | **ACTIVE** | 2026-08-05 |
 | [deposit_cli.py](file:///Users/kiki/Documents/Web%20Develop/KiBot/Core/Support/deposit_cli.py) | 40 | CLI interface for deposit-notify command | **ACTIVE** | 2026-07-29 |
-| [dynamic_config.py](file:///Users/kiki/Documents/Web%20Develop/KiBot/Core/Support/dynamic_config.py) | 73 | Runtime-reloadable config from JSON files | **ACTIVE** | 2026-08-05 |
+| [dynamic_config.py](file:///Users/kiki/Documents/Web%20Develop/KiBot/Core/Support/dynamic_config.py) | 73 | Runtime-reloadable config from JSON files | **PARTIAL** (standalone utility) | 2026-08-05 |
 | [server_telemetry.py](file:///Users/kiki/Documents/Web%20Develop/KiBot/Core/Support/server_telemetry.py) | 102 | Server hardware & systemd service telemetry (CPU, RAM, disk, services) | **ACTIVE** | 2026-06-06 |
 | [server_telemetry_runner.py](file:///Users/kiki/Documents/Web%20Develop/KiBot/Core/Support/server_telemetry_runner.py) | 26 | Runner wrapper for telemetry | **PARTIAL** | 2026-05-20 |
-| [perf.py](file:///Users/kiki/Documents/Web%20Develop/KiBot/Core/Support/perf.py) | 113 | Performance measurement decorators | **PARTIAL** | 2026-05-17 |
+| [system_perf_cache.py](file:///Users/kiki/Documents/Web%20Develop/KiBot/Core/Support/system_perf_cache.py) | 113 | Performance measurement decorators & caching | **PARTIAL** | 2026-08-14 |
 | [populate_intelligence.py](file:///Users/kiki/Documents/Web%20Develop/KiBot/Core/Support/populate_intelligence.py) | 46 | Initial intelligence state population helper | **PARTIAL** | 2026-05-11 |
 | [sovereign_janitor.py](file:///Users/kiki/Documents/Web%20Develop/KiBot/Core/Support/sovereign_janitor.py) | 83 | Cleans up stale state files | **PARTIAL** | 2026-05-12 |
 | [strategy_control_actions.py](file:///Users/kiki/Documents/Web%20Develop/KiBot/Core/Support/strategy_control_actions.py) | 70 | Manual strategy control actions (pause/resume/reset) | **PARTIAL** | 2026-06-06 |
@@ -329,14 +344,17 @@
 
 | File | Lines | Function | Status | Last Modified |
 |------|-------|----------|--------|---------------|
+| [sovereign_notifier.py](file:///Users/kiki/Documents/Web%20Develop/KiBot/Core/Notifications/sovereign_notifier.py) | 278 | Telegram notification sender (trade alerts, daily reports; canonical; shim at Core/) | **ACTIVE** | 2026-09-06 |
 | [telegram_exception_notifier.py](file:///Users/kiki/Documents/Web%20Develop/KiBot/Core/Notifications/telegram_exception_notifier.py) | 161 | Sends exception stack traces to operator via Telegram | **ACTIVE** | 2026-06-06 |
 
 ### Core/Security/
 
 | File | Lines | Function | Status | Last Modified |
 |------|-------|----------|--------|---------------|
+| [ki_vault.py](file:///Users/kiki/Documents/Web%20Develop/KiBot/Core/Security/ki_vault.py) | 82 | Loads encrypted secrets from sovereign vault (canonical; shim in Core/Support/) | **ACTIVE** | 2026-09-06 |
+| [ki_vault_cli.py](file:///Users/kiki/Documents/Web%20Develop/KiBot/Core/Security/ki_vault_cli.py) | 97 | CLI for vault operations (encrypt, decrypt, rotate; canonical; shim in Core/Support/) | **PARTIAL** | 2026-09-06 |
+| [kibot_crypto_auth.py](file:///Users/kiki/Documents/Web%20Develop/KiBot/Core/Security/kibot_crypto_auth.py) | 185 | Cryptographic HMAC signing, UDP auth, and key derivation (canonical; shim in Core/Support/) | **ACTIVE** | 2026-09-06 |
 | [kibot_security.py](file:///Users/kiki/Documents/Web%20Develop/KiBot/Core/Security/kibot_security.py) | 174 | Security hardening, input validation, API key protection | **PARTIAL** | 2026-05-11 |
-| [_deprecated/Security/kibot_sentinel.py](file:///Users/kiki/Documents/Web%20Develop/KiBot/Core/_deprecated/Security/kibot_sentinel.py) | 92 | Sentinel monitoring for unauthorized access attempts | **CONFIRMED DEAD** (moved to `Core/_deprecated/` on 2026-08-07) | 2026-05-11 |
 
 ### Core/Research/ — Backtesting (Offline)
 
@@ -345,22 +363,17 @@
 | [backtest_engine.py](file:///Users/kiki/Documents/Web%20Develop/KiBot/Core/Research/backtest_engine.py) | 240 | Offline backtesting engine for strategy evaluation | **TESTS ONLY** (referenced by `walk_forward.py` and unit tests) | 2026-05-18 |
 | [walk_forward.py](file:///Users/kiki/Documents/Web%20Develop/KiBot/Core/Research/walk_forward.py) | 201 | Walk-forward optimization framework | **TESTS ONLY** (referenced by `test_walk_forward.py`) | 2026-05-18 |
 
-### Core/Runtime/
-
-| File | Lines | Function | Status | Last Modified |
-|------|-------|----------|--------|---------------|
-| [_deprecated/Runtime/server_telemetry.py](file:///Users/kiki/Documents/Web%20Develop/KiBot/Core/_deprecated/Runtime/server_telemetry.py) | 68 | Legacy server telemetry | **CONFIRMED DEAD** (moved to `Core/_deprecated/` on 2026-08-07) | 2026-05-20 |
-
 ### Core Root — Top-Level Modules
 
 | File | Lines | Function | Status | Last Modified |
 |------|-------|----------|--------|---------------|
-| [ki_brain.py](file:///Users/kiki/Documents/Web%20Develop/KiBot/Core/ki_brain.py) | 2392 | Telegram bot command handler (/status, /doctor, /profit, etc.) | **ACTIVE** | 2026-08-05 |
+| [telegram_command_orchestrator.py](file:///Users/kiki/Documents/Web%20Develop/KiBot/Core/telegram_command_orchestrator.py) | 2392 | Primary Telegram bot command handler (/status, /doctor, /profit, etc.) | **ACTIVE** | 2026-09-04 |
+| [ki_brain.py](file:///Users/kiki/Documents/Web%20Develop/KiBot/Core/ki_brain.py) | 18 | Backward-compatibility shim pointing to `telegram_command_orchestrator.py` | **ACTIVE** | 2026-09-06 |
 | [sovereign_council.py](file:///Users/kiki/Documents/Web%20Develop/KiBot/Core/sovereign_council.py) | 1840 | Council-of-advisors pattern for trade approval (multiple evaluators) | **ACTIVE** | 2026-06-06 |
-| [sovereign_notifier.py](file:///Users/kiki/Documents/Web%20Develop/KiBot/Core/sovereign_notifier.py) | 278 | Telegram notification sender (trade alerts, daily reports) | **ACTIVE** | 2026-06-06 |
+| [sovereign_notifier.py](file:///Users/kiki/Documents/Web%20Develop/KiBot/Core/sovereign_notifier.py) | 18 | Backward-compatibility shim pointing to `Core/Notifications/sovereign_notifier.py` | **ACTIVE** | 2026-09-06 |
 | [sovereign_state.py](file:///Users/kiki/Documents/Web%20Develop/KiBot/Core/sovereign_state.py) | 242 | Loads/saves sovereign state (strategy config, urgency flags) | **ACTIVE** | 2026-08-05 |
 | [risk_gate.py](file:///Users/kiki/Documents/Web%20Develop/KiBot/Core/risk_gate.py) | 395 | RiskGate: notional checks, daily drawdown cap, venue validation | **ACTIVE** | 2026-08-06 |
-| [sovereign_disk_cleaner.py](file:///Users/kiki/Documents/Web%20Develop/KiBot/Core/sovereign_disk_cleaner.py) | 545 | Disk space cleanup for log/state file rotation | **PARTIAL** | 2026-05-12 |
+| [sovereign_disk_cleaner.py](file:///Users/kiki/Documents/Web%20Develop/KiBot/Core/sovereign_disk_cleaner.py) | 18 | Backward-compatibility shim pointing to `Core/Support/sovereign_disk_cleaner.py` | **PARTIAL** | 2026-09-06 |
 | [circuit_breaker.py](file:///Users/kiki/Documents/Web%20Develop/KiBot/Core/circuit_breaker.py) | 66 | Circuit breaker for cascading failure prevention | **ACTIVE** | 2026-05-11 |
 
 ### Entrypoint & Operator Tools
@@ -379,7 +392,7 @@ Files with **>300 lines**, status **ACTIVE**, and **NOT YET fully audited** in p
 | Priority | File | Lines | Reason |
 |----------|------|-------|--------|
 | **P1** | [sovereign_council.py](file:///Users/kiki/Documents/Web%20Develop/KiBot/Core/sovereign_council.py) | 1840 | Council-of-advisors logic never fully audited; core approval path |
-| **P1** | [ki_brain.py](file:///Users/kiki/Documents/Web%20Develop/KiBot/Core/ki_brain.py) | 2392 | Telegram command handler; large codebase, potential stale commands |
+| **P1** | [telegram_command_orchestrator.py](file:///Users/kiki/Documents/Web%20Develop/KiBot/Core/telegram_command_orchestrator.py) | 2392 | Primary Telegram command handler (shim: `ki_brain.py`); large codebase, potential stale commands |
 | **P1** | [indodax_executor.py](file:///Users/kiki/Documents/Web%20Develop/KiBot/Core/Executors/Indodax/indodax_executor.py) | 2427 | Partially audited (fee refactored), but exit/reconciliation paths not reviewed |
 | **P1** | [capital_governor.py](file:///Users/kiki/Documents/Web%20Develop/KiBot/Core/Treasury/capital_governor.py) | 1243 | Partially audited (equity anchor fix), but full reconciliation logic not reviewed |
 | **P2** | [kibot_dashboard.py](file:///Users/kiki/Documents/Web%20Develop/KiBot/Core/Intelligence/kibot_dashboard.py) | 2121 | Dashboard rendering; reads from many state files, potential stale references |
@@ -391,12 +404,21 @@ Files with **>300 lines**, status **ACTIVE**, and **NOT YET fully audited** in p
 | **P3** | [order_tracker.py](file:///Users/kiki/Documents/Web%20Develop/KiBot/Core/Intelligence/order_tracker.py) | 635 | Phase 5 state machine; not audited |
 | **P3** | [system_commander.py](file:///Users/kiki/Documents/Web%20Develop/KiBot/Core/Support/system_commander.py) | 575 | System commands; not audited |
 | **P3** | [workflow_supervisor.py](file:///Users/kiki/Documents/Web%20Develop/KiBot/Core/Support/workflow_supervisor.py) | 559 | Workflow orchestrator; partially known from reconciliation context |
-| **P3** | [sovereign_disk_cleaner.py](file:///Users/kiki/Documents/Web%20Develop/KiBot/Core/sovereign_disk_cleaner.py) | 545 | Disk cleaner; not audited |
+| **P3** | [sovereign_disk_cleaner.py](file:///Users/kiki/Documents/Web%20Develop/KiBot/Core/Support/sovereign_disk_cleaner.py) | 545 | Disk cleaner; canonical in Core/Support/ |
 | **P3** | [MasterNode.py](file:///Users/kiki/Documents/Web%20Develop/KiBot/MasterNode.py) | 929 | Entrypoint; partially known but bootstrap/scheduling logic not fully reviewed |
 
 ---
 
 ## 4. Known Issues / Recently Fixed
+
+### Low-Risk Reorganization & Tracking Enhancements (September 2026)
+
+| # | Issue | Root Cause | Fix | Commit | Impact |
+|---|-------|-----------|-----|--------|--------|
+| 1 | **Council APPROVED Shadow Tracking Gap** | Only rejected candidates were paper-traded; approved trades had zero simulated tracking when live trading disarmed | Added dual-gate shadow tracking to `autonomous_director.py` saving to `state/paper_trades_approved.json` | `985ce58` | Approved candidates are now paper-tracked when live is disarmed or blocked |
+| 2 | **Dead Code Accumulation** | 7 obsolete/dead scripts (`ki_storage.py`, `diagnose_no_movement.py`, `patch_systemd.py`, `write_agent_self_critique.py`, `write_critical_operator_questions.py`, `test_dashboard_meme_hunter.py`) remained in repo | Removed all confirmed dead code | `5928873` | Reduced codebase clutter and maintenance overhead |
+| 3 | **Root Script Sprawl** | 68 legacy verification scripts (`assert_*.py`, `audit_*.py`) cluttered `scripts/` root | Archived into `scripts/archive/asserts/` and `scripts/archive/audits/` with updated ROOT path resolution | `331f13b`, `8770c4c` | Clean root directory while preserving historical assert/audit suites |
+| 4 | **Misfiled Core Modules** | Security, Notifications, and Support modules misfiled across root and `Core/Support/` | Relocated to canonical directories (`Core/Security/`, `Core/Notifications/`, `Core/Support/`) with backward-compatibility shims | `0cc5504` | Clean module hierarchy without breaking existing imports or systemd services |
 
 ### Critical Fixes Applied (August 2026)
 
