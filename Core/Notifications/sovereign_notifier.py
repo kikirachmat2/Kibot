@@ -87,16 +87,31 @@ class SovereignNotifier:
             chat_id=self.chat_id,
         )
 
-    async def send_urgent_alert(self, message, incident_key):
-        """Sends an alert only if it hasn't been sent in the last 3600 seconds."""
-        full_msg = f"🚨 *URGENT SYSTEM ALERT*\n\n{message}"
+    async def send_urgent_alert(self, message, incident_key, signature=None):
+        """
+        Sends an alert through the incident lifecycle escalation ladder.
+        - First seen -> 🚨 URGENT SYSTEM ALERT
+        - Persistent (>15m) -> ⚠️ PERSISTENT BLOCKER CONFIRMED
+        - Persistent (>2 alerts) -> ℹ️ DAILY RUNTIME BLOCKER STATUS (max 1x/24h)
+        - Reason change -> Immediately resets to 🚨 URGENT SYSTEM ALERT
+        """
+        from Core.Notifications.incident_lifecycle import IncidentLifecycleTracker
+
+        tracker = IncidentLifecycleTracker()
+        sig = str(signature if signature is not None else message).strip()
+        should_send, severity, title_prefix = tracker.evaluate_incident(incident_key, sig)
+        if not should_send:
+            return False
+
+        full_msg = f"{title_prefix}\n\n{message}"
         return await self.send_message(
             full_msg,
             incident_key=incident_key,
             channel="alerts",
             min_interval_sec=max(30, KiConfig.TELEGRAM_GLOBAL_MIN_INTERVAL_SEC),
             dedupe_window_sec=KiConfig.TELEGRAM_DEDUPE_WINDOW_SEC,
-            incident_cooldown_sec=KiConfig.TELEGRAM_INCIDENT_COOLDOWN_SEC,
+            incident_cooldown_sec=0,
+            force=True,
         )
 
     async def send_status_reply(self, telemetry):

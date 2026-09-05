@@ -214,8 +214,8 @@ def run_performance_analysis(send_telegram: bool = False) -> Dict[str, Any]:
     except Exception as exc:
         logger.error("[AI Analyst] Failed to save AI report to %s: %s", AI_REPORT_FILE, exc)
 
-    # Send Telegram notification if requested
-    if send_telegram and report_data.get("ai_report"):
+    # Send Telegram notification if requested and generation succeeded
+    if send_telegram and report_data.get("status") == "SUCCESS" and report_data.get("ai_report"):
         try:
             from Core.Support.telegram_throttle import telegram_send as send_telegram_message
 

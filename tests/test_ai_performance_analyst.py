@@ -99,3 +99,20 @@ def test_run_performance_analysis_failsafe_fallback(temp_analyst_env, monkeypatc
     assert report_file.exists()
     assert "tidak tersedia" in report["ai_report"]["summary_text"]
     assert len(report["ai_report"]["observations"]) > 0
+
+
+def test_telegram_not_sent_on_failure(temp_analyst_env, monkeypatch):
+    """Verify that send_telegram=True does NOT dispatch when status != SUCCESS."""
+    import Core.Intelligence.ai_performance_analyst as analyst_mod
+    monkeypatch.setattr(analyst_mod, "_call_mistral_analyst", lambda m: None)
+
+    sent_messages = []
+    def mock_send(msg):
+        sent_messages.append(msg)
+
+    import Core.Support.telegram_throttle as tt_mod
+    monkeypatch.setattr(tt_mod, "telegram_send", mock_send)
+
+    report = run_performance_analysis(send_telegram=True)
+    assert report["status"] == "FALLBACK_EMPTY"
+    assert len(sent_messages) == 0, "Telegram message should NOT be sent when generation fails!"

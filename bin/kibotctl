@@ -49,7 +49,7 @@ Usage:
   kibotctl ai-report [--refresh]
   kibotctl hunt-status
   kibotctl hunt-follow
-  kibotctl singapore-status
+  kibotctl ack [incident_key] [hours]
   kibotctl up
   kibotctl down
   kibotctl restart
@@ -66,8 +66,8 @@ EOF
 fi
 
 case "${1:-}" in
-  hunt-status|hunt-follow|singapore-status)
-    ;; # Remote commands allowed without local systemd
+  hunt-status|hunt-follow|singapore-status|ack)
+    ;; # Remote or state-only commands allowed without local systemd
   *)
     if ! command -v systemctl >/dev/null 2>&1; then
       echo "kibotctl requires systemd. Run this on the server host." >&2
@@ -597,8 +597,71 @@ cmd_singapore_status() {
   fi
 }
 
+cmd_ack() {
+  local key="${1:-}"
+  local hours="${2:-24}"
+  local py_bin="/home/ubuntu/KiBot/.venv/bin/python3"
+  if [[ ! -x "$py_bin" ]]; then
+    py_bin="python3"
+  fi
+  PYTHONPATH="." $py_bin - "$key" "$hours" <<'PY'
+import sys
+import json
+from datetime import datetime, timezone, timedelta
+from pathlib import Path
+from Core.Notifications.incident_lifecycle import IncidentLifecycleTracker
+
+WIB = timezone(timedelta(hours=7))
+tracker = IncidentLifecycleTracker()
+key = sys.argv[1].strip() if len(sys.argv) > 1 else ""
+hours_str = sys.argv[2].strip() if len(sys.argv) > 2 else "24"
+
+if not key:
+    incidents = tracker.get_all_incidents()
+    if not incidents:
+        print("✅ No active incidents tracked.")
+        sys.exit(0)
+    print("\n========================================================================================")
+    print("                              ACTIVE INCIDENTS STATUS")
+    print("========================================================================================")
+    printf_fmt = "%-32s | %-6s | %-24s | %s"
+    print(printf_fmt % ("INCIDENT KEY", "ALERTS", "SEVERITY", "ACK STATUS"))
+    print("-" * 88)
+    now = datetime.now().timestamp()
+    for ikey, data in incidents.items():
+        count = data.get("alert_count", 0)
+        sev = data.get("last_severity", "UNKNOWN")
+        ack_until = float(data.get("acknowledged_until", 0.0) or 0.0)
+        if ack_until > now:
+            dt_wib = datetime.fromtimestamp(ack_until, tz=WIB).strftime("%Y-%m-%d %H:%M WIB")
+            ack_str = f"MUTED until {dt_wib}"
+        else:
+            ack_str = "ACTIVE (Unacked)"
+        print(printf_fmt % (ikey[:32], count, sev[:24], ack_str))
+        sig = data.get("signature", "")
+        if sig:
+            print(f"  └─ Signature: {sig[:80]}")
+    print("========================================================================================\n")
+    print("Usage to acknowledge: kibotctl ack <incident_key> [hours]")
+    sys.exit(0)
+
+try:
+    hrs = float(hours_str)
+except ValueError:
+    hrs = 24.0
+
+entry = tracker.acknowledge(key, hours=hrs, note=f"Operator acked via kibotctl for {hrs}h")
+ack_until = entry.get("acknowledged_until", 0.0)
+dt_wib = datetime.fromtimestamp(ack_until, tz=WIB).strftime("%Y-%m-%d %H:%M:%S WIB")
+print(f"✅ Incident '{key}' ACKNOWLEDGED for {hrs:g} hours.")
+print(f"   Alerts muted until: {dt_wib}")
+print("   (Note: If the failure reason/signature changes, alert will immediately re-escalate to URGENT)")
+PY
+}
+
 case "${1:-}" in
   status) shift; cmd_status "$@" ;;
+  ack) shift; cmd_ack "$@" ;;
   doctor) shift; cmd_doctor "$@" ;;
   deposit-notify) shift; cmd_deposit_notify "$@" ;;
   reset-pnl) shift; cmd_reset_pnl "$@" ;;

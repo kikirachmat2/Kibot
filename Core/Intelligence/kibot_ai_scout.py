@@ -295,11 +295,18 @@ class WorldScout:
         # Only notify as an URGENT BLOCKER if new orders are actually BLOCKED (allow_new_orders is False)
         # AND there are active blockers. Advisory alerts when orders are ON (e.g. 0 targets) are normal state.
         if allow_orders or not blockers or not telegram.get("configured"):
+            if allow_orders or not blockers:
+                try:
+                    from Core.Notifications.incident_lifecycle import IncidentLifecycleTracker
+
+                    IncidentLifecycleTracker().resolve("runtime_orders_blocked_semantic")
+                except Exception:
+                    pass
             return False
         if self._runtime_blocker_auto_repairable(semantics):
             return False
         try:
-            from Core.sovereign_notifier import SovereignNotifier
+            from Core.Notifications.sovereign_notifier import SovereignNotifier
 
             reason = semantics.get("allow_new_orders_reason") or semantics.get("dispatcher_reason") or (blockers[0].get("reason") if blockers else "orders_blocked")
             message = (
@@ -314,6 +321,7 @@ class WorldScout:
                 await notifier.send_urgent_alert(
                     message,
                     incident_key="runtime_orders_blocked_semantic",
+                    signature=f"orders_off|reason={reason}",
                 )
             )
         except Exception as exc:

@@ -124,6 +124,7 @@ PROMPT_PROVIDER_ORDER = {
     "OPS_CHAT_LOCAL": ["ollama", "mistral"],
     "AI_ASSISTED_FILTER": ["mistral", "ollama"],
     "AI_RANKER": ["mistral", "ollama"],
+    "AI_PERFORMANCE_ANALYST": ["mistral", "mistral_large", "ollama"],
 }
 
 PROMPT_TEMPLATES = {
@@ -254,7 +255,7 @@ PROMPT_TEMPLATES = {
         "Answer the operator's query professionally and concisely.\n"
         "User message={user_message}\n"
         "Return compact JSON only with keys "
-        "{\"answer\":\"...\",\"intent\":\"STATUS|COMMAND|QUESTION\",\"recommended_command\":\"...\",\"risk_note\":\"\"}\n"
+        "{{\"answer\":\"...\",\"intent\":\"STATUS|COMMAND|QUESTION\",\"recommended_command\":\"...\",\"risk_note\":\"\"}}\n"
         "Rules: be concise, operational, and truthful; never invent balances or executions."
     ),
     "AI_PERFORMANCE_ANALYST": (
@@ -262,16 +263,17 @@ PROMPT_TEMPLATES = {
         "Your job is to review performance metrics across paper trading variants and write a concise, structured report in Bahasa Indonesia.\n"
         "IMPORTANT DIRECTIVE: Your output is strictly OBSERVATIONAL and HYPOTHETICAL for human operators to review.\n"
         "You MUST NOT give direct operational instructions or assume your hypotheses will automatically alter bot code/thresholds.\n"
+        "Keep output concise: summary_text (150-250 words), max 3 observations, max 2 hypotheses, max 2 suggested investigation areas.\n"
         "Metrics data: {metrics_json}\n"
         "Return strict compact JSON only with keys:\n"
-        "{\"summary_text\":\"Bahasa Indonesia summary (200-400 words)...\",\"observations\":[...],\"hypotheses\":[...],\"suggested_investigation_areas\":[...]}"
+        "{{\"summary_text\":\"Bahasa Indonesia summary\",\"observations\":[\"...\"],\"hypotheses\":[\"...\"],\"suggested_investigation_areas\":[\"...\"]}}"
     ),
     "OPS_CHAT_LOCAL": (
         "You are KiBot's local Ollama operator copilot.\n"
         "System state={system_state}\n"
         "User message={user_message}\n"
         "Return compact JSON only with keys "
-        "{\"answer\":\"...\",\"intent\":\"STATUS|COMMAND|QUESTION\",\"recommended_command\":\"...\",\"risk_note\":\"\"}\n"
+        "{{\"answer\":\"...\",\"intent\":\"STATUS|COMMAND|QUESTION\",\"recommended_command\":\"...\",\"risk_note\":\"\"}}\n"
         "Keep the answer short and practical."
     ),
     "INTELLIGENCE_SYNTHESIS": (
@@ -476,6 +478,7 @@ PROMPT_OLLAMA_MODEL = {
     "OPS_CHAT": OLLAMA_FAST_MODEL,
     "MOMENTUM_HAWK": OLLAMA_FAST_MODEL,
     "RISK_SENTINEL": OLLAMA_FAST_MODEL,
+    "AI_PERFORMANCE_ANALYST": OLLAMA_DEFAULT_MODEL,
 
     # ── §13.1 Fast Council roles (speed-optimised) ──
     "fast_hunter":       OLLAMA_DEFAULT_MODEL,   # qwen2.5:1.5b — PASS/REJECT in <8s
@@ -801,7 +804,7 @@ def _record_provider_rpm_request(provider: str) -> None:
     _atomic_write(_SLIDING_WINDOW_FILE, state)
 
 
-def _candidate_providers(prompt_type: str) -> List[str]:
+def _candidate_providers(prompt_type: str, force_refresh: bool = False) -> List[str]:
     state = _load_rate_state()
     counts = state.get("counts", {})
     configured_order = [
@@ -821,12 +824,27 @@ def _candidate_providers(prompt_type: str) -> List[str]:
             continue
         if not _provider_api_key(name):
             continue
-        if _provider_cooldown_remaining(name) > 0:
+        if not force_refresh and _provider_cooldown_remaining(name) > 0:
             continue
         if _is_provider_rpm_exceeded(name):
             logger.info(f"⏳ Provider {name} skipped: 60s sliding window RPM limit reached.")
             continue
         ordered.append(name)
+
+    # Cascade Cooldown Recovery: If all candidates are in cooldown but not hard auth failure,
+    # pick the candidate with shortest remaining cooldown so a cascade does not permanently deadlock
+    if not ordered:
+        candidates_pool = prompt_order if prompt_order else default_order
+        recoverable = [
+            name for name in candidates_pool
+            if name in PROVIDERS
+            and _provider_api_key(name)
+            and "auth_error" not in str(_provider_state_entry(name).get("last_failure_reason", ""))
+        ]
+        if recoverable:
+            recoverable.sort(key=lambda n: _provider_cooldown_remaining(n))
+            ordered.append(recoverable[0])
+
     return ordered
 
 
@@ -1056,7 +1074,7 @@ async def _call_provider(provider_raw: str, prompt: str, prompt_type: str = "") 
                 response = await client.post(str(url), json=payload, headers=headers)
             else:
                 url = str(config["base_url"])
-                max_tok = 2000 if prompt_type in ("AI_PERFORMANCE_ANALYST", "PERFORMANCE_ANALYST", "SOVEREIGN_DAILY_REVIEW") else 800
+                max_tok = 3500 if prompt_type in ("AI_PERFORMANCE_ANALYST", "PERFORMANCE_ANALYST", "SOVEREIGN_DAILY_REVIEW") else 800
                 payload = {
                     "model": model,
                     "messages": [
@@ -1066,6 +1084,8 @@ async def _call_provider(provider_raw: str, prompt: str, prompt_type: str = "") 
                     "max_tokens": max_tok,
                     "temperature": 0.3,
                 }
+                if "mistral" in str(provider).lower():
+                    payload["response_format"] = {"type": "json_object"}
                 headers = {
                     "Content-Type": "application/json",
                     "Authorization": f"Bearer {api_key}",
@@ -1169,6 +1189,8 @@ def _extract_json_object(response: str) -> Optional[Dict[str, Any]]:
         try:
             import re
             fixed = re.sub(r'":\s*"([^"]*)"', lambda m: '": "' + m.group(1).replace('\n', '\\n') + '"', candidate, flags=re.DOTALL)
+            fixed = re.sub(r':\s*([^"\{\}\[\]0-9\s][^"]*?)"\s*([,\}])', r': "\1"\2', fixed)
+            fixed = re.sub(r',\s*([\]\}])', r'\1', fixed)
             parsed = json.loads(fixed, strict=False)
             return parsed if isinstance(parsed, dict) else None
         except Exception:
@@ -1238,7 +1260,7 @@ async def _execute_query_logic(prompt_type: str, context: Dict[str, Any], cache_
     template = PROMPT_TEMPLATES.get(prompt_type, "Analyze this context:\n{context}")
     prompt = _render_prompt(template, context)
     data_hash = hashlib.md5(json.dumps(context, sort_keys=True).encode()).hexdigest()[:8]
-    candidates = _candidate_providers(prompt_type)
+    candidates = _candidate_providers(prompt_type, force_refresh=force_refresh)
     runtime_sig = hashlib.md5(
         json.dumps(
             {
@@ -1263,12 +1285,12 @@ async def _execute_query_logic(prompt_type: str, context: Dict[str, Any], cache_
         _increment_usage(provider)
         parsed = _extract_json_object(response)
         if not isinstance(parsed, dict):
-            _set_provider_cooldown(provider, AI_EMPTY_COOLDOWN_SEC, "invalid_json")
+            logger.warning(f"⚠️ Provider {provider} returned invalid JSON for {prompt_type}")
             continue
         parsed.setdefault("provider", provider)
         parsed.setdefault("model", _provider_model(provider, prompt_type))
         if not _response_has_minimum_schema(prompt_type, parsed):
-            _set_provider_cooldown(provider, AI_EMPTY_COOLDOWN_SEC, "invalid_schema")
+            logger.warning(f"⚠️ Provider {provider} returned response missing required schema for {prompt_type}")
             continue
         _save_to_cache(cache_key, parsed)
         return parsed
