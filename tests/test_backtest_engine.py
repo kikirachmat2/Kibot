@@ -77,3 +77,107 @@ class TestBacktestEngine:
         # std ≈ 0 but not exactly 0 due to floating point, result should be very large or 0
         sharpe = _compute_sharpe(returns)
         assert isinstance(sharpe, float)
+
+    def test_timeout_exit_at_max_hold_bars(self):
+        # Create flat bars with an explicit entry signal at bar 20
+        bars = []
+        for i in range(50):
+            price = 100.0
+            bars.append(Bar(
+                timestamp=float(i * 900),
+                open=price,
+                high=price * 1.002,
+                low=price * 0.998,
+                close=price,
+                volume=1000.0,
+            ))
+        # With max_hold_bars = 5, TP = 0.05, SL = 0.05 (neither hit)
+        result = run_backtest(
+            bars,
+            take_profit_pct=0.05,
+            stop_loss_pct=0.05,
+            max_hold_bars=5,
+            lookback=20,
+            entry_signal_fn=lambda bar, hist: bar.timestamp == 20 * 900,
+        )
+        assert result.total_trades == 1
+        timeout_trades = [t for t in result.trades if t.exit_reason == "TIMEOUT"]
+        assert len(timeout_trades) == 1
+        assert "TIMEOUT" in result.exit_reasons
+        assert timeout_trades[0].bars_held == 5
+
+    def test_trailing_stop_ratchet(self):
+        # Bar rises to +2% then drops back down
+        bars = []
+        prices = [100.0] * 20 + [100.5, 102.5, 101.5, 100.8]
+        for i, price in enumerate(prices):
+            bars.append(Bar(
+                timestamp=float(i * 900),
+                open=price,
+                high=price * 1.001,
+                low=price * 0.999,
+                close=price,
+                volume=1000.0,
+            ))
+        trailing_schedule = [(1.2, 0.6), (2.0, 0.8)]
+        result = run_backtest(
+            bars,
+            take_profit_pct=0.05,  # 5% not hit
+            stop_loss_pct=0.02,    # initial SL -2%
+            trailing_schedule=trailing_schedule,
+            max_hold_bars=20,
+            lookback=20,
+            entry_signal_fn=lambda bar, hist: bar.timestamp == 20 * 900,
+        )
+        assert result.total_trades == 1
+        trailing_exits = [t for t in result.trades if t.exit_reason == "TRAILING_STOP"]
+        assert len(trailing_exits) == 1
+        assert "TRAILING_STOP" in result.exit_reasons
+
+    def test_ground_truth_signal_integration(self):
+        from Core.Research.backtest_engine import (
+            load_ground_truth_signals,
+            create_ground_truth_signal_fn,
+        )
+        # Load local ground truth signals file
+        signals_map = load_ground_truth_signals("state/ground_truth_signals.json")
+        assert len(signals_map) > 0
+
+        # Choose a symbol with signals
+        sample_sym = list(signals_map.keys())[0]
+        sym_signals = signals_map[sample_sym]
+        assert len(sym_signals) > 0
+
+        sig_fn = create_ground_truth_signal_fn(sym_signals, tolerance_seconds=900.0)
+        target_ts = sym_signals[0]["ts"]
+        matching_bar = Bar(timestamp=target_ts, open=100, high=105, low=95, close=102, volume=1000)
+        non_matching_bar = Bar(timestamp=target_ts + 100000, open=100, high=105, low=95, close=102, volume=1000)
+
+        assert sig_fn(matching_bar, []) is True
+        assert sig_fn(non_matching_bar, []) is False
+
+    def test_kibot_scanner_signal_fn(self):
+        from Core.Research.backtest_engine import kibot_scanner_signal_fn
+        # Create history with flat base, then sudden volume & price spike
+        hist = []
+        for i in range(30):
+            hist.append(Bar(
+                timestamp=float(i * 900),
+                open=100.0,
+                high=100.5,
+                low=99.5,
+                close=100.0,
+                volume=10000.0,
+            ))
+        # Spike bar: +5% price, 3x volume
+        spike_bar = Bar(
+            timestamp=float(30 * 900),
+            open=100.0,
+            high=106.0,
+            low=100.0,
+            close=105.0,
+            volume=40000.0,
+        )
+        signal = kibot_scanner_signal_fn(spike_bar, hist, min_confidence=0.60)
+        assert isinstance(signal, bool)
+

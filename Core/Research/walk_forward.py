@@ -89,6 +89,8 @@ def run_walk_forward(
     fee_pct: float = 0.003,
     entry_signal_fn: Optional[Callable] = None,
     lookback: int = 20,
+    max_hold_bars: Optional[int] = 8,
+    trailing_schedule: Optional[List[Tuple[float, float]]] = None,
 ) -> WalkForwardResult:
     """Run walk-forward validation.
 
@@ -136,6 +138,8 @@ def run_walk_forward(
             take_profit_pct=take_profit_pct,
             stop_loss_pct=stop_loss_pct,
             fee_pct=fee_pct,
+            max_hold_bars=max_hold_bars,
+            trailing_schedule=trailing_schedule,
             entry_signal_fn=entry_signal_fn,
             lookback=lookback,
         )
@@ -145,6 +149,8 @@ def run_walk_forward(
             take_profit_pct=take_profit_pct,
             stop_loss_pct=stop_loss_pct,
             fee_pct=fee_pct,
+            max_hold_bars=max_hold_bars,
+            trailing_schedule=trailing_schedule,
             entry_signal_fn=entry_signal_fn,
             lookback=lookback,
         )
