@@ -4,7 +4,7 @@ import logging
 import aiohttp
 import asyncio
 from typing import List, Dict, Any, Optional
-from Core.Support.perf import TTLCache, loads_json
+from Core.Support.system_perf_cache import TTLCache, loads_json
 
 logger = logging.getLogger("LeadLagAlpha")
 
