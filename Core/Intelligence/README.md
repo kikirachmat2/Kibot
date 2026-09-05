@@ -9,7 +9,7 @@ Folder ini berisi intelligence, council, dashboard, learning, dan audit layer un
 - Route wallet eksternal, chain execution, prediction market, asset movement, dan withdrawal sudah dihapus dari runtime.
 
 ## Core Responsibilities
-- `aggregator.py`: menyusun konteks portfolio, scanner, heatmap, trade history, dan accounting truth untuk council.
+- `council_data_aggregator.py`: menyusun konteks portfolio, scanner, heatmap, trade history, dan accounting truth untuk council.
 - `kibot_ai_coordinator.py`: menjalankan AI/advisory stack untuk diagnosis, kritik strategi, dan ringkasan, bukan approval order.
 - `kibot_ai_scout.py`: patrol 5 menit untuk market/news/tooling/server readiness.
 - `kibot_dashboard.py`: web control plane yang membaca live truth dan state Indodax.

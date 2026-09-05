@@ -29,7 +29,7 @@ from Core.Support.ki_config import STATE_DIR, LOGS_DIR, PROJECT_ROOT as ROOT_DIR
 from Core.circuit_breaker import CircuitBreaker
 from Core.sovereign_council import SovereignCouncil
 from Core.sovereign_notifier import SovereignNotifier
-from Core.Intelligence.aggregator import CouncilDataAggregator
+from Core.Intelligence.council_data_aggregator import CouncilDataAggregator
 from Core.sovereign_state import load_strategy, save_strategy
 from Core.Intelligence.kibot_whatif_engine import run_simulation
 from Core.Support.system_commander import SystemCommander
@@ -84,7 +84,7 @@ NODES = {
 
 class KiBotMaster:
     def __init__(self):
-        from Core.ki_brain import BrainManager
+        from Core.telegram_command_orchestrator import BrainManager
         self.brain = BrainManager()
         self.council = SovereignCouncil()
         self.council.brain = self.brain # Inject brain
@@ -362,7 +362,7 @@ class KiBotMaster:
     # --- Signal & Command Plane ---
     async def signal_listener_loop(self):
         """Listens for HMAC-signed high-priority signals from all scanner sources."""
-        from Core.Support.ki_utils import verify_signature, sign_payload
+        from Core.Support.kibot_crypto_auth import verify_signature, sign_payload
         secret = os.environ.get("KIBOT_SECRET")
         if not secret:
             logger.error("❌ CRITICAL: KIBOT_SECRET missing. Council listener will reject all signals.")
