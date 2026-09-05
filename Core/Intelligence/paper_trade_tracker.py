@@ -65,6 +65,13 @@ VARIANT_CONFIGS = {
         "allowed_grades": {"STRONG", "ACCEPTABLE"},
         "min_volume_ratio": 0.0,
     },
+    "APPROVED": {
+        "variant_id": "APPROVED",
+        "take_profit_pct": 0.035,  # +3.5% TP
+        "stop_loss_pct": 0.010,    # -1.0% SL -> compute_net_rr_ratio(0.035, 0.010) = 1.6316 (>= 1.60)
+        "allowed_grades": {"STRONG", "ACCEPTABLE"},
+        "min_volume_ratio": 0.0,
+    },
 }
 
 
@@ -412,6 +419,15 @@ class PaperTradeTracker:
 
         with open(history_file, "a", encoding="utf-8") as f:
             f.write(json.dumps(closed_record, ensure_ascii=False) + "\n")
+
+        if var_id == "APPROVED":
+            try:
+                master_approved_file = STATE_DIR / "paper_trades_approved.jsonl"
+                master_approved_file.parent.mkdir(parents=True, exist_ok=True)
+                with open(master_approved_file, "a", encoding="utf-8") as f_app:
+                    f_app.write(json.dumps(closed_record, ensure_ascii=False) + "\n")
+            except Exception as e:
+                logger.warning(f"Failed to append to master paper_trades_approved.jsonl: {e}")
 
         # 1b. Update cumulative paper equity curve file (state/paper_equity_{variant}.json)
         if not is_invalid:

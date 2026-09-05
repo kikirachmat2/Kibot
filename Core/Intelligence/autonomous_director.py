@@ -33,6 +33,26 @@ log = logging.getLogger(__name__)
 
 _LIVE_ENABLED = os.getenv("KIBOT_LIVE_TRADING_ENABLED", "false").lower() == "true"
 
+def _is_live_trading_enabled() -> bool:
+    return (
+        os.getenv("KIBOT_LIVE_TRADING_ENABLED", "false").lower() in ("true", "1", "yes")
+        or os.getenv("KIBOT_TRADING_MODE", "").lower() == "live"
+    )
+
+
+def _is_capital_governor_blocked() -> bool:
+    """Check if CapitalGovernor is currently blocking new orders (e.g. daily loss or zero balance)."""
+    try:
+        from pathlib import Path
+        gov_file = Path(__file__).resolve().parent.parent.parent / "state" / "capital_governor.json"
+        if gov_file.exists():
+            data = json.loads(gov_file.read_text(encoding="utf-8"))
+            if data.get("status") == "BLOCKED_WITH_REASON" or not data.get("allow_new_orders", True):
+                return True
+    except Exception:
+        pass
+    return False
+
 # Maximum candidates forwarded to executor per cycle
 MAX_APPROVED_PER_CYCLE = 3
 
@@ -109,6 +129,7 @@ class AutonomousDirector:
             else:
                 rejected.append(c)
 
+        price_map: Dict[str, float] = {}
         # Step 5.5 — Multi-Variant Paper Trade Tracker Integration (Virtual Execution for PAPER_ONLY candidates)
         try:
             from .paper_trade_tracker import get_paper_trade_tracker, VARIANT_CONFIGS
@@ -280,7 +301,8 @@ class AutonomousDirector:
 
         # Step 6 — Apply live gate
         live_forward: List[Dict[str, Any]] = []
-        if _LIVE_ENABLED:
+        is_live = _is_live_trading_enabled()
+        if is_live:
             live_forward = approved[:MAX_APPROVED_PER_CYCLE]
             log.info(
                 "[Director] LIVE gate active — forwarding %d approved candidates to Executor",
@@ -291,6 +313,18 @@ class AutonomousDirector:
                 "[Director] %d candidates APPROVED but live gate OFF — shadow mode",
                 len(approved),
             )
+
+        # Step 6.5 — Council Approved Shadow Tracking (Purely Additive)
+        # Track approved candidates in a dedicated shadow tracker ONLY when
+        # live trading is inactive or blocked by CapitalGovernor.
+        try:
+            self._handle_approved_shadow_tracking(
+                approved_candidates=approved,
+                price_map=price_map,
+                live_enabled=is_live,
+            )
+        except Exception as _app_err:
+            log.warning(f"[AutonomousDirector] Approved shadow tracker error: {_app_err}")
 
         elapsed_ms = round((time.time() - start) * 1000, 1)
         best_route = "indodax" if approved else ("scanning" if rejected else "wait")
@@ -317,8 +351,8 @@ class AutonomousDirector:
                 "rejected_count": len(rejected),
                 "live_forward_count": len(live_forward),
                 "market_regime": regime,
-                "live_trading_enabled": _LIVE_ENABLED,
-                "live_gate_open": bool(_LIVE_ENABLED),
+                "live_trading_enabled": is_live,
+                "live_gate_open": bool(is_live),
                 "elapsed_ms": elapsed_ms,
                 "evaluated_at": start,
             },
@@ -352,6 +386,42 @@ class AutonomousDirector:
             return asyncio.run(
                 self.evaluate_cycle_async(raw_candidates, market_regime=market_regime)
             )
+
+    def _handle_approved_shadow_tracking(
+        self,
+        approved_candidates: List[Dict[str, Any]],
+        price_map: Dict[str, float],
+        live_enabled: bool,
+    ) -> None:
+        """Track Council APPROVED candidates in a dedicated shadow tracker when live execution is not possible."""
+        try:
+            from .paper_trade_tracker import get_paper_trade_tracker
+            approved_tracker = get_paper_trade_tracker("APPROVED")
+
+            # Always evaluate open approved trades against latest price_map
+            if price_map:
+                approved_tracker.evaluate_open_trades(price_map)
+
+            # Only open new shadow trades if live trading is disabled or blocked by CapitalGovernor
+            if approved_candidates and ((not live_enabled) or _is_capital_governor_blocked()):
+                for cand in approved_candidates:
+                    # Enforce price_idr from price_map if missing
+                    pair = str(cand.get("pair") or cand.get("symbol") or "").upper().strip()
+                    if pair and pair in price_map and not cand.get("price_idr"):
+                        cand["price_idr"] = price_map[pair]
+
+                    opened = approved_tracker.open_paper_trade(
+                        cand,
+                        take_profit_pct=0.035,
+                        stop_loss_pct=0.010,
+                        variant_id="APPROVED",
+                    )
+                    if opened:
+                        log.info(
+                            f"[AutonomousDirector] Opened COUNCIL_APPROVED shadow trade for {pair} (id={opened.get('trade_id')})"
+                        )
+        except Exception as err:
+            log.warning(f"[AutonomousDirector] Approved shadow tracker error: {err}")
 
     def record_outcome(self, strategy_id: str, pnl_pct: float) -> None:
         """Feed trade outcomes back into the punishment engine."""
