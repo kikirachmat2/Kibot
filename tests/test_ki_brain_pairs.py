@@ -1,7 +1,7 @@
 """Unit test for Indodax pairs cache parser in Core/ki_brain.py."""
 
 import pytest
-from Core.ki_brain import BrainManager
+from Core.telegram_command_orchestrator import BrainManager
 
 
 def test_indodax_pairs_cache_parsing():

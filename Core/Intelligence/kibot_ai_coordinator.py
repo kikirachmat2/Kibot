@@ -41,8 +41,8 @@ def _load_env_file(env_path: str = ".env") -> None:
 
 from Core.Support.ki_vault import load_sovereign_env
 from Core.Support.ki_config import KiConfig, OLLAMA_CHAT_URL
-from Core.Support.ki_utils import _env_first
-from Core.Support.ki_utils import telegram_send, load_json, save_json
+from Core.Support.kibot_crypto_auth import _env_first
+from Core.Support.kibot_crypto_auth import telegram_send, load_json, save_json
 
 # Load Sovereign Environment (Decrypted)
 load_sovereign_env()

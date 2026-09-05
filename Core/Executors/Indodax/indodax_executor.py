@@ -2477,7 +2477,7 @@ class SignalProtocol(asyncio.DatagramProtocol):
         self.executor = executor
 
     def datagram_received(self, data, addr):
-        from Core.Support.ki_utils import verify_signature
+        from Core.Support.kibot_crypto_auth import verify_signature
         secret = os.environ.get("KIBOT_SECRET")
         if not secret:
             logger.error("❌ CRITICAL: KIBOT_SECRET missing! Rejecting all signals.")

@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from Core.Support.ki_config import KiConfig
-from Core.Support.ki_utils import sign_payload
+from Core.Support.kibot_crypto_auth import sign_payload
 
 ROOT = Path(__file__).resolve().parent.parent.parent
 STATE_DIR = ROOT / "state"
