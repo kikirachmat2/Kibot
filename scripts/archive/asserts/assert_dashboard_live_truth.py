@@ -6,7 +6,7 @@ from pathlib import Path
 
 
 def main() -> int:
-    root = Path(__file__).resolve().parent.parent
+    root = Path(__file__).resolve().parents[3]
     state = root / "state" / "live_truth.json"
     if not state.exists():
         print("FAIL:live_truth_missing")

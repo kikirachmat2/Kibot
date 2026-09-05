@@ -10,7 +10,7 @@ import os
 
 def test_recovery_reset_plan_has_timestamp() -> None:
     result = subprocess.run(
-        [sys.executable, "scripts/assert_recovery_reset_plan.py"],
+        [sys.executable, "scripts/archive/asserts/assert_recovery_reset_plan.py"],
         capture_output=True,
         text=True,
         env={**os.environ, "PYTHONPATH": "."},

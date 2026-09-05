@@ -20,7 +20,7 @@ def _walk(value: Any) -> bool:
 
 
 def main() -> int:
-    root = Path(__file__).resolve().parent.parent
+    root = Path(__file__).resolve().parents[3]
     files = [
         root / "state" / "live_truth.json",
         root / "state" / "capital_governor.json",

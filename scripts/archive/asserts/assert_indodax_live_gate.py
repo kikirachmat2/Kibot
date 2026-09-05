@@ -5,7 +5,7 @@ from pathlib import Path
 
 
 def main() -> int:
-    path = Path(__file__).resolve().parent.parent / "Core" / "Executors" / "Indodax" / "indodax_executor.py"
+    path = Path(__file__).resolve().parents[3] / "Core" / "Executors" / "Indodax" / "indodax_executor.py"
     text = path.read_text(encoding="utf-8")
     gate_pos = text.find("evaluate_live_trade(")
     trade_pos = text.find('type=side.lower()')

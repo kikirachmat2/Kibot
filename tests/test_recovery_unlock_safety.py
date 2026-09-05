@@ -8,7 +8,7 @@ import os
 
 def test_recovery_unlock_safety_script_runs() -> None:
     result = subprocess.run(
-        [sys.executable, "scripts/assert_recovery_unlock_safety.py"],
+        [sys.executable, "scripts/archive/asserts/assert_recovery_unlock_safety.py"],
         capture_output=True,
         text=True,
         env={**os.environ, "PYTHONPATH": "."},

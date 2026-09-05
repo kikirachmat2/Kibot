@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from scripts import assert_server_truth_runtime as truth
+from scripts.archive.asserts import assert_server_truth_runtime as truth
 
 
 def test_required_state_list_present():
