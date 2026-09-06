@@ -49,7 +49,7 @@ Usage:
   kibotctl reset-pnl
   kibotctl learn-status
   kibotctl daily-report [--full] [--send]
-  kibotctl ai-report [--refresh]
+  kibotctl ai-report [--refresh] [--send]
   kibotctl hunt-status
   kibotctl hunt-follow
   kibotctl ack [incident_key] [hours]
@@ -69,7 +69,7 @@ EOF
 fi
 
 case "${1:-}" in
-  hunt-status|hunt-follow|singapore-status|ack|daily-report)
+  hunt-status|hunt-follow|singapore-status|ack|daily-report|ai-report|variant-compare)
     ;; # Remote or state-only commands allowed without local systemd
   *)
     if ! command -v systemctl >/dev/null 2>&1; then
@@ -544,24 +544,39 @@ PY
 
 cmd_ai_report() {
   local refresh=0
-  if [[ "${1:-}" == "--refresh" ]]; then
-    refresh=1
-  fi
-  local py_bin="/home/ubuntu/KiBot/.venv/bin/python3"
-  if [[ ! -x "$py_bin" ]]; then
+  local send_tg=0
+  for arg in "$@"; do
+    if [[ "$arg" == "--refresh" ]]; then
+      refresh=1
+    elif [[ "$arg" == "--send" ]]; then
+      send_tg=1
+    fi
+  done
+  local py_bin="venv/bin/python"
+  if [[ -f "/home/ubuntu/KiBot/.venv/bin/python3" ]]; then
+    py_bin="/home/ubuntu/KiBot/.venv/bin/python3"
+  elif [[ -x ".venv/bin/python" ]]; then
+    py_bin=".venv/bin/python"
+  elif [[ ! -x "$py_bin" ]]; then
     py_bin="python3"
   fi
-  $py_bin - "$refresh" <<'PY'
+  PYTHONPATH="." $py_bin - "$refresh" "$send_tg" <<'PY'
 import sys
 import json
 from pathlib import Path
 from Core.Intelligence.ai_performance_analyst import run_performance_analysis, get_latest_report
 
 refresh = sys.argv[1] == "1" if len(sys.argv) > 1 else False
+send_tg = sys.argv[2] == "1" if len(sys.argv) > 2 else False
 
-if refresh:
+if refresh or send_tg:
     print("⏳ Running on-demand AI performance analysis via Mistral...")
-    res = run_performance_analysis(send_telegram=False)
+    res = run_performance_analysis(send_telegram=send_tg)
+    if send_tg:
+        if res.get("status") == "SUCCESS":
+            print("✅ AI Performance Report sent to Telegram.")
+        else:
+            print("⚠️ Report generated with fallback; Telegram notification skipped.")
 else:
     res = get_latest_report()
     if not res:

@@ -660,22 +660,7 @@ class BrainManager:
                 }
                 self._write_snapshot(self._last_snapshot)
                 logger.info("[KiBrain] World Model updated successfully.")
-
-                # Out-of-band AI Performance Analyst trigger (runs every 12 hours)
-                try:
-                    now_ts = time.time()
-                    last_analyst = getattr(self, "_last_analyst_run", 0.0)
-                    if now_ts - last_analyst > 43200:  # 12 hours
-                        self._last_analyst_run = now_ts
-                        from Core.Intelligence.ai_performance_analyst import run_performance_analysis
-                        # Send Telegram only once every 24 hours
-                        last_tg = getattr(self, "_last_analyst_tg", 0.0)
-                        send_tg = (now_ts - last_tg) > 86400  # 24 hours
-                        if send_tg:
-                            self._last_analyst_tg = now_ts
-                        asyncio.create_task(asyncio.to_thread(run_performance_analysis, send_telegram=send_tg))
-                except Exception as analyst_err:
-                    logger.debug(f"[KiBrain] Out-of-band analyst trigger skipped: {analyst_err}")
+                # Note: AI Performance Analyst is strictly ON-DEMAND via 'bin/kibotctl ai-report [--send]'
             except Exception as e:
                 logger.error(f"[KiBrain] Critical Refresh Failure: {e}")
             finally:
