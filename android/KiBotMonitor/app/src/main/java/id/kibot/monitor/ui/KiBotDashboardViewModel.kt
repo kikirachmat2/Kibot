@@ -68,6 +68,13 @@ class KiBotDashboardViewModel(application: Application) : AndroidViewModel(appli
     }
   }
 
+  fun applyAuthCredentials(username: String, password: String) {
+    viewModelScope.launch(Dispatchers.IO) {
+      settingsStore.setAuthCredentials(username, password)
+      refresh(source = "auth_credentials", force = true)
+    }
+  }
+
   fun setMonitoringEnabled(enabled: Boolean) {
     viewModelScope.launch(Dispatchers.IO) {
       settingsStore.setMonitoringEnabled(enabled)

@@ -28,7 +28,11 @@ class KiBotRepository(context: Context) {
 
     return withContext(Dispatchers.IO) {
       try {
-        val result = KiBotApi(settings.baseUrl).fetchControlPlane(source)
+        val result = KiBotApi(
+          baseUrl = settings.baseUrl,
+          authUsername = settings.authUsername,
+          authPassword = settings.authPassword,
+        ).fetchControlPlane(source)
         snapshotStore.save(result.parsed)
         val freshness = result.parsed.snapshot.runtimeFreshnessSeconds
           ?: result.parsed.snapshot.freshnessBreakdown.values.minOrNull()

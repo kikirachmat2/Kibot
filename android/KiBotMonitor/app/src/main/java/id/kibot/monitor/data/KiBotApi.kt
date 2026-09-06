@@ -14,6 +14,8 @@ data class KiBotFetchResult(
 
 class KiBotApi(
   private val baseUrl: String,
+  private val authUsername: String = "",
+  private val authPassword: String = "",
   private val client: OkHttpClient = OkHttpClient.Builder()
     .connectTimeout(10, TimeUnit.SECONDS)
     .readTimeout(10, TimeUnit.SECONDS)
@@ -22,13 +24,23 @@ class KiBotApi(
     .build(),
 ) {
   fun fetchControlPlane(source: String): KiBotFetchResult {
-    val url = baseUrl.trimEnd('/') + "/api/control-plane"
+    val cleanBase = baseUrl.trim().trimEnd('/')
+    if (cleanBase.isEmpty()) {
+      throw IOException("Base URL belum dikonfigurasi. Silakan atur di menu Pengaturan.")
+    }
+    val url = if (cleanBase.endsWith("/api/control-plane")) cleanBase else "$cleanBase/api/control-plane"
     Log.i(TAG, "fetch start source=$source url=$url")
-    val request = Request.Builder()
+    val requestBuilder = Request.Builder()
       .url(url)
       .header("Cache-Control", "no-cache")
       .header("Accept", "application/json")
-      .build()
+
+    if (authUsername.isNotBlank() || authPassword.isNotBlank()) {
+      val credentials = okhttp3.Credentials.basic(authUsername.trim(), authPassword)
+      requestBuilder.header("Authorization", credentials)
+    }
+
+    val request = requestBuilder.build()
 
     client.newCall(request).execute().use { response ->
       val body = response.body?.string().orEmpty()

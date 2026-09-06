@@ -39,6 +39,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
@@ -140,6 +141,7 @@ fun KiBotApp(viewModel: KiBotDashboardViewModel = viewModel()) {
           snapshot = uiState.snapshot,
           isLoading = uiState.loading || uiState.refreshing,
           onApplyBaseUrl = viewModel::applyBaseUrl,
+          onApplyAuthCredentials = viewModel::applyAuthCredentials,
           onMonitoringToggle = viewModel::setMonitoringEnabled,
           onPollIntervalChange = viewModel::setPollInterval,
           onTestConnection = { viewModel.refresh(source = "test_connection", force = true) },
@@ -324,15 +326,20 @@ private fun SettingsScreen(
   snapshot: ControlPlaneSnapshot?,
   isLoading: Boolean,
   onApplyBaseUrl: (String) -> Unit,
+  onApplyAuthCredentials: (String, String) -> Unit,
   onMonitoringToggle: (Boolean) -> Unit,
   onPollIntervalChange: (Int) -> Unit,
   onTestConnection: () -> Unit,
   onRefresh: () -> Unit,
 ) {
   var baseUrlDraft by rememberSaveable(settings.baseUrl) { mutableStateOf(settings.baseUrl) }
+  var usernameDraft by rememberSaveable(settings.authUsername) { mutableStateOf(settings.authUsername) }
+  var passwordDraft by rememberSaveable(settings.authPassword) { mutableStateOf(settings.authPassword) }
   var intervalDraft by rememberSaveable(settings.pollIntervalMinutes) { mutableStateOf(settings.pollIntervalMinutes.toString()) }
 
   LaunchedEffect(settings.baseUrl) { baseUrlDraft = settings.baseUrl }
+  LaunchedEffect(settings.authUsername) { usernameDraft = settings.authUsername }
+  LaunchedEffect(settings.authPassword) { passwordDraft = settings.authPassword }
   LaunchedEffect(settings.pollIntervalMinutes) { intervalDraft = settings.pollIntervalMinutes.toString() }
 
   LazyColumn(
@@ -340,20 +347,66 @@ private fun SettingsScreen(
     verticalArrangement = Arrangement.spacedBy(16.dp),
     contentPadding = androidx.compose.foundation.layout.PaddingValues(16.dp),
   ) {
-    item { SectionHeader("Pengaturan", "Base URL, monitoring, dan debug snapshot.") }
+    item { SectionHeader("Pengaturan", "Endpoint server SG2, autentikasi, dan status sinkronisasi.") }
     item {
       ElevatedCard {
         Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+          Text("Endpoint Server (SG2 Monitor)", fontWeight = FontWeight.SemiBold)
+          Text(
+            "Masukkan URL monitor SG2 (contoh: http://213.35.118.26:8788). Jangan gunakan IP Batam lama.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+          )
           OutlinedTextField(
             value = baseUrlDraft,
             onValueChange = { baseUrlDraft = it },
             modifier = Modifier.fillMaxWidth(),
             label = { Text("Base URL") },
+            placeholder = { Text("http://213.35.118.26:8788") },
+            singleLine = true,
+          )
+          if (baseUrlDraft.isBlank()) {
+            Text(
+              "⚠️ Base URL belum diisi. Masukkan URL server agar app dapat memantau data.",
+              style = MaterialTheme.typography.bodySmall,
+              color = MaterialTheme.colorScheme.error,
+            )
+          }
+          Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
+            Button(onClick = { onApplyBaseUrl(baseUrlDraft) }) { Text("Simpan URL") }
+            TextButton(onClick = onTestConnection, enabled = !isLoading && baseUrlDraft.isNotBlank()) { Text("Test connection") }
+          }
+        }
+      }
+    }
+    item {
+      ElevatedCard {
+        Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+          Text("Autentikasi (Basic Auth)", fontWeight = FontWeight.SemiBold)
+          Text(
+            "Kredensial jika endpoint Nginx SG2 dilindungi autentikasi password.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+          )
+          OutlinedTextField(
+            value = usernameDraft,
+            onValueChange = { usernameDraft = it },
+            modifier = Modifier.fillMaxWidth(),
+            label = { Text("Username") },
+            singleLine = true,
+          )
+          OutlinedTextField(
+            value = passwordDraft,
+            onValueChange = { passwordDraft = it },
+            modifier = Modifier.fillMaxWidth(),
+            label = { Text("Password") },
+            visualTransformation = PasswordVisualTransformation(),
             singleLine = true,
           )
           Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
-            Button(onClick = { onApplyBaseUrl(baseUrlDraft) }) { Text("Simpan URL") }
-            TextButton(onClick = onTestConnection, enabled = !isLoading) { Text("Test connection") }
+            Button(onClick = { onApplyAuthCredentials(usernameDraft, passwordDraft) }) {
+              Text("Simpan Kredensial")
+            }
           }
         }
       }

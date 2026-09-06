@@ -16,6 +16,8 @@ private val Context.dataStore by preferencesDataStore(name = "kibot_monitor")
 
 data class SettingsState(
   val baseUrl: String = SettingsStore.DEFAULT_BASE_URL,
+  val authUsername: String = "",
+  val authPassword: String = "",
   val monitoringEnabled: Boolean = false,
   val pollIntervalMinutes: Int = SettingsStore.DEFAULT_POLL_INTERVAL_MINUTES,
   val lastFetchStatus: String = "BELUM",
@@ -27,9 +29,11 @@ data class SettingsState(
 
 class SettingsStore private constructor(private val context: Context) {
   companion object {
-    const val DEFAULT_BASE_URL = "https://dashboard.168.110.201.228.sslip.io"
+    const val DEFAULT_BASE_URL = ""
     const val DEFAULT_POLL_INTERVAL_MINUTES = 15
     private val KEY_BASE_URL = stringPreferencesKey("base_url")
+    private val KEY_AUTH_USERNAME = stringPreferencesKey("auth_username")
+    private val KEY_AUTH_PASSWORD = stringPreferencesKey("auth_password")
     private val KEY_MONITORING_ENABLED = booleanPreferencesKey("monitoring_enabled")
     private val KEY_POLL_INTERVAL_MINUTES = intPreferencesKey("poll_interval_minutes")
     private val KEY_LAST_FETCH_STATUS = stringPreferencesKey("last_fetch_status")
@@ -54,7 +58,14 @@ class SettingsStore private constructor(private val context: Context) {
 
   suspend fun setBaseUrl(value: String) {
     context.dataStore.edit { prefs ->
-      prefs[KEY_BASE_URL] = value.trim().ifEmpty { DEFAULT_BASE_URL }
+      prefs[KEY_BASE_URL] = value.trim()
+    }
+  }
+
+  suspend fun setAuthCredentials(username: String, password: String) {
+    context.dataStore.edit { prefs ->
+      prefs[KEY_AUTH_USERNAME] = username.trim()
+      prefs[KEY_AUTH_PASSWORD] = password
     }
   }
 
@@ -105,6 +116,8 @@ class SettingsStore private constructor(private val context: Context) {
   private fun Preferences.toState(): SettingsState {
     return SettingsState(
       baseUrl = this[KEY_BASE_URL] ?: DEFAULT_BASE_URL,
+      authUsername = this[KEY_AUTH_USERNAME] ?: "",
+      authPassword = this[KEY_AUTH_PASSWORD] ?: "",
       monitoringEnabled = this[KEY_MONITORING_ENABLED] ?: false,
       pollIntervalMinutes = this[KEY_POLL_INTERVAL_MINUTES] ?: DEFAULT_POLL_INTERVAL_MINUTES,
       lastFetchStatus = this[KEY_LAST_FETCH_STATUS] ?: "BELUM",
