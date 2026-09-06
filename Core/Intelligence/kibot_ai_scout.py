@@ -295,7 +295,7 @@ class WorldScout:
         # Only notify as an URGENT BLOCKER if new orders are actually BLOCKED (allow_new_orders is False)
         # AND there are active blockers. Advisory alerts when orders are ON (e.g. 0 targets) are normal state.
         if allow_orders or not blockers or not telegram.get("configured"):
-            if allow_orders or not blockers:
+            if allow_orders and not blockers:
                 try:
                     from Core.Notifications.incident_lifecycle import IncidentLifecycleTracker
 

@@ -23,6 +23,7 @@ from Core.Support.ki_config import STATE_DIR
 LIFECYCLE_STATE_FILE = STATE_DIR / "incident_lifecycle.json"
 PERSISTENCE_CONFIRM_SEC = 900.0   # 15 minutes
 DAILY_REMINDER_SEC = 86400.0      # 24 hours
+RESOLUTION_DEBOUNCE_SEC = 1800.0  # 30 minutes grace period against flapping
 
 
 class IncidentLifecycleTracker:
@@ -104,10 +105,41 @@ class IncidentLifecycleTracker:
             })
 
             prev_sig = str(entry.get("signature") or "")
+            is_resolved = bool(entry.get("resolved", False))
 
-            # ── 1. SIGNATURE COMPARISON (Reason Changed?) ──
-            # If the specific reason changed, reset escalation immediately!
-            if prev_sig and prev_sig != sig:
+            # ── 1. RESOLUTION & FLAPPING CHECK ──
+            if is_resolved:
+                resolved_at = float(entry.get("resolved_at", 0.0) or 0.0)
+                time_since_resolve = max(0.0, now - resolved_at)
+
+                if time_since_resolve < RESOLUTION_DEBOUNCE_SEC:
+                    # Condition reoccurred within grace period: this is FLAPPING!
+                    entry["resolved"] = False
+                    entry.pop("resolved_at", None)
+
+                    if prev_sig and prev_sig == sig:
+                        # Same signature -> retain existing alert_count & escalation level!
+                        # Do NOT reset alert_count! Fall through to ladder below.
+                        pass
+                    else:
+                        # Reason changed during flapping -> treat as new reason
+                        entry["signature"] = sig
+                        entry["alert_count"] = 0
+                        entry["first_seen_ts"] = now
+                        entry["acknowledged_until"] = 0.0
+                        entry["acknowledged_reason"] = ""
+                else:
+                    # Cleanly resolved for >30m -> genuinely new occurrence
+                    entry["resolved"] = False
+                    entry.pop("resolved_at", None)
+                    entry["signature"] = sig
+                    entry["alert_count"] = 0
+                    entry["first_seen_ts"] = now
+                    entry["acknowledged_until"] = 0.0
+                    entry["acknowledged_reason"] = ""
+
+            # ── 2. SIGNATURE COMPARISON (Active Incident Reason Changed?) ──
+            elif prev_sig and prev_sig != sig:
                 entry["signature"] = sig
                 entry["alert_count"] = 0
                 entry["first_seen_ts"] = now
@@ -117,7 +149,7 @@ class IncidentLifecycleTracker:
                 entry["signature"] = sig
                 entry["first_seen_ts"] = now
 
-            # ── 2. OPERATOR ACKNOWLEDGEMENT CHECK ──
+            # ── 3. OPERATOR ACKNOWLEDGEMENT CHECK ──
             ack_until = float(entry.get("acknowledged_until", 0.0) or 0.0)
             if now < ack_until:
                 self._write_state(fh, state)
@@ -127,7 +159,7 @@ class IncidentLifecycleTracker:
             first_seen = float(entry.get("first_seen_ts", now) or now)
             last_sent = float(entry.get("last_sent_ts", 0.0) or 0.0)
 
-            # ── 3. ESCALATION LADDER ──
+            # ── 4. ESCALATION LADDER ──
             # Level 0: First time detected (or reason just changed) -> URGENT immediately
             if count == 0:
                 entry["alert_count"] = 1
@@ -191,25 +223,36 @@ class IncidentLifecycleTracker:
         finally:
             self._unlock_file(fh)
 
-    def resolve(self, incident_key: str) -> bool:
-        """Mark an incident resolved (cleared). Returns True if it was active."""
+    def resolve(self, incident_key: str, now: Optional[float] = None) -> bool:
+        """
+        Mark an incident resolved with debounce grace period.
+        Preserves history so that flapping conditions within
+        RESOLUTION_DEBOUNCE_SEC do not reset the escalation ladder.
+        """
+        now = time.time() if now is None else float(now)
         key = str(incident_key or "").strip()
         fh = self._lock_file()
         try:
             state = self._read_state(fh)
             if key in state:
-                was_active = int(state[key].get("alert_count", 0) or 0) > 0
-                del state[key]
+                entry = state[key]
+                was_active = int(entry.get("alert_count", 0) or 0) > 0 and not entry.get("resolved", False)
+                entry["resolved"] = True
+                entry["resolved_at"] = now
+                entry["last_severity"] = "RESOLVED"
                 self._write_state(fh, state)
                 return was_active
             return False
         finally:
             self._unlock_file(fh)
 
-    def get_all_incidents(self) -> Dict[str, Any]:
+    def get_all_incidents(self, include_resolved: bool = True) -> Dict[str, Any]:
         """Get snapshot of all tracked incidents."""
         fh = self._lock_file()
         try:
-            return self._read_state(fh)
+            state = self._read_state(fh)
+            if include_resolved:
+                return state
+            return {k: v for k, v in state.items() if not v.get("resolved", False)}
         finally:
             self._unlock_file(fh)

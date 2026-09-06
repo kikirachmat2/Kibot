@@ -180,10 +180,72 @@ def test_incident_resolution(tmp_path: Path):
 
     tracker.evaluate_incident(key, sig, now=t0)
     assert key in tracker.get_all_incidents()
+    assert key in tracker.get_all_incidents(include_resolved=False)
 
-    resolved = tracker.resolve(key)
+    resolved = tracker.resolve(key, now=t0 + 10.0)
     assert resolved is True
-    assert key not in tracker.get_all_incidents()
+    # Still preserved in all incidents (for anti-flapping history)
+    assert key in tracker.get_all_incidents(include_resolved=True)
+    # But excluded from active unresolved incidents
+    assert key not in tracker.get_all_incidents(include_resolved=False)
 
-    # Resolving again returns False
-    assert tracker.resolve(key) is False
+    # Resolving again returns False (already resolved)
+    assert tracker.resolve(key, now=t0 + 20.0) is False
+
+
+def test_incident_flapping_suppression(tmp_path: Path):
+    """
+    CRITICAL ANTI-SPAM TEST:
+    1. Incident occurs at t0 -> Level 0 URGENT sent (alert_count: 1).
+    2. At t0 + 15m (900s) -> Level 1 PERSISTENT_CONFIRMATION sent (alert_count: 2).
+    3. At t0 + 16m -> condition briefly clears (e.g. Indodax balance query succeeds for 1 cycle).
+       tracker.resolve() is called!
+    4. At t0 + 18m (2m later) -> condition recurs with SAME signature (Indodax API glitch).
+       EVALUATE MUST NOT FIRE URGENT ALERT!
+       MUST recognize flapping within 30m grace window and suppress alert!
+    5. At t0 + 50m (>30m after resolution) -> condition recurs.
+       Now considered genuinely fresh incident -> URGENT alert fired.
+    """
+    state_file = tmp_path / "test_lifecycle.json"
+    tracker = IncidentLifecycleTracker(state_file=state_file)
+
+    t0 = 1000000.0
+    key = "runtime_orders_blocked_semantic"
+    sig = "orders_off|reason=indodax_balance_unavailable"
+
+    # 1. Level 0: First seen -> URGENT
+    send, sev, _ = tracker.evaluate_incident(key, sig, now=t0)
+    assert send is True
+    assert sev == "URGENT"
+
+    # 2. Level 1: At 15m -> PERSISTENT_CONFIRMATION
+    send, sev, _ = tracker.evaluate_incident(key, sig, now=t0 + 901.0)
+    assert send is True
+    assert sev == "PERSISTENT_CONFIRMATION"
+
+    # 3. Brief resolution at 16m
+    t_resolve = t0 + 960.0
+    assert tracker.resolve(key, now=t_resolve) is True
+
+    # 4. FLAPPING: Recur at 18m (2m after resolve, within 30m debounce window)
+    send, sev, _ = tracker.evaluate_incident(key, sig, now=t0 + 1080.0)
+    # MUST BE SUPPRESSED! NOT URGENT!
+    assert send is False
+    assert sev == "COOLDOWN_DAILY_STATUS"
+
+    # Flapping again at 25m (9m after resolve)
+    send, sev, _ = tracker.evaluate_incident(key, sig, now=t0 + 1500.0)
+    assert send is False
+    assert sev == "COOLDOWN_DAILY_STATUS"
+
+    # Resolved cleanly at 26m
+    t_clean_resolve = t0 + 1560.0
+    assert tracker.resolve(key, now=t_clean_resolve) is True
+
+    # 5. Genuine new occurrence: Recur at t_clean_resolve + 31 minutes (>30m debounce window)
+    t_fresh = t_clean_resolve + 1801.0
+    send, sev, title = tracker.evaluate_incident(key, sig, now=t_fresh)
+    assert send is True
+    assert sev == "URGENT"
+    assert "🚨 *URGENT SYSTEM ALERT*" in title
+

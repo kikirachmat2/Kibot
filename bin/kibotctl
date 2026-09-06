@@ -211,6 +211,29 @@ for name, stmt in checks:
     except Exception as exc:
         print(f"❌ {name}: {exc}")
 PY
+  section "Service Code Freshness (Drift Check)"
+  for svc in kibot-master kibot-ai-scout kibot-scanner kibot-executor kibot-janitor; do
+    if systemctl is-active --quiet "$svc" 2>/dev/null; then
+      local entry_file=""
+      case "$svc" in
+        kibot-master) entry_file="MasterNode.py" ;;
+        kibot-ai-scout) entry_file="Core/Intelligence/kibot_ai_scout.py" ;;
+        kibot-scanner) entry_file="Core/Scanner/indodax_scanner.py" ;;
+        kibot-executor) entry_file="Executors/unified_executor.py" ;;
+        kibot-janitor) entry_file="Core/Support/sovereign_janitor.py" ;;
+      esac
+      if [[ -n "$entry_file" && -f "/home/ubuntu/KiBot/$entry_file" ]]; then
+        local file_mtime svc_start_epoch
+        file_mtime=$(stat -c %Y "/home/ubuntu/KiBot/$entry_file" 2>/dev/null || stat -f %m "/home/ubuntu/KiBot/$entry_file" 2>/dev/null || echo 0)
+        svc_start_epoch=$(date -d "$(systemctl show -p ActiveEnterTimestamp "$svc" 2>/dev/null | cut -d= -f2)" +%s 2>/dev/null || echo 0)
+        if [[ $svc_start_epoch -gt 0 && $file_mtime -gt $svc_start_epoch ]]; then
+          echo "⚠️  [STALE RUNTIME] $svc was started before $entry_file was updated! Restart required."
+        else
+          echo "✅ $svc runtime matches disk code"
+        fi
+      fi
+    fi
+  done
   cmd_tools
 }
 
