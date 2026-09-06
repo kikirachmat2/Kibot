@@ -54,6 +54,24 @@ def _is_capital_governor_blocked() -> bool:
         pass
     return False
 
+
+def _is_capital_governor_risk_locked() -> bool:
+    """Check if CapitalGovernor has tripped its circuit breaker (18%) or breached daily loss cap (3%)."""
+    try:
+        from pathlib import Path
+        gov_file = Path(__file__).resolve().parent.parent.parent / "state" / "capital_governor.json"
+        if gov_file.exists():
+            data = json.loads(gov_file.read_text(encoding="utf-8"))
+            if data.get("circuit_breaker_tripped"):
+                return True
+            if data.get("status") == "OVERALL_DRAWDOWN_BREAKER_TRIPPED":
+                return True
+            if data.get("global_hard_stop"):
+                return True
+    except Exception:
+        pass
+    return False
+
 # Maximum candidates forwarded to executor per cycle
 MAX_APPROVED_PER_CYCLE = 3
 
@@ -402,6 +420,13 @@ class AutonomousDirector:
             # Always evaluate open approved trades against latest price_map
             if price_map:
                 approved_tracker.evaluate_open_trades(price_map)
+
+            # Circuit Breaker & Risk Lock protection for APPROVED variant:
+            # If CapitalGovernor has tripped its overall drawdown breaker or daily loss cap,
+            # real money orders are completely locked. APPROVED must mirror this protection.
+            if _is_capital_governor_risk_locked():
+                log.info("[AutonomousDirector] Skipped APPROVED shadow trade: CapitalGovernor is in risk lockdown (circuit breaker / daily loss cap)")
+                return
 
             # Only open new shadow trades if live trading is disabled or blocked by CapitalGovernor
             if approved_candidates and ((not live_enabled) or _is_capital_governor_blocked()):

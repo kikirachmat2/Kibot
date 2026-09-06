@@ -159,6 +159,21 @@ class PaperTradeTracker:
             if existing.get("pair", "").upper() == pair:
                 return None
 
+        # Check internal circuit breaker for APPROVED variant
+        if effective_variant == "APPROVED":
+            try:
+                equity_file = STATE_DIR / "paper_equity_approved.json"
+                if equity_file.exists():
+                    eq_data = json.loads(equity_file.read_text(encoding="utf-8"))
+                    if eq_data.get("circuit_breaker_tripped"):
+                        logger.warning(
+                            f"[PaperTrade-APPROVED] Blocked by internal circuit breaker: overall drawdown "
+                            f"{eq_data.get('overall_drawdown_pct', 0.0):.2f}% >= {KiConfig.OVERALL_DRAWDOWN_THRESHOLD_PCT}%"
+                        )
+                        return None
+            except Exception:
+                pass
+
         # Strict validation: require explicit positive price_idr / last_price_idr
         source = str(candidate.get("source") or candidate.get("strategy_id") or "").upper()
         raw_price = candidate.get("price_idr") or candidate.get("last_price_idr")
@@ -464,7 +479,25 @@ class PaperTradeTracker:
                 wins = int(eq_data.get("winning_trades", 0))
                 eq_data["win_rate_pct"] = round((wins / total_trades) * 100.0, 2) if total_trades > 0 else 0.0
                 eq_data["total_pnl_idr"] = round(float(eq_data.get("total_pnl_idr", 0.0)) + net_pnl_idr, 2)
-                eq_data["current_equity_idr"] = round(float(eq_data.get("initial_bankroll_idr", self.bankroll_idr)) + eq_data["total_pnl_idr"], 2)
+                curr_eq = round(float(eq_data.get("initial_bankroll_idr", self.bankroll_idr)) + eq_data["total_pnl_idr"], 2)
+                eq_data["current_equity_idr"] = curr_eq
+
+                # Track High-Water Mark & Overall Drawdown
+                peak_eq = max(float(eq_data.get("peak_equity_idr") or 0.0), float(eq_data.get("initial_bankroll_idr", self.bankroll_idr)), curr_eq)
+                eq_data["peak_equity_idr"] = peak_eq
+                dd_idr = max(0.0, peak_eq - curr_eq)
+                dd_pct = (dd_idr / peak_eq * 100.0) if peak_eq > 0 else 0.0
+                eq_data["overall_drawdown_idr"] = round(dd_idr, 2)
+                eq_data["overall_drawdown_pct"] = round(dd_pct, 2)
+                eq_data["circuit_breaker_threshold_pct"] = KiConfig.OVERALL_DRAWDOWN_THRESHOLD_PCT
+                if dd_pct >= KiConfig.OVERALL_DRAWDOWN_THRESHOLD_PCT:
+                    eq_data["circuit_breaker_tripped"] = True
+                    logger.critical(
+                        f"[PaperTrade-{var_id}] 🚨 CIRCUIT BREAKER TRIPPED: Drawdown {dd_pct:.2f}% >= {KiConfig.OVERALL_DRAWDOWN_THRESHOLD_PCT}%. Locking new entries."
+                    )
+                else:
+                    eq_data["circuit_breaker_tripped"] = False
+
                 eq_data["updated_at"] = now_iso
 
                 _atomic_write_json(equity_file, eq_data)

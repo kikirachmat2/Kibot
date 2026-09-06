@@ -68,6 +68,18 @@ def clean_test_env(monkeypatch):
         return False
     monkeypatch.setattr(ad, "_is_capital_governor_blocked", mock_is_gov_blocked)
 
+    def mock_is_gov_risk_locked():
+        gov_file = state_dir / "capital_governor.json"
+        if gov_file.exists():
+            try:
+                data = json.loads(gov_file.read_text(encoding="utf-8"))
+                if data.get("circuit_breaker_tripped") or data.get("status") == "OVERALL_DRAWDOWN_BREAKER_TRIPPED" or data.get("global_hard_stop"):
+                    return True
+            except Exception:
+                pass
+        return False
+    monkeypatch.setattr(ad, "_is_capital_governor_risk_locked", mock_is_gov_risk_locked)
+
     yield state_dir
 
     shutil.rmtree(tmp_dir, ignore_errors=True)
@@ -232,3 +244,39 @@ def test_approved_shadow_recorded_when_capital_governor_blocked(clean_test_env, 
     assert len(app_open) == 1
     assert app_open[0]["pair"] == "BTC/IDR"
     assert app_open[0]["variant_id"] == "APPROVED"
+
+
+def test_approved_shadow_blocked_when_capital_governor_circuit_breaker_tripped(clean_test_env, monkeypatch):
+    """Scenario 5: When CapitalGovernor trips the circuit breaker (18%), APPROVED shadow tracker also halts new trades."""
+    monkeypatch.setenv("KIBOT_LIVE_TRADING_ENABLED", "false")
+    monkeypatch.setenv("KIBOT_TRADING_MODE", "paper")
+
+    # CapitalGovernor circuit breaker tripped
+    gov_file = clean_test_env / "capital_governor.json"
+    gov_file.write_text(json.dumps({
+        "status": "OVERALL_DRAWDOWN_BREAKER_TRIPPED",
+        "allow_new_orders": False,
+        "circuit_breaker_tripped": True,
+        "circuit_breaker_reason": "overall_drawdown_breaker_tripped (19.2% >= 18.0%)",
+    }), encoding="utf-8")
+
+    director = AutonomousDirector(market_regime="BULL")
+    cand_approved = {
+        "pair": "BTC/IDR",
+        "symbol": "BTC/IDR",
+        "strategy_id": "PROVEN_STRAT",
+        "price_idr": 1000000000.0,
+        "spread_pct": 0.001,
+        "volume_ratio": 2.5,
+        "leadlag_score": 0.85,
+        "daily_volatility_pct": 0.03,
+        "data_age_seconds": 1.0,
+    }
+
+    res = director.evaluate_cycle([cand_approved])
+
+    # Candidate was approved by scorecard, BUT shadow tracking was halted by circuit breaker
+    assert len(res["approved"]) == 1
+    app_tracker = get_paper_trade_tracker("APPROVED")
+    app_open = app_tracker.get_open_paper_trades()
+    assert len(app_open) == 0, "APPROVED opened a trade despite CapitalGovernor circuit breaker tripped!"
