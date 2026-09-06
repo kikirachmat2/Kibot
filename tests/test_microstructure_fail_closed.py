@@ -15,6 +15,8 @@ from Core.Support.ki_config import KiConfig
 @pytest.mark.anyio
 async def test_microstructure_fail_closed_on_exception():
     executor = IndodaxExecutor()
+    executor.active_trades = {}
+    executor._save_active_trades = MagicMock()
     signal = {"symbol": "BTC/IDR", "side": "BUY", "type": "COUNCIL_MANDATE", "budget_idr": 25000.0}
     
     # 1. Mock state and pre-trade simulation to let flow reach the microstructure check
@@ -43,6 +45,8 @@ async def test_microstructure_fail_closed_on_exception():
 @pytest.mark.anyio
 async def test_microstructure_rejection_on_fail_liquidity():
     executor = IndodaxExecutor()
+    executor.active_trades = {}
+    executor._save_active_trades = MagicMock()
     signal = {"symbol": "BTC/IDR", "side": "BUY", "type": "COUNCIL_MANDATE", "budget_idr": 25000.0}
     
     executor._load_canary_stats = MagicMock(return_value={"date": "2026-05-17", "trade_count": 0, "daily_loss_idr": 0.0})

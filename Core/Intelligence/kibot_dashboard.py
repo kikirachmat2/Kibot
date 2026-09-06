@@ -302,14 +302,19 @@ def _active_trade_unrealized_pnl(active_positions: List[Dict[str, Any]]) -> Dict
             continue
         cost = _safe_float(trade.get("cost") or trade.get("budget_idr") or trade.get("notional_idr"), 0.0)
         amount = _safe_float(trade.get("amount"), 0.0)
+        if cost <= 0.0:
+            continue
+        if not values_by_coin or coin not in values_by_coin:
+            continue
         position = values_by_coin.get(coin, {})
+        pos_amount = _safe_float(position.get("amount"), 0.0)
+        if pos_amount <= 1e-8:
+            continue
         current_value = _safe_float(position.get("value_idr"), 0.0)
         current_price = _safe_float(position.get("price_idr"), 0.0)
         if current_value <= 0.0 and amount > 0.0:
             current_price = current_price or _ticker_price_idr_sync(coin)
             current_value = amount * current_price
-        if cost <= 0.0:
-            continue
         pnl = current_value - cost
         total_pnl += pnl
         total_cost += cost

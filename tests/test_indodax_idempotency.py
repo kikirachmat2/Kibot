@@ -6,6 +6,8 @@ from Core.Executors.Indodax.indodax_executor import IndodaxExecutor
 def test_idempotency_pre_trade_guard_blocks_duplicate():
     async def _test():
         executor = IndodaxExecutor()
+        executor.active_trades = {}
+        executor._save_active_trades = MagicMock()
         executor.indodax = AsyncMock()
         
         # Mock openOrders returning existing order for pair
@@ -34,6 +36,8 @@ def test_idempotency_pre_trade_guard_blocks_duplicate():
 def test_idempotency_timeout_recovery_success():
     async def _test():
         executor = IndodaxExecutor()
+        executor.active_trades = {}
+        executor._save_active_trades = MagicMock()
         executor.indodax = AsyncMock()
         
         # Pre-trade openOrders returns no orders
@@ -67,6 +71,7 @@ def test_idempotency_timeout_recovery_success():
         
         executor.risk = MagicMock()
         executor.risk.validate_signal.return_value = (True, "OK")
+        executor.risk.get_capital_state.return_value = {"capital_state": "NORMAL"}
         executor.sizing = MagicMock()
         executor.sizing.size.return_value = {"approved": True, "size_idr": 20000.0}
         
@@ -85,6 +90,7 @@ def test_idempotency_timeout_recovery_success():
         with patch("Core.Executors.Indodax.indodax_executor.load_live_truth") as mock_truth, \
              patch("Core.Executors.Indodax.indodax_executor.load_strategy") as mock_strat, \
              patch("Core.Executors.Indodax.indodax_executor.evaluate_live_trade") as mock_gate, \
+             patch("Core.Executors.Indodax.indodax_executor._ORDER_TRACKER_AVAILABLE", False), \
              patch("Core.Intelligence.indodax_microstructure.IndodaxMicrostructureAnalyzer") as mock_micro, \
              patch("Core.Intelligence.pre_trade_simulator.simulate_pre_trade") as mock_sim:
             mock_truth.return_value = {"daily_loss_cap_breached": False, "hard_stop": False, "status": "NORMAL"}
@@ -101,12 +107,15 @@ def test_idempotency_timeout_recovery_success():
             instance.calculate_net_yield.return_value = 1.0
             await executor.process_signal(signal)
         assert "BTC/IDR" in executor.active_trades
+        executor._save_active_trades.assert_called()
     asyncio.run(_test())
 
 
 def test_idempotency_ambiguous_verification_failure_blocks_reentry():
     async def _test():
         executor = IndodaxExecutor()
+        executor.active_trades = {}
+        executor._save_active_trades = MagicMock()
         executor.indodax = AsyncMock()
         
         # Pre-trade openOrders returns no orders

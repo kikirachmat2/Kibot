@@ -221,7 +221,20 @@ def summarize_today() -> Dict[str, Any]:
             elif trade_kind in {"ORDER_RECONCILED", "POSITION_CLOSED", "SELL_FILLED"}:
                 summary["trade_closes"] += 1
                 summary["realized_trade_pnl_idr"] += float(row.get("realized_pnl_idr") or 0.0)
-    top_candidates.sort(key=lambda item: float(item.get("opportunity_score") or item.get("confidence") or 0), reverse=True)
-    summary["top_candidates"] = top_candidates[:5]
+    # Deduplicate candidates by symbol, keeping the highest score / latest entry
+    cand_by_sym: Dict[str, Dict[str, Any]] = {}
+    for cand in top_candidates:
+        if not isinstance(cand, dict):
+            continue
+        sym = cand.get("symbol") or cand.get("pair")
+        if not sym:
+            continue
+        score = float(cand.get("opportunity_score") or cand.get("confidence") or 0)
+        existing = cand_by_sym.get(sym)
+        if not existing or score > float(existing.get("opportunity_score") or existing.get("confidence") or 0):
+            cand_by_sym[sym] = cand
+    unique_candidates = list(cand_by_sym.values())
+    unique_candidates.sort(key=lambda item: float(item.get("opportunity_score") or item.get("confidence") or 0), reverse=True)
+    summary["top_candidates"] = unique_candidates[:5]
     summary["realized_trade_pnl_idr"] = round(float(summary["realized_trade_pnl_idr"]), 2)
     return summary

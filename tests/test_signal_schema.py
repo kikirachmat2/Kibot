@@ -15,6 +15,8 @@ from Core.Support.ki_config import KiConfig
 @pytest.mark.anyio
 async def test_signal_schema_validation():
     executor = IndodaxExecutor()
+    executor.active_trades = {}
+    executor._save_active_trades = MagicMock()
     
     # 1. Invalid signal type (not COUNCIL_MANDATE)
     bad_type_signal = {"symbol": "BTC/IDR", "side": "BUY", "type": "AUTO_PILOT"}
@@ -27,6 +29,8 @@ async def test_signal_schema_validation():
 @pytest.mark.anyio
 async def test_signal_schema_missing_expected_ev():
     executor = IndodaxExecutor()
+    executor.active_trades = {}
+    executor._save_active_trades = MagicMock()
     
     # 2. Schema check for missing expected EV fields
     no_ev_signal = {"symbol": "BTC/IDR", "side": "BUY", "type": "COUNCIL_MANDATE"}

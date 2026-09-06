@@ -211,7 +211,13 @@ class CouncilDataAggregator:
                 continue
             if cost <= 0:
                 continue
+            if not values_by_coin or coin not in values_by_coin:
+                # Holding is not present in live wallet; skip ghost trade to prevent phantom unrealized loss
+                continue
             position = values_by_coin.get(coin, {})
+            pos_amount = float(position.get("amount", 0.0) or 0.0)
+            if pos_amount <= 1e-8:
+                continue
             current_value = float(position.get("value_idr", 0.0) or 0.0)
             current_price = float(position.get("price_idr", 0.0) or 0.0)
             if current_value <= 0.0 and amount > 0.0 and current_price > 0.0:

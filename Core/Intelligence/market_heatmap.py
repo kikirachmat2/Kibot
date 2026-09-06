@@ -43,10 +43,23 @@ def _build_from_tickers(tickers: Dict[str, Dict[str, Any]]) -> Dict[str, Any]:
         })
 
     green = [r for r in rows if r["change_from_low_pct"] > 0]
-    pump5 = [r for r in rows if r["change_from_low_pct"] >= 5.0]
-    pump10 = [r for r in rows if r["change_from_low_pct"] >= 10.0]
-    pump20 = [r for r in rows if r["change_from_low_pct"] >= 20.0]
-    top_movers = sorted(rows, key=lambda r: r["change_from_low_pct"], reverse=True)[:10]
+    # Filter out micro-penny tick noise (coins <= 10 IDR with negligible volume) from pump stats
+    pump5 = [r for r in rows if r["change_from_low_pct"] >= 5.0 and (r.get("last", 0) > 10 or r.get("vol_idr", 0) >= 10_000_000)]
+    pump10 = [r for r in rows if r["change_from_low_pct"] >= 10.0 and (r.get("last", 0) > 10 or r.get("vol_idr", 0) >= 25_000_000)]
+    pump20 = [r for r in rows if r["change_from_low_pct"] >= 20.0 and (r.get("last", 0) > 10 or r.get("vol_idr", 0) >= 25_000_000)]
+
+    # Filter top movers for meaningful liquidity (avoid 1-Rupiah tick jump on dead orderbooks)
+    liquid_movers = [
+        r for r in rows
+        if r.get("change_from_low_pct", 0) > 0 and (
+            (r.get("last", 0) > 10 and r.get("vol_idr", 0) >= 10_000_000) or
+            (r.get("last", 0) <= 10 and r.get("vol_idr", 0) >= 50_000_000)
+        )
+    ]
+    if len(liquid_movers) >= 3:
+        top_movers = sorted(liquid_movers, key=lambda r: r["change_from_low_pct"], reverse=True)[:10]
+    else:
+        top_movers = sorted(rows, key=lambda r: r["change_from_low_pct"], reverse=True)[:10]
     top_volume = sorted(rows, key=lambda r: r["vol_idr"], reverse=True)[:10]
 
     if len(pump10) >= 12:

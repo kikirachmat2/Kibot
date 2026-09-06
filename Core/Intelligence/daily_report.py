@@ -83,11 +83,21 @@ def build_daily_report(telemetry: Dict[str, Any] | None = None) -> str:
     top_candidates = _top(journal_summary.get("top_candidates", []), 3)
     candidate_lines = []
     for cand in top_candidates:
-        candidate_lines.append(
-            f"- {cand.get('symbol','?')} {cand.get('lifecycle','?')} "
-            f"{cand.get('trade_grade', cand.get('entry_quality','?'))} "
-            f"score {float(cand.get('opportunity_score') or cand.get('confidence') or 0):.2f}"
-        )
+        sym = cand.get("symbol") or cand.get("pair") or "?"
+        stage = cand.get("lifecycle") or cand.get("pump_stage") or ""
+        grade = cand.get("trade_grade") or cand.get("entry_quality")
+        chg = cand.get("change_pct")
+        score = float(cand.get("opportunity_score") or cand.get("confidence") or 0)
+
+        parts = [f"- {sym}"]
+        if stage and stage != "?":
+            parts.append(str(stage))
+        if grade and grade != "?":
+            parts.append(f"grade {grade}")
+        elif chg is not None:
+            parts.append(f"+{float(chg):.1f}%")
+        parts.append(f"score {score:.2f}")
+        candidate_lines.append(" ".join(parts))
     if not candidate_lines:
         candidate_lines = ["- No strong candidates recorded"]
 

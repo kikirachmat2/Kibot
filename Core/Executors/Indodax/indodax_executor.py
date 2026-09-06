@@ -107,6 +107,9 @@ class IndodaxExecutor:
                 logger.error(f"Failed to load active trades: {e}")
 
     def _save_active_trades(self):
+        if os.getenv("PYTEST_CURRENT_TEST") and not os.getenv("KIBOT_ALLOW_TEST_STATE_WRITE"):
+            logger.debug("Skipping _save_active_trades during pytest execution")
+            return
         self.state_file.parent.mkdir(parents=True, exist_ok=True)
         try:
             with open(self.state_file, "w") as f:
