@@ -1,60 +1,38 @@
-# 🏛️ KIBOT SOVEREIGN CORE v1.1
-> **Status:** PRODUCTION READY | **Architecture:** Decentralized Intelligence + Fee-Aware Execution
+# 🏛️ Core — Pusat Logika Arsitektur KiBot (Core Engine)
 
-Selamat datang di jantung pertahanan **KiBot Sovereign**. Folder ini berisi logika pusat yang mengatur seluruh ekosistem Trinity Mesh secara otonom, cerdas, dan tahan terhadap gangguan (spam-resistant).
-
----
-
-## 🧠 Komponen Utama
-
-### 1. [Sovereign Council](./sovereign_council.py)
-Ini adalah "Otak Kolektif" KiBot. Council tidak berjalan linear, melainkan melalui 5 tahap deliberasi menggunakan model AI bertingkat (Qwen 2.5/3):
-- **Observer / The Watchman (0.6b):** Mengumpulkan snapshot sistem dan melakukan *Anomaly Detection*. Dilengkapi dengan **Hybrid Safety Net** (Python code) yang menjamin kegagalan kritis (Redis OFFLINE, Tailscale NeedsAuth) tidak pernah terlewatkan.
-- **Diagnostician (1.5b):** Menganalisa akar masalah (root cause) dari setiap anomali.
-- **Strategist (DeepSeek-R1 / Reasoning):** Pake "Thinking Mode" buat analisa efek domino dan anomali pasar. Ini "Otak Jenius" Council yang mikir 5 langkah ke depan.
-- **Global Eye Integration:** Council terhubung langsung ke web search (Brave/Tavily/Jina) untuk memvalidasi apakah gangguan sistem disebabkan oleh faktor eksternal (Market outage).
-- **Risk Arbiter (0.6b):** Menentukan keputusan final dan tingkat kepercayaan (confidence).
-- **Executor Automation:** Menjalankan aksi otomatis (service restart, ADB recovery, Aider self-healing) jika `confidence >= 85%` dan `risk <= MEDIUM`.
-- **Live Trading Gate:** Order real-money hanya dibuka jika `KIBOT_LIVE_TRADING_ENABLED=true` atau mode trading `live` sudah di-set eksplisit.
-- **What-If First:** Council selalu membawa hasil simulasi what-if ke deliberasi supaya keputusan tidak buta skenario.
+Selamat datang di pusat komando **KiBot Sovereign**. Folder ini berisi seluruh logika inti sistem: mulai dari pembacaan radar pasar, pertimbangan kecerdasan buatan, kontrol brankas modal, hingga eksekusi order bursa.
 
 ---
 
-## 🏛️ Filosofi Deliberasi: Chain of Command
-Berbeda dengan AI "Chat" biasa, Sovereign Council menggunakan pendekatan **Sekuensial Terstruktur (Military Style)**:
-1. **Speed Over Noise:** Dalam trading, keputusan harus diambil dalam hitungan detik. Debat interaktif (tanya-jawab) dihindari untuk mencegah *infinite loops* dan latensi tinggi.
-2. **Internal Reasoning:** Strategist menggunakan model **DeepSeek-R1** yang melakukan "Self-Debate" (Chain-of-Thought) di dalam kepalanya sebelum mengeluarkan saran. Hasilnya adalah strategi yang sudah diuji secara internal.
-3. **Deterministic Logic:** Setiap tahap memiliki peran yang kaku (Lapor -> Diagnosa -> Saran -> Putusan) untuk memastikan sistem tetap stabil dan bisa diprediksi.
+## 🗺️ Peta Subdirektori `Core/`
+
+Untuk mempermudah operator memahami arsitektur sistem tanpa harus membaca ribuan baris kode, seluruh fungsi telah dibagi ke dalam 11 departemen:
+
+| Subdirektori | Departemen / Peran | Penjelasan Fungsi Singkat |
+| :--- | :--- | :--- |
+| [`Core/Decision/`](./Decision/README.md) | **Otak Pertimbangan** | Menimbang kelayakan sinyal, prioritas target koin, dan memvalidasi izin order. |
+| [`Core/Intelligence/`](./Intelligence/README.md) | **Intelijen & AI** | Menganalisis berita pasar global, estimasi EV, simulasi pra-trade, dan Web Dashboard. |
+| [`Core/Exchange/`](./Exchange/README.md) | **Pintu Gerbang Bursa** | Adaptor koneksi API resmi ke Indodax (cek saldo, ticker harga, order beli/jual). |
+| [`Core/Executors/`](./Executors/README.md) | **Tangan Pelaksana** | Modul eksekusi order bursa yang cepat, presisi, dan aman (*High-Risk Runtime*). |
+| [`Core/Scanner/`](./Scanner/README.md) | **Radar Pasar 24/7** | Memindai ratusan koin di pasar secara real-time mencari sinyal lonjakan harga (*High-Risk Runtime*). |
+| [`Core/Treasury/`](./Treasury/README.md) | **Brankas & Bendahara** | Menegakkan batas rugi harian (*Hard Daily Loss Limit*) dan mencatat ekuitas kas/koin. |
+| [`Core/Security/`](./Security/README.md) | **Garda Keamanan** | Enkripsi brankas API key (KiVault) dan otentikasi tanda tangan digital HMAC. |
+| [`Core/Notifications/`](./Notifications/README.md) | **Saluran Komunikasi** | Pengirim notifikasi Telegram ter-throttle dan pengelolaan siklus insiden anti-spam. |
+| [`Core/Trading/`](./Trading/README.md) | **Kalkulator Ukuran Posisi** | Menghitung alokasi modal optimal per posisi berdasarkan volatilitas pasar. |
+| [`Core/Research/`](./Research/README.md) | **Laboratorium Riset** | Simulasi pengujian strategi dengan data historis masa lalu (*Backtesting & Walk-Forward*). |
+| [`Core/Support/`](./Support/README.md) | **Divisi Perawatan** | Pembersih harddisk otomatis, pemantau telemetri server, dan fungsi pembantu sistem. |
 
 ---
 
-### 2. [Circuit Breaker](./circuit_breaker.py)
-Tameng pelindung dari loop gila dan spam notifikasi. 
-- Jika sebuah komponen gagal lebih dari **3 kali**, sirkuit akan **OPEN** (Putus).
-- Retries akan dihentikan selama **5-10 menit** (Cooldown).
-- Mencegah spam Telegram saat terjadi gangguan jaringan atau API outage.
-- Notifikasi Telegram memakai throttle bersama untuk dedupe dan incident cooldown.
+## 📁 File Inti di Root `Core/`
 
-### 3. [KiBot Sovereign Master](../MasterNode.py)
-Satu-satunya entry point sistem. Semua modul (Manager, Monitor, API) telah dilebur ke sini.
-- **Unified Command:** Tidak ada lagi konflik proses antar-skrip.
-- **Mesh Aware:** Sadar penuh terhadap kesehatan node Singapore (Scanner & Executor).
-
----
-
-## 🛠️ Cara Operasi
-
-### Menjalankan Sistem Master
-```bash
-# Pastikan Ollama sudah aktif
-python3 MasterNode.py
-```
-
----
-
-## 📊 Resource Management (RAM: 24GB)
-Sistem diatur agar sangat efisien:
-- **Core Engine:** ~200MB RAM.
-- **Ollama Models:** Load on demand. Qwen 0.5b tetap hangat di RAM, model besar di-unload setelah 90 detik tidak digunakan.
-
-**"Sovereign power is the ability to make decisions in the face of uncertainty."**
+| File | Penjelasan Fungsi |
+| :--- | :--- |
+| [`sovereign_council.py`](./sovereign_council.py) | **Dewan Musyawarah AI (Sovereign Council)**: Mengorkestrasi musyawarah bertingkat (Observer -> Diagnostician -> Strategist -> Arbiter) untuk mengevaluasi kondisi pasar dan kesehatan sistem. |
+| [`risk_gate.py`](./risk_gate.py) | **Gerbang Pengendali Risiko**: Memeriksa parameter batas rugi, ambang batas minimum volume, dan spread sebelum order diizinkan jalan. |
+| [`circuit_breaker.py`](./circuit_breaker.py) | **Sekring Pemutus Otomatis**: Memutus loop trading darurat jika terdeteksi anomali jaringan atau kegagalan berulang. |
+| [`telegram_command_orchestrator.py`](./telegram_command_orchestrator.py) | **Penerima Perintah Remote**: Memproses instruksi kontrol jarak jauh yang dikirimkan operator melalui chat bot Telegram. |
+| [`sovereign_state.py`](./sovereign_state.py) | **Manajer Status Sistem**: Mengatur persistensi dan pembacaan state operasional KiBot. |
+| [`ki_brain.py`](./ki_brain.py) | *Compatibility Shim*: Mengarahkan impor lama ke modul Council modern. |
+| [`sovereign_disk_cleaner.py`](./sovereign_disk_cleaner.py) | *Compatibility Shim*: Mengarahkan impor ke `Core/Support/sovereign_disk_cleaner.py`. |
+| [`sovereign_notifier.py`](./sovereign_notifier.py) | *Compatibility Shim*: Mengarahkan impor ke `Core/Notifications/sovereign_notifier.py`. |

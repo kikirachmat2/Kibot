@@ -1,32 +1,33 @@
-# KiBot Intelligence
+# 🧠 Core/Intelligence — Mata, Telinga & Analisis Intelijen Pasar
 
-Folder ini berisi intelligence, council, dashboard, learning, dan audit layer untuk runtime **Indodax-only**.
+Folder ini bertindak sebagai **Pusat Intelijen & Analisis Pasar (Intelligence Layer)** KiBot. Tugas utamanya adalah mengumpulkan data pasar global, menjalankan penalaran AI, menyusun konteks portofolio, memantau riwayat trade, serta menyajikan visualisasi web dashboard bagi operator.
 
-## Runtime Scope
-- Venue aktif: Indodax spot.
-- Canonical truth: `state/live_truth.json`.
-- Canonical accounting: Indodax total equity = liquid IDR + held coin mark-to-market + pending/order reserve yang valid.
-- Route wallet eksternal, chain execution, prediction market, asset movement, dan withdrawal sudah dihapus dari runtime.
+---
 
-## Core Responsibilities
-- `council_data_aggregator.py`: menyusun konteks portfolio, scanner, heatmap, trade history, dan accounting truth untuk council.
-- `kibot_ai_coordinator.py`: menjalankan AI/advisory stack untuk diagnosis, kritik strategi, dan ringkasan, bukan approval order.
-- `kibot_ai_scout.py`: patrol 5 menit untuk market/news/tooling/server readiness.
-- `kibot_dashboard.py`: web control plane yang membaca live truth dan state Indodax.
-- `decision_journal.py`: audit trail scanner, council, simulator, executor, dan verifier.
-- `trade_history.py`: riwayat trade manusiawi dengan PnL fee-aware.
-- `pre_trade_simulator.py`: hard feasibility check sebelum entry.
-- `market_heatmap.py`: breadth Indodax dan market regime.
-- `probability_engine.py`: estimasi probabilitas harian untuk menjaga sistem tidak overtrade.
-- `daily_report.py`: report harian Telegram yang ringkas.
+## 📁 Daftar File Utama & Fungsinya
 
-## AI Rules
-- AI boleh mendiagnosis, merangkum, mengkritik, dan memberi rekomendasi parameter.
-- AI tidak boleh mengeksekusi order, menaikkan sizing, mengabaikan EV, atau bypass risk gate.
-- Keputusan order tetap deterministic dan harus tercatat di decision journal.
+| File | Penjelasan Fungsi (Bahasa Awam) |
+| :--- | :--- |
+| [`kibot_ai_coordinator.py`](file:///Users/kiki/Documents/Web%20Develop/KiBot/Core/Intelligence/kibot_ai_coordinator.py) | **Koordinator AI**: Mengelola antrean permintaan ke model AI (Gemini, Groq, Ollama) untuk analisis sentimen berita dan kritik strategi. |
+| [`kibot_ai_scout.py`](file:///Users/kiki/Documents/Web%20Develop/KiBot/Core/Intelligence/kibot_ai_scout.py) | **Pramuka Intelijen Pasar**: Melakukan patroli otomatis tiap 5 menit untuk mengecek berita crypto global, kesiapan server, dan anomali pasar. |
+| [`kibot_dashboard.py`](file:///Users/kiki/Documents/Web%20Develop/KiBot/Core/Intelligence/kibot_dashboard.py) | **Server Web Dashboard**: Menyajikan antarmuka visual web pemantau saldo riil, posisi aktif, dan log trading bagi operator. |
+| [`autonomous_director.py`](file:///Users/kiki/Documents/Web%20Develop/KiBot/Core/Intelligence/autonomous_director.py) | **Direktur Otonom**: Memfilter sinyal kandidat yang disetujui Council dan mengecek safety gate CapitalGovernor sebelum order dikirim. |
+| [`council_data_aggregator.py`](file:///Users/kiki/Documents/Web%20Develop/KiBot/Core/Intelligence/council_data_aggregator.py) | **Pengumpul Data Dewan**: Merangkum kondisi saldo, daftar koin panas, dan histori trade menjadi satu laporan ringkas untuk sidang Council. |
+| [`pre_trade_simulator.py`](file:///Users/kiki/Documents/Web%20Develop/KiBot/Core/Intelligence/pre_trade_simulator.py) | **Simulator Pra-Trading**: Melakukan simulasi instan sebelum order dikirim — mengecek apakah keuntungan kotor cukup untuk menutup fee bursa. |
+| [`expected_value.py`](file:///Users/kiki/Documents/Web%20Develop/KiBot/Core/Intelligence/expected_value.py) | **Kalkulator Nilai Harapan (EV)**: Memastikan hanya peluang dengan probabilitas untung positif (*Positive Expected Value*) yang boleh dieksekusi. |
+| [`decision_journal.py`](file:///Users/kiki/Documents/Web%20Develop/KiBot/Core/Intelligence/decision_journal.py) | **Buku Harian Keputusan**: Mencatat secara transparan setiap alasan mengapa sebuah koin disetujui atau ditolak trading. |
+| [`trade_history.py`](file:///Users/kiki/Documents/Web%20Develop/KiBot/Core/Intelligence/trade_history.py) | **Catatan Riwayat Transaksi**: Mencatat hasil untung/rugi bersih (*Net PnL*) setelah dipotong fee bursa untuk setiap trade yang selesai. |
+| [`paper_trade_tracker.py`](file:///Users/kiki/Documents/Web%20Develop/KiBot/Core/Intelligence/paper_trade_tracker.py) | **Pelacak Trading Virtual (Simulasi)**: Menguji kinerja strategi baru dengan uang virtual sebelum diizinkan memakai uang asli. |
+| [`market_heatmap.py`](file:///Users/kiki/Documents/Web%20Develop/KiBot/Core/Intelligence/market_heatmap.py) | **Peta Suhu Pasar**: Mengukur apakah pasar Indodax sedang bergairah (*bullish*), lesu (*bearish*), atau stagnan (*sideways*). |
+| [`leadlag_alpha.py`](file:///Users/kiki/Documents/Web%20Develop/KiBot/Core/Intelligence/leadlag_alpha.py) | **Detektor Lead-Lag**: Membaca pergerakan harga di Binance mendahului Indodax untuk menangkap momentum kenaikan lebih awal. |
+| [`pair_quarantine.py`](file:///Users/kiki/Documents/Web%20Develop/KiBot/Core/Intelligence/pair_quarantine.py) | **Karantina Koin Bermasalah**: Mengunci koin yang baru saja mengalami stop-loss beruntun agar tidak dibeli ulang sementara waktu. |
+| [`exit_plan.py`](file:///Users/kiki/Documents/Web%20Develop/KiBot/Core/Intelligence/exit_plan.py) | **Rencana Penjualan Posisi**: Menghitung target Take Profit realistis dan Stop Loss protektif sebelum posisi dibuka. |
+| [`ai_performance_analyst.py`](file:///Users/kiki/Documents/Web%20Develop/KiBot/Core/Intelligence/ai_performance_analyst.py) | **Analis Kinerja AI**: Menganalisis win rate varian strategi trading dan menyusun laporan performa mingguan. |
+| [`daily_report.py`](file:///Users/kiki/Documents/Web%20Develop/KiBot/Core/Intelligence/daily_report.py) | **Penyusun Laporan Harian**: Merangkum hasil trading dan saldo portofolio untuk dikirim ke Telegram tiap pukul 00:00 WIB. |
 
-## Operational Notes
-- `bin/kibotctl` adalah entrypoint operator untuk status, doctor, restart, model sync, dan tools.
-- `systemd` adalah source of truth runtime Batam.
-- Dashboard tidak boleh membaca state legacy sebagai sumber uang utama.
-- Jika docs/runtime inventory berubah, update README dan inventory supaya AI server tidak membaca kontrak lama.
+---
+
+## 🤖 Aturan Integritas AI (AI Safety Rules)
+- AI bertindak sebagai **penasihat dan penganalisis** (mendiagnosis pasar, merangkum berita, mengkritik strategi).
+- AI **DILARANG mengeksekusi order langsung**, dilarang membesarkan ukuran posisi, dan dilarang melonggarkan batas risiko modal.
+- Keputusan order tetap deterministic (mengikuti aturan matematika pasti) dan tercatat di Decision Journal.

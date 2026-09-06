@@ -106,22 +106,24 @@ Primary dashboard entrypoints:
 
 | Path | Purpose |
 | --- | --- |
+| [`ROOT_FILES_GUIDE.md`](./ROOT_FILES_GUIDE.md) | Plain-language guide explaining why root files must remain in place. |
+| [`docs/FOLDER_STRUCTURE_OVERVIEW.md`](./docs/FOLDER_STRUCTURE_OVERVIEW.md) | Visual tree diagram and overview of the repository structure. |
+| [`docs/ACCESS_GUIDE.md`](./docs/ACCESS_GUIDE.md) | Server access credentials, IPs, and synchronization protocol. |
+| [`docs/MANIFESTO.md`](./docs/MANIFESTO.md) | Trading manifesto and core sovereignty principles. |
 | [`Core/README.md`](./Core/README.md) | Core architecture and runtime overview. |
+| [`Core/Decision/README.md`](./Core/Decision/README.md) | Decision authority, target boards, and opportunity tiering. |
+| [`Core/Exchange/README.md`](./Core/Exchange/README.md) | Indodax exchange API adapter and HMAC signing. |
 | [`Core/Scanner/README.md`](./Core/Scanner/README.md) | Scanner flow, delta filtering, and market signal routing. |
 | [`Core/Executors/README.md`](./Core/Executors/README.md) | Execution layer, capital routing, and risk checks. |
 | [`Core/Intelligence/README.md`](./Core/Intelligence/README.md) | AI orchestration, aggregator, learning loop, what-if simulation, and dashboards. |
+| [`Core/Treasury/README.md`](./Core/Treasury/README.md) | Capital Governor, accounting truth, and daily loss limits. |
 | [`Core/Security/README.md`](./Core/Security/README.md) | HMAC, vault, audit logging, and security posture. |
+| [`Core/Notifications/README.md`](./Core/Notifications/README.md) | Throttled alerts, incident lifecycle, and Telegram notifications. |
+| [`Core/Trading/README.md`](./Core/Trading/README.md) | Autonomous position sizing and risk calculations. |
+| [`Core/Research/README.md`](./Core/Research/README.md) | Backtesting engine and walk-forward validation. |
 | [`Core/Support/README.md`](./Core/Support/README.md) | Config, utilities, operational helpers, and system support tooling. |
-| [`Core/Decision/daily_reset_coordinator.py`](./Core/Decision/daily_reset_coordinator.py) | WIB daily rollover and baseline reset coordinator. |
-| [`Core/Intelligence/strategy/TRADING_STRATEGY.md`](./Core/Intelligence/strategy/TRADING_STRATEGY.md) | Trading strategy contract and runtime behavior. |
-| [`Core/Intelligence/strategy/SYSTEM_STRATEGY.md`](./Core/Intelligence/strategy/SYSTEM_STRATEGY.md) | Non-trading system strategy for health, recovery, deployment, and automation. |
-| [`Core/Intelligence/strategy/specs/AUTONOMY_GAP_REGISTER.md`](./Core/Intelligence/strategy/specs/AUTONOMY_GAP_REGISTER.md) | Known autonomy gaps before claiming stronger runtime maturity. |
-| [`Core/Intelligence/strategy/roadmaps/IMPLEMENTATION_ROADMAP.md`](./Core/Intelligence/strategy/roadmaps/IMPLEMENTATION_ROADMAP.md) | Implementation roadmap from strategy to runtime. |
-| [`Core/Intelligence/strategy/specs/OBSERVABILITY_DASHBOARD_SPEC.md`](./Core/Intelligence/strategy/specs/OBSERVABILITY_DASHBOARD_SPEC.md) | Dashboard and control-plane specification. |
-| [`Core/Intelligence/delegation_workflows.md`](./Core/Intelligence/delegation_workflows.md) | Human-readable delegation workflow playbook. |
-| [`Core/Intelligence/delegation_workflows.json`](./Core/Intelligence/delegation_workflows.json) | Machine-readable delegation workflow manifest. |
+| [`scripts/README.md`](./scripts/README.md) | Operational scripts overview, maintenance, and cloud capacity hunter. |
 | [`bin/kibotctl`](./bin/kibotctl) | One-command operational wrapper. |
-| [`bin/kibot-dashboard`](./bin/kibot-dashboard) | Dashboard launcher. |
 | [`config/systemd/`](./config/systemd) | Canonical systemd service definitions. |
 | [`AGENTS.md`](./AGENTS.md) | Instructions for Codex, Aider, Copilot, and repository automation. |
 | [`state/`](./state) | Runtime JSON snapshots used by the engine. Do not commit secrets. |

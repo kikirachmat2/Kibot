@@ -1,69 +1,21 @@
-# KiBot Security (Sovereign Shield)
+# 🛡️ Core/Security — Garda Keamanan & Enkripsi Kunci (Sovereign Shield)
 
-Repository-wide security infrastructure for the sovereign trading cluster.
+Folder ini bertindak sebagai **Benteng Keamanan (Security & Cryptography Layer)** KiBot. Tugas utamanya adalah mengenkripsi kunci rahasia API, memvalidasi tanda tangan digital paket data UDP, memverifikasi integritas file database, dan mencegah manipulasi data dari pihak luar.
 
-## Ringkas
-- `ki_vault.py` memuat secret terenkripsi dari sovereign vault ke environment saat boot (fail-closed jika secret hilang).
-- `ki_vault_cli.py` menyediakan CLI untuk inisialisasi, enkripsi, dekripsi, dan rotasi vault.
-- `kibot_crypto_auth.py` menangani penandatanganan HMAC-SHA256 untuk payload UDP dan inter-node auth.
-- `kibot_security.py` menyediakan log audit terenkripsi dan verifikasi integritas file.
-- HMAC dipakai untuk payload UDP dan state integrity.
-- Vault dipakai untuk secret loading saat boot.
-- Log audit disimpan terpisah agar mudah ditinjau dan diverifikasi.
-- HTTP client logging dijaga di level error supaya query string berisi API key tidak bocor ke journal.
+---
 
-## Paranoid Security Posture (v8.2)
+## 📁 Daftar File & Fungsinya
 
-The system operates under a "Paranoid Reconstruction" model, assuming the network environment and persistent storage are potentially compromised.
+| File | Penjelasan Fungsi (Bahasa Awam) |
+| :--- | :--- |
+| [`ki_vault.py`](file:///Users/kiki/Documents/Web%20Develop/KiBot/Core/Security/ki_vault.py) | **Brankas Enkripsi (KiVault)**: Membaca file `.env.kiv` yang terenkripsi dan memuat kunci API langsung ke memori RAM saat server menyala tanpa pernah meninggalkan jejak teks biasa (*plaintext*) di harddisk. |
+| [`ki_vault_cli.py`](file:///Users/kiki/Documents/Web%20Develop/KiBot/Core/Security/ki_vault_cli.py) | **Alat Kontrol Brankas**: Program baris perintah untuk mengunci (*encrypt*), membuka (*decrypt*), atau merotasi kunci brankas KiVault. |
+| [`kibot_crypto_auth.py`](file:///Users/kiki/Documents/Web%20Develop/KiBot/Core/Security/kibot_crypto_auth.py) | **Otentikasi Kriptografi HMAC**: Memberikan stempel tanda tangan digital (HMAC-SHA256) pada setiap paket sinyal scanner. Mencegah sinyal palsu atau injeksi data asing. |
+| [`kibot_security.py`](file:///Users/kiki/Documents/Web%20Develop/KiBot/Core/Security/kibot_security.py) | **Audit Integritas File**: Memeriksa sidik jari (*hash*) file database state penting (seperti `learning_state.json`) agar sistem tahu jika ada file yang korup atau terhapus. |
 
-### 1. Inter-Node HMAC Trust (`kibot_crypto_auth.py`)
-All signals transmitted over UDP (breakout detections, lead-lag signals) are cryptographically signed using **HMAC-SHA256**.
-- **Emitter**: `SignalUdpEmitter.kt` signs the JSON payload before transmission.
-- **Receiver**: `kibot_manager.py` verifies the signature using a hardware-bound key (`KIBOT_SIGNAL_KEY`).
-- **Bi-directional ACK**: The receiver sends a verified ACK back to the emitter to confirm receipt of a trusted signal.
+---
 
-### 2. Sovereign Vault (KiVault: `ki_vault.py` & `ki_vault_cli.py`)
-We have migrated from plaintext `.env` files to encrypted `.env.kiv` containers.
-- **Root of Trust**: Encryption keys are derived from hardware-unique identifiers (MAC + CPU Node).
-- **In-Memory Decryption**: Secrets are decrypted directly into `os.environ` at runtime, ensuring no plaintext API keys are ever written to disk in a readable format.
-- **CLI Usage**: `python3 Core/Security/ki_vault_cli.py setup` to encrypt local `.env` and `python3 Core/Security/ki_vault_cli.py load` to verify.
-
-### 3. Intelligence Sanitization
-To prevent "Adversarial Data Poisoning", the intelligence layer implements strict input validation:
-- **PnL Clipping**: Bayesian updates are capped at `[-20%, +50%]` to prevent extreme outlier data from corrupting the AI's risk models.
-- **Signal TTL**: Signals older than 10-15 seconds are automatically rejected to prevent replay attacks or execution on stale market conditions.
-- **Live Trading Gate**: real-money entry is blocked unless the operator explicitly enables `KIBOT_LIVE_TRADING_ENABLED` or `KIBOT_TRADING_MODE=live`.
-- **Stale Urgency Expiry**: `EMERGENCY_PAUSE` / `FORCE_EXIT` flags auto-expire if they are stale or carry no reason.
-- **Secret Strictness**: `KIBOT_SECRET` must exist in runtime env; receivers reject signals instead of falling back to a default signing key. `KiVault` also refuses to initialize without an explicit configured secret.
-
-## Hardening Checklist
-- [x] Oracle Circuit Breaker (Veto price jumps > 2%)
-- [x] HMAC State Integrity (Sign `learning_state.json`)
-- [x] Inter-Node HMAC (Sign UDP signals)
-- [x] Hardware-bound KiVault (AES-256)
-- [x] Humility-weighted Sizing (Cap Kelly at 0.95)
-- [x] Telegram Throttle / Dedupe (Shared channel guardrail)
-- [ ] Final Secret Purge (Remove legacy .env files)
-
-### 4. Immutable Logging (`kibot_security.py`)
-Provides a cryptographically verifiable audit trail of all security events.
-- **HMAC-SHA256 Signing**: Every log entry is signed with a hardware-bound key.
-- **Integrity Verification**: Detects unauthorized log tampering or deletions.
-- **Periodic Scanning**: Monitors sensitive file permissions (e.g., `.env` access).
-
-## Usage
-
-### Verifying Log Integrity
-To check if logs have been tampered with:
-```bash
-python3 Core/Security/kibot_security.py --verify
-```
-
-### Security Log
-All audited events are stored in `state/security_log.jsonl` in a signed JSON format.
-
-## Security Policy
-1. **Fail-Closed**: If the security vault is inaccessible, the system will refuse to boot.
-2. **Sovereign Egress**: All trading communication must pass through verified sovereign network paths.
-3. **Hardware Bound**: Security keys are derived from the server's unique hardware footprint, preventing unauthorized credential reuse.
-4. **Sparse Notifications**: Telegram is an incident channel, not a chat log.
+## 🔒 Standar Keamanan Berdaulat (Security Posture)
+1. **Zero Secret in Git**: Dilarang keras men-commit file kunci `.env`, file `.pem`, atau password ke GitHub.
+2. **Fail-Closed Security**: Jika tanda tangan HMAC sebuah sinyal tidak cocok dengan `KIBOT_SECRET`, sinyal tersebut langsung dibuang seketika tanpa dieksekusi.
+3. **Penyaringan Data Usang (TTL)**: Sinyal pasar yang berumur lebih dari 10–15 detik otomatis ditolak untuk mencegah pembelian harga lama (*stale order*).

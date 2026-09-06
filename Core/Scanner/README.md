@@ -1,29 +1,23 @@
-# 🛰️ KiBot Scanner
+# 🛰️ Core/Scanner — Radar Pendeteksi Peluang Pasar 24/7
 
-Scanner layer untuk membaca peluang pasar dan mengirim sinyal HMAC-signed ke Council. Direct-to-executor sekarang opt-in saja agar raw leaderboard pump tidak bisa bypass deliberasi.
+Folder ini bertindak sebagai **Radar Pengawas Pasar (Scanner Layer)** KiBot. Tugas utamanya adalah memindai ratusan aset crypto di bursa secara *real-time*, mendeteksi lonjakan volume, memantau pergerakan harga cepat, dan mengirimkan paket sinyal terenkripsi (HMAC-signed) ke Sovereign Council untuk dievaluasi.
 
-## Alur
-- `engine.py`: orchestrator scanner, delta filter, dispatch UDP.
-- `ki_indodax_smallcap_scanner.py`: deteksi pump small-cap di Indodax dengan `price_idr`, plus 24h run-up, near-high continuation, dan volume persistence.
-- `indodax_binance_leadlag_scanner.py`: pasangan Binance→Indodax yang memantau window beberapa detik untuk menangkap local lag setelah leader bergerak lebih dulu. Scanner ini punya aggressive/bootstrap mode lewat env `KIBOT_INDO_BINANCE_LEADLAG_AGGRESSIVE_MODE` dan `KIBOT_INDO_BINANCE_LEADLAG_BOOTSTRAP_MODE` untuk memaksa candidate masuk lebih cepat saat leadership Binance jelas.
-- `ki_universal_leadlag_scanner.py`: lead-lag scanner lintas sumber global.
+> [!IMPORTANT]
+> **Status Risiko**: **SANGAT TINGGI (High-Risk Runtime)**.
+> File [`engine.py`](file:///Users/kiki/Documents/Web%20Develop/KiBot/Core/Scanner/engine.py) terikat langsung dengan service systemd `kibot-scanner.service` di server SG1. Dilarang mengubah struktur atau me-rename file ini tanpa rencana migrasi teruji.
 
-## Catatan Operasional
-- Delta filter membandingkan harga terakhir per UID yang stabil per logical signal:
-  - Indodax: `exchange:symbol`
-  - Universal: `exchange:topic`
-- Indodax pump scanner sekarang tidak hanya baca 5m momentum, tetapi juga 24h proxy run-up, jarak ke high harian, dan volume persistence supaya pump continuation tetap bisa ditembus.
-- Jalur Binance→Indodax lead-lag dipakai sebagai komparasi terpisah: Binance dibaca dulu, lalu Indodax disaring untuk kandidat yang masih lag beberapa detik. Kandidat ini masuk ke state dan target board agar dispatcher bisa memanfaatkannya secara live.
-- Mode `pullback_reclaim` juga ada: jika coin sempat retrace dari high tapi mulai reclaim lagi dengan volume dan persistence yang kuat, scanner tetap menganggapnya kandidat second-leg, bukan coin mati.
-- Mode `late_reclaim` juga ada untuk wave yang lebih jauh dari high, tapi hanya kalau recovery score dan volume persistence masih cukup sehat. Ini menjaga sistem tetap agresif tanpa jadi liar.
-- Mode `range_break_reclaim` juga ada untuk setup yang keluar dari range intraday lalu reclaim lagi dengan volume lanjutan. Ini dibuat untuk menangkap second-wave yang lebih kuat, tapi tetap tidak dipakai kalau struktur sudah rusak.
-- Mode `support_bounce_reclaim` juga ada untuk coin yang memantul dari support intraday lalu reclaim lagi dengan room to run yang masih sehat. Ini membuat scanner lebih peka ke riding-the-wave tanpa jadi terlalu liar.
-- Mode `pivot_reclaim` juga ada untuk reclaim yang sangat awal, saat coin baru memantul dari pivot intraday dan masih punya room untuk lanjut. Ini dipakai untuk menangkap wave yang belum sempat kelihatan besar, tapi tetap dibatasi agar tidak jadi entry ngawur.
-- Kalau depth/OBI Indodax sedang tidak bisa diakses dari server, scanner memakai proxy struktural dari run-up, range position, persistence, dan volume sehingga pump detection tetap hidup.
-- Default dispatch ke executor dimatikan. Gunakan `KIBOT_SCANNER_DIRECT_INDODAX=1` hanya untuk debug sadar risiko.
-- Anti tick-trap aktif: coin dengan `price_increment / price` terlalu besar, level harga 24h terlalu sedikit, spread terlalu lebar, OBI condong jual, atau OHLC datar akan ditolak sebelum confidence score.
-- Endpoint depth Indodax memakai compact pair resmi seperti `/api/depth/btcidr`; ini penting karena `/api/depth/btc_idr` menghasilkan `invalid_pair`.
-- Interval scanner default lebih agresif untuk flow cepat.
-- Universal scanner dijalankan aman dari thread context.
-- Universal lead-lag signals are context only unless Council can match them to a supported executor route. Deterministic fallback is not allowed to turn generic exchange/entity signals into Indodax buy orders.
-- `indodax_scanner_state.json` is refreshed by the active `kibot-scanner` engine, while `scanner_executor_contract.json` is refreshed by the control-plane target board loop. This keeps route coverage canonical without duplicate daemons.
+---
+
+## 📁 Daftar File & Fungsinya
+
+| File | Penjelasan Fungsi (Bahasa Awam) |
+| :--- | :--- |
+| [`engine.py`](file:///Users/kiki/Documents/Web%20Develop/KiBot/Core/Scanner/engine.py) | **Orkestrator Scanner Utama**: Mengatur perputaran loop pemindaian, menyaring lonjakan harga signifikan (*delta filter*), membungkus sinyal dengan tanda tangan keamanan HMAC, dan mengirimnya via socket UDP ke MasterNode. |
+| [`indodax_binance_leadlag_scanner.py`](file:///Users/kiki/Documents/Web%20Develop/KiBot/Core/Scanner/indodax_binance_leadlag_scanner.py) | **Radar Lead-Lag Binance→Indodax**: Memantau koin-koin di Binance yang sudah mulai naik duluan beberapa detik sebelum harga di Indodax merespons, memberikan keuntungan curi start (*alpha*). |
+| [`indodax_market_scanner.py`](file:///Users/kiki/Documents/Web%20Develop/KiBot/Core/Scanner/indodax_market_scanner.py) | **Pemindai Pasar Indodax**: Membaca ringkasan seluruh ticker pasar Indodax (kenaikan 24 jam, volume transaksi, dan spread bid-ask). |
+| [`ki_indodax_smallcap_scanner.py`](file:///Users/kiki/Documents/Web%20Develop/KiBot/Core/Scanner/ki_indodax_smallcap_scanner.py) | **Radar Koin Small-Cap**: Mendeteksi lonjakan mendadak (*pump*) pada koin-koin berkapitalisasi kecil dengan proteksi anti-jebakan likuiditas (*tick-trap*). |
+| [`ki_universal_leadlag_scanner.py`](file:///Users/kiki/Documents/Web%20Develop/KiBot/Core/Scanner/ki_universal_leadlag_scanner.py) | **Radar Global Multi-Exchange**: Membaca sentimen dan tren pergerakan harga crypto di level makro dunia. |
+| [`scanner_executor_contract.py`](file:///Users/kiki/Documents/Web%20Develop/KiBot/Core/Scanner/scanner_executor_contract.py) | **Kontrak Sinkronisasi Rute**: Memastikan koin yang terdeteksi scanner memiliki pasangan trading yang valid dan bisa dieksekusi oleh modul Executor. |
+| [`scanner_health.py`](file:///Users/kiki/Documents/Web%20Develop/KiBot/Core/Scanner/scanner_health.py) | **Pemeriksa Kesehatan Scanner**: Mengecek apakah loop scanner masih terus memompa data atau mengalami kemacetan koneksi. |
+| [`scanner_health_runner.py`](file:///Users/kiki/Documents/Web%20Develop/KiBot/Core/Scanner/scanner_health_runner.py) | **Runner Kesehatan**: Skrip mandiri pemanggil healthcheck scanner. |
+| [`source_proof.py`](file:///Users/kiki/Documents/Web%20Develop/KiBot/Core/Scanner/source_proof.py) | **Verifikasi Sumber Data**: Memvalidasi integritas timestamp data harga agar sistem tidak menggunakan data basi (*stale price*). |
