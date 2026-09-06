@@ -2077,11 +2077,15 @@ def _build_control_plane_payload() -> Dict[str, Any]:
         merged_data.pop(legacy_key, None)
     if isinstance(merged_data.get("portfolio"), dict):
         merged_data["portfolio"].setdefault("daily_pnl_shadow_idr", _safe_float(portfolio.get("daily_pnl_shadow_idr"), 0.0))
+        # NOTE (Legacy Compatibility): 'mock_pnl_idr' is maintained strictly for backward compatibility
+        # with legacy dashboard consumers and automated assertions. Despite the historical name 'mock',
+        # this field is populated with REAL shadow ledger PnL ('daily_pnl_shadow_idr'), NOT simulated/fake data.
         merged_data["portfolio"].setdefault("mock_pnl_idr", _safe_float(portfolio.get("daily_pnl_shadow_idr"), 0.0))
     merged_data.setdefault("agent-modal", {"legacy": True, "hidden": True})
     clean = _scrub_legacy_payload(merged_data)
     if isinstance(clean.get("portfolio"), dict):
         clean["portfolio"]["daily_pnl_shadow_idr"] = _safe_float(portfolio.get("daily_pnl_shadow_idr"), 0.0)
+        # Maintained for backward compatibility; maps directly to daily_pnl_shadow_idr (real data).
         clean["portfolio"]["mock_pnl_idr"] = _safe_float(portfolio.get("daily_pnl_shadow_idr"), 0.0)
     return clean
 

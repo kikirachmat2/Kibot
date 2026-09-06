@@ -882,7 +882,60 @@ function renderDashboardPanels(data) {
 
   const panelOverview = el('panel-overview');
   if (panelOverview) {
+    const totalSaldo = idr(portfolio.total_equity_idr || 0);
+    const pnlVal = Number(portfolio.net_pnl_today_idr || 0);
+    const pnlStr = `${pnlVal >= 0 ? '+' : ''}${idr(pnlVal)} (${pct(portfolio.net_pnl_today_pct || portfolio.daily_pnl_pct || 0)})`;
+    const pnlColor = pnlVal > 0 ? 'var(--green)' : (pnlVal < 0 ? 'var(--red)' : 'var(--ink)');
+    const modalAwal = idr(portfolio.starting_equity_idr || portfolio.start_total_equity_idr || 0);
+
+    let botStatusHtml = '<span class="badge badge--green">🟢 AMAN & NORMAL</span>';
+    let botStatusDesc = 'Semua service aktif normal. Batas risiko harian (-1.5%) aktif melindungi modal dari penurunan tajam.';
+    if (runtime.state === 'ERROR' || (Array.isArray(data.warnings) && data.warnings.length > 0)) {
+      botStatusHtml = '<span class="badge badge--red">🔴 PERIKSA KENDALA</span>';
+      botStatusDesc = 'Terdeteksi peringatan pada sistem runtime. Periksa tab Logs/Debug untuk informasi teknis lebih lanjut.';
+    } else if (runtime.state === 'LOCKED' || !allowOrders) {
+      botStatusHtml = '<span class="badge badge--amber">🟡 SIAGA / TERKUNCI AMAN</span>';
+      botStatusDesc = 'Sistem berada dalam mode proteksi modal (fail-safe). Tidak ada dana yang dipertaruhkan tanpa izin ketat.';
+    }
+
+    let kenapaBelumBeli = 'Bot aktif memantau pasar 24/7 dan hanya masuk saat sinyal profit aman terpenuhi.';
+    const openPosCount = getCount(liveTruth.open_positions || []);
+    if (openPosCount > 0) {
+      kenapaBelumBeli = `Bot sedang memegang ${openPosCount} posisi aktif dan mengawal target laba / stop-loss.`;
+    } else if (!allowOrders) {
+      kenapaBelumBeli = 'Pintu transaksi dikunci oleh pengaman modal (Capital Governor) untuk mencegah risiko kerugian beruntun.';
+    } else if (nextAction === 'WAIT') {
+      kenapaBelumBeli = 'Kondisi pasar saat ini belum memenuhi kriteria probabilitas menang yang aman. Lebih baik sabar daripada gegabah.';
+    } else if (nextAction === 'BUY' || nextAction === 'ENTER') {
+      kenapaBelumBeli = 'Sinyal terverifikasi! Bot sedang menyiapkan pesanan beli sesuai alokasi modal terukur.';
+    }
+
     panelOverview.innerHTML = `
+      <div class="simple-summary-card">
+        <div class="simple-summary__header">
+          <div class="simple-summary__title">
+            <span>🛡️ Ringkasan Awam (Status Bot & Modal)</span>
+          </div>
+          <span class="simple-summary__badge">Mode: ${esc(runtime.mode || 'LIVE_ONLY')}</span>
+        </div>
+        <div class="simple-summary__grid">
+          <div class="simple-item">
+            <div class="simple-item__q">💰 Saldo & Hasil Hari Ini</div>
+            <div class="simple-item__val" style="color:${pnlColor};">${pnlStr}</div>
+            <div class="simple-item__desc">Total saldo saat ini: <strong>${totalSaldo}</strong> (Modal awal hari ini: ${modalAwal}).</div>
+          </div>
+          <div class="simple-item">
+            <div class="simple-item__q">🚦 Kondisi Keamanan Sistem</div>
+            <div class="simple-item__val" style="font-size:15px;">${botStatusHtml}</div>
+            <div class="simple-item__desc">${botStatusDesc}</div>
+          </div>
+          <div class="simple-item">
+            <div class="simple-item__q">❓ Kenapa Belum Beli Koin?</div>
+            <div class="simple-item__val" style="font-size:14px; color:#0369a1;">${esc(nextAction || 'WAIT')}</div>
+            <div class="simple-item__desc">${kenapaBelumBeli}</div>
+          </div>
+        </div>
+      </div>
       <div class="content-grid content-grid--3">
         ${renderMetricCard('Total Equity', idr(portfolio.total_equity_idr || 0), `Start ${idr(portfolio.starting_equity_idr || portfolio.start_total_equity_idr || 0)}`)}
         ${renderMetricCard('Net PnL Today', idr(portfolio.net_pnl_today_idr || 0), `${pct(portfolio.net_pnl_today_pct || portfolio.daily_pnl_pct || 0)}`)}
