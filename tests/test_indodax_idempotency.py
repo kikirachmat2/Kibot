@@ -13,6 +13,7 @@ def test_idempotency_pre_trade_guard_blocks_duplicate():
             "success": 1,
             "return": {"orders": [{"order_id": "12345", "pair": "btc_idr"}]}
         }
+        executor.indodax.get_balance.return_value = 100000.0
         
         signal = {
             "symbol": "BTC/IDR",
@@ -97,6 +98,7 @@ def test_idempotency_timeout_recovery_success():
                 "slippage_pct": 0.1,
                 "reason": "OK"
             }
+            instance.calculate_net_yield.return_value = 1.0
             await executor.process_signal(signal)
         assert "BTC/IDR" in executor.active_trades
     asyncio.run(_test())

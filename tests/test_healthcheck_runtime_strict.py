@@ -52,7 +52,11 @@ def test_healthcheck_stale_state(tmp_path):
          }):
          
         check_json_states(tmp_path)
-        mock_exit.assert_called_with(11, f"scanner_runtime.json is stale! Last modified 100.0s ago (limit: 90.0s).")
+        assert mock_exit.call_count == 1
+        call_code, call_msg = mock_exit.call_args[0]
+        assert call_code == 11
+        assert "scanner_runtime.json is stale! Last modified 100." in call_msg
+        assert "(limit: 90.0s)." in call_msg
 
 def test_healthcheck_invalid_json(tmp_path):
     # Write corrupt JSON

@@ -1223,15 +1223,41 @@ def _read_recent_decisions(limit: int = 15) -> List[Dict[str, Any]]:
     decisions = []
     if path.exists():
         try:
-            with open(path, "r", encoding="utf-8") as f:
-                lines = f.readlines()
-                for line in reversed(lines[-limit:]):
-                    line = line.strip()
-                    if line:
-                        try:
-                            decisions.append(json.loads(line))
-                        except Exception:
-                            pass
+            file_size = path.stat().st_size
+            chunk_size = max(65536, limit * 16384)
+            with open(path, "rb") as f:
+                if file_size > chunk_size:
+                    f.seek(file_size - chunk_size)
+                raw_lines = f.read().decode("utf-8", errors="ignore").splitlines()
+
+            # First line might be partially sliced if we seeked into the middle
+            if file_size > chunk_size and raw_lines:
+                raw_lines.pop(0)
+
+            for line in reversed(raw_lines):
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    raw_obj = json.loads(line)
+                    if not isinstance(raw_obj, dict):
+                        continue
+                    # Compact decision payload for dashboard: strip giant snapshot trees
+                    compact = {
+                        k: v for k, v in raw_obj.items()
+                        if k not in (
+                            "whatif_snapshot", "ranked_candidates", "source_signal",
+                            "portfolio_state", "market_heatmap", "evidence_bundle",
+                            "daily_context", "antagonist_view", "today_trade_activity"
+                        )
+                    }
+                    if "decision" not in compact:
+                        compact["decision"] = compact.get("action") or compact.get("status") or "UNKNOWN"
+                    decisions.append(compact)
+                    if len(decisions) >= limit:
+                        break
+                except Exception:
+                    pass
         except Exception:
             pass
     return decisions

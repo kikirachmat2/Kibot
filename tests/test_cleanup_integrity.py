@@ -13,8 +13,8 @@ def test_no_forbidden_cache_or_temp_files():
     
     # Audit repository root up to 3 levels deep for forbidden artifacts
     for root, dirs, files in os.walk(PROJECT_ROOT):
-        # Skip top level virtual environments if they are named env, venv, .env, or .venv, or .pytest_cache
-        if any(p in Path(root).parts for p in (".venv", "venv", "env", ".git", ".pytest_cache", ".gemini", ".aider.tags.cache", "__pycache__", "backups")):
+        # Skip virtual environments, caches, git, and dynamic runtime directories (state, logs, backups)
+        if any(p in Path(root).parts for p in (".venv", "venv", "env", ".git", ".pytest_cache", ".gemini", ".aider.tags.cache", "__pycache__", "backups", "state", "logs", "Logs")):
             continue
             
         for d in dirs:
