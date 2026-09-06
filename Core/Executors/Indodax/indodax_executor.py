@@ -68,6 +68,8 @@ logger = logging.getLogger("IndodaxExecutor")
 
 
 def _emit_trade_history(event_type: str, payload: Dict[str, Any]) -> None:
+    if os.getenv("PYTEST_CURRENT_TEST") and not os.getenv("KIBOT_ALLOW_TEST_STATE_WRITE"):
+        return
     if _record_trade_event is None:
         return
     try:
