@@ -15,7 +15,7 @@ except ImportError:
         from Support.ki_config import WIB, TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID
     except ImportError:
         try:
-            from ki_config import WIB, TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID
+            from ki_config import WIB, TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID  # type: ignore
         except ImportError:
             WIB = None
             TELEGRAM_BOT_TOKEN = None

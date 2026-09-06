@@ -24,7 +24,7 @@ if venv_site.exists():
     sys.path.insert(0, str(venv_site))
 
 try:
-    import oci
+    import oci  # type: ignore
 except ImportError:
     os.execv(str(Path.home() / ".oci" / "venv" / "bin" / "python"), [str(Path.home() / ".oci" / "venv" / "bin" / "python")] + sys.argv)
 

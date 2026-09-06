@@ -53,7 +53,7 @@ def clean_test_env(monkeypatch):
     monkeypatch.setattr(ss_mod, "STATE_DIR", state_dir)
     monkeypatch.setattr(ss_mod, "TRADE_HISTORY_DIR", history_dir)
     monkeypatch.setattr(ss_mod, "ORDERS_DIR", orders_dir)
-    ss_mod._aggregator_instance = ss_mod.StrategyStatsAggregator(ttl_seconds=0)
+    monkeypatch.setattr(ss_mod, "_aggregator", ss_mod.StrategyStatsAggregator(ttl_seconds=0))
 
     # Patch autonomous_director capital governor check to read from test state_dir
     def mock_is_gov_blocked():
@@ -72,7 +72,6 @@ def clean_test_env(monkeypatch):
 
     shutil.rmtree(tmp_dir, ignore_errors=True)
     ptt._tracker_instances.clear()
-    ss_mod._aggregator_instance = None
 
 
 def test_approved_does_not_leak_into_shadow_variants(clean_test_env, monkeypatch):
