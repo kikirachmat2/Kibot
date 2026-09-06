@@ -888,9 +888,32 @@ function renderDashboardPanels(data) {
     const pnlColor = pnlVal > 0 ? 'var(--green)' : (pnlVal < 0 ? 'var(--red)' : 'var(--ink)');
     const modalAwal = idr(portfolio.starting_equity_idr || portfolio.start_total_equity_idr || 0);
 
+    // Layer 2: Drawdown & Circuit Breaker metrics
+    const peakEquity = Number(portfolio.peak_total_equity_idr || portfolio.total_equity_idr || 0);
+    const ddVal = Number(portfolio.overall_drawdown_idr || 0);
+    const ddPct = Number(portfolio.overall_drawdown_pct || 0);
+    const isBreakerTripped = Boolean(portfolio.circuit_breaker_tripped || runtime.state === 'OVERALL_DRAWDOWN_BREAKER_TRIPPED');
+
+    let ddColor = 'var(--green)';
+    let ddBadge = '🟢 Aman (<4%)';
+    if (ddPct >= 18.0 || isBreakerTripped) {
+      ddColor = 'var(--red)';
+      ddBadge = '🔴 CIRCUIT BREAKER AKTIF (≥18%)';
+    } else if (ddPct >= 8.0) {
+      ddColor = '#ea580c';
+      ddBadge = '🟠 Siaga / Kritis (8–17.9%)';
+    } else if (ddPct >= 4.0) {
+      ddColor = 'var(--amber)';
+      ddBadge = '🟡 Waspada (4–7.9%)';
+    }
+    const ddStr = ddVal <= 0 ? '0 IDR (0.00%)' : `-${idr(ddVal)} (-${pct(ddPct)})`;
+
     let botStatusHtml = '<span class="badge badge--green">🟢 AMAN & NORMAL</span>';
-    let botStatusDesc = 'Semua service aktif normal. Batas risiko harian (-1.5%) aktif melindungi modal dari penurunan tajam.';
-    if (runtime.state === 'ERROR' || (Array.isArray(data.warnings) && data.warnings.length > 0)) {
+    let botStatusDesc = 'Semua service aktif normal. Proteksi harian (-3.0%) dan rem kumulatif (-18.0%) aktif menjaga modal.';
+    if (isBreakerTripped) {
+      botStatusHtml = '<span class="badge badge--red">🔴 CIRCUIT BREAKER TERKUNCI</span>';
+      botStatusDesc = 'Modal menyusut ≥18% dari rekor tertinggi. Sistem terkunci total untuk mencegah kerugian berlanjut. Butuh persetujuan manual operator (\'bin/kibotctl drawdown-ack\').';
+    } else if (runtime.state === 'ERROR' || (Array.isArray(data.warnings) && data.warnings.length > 0)) {
       botStatusHtml = '<span class="badge badge--red">🔴 PERIKSA KENDALA</span>';
       botStatusDesc = 'Terdeteksi peringatan pada sistem runtime. Periksa tab Logs/Debug untuk informasi teknis lebih lanjut.';
     } else if (runtime.state === 'LOCKED' || !allowOrders) {
@@ -900,7 +923,9 @@ function renderDashboardPanels(data) {
 
     let kenapaBelumBeli = 'Bot aktif memantau pasar 24/7 dan hanya masuk saat sinyal profit aman terpenuhi.';
     const openPosCount = getCount(liveTruth.open_positions || []);
-    if (openPosCount > 0) {
+    if (isBreakerTripped) {
+      kenapaBelumBeli = 'Pintu transaksi dikunci total oleh Circuit Breaker (Drawdown ≥18%). Evaluasi risiko diperlukan sebelum melanjutkan.';
+    } else if (openPosCount > 0) {
       kenapaBelumBeli = `Bot sedang memegang ${openPosCount} posisi aktif dan mengawal target laba / stop-loss.`;
     } else if (!allowOrders) {
       kenapaBelumBeli = 'Pintu transaksi dikunci oleh pengaman modal (Capital Governor) untuk mencegah risiko kerugian beruntun.';
@@ -925,6 +950,11 @@ function renderDashboardPanels(data) {
             <div class="simple-item__desc">Total saldo saat ini: <strong>${totalSaldo}</strong> (Modal awal hari ini: ${modalAwal}).</div>
           </div>
           <div class="simple-item">
+            <div class="simple-item__q">📉 Drawdown dari Rekor Tertinggi (HWM)</div>
+            <div class="simple-item__val" style="color:${ddColor};">${ddStr}</div>
+            <div class="simple-item__desc">Rekor tertinggi: <strong>${idr(peakEquity)}</strong>. Status: ${ddBadge}.</div>
+          </div>
+          <div class="simple-item">
             <div class="simple-item__q">🚦 Kondisi Keamanan Sistem</div>
             <div class="simple-item__val" style="font-size:15px;">${botStatusHtml}</div>
             <div class="simple-item__desc">${botStatusDesc}</div>
@@ -937,9 +967,9 @@ function renderDashboardPanels(data) {
         </div>
       </div>
       <div class="content-grid content-grid--3">
-        ${renderMetricCard('Total Equity', idr(portfolio.total_equity_idr || 0), `Start ${idr(portfolio.starting_equity_idr || portfolio.start_total_equity_idr || 0)}`)}
+        ${renderMetricCard('Total Equity', idr(portfolio.total_equity_idr || 0), `Peak ${idr(peakEquity)}`)}
         ${renderMetricCard('Net PnL Today', idr(portfolio.net_pnl_today_idr || 0), `${pct(portfolio.net_pnl_today_pct || portfolio.daily_pnl_pct || 0)}`)}
-        ${renderMetricCard('Risk Remaining', idr(portfolio.risk_remaining_idr || 0), `Daily cap ${portfolio.daily_loss_cap_pct || 1.5}%`)}
+        ${renderMetricCard('Risk Remaining', idr(portfolio.risk_remaining_idr || 0), `Daily cap ${portfolio.daily_loss_cap_pct || 3.0}%`)}
       </div>
       <div class="content-grid content-grid--sidebar" style="margin-top:14px;">
         <div class="card">

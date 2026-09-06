@@ -666,6 +666,12 @@ def _build_portfolio(telemetry: Dict[str, Any]) -> Dict[str, Any]:
         "governor_daily_pnl_idr": _safe_float(gov_data.get("daily_pnl_idr"), daily_pnl) if isinstance(gov_data, dict) else daily_pnl,
         "governor_daily_pnl_pct": _safe_float(gov_data.get("daily_pnl_pct"), daily_pnl_pct) if isinstance(gov_data, dict) else daily_pnl_pct,
         "governor_current_total_equity_idr": _safe_float(gov_data.get("current_total_equity_idr"), combined_equity) if isinstance(gov_data, dict) else combined_equity,
+        "peak_total_equity_idr": _safe_float(gov_data.get("peak_total_equity_idr"), combined_equity) if isinstance(gov_data, dict) else combined_equity,
+        "overall_drawdown_idr": _safe_float(gov_data.get("overall_drawdown_idr"), 0.0) if isinstance(gov_data, dict) else 0.0,
+        "overall_drawdown_pct": _safe_float(gov_data.get("overall_drawdown_pct"), 0.0) if isinstance(gov_data, dict) else 0.0,
+        "overall_drawdown_threshold_pct": _safe_float(gov_data.get("overall_drawdown_threshold_pct"), KiConfig.OVERALL_DRAWDOWN_THRESHOLD_PCT) if isinstance(gov_data, dict) else KiConfig.OVERALL_DRAWDOWN_THRESHOLD_PCT,
+        "circuit_breaker_tripped": bool(gov_data.get("circuit_breaker_tripped", False)) if isinstance(gov_data, dict) else False,
+        "circuit_breaker_reason": str(gov_data.get("circuit_breaker_reason", "") or "") if isinstance(gov_data, dict) else "",
         "active_positions": active_positions,
         "shadow": _load_shadow_state(),
     }

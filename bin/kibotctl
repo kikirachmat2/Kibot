@@ -44,6 +44,8 @@ Usage:
   kibotctl status
   kibotctl doctor
   kibotctl deposit-notify <amount_idr> [note]
+  kibotctl withdraw-notify <amount_idr> [note]
+  kibotctl drawdown-ack --reason "..."
   kibotctl reset-pnl
   kibotctl learn-status
   kibotctl ai-report [--refresh]
@@ -368,6 +370,24 @@ cmd_deposit_notify() {
   PYTHONPATH="." "$py_bin" Core/Support/deposit_cli.py "$@"
 }
 
+cmd_withdraw_notify() {
+  section "Operator Withdrawal Notification"
+  local py_bin="/home/ubuntu/KiBot/.venv/bin/python3"
+  if [[ ! -f "/home/ubuntu/KiBot/.venv/bin/python3" ]]; then
+    py_bin="python3"
+  fi
+  PYTHONPATH="." "$py_bin" Core/Support/withdraw_cli.py "$@"
+}
+
+cmd_drawdown_ack() {
+  section "Overall Drawdown Circuit Breaker Acknowledgement"
+  local py_bin="/home/ubuntu/KiBot/.venv/bin/python3"
+  if [[ ! -f "/home/ubuntu/KiBot/.venv/bin/python3" ]]; then
+    py_bin="python3"
+  fi
+  PYTHONPATH="." "$py_bin" Core/Support/drawdown_ack_cli.py "$@"
+}
+
 cmd_learn_status() {
   section "KiBot Bayesian Learning & Graduation Status"
   local py_bin="/home/ubuntu/KiBot/.venv/bin/python3"
@@ -664,6 +684,8 @@ case "${1:-}" in
   ack) shift; cmd_ack "$@" ;;
   doctor) shift; cmd_doctor "$@" ;;
   deposit-notify) shift; cmd_deposit_notify "$@" ;;
+  withdraw-notify) shift; cmd_withdraw_notify "$@" ;;
+  drawdown-ack) shift; cmd_drawdown_ack "$@" ;;
   reset-pnl) shift; cmd_reset_pnl "$@" ;;
   learn-status) shift; cmd_learn_status "$@" ;;
   variant-compare) shift; cmd_variant_compare "$@" ;;

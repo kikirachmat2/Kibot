@@ -22,6 +22,11 @@ def _today_wib() -> str:
     return str(datetime.now(WIB).date())
 
 
+def _now_wib() -> datetime:
+    """Current timestamp in WIB."""
+    return datetime.now(WIB)
+
+
 def _safe_json_load(path: Path) -> Dict[str, Any]:
     try:
         if path.exists():
@@ -503,6 +508,15 @@ class CapitalGovernor:
         self.daily_reset_reason = ""
         self.venue_states: Dict[str, Any] = {}
         self.targets_snapshot: Dict[str, Any] = {}
+
+        # Layer 2 Circuit Breaker & High-Water Mark (HWM) metrics
+        self.peak_total_equity_idr = 0.0
+        self.overall_drawdown_idr = 0.0
+        self.overall_drawdown_pct = 0.0
+        self.circuit_breaker_tripped = False
+        self.circuit_breaker_reason = ""
+        self.circuit_breaker_ack_at = ""
+        self.circuit_breaker_ack_reason = ""
         
         self._load_governor_state()
 
@@ -581,6 +595,13 @@ class CapitalGovernor:
                     self.external_withdrawals_today = float(data.get("external_withdrawals_today", 0.0))
                     self.reset_deposits_offset = float(data.get("reset_deposits_offset", 0.0))
                     self.reset_withdrawals_offset = float(data.get("reset_withdrawals_offset", 0.0))
+                    self.peak_total_equity_idr = float(data.get("peak_total_equity_idr", 0.0) or 0.0)
+                    self.overall_drawdown_idr = float(data.get("overall_drawdown_idr", 0.0) or 0.0)
+                    self.overall_drawdown_pct = float(data.get("overall_drawdown_pct", 0.0) or 0.0)
+                    self.circuit_breaker_tripped = bool(data.get("circuit_breaker_tripped", False))
+                    self.circuit_breaker_reason = str(data.get("circuit_breaker_reason", "") or "").strip()
+                    self.circuit_breaker_ack_at = str(data.get("circuit_breaker_ack_at", "") or "").strip()
+                    self.circuit_breaker_ack_reason = str(data.get("circuit_breaker_ack_reason", "") or "").strip()
                     self.pending_daily_reset = bool(data.get("daily_reset_pending", False)) or (stored_date not in {"", today})
                     self.daily_reset_reason = str(
                         data.get("daily_reset_reason")
@@ -629,6 +650,14 @@ class CapitalGovernor:
                             "allow_indodax_orders",
                             "venues",
                             "targets",
+                            "peak_total_equity_idr",
+                            "overall_drawdown_idr",
+                            "overall_drawdown_pct",
+                            "overall_drawdown_threshold_pct",
+                            "circuit_breaker_tripped",
+                            "circuit_breaker_reason",
+                            "circuit_breaker_ack_at",
+                            "circuit_breaker_ack_reason",
                         }
                         for key in data.keys()
                     ):
@@ -667,13 +696,15 @@ class CapitalGovernor:
                 )
             global_hard_stop = self.max_daily_loss_idr > 0.0 and self.daily_pnl_idr <= -self.max_daily_loss_idr
             daily_reset_block = bool(getattr(self, "pending_daily_reset", False))
-            allow_new_orders = bool(getattr(self, "allow_new_orders", False)) and not global_hard_stop and not daily_reset_block
+            circuit_breaker_block = bool(getattr(self, "circuit_breaker_tripped", False))
+            allow_new_orders = bool(getattr(self, "allow_new_orders", False)) and not global_hard_stop and not daily_reset_block and not circuit_breaker_block
             base_reason = str(getattr(self, "allow_new_orders_reason", ""))
             venues_snapshot = getattr(self, "venue_states", {}) if isinstance(getattr(self, "venue_states", {}), dict) else {}
             indodax_snapshot = venues_snapshot.get("indodax", {}) if isinstance(venues_snapshot.get("indodax", {}), dict) else {}
-            allow_indodax_orders = bool(indodax_snapshot.get("allow_orders", allow_new_orders))
+            allow_indodax_orders = bool(indodax_snapshot.get("allow_orders", allow_new_orders)) and not circuit_breaker_block
             reasons = [reason for reason in [
                 base_reason,
+                (self.circuit_breaker_reason or "overall_drawdown_breaker_tripped") if circuit_breaker_block else "",
                 (
                     f"global_daily_loss_cap_breached ({self.daily_pnl_idr:.2f} <= -{self.max_daily_loss_idr:.2f})"
                     if global_hard_stop else ""
@@ -681,7 +712,12 @@ class CapitalGovernor:
                 (self.daily_reset_reason or "daily_rollover_exit_pending") if daily_reset_block else "",
             ] if reason]
             allow_reason = "; ".join(dict.fromkeys(reasons))
-            status = "BLOCKED_WITH_REASON" if (global_hard_stop or daily_reset_block) else self.status
+            if circuit_breaker_block:
+                status = "OVERALL_DRAWDOWN_BREAKER_TRIPPED"
+            elif (global_hard_stop or daily_reset_block):
+                status = "BLOCKED_WITH_REASON"
+            else:
+                status = self.status
             with open(GOVERNOR_FILE, "w") as f:
                 json.dump({
                     "date": self.last_reset_date,
@@ -716,16 +752,24 @@ class CapitalGovernor:
                     "allow_indodax_orders": allow_indodax_orders,
                     "venues": venues_snapshot,
                     "targets": getattr(self, "targets_snapshot", {}),
+                    "peak_total_equity_idr": self.peak_total_equity_idr,
+                    "overall_drawdown_idr": self.overall_drawdown_idr,
+                    "overall_drawdown_pct": self.overall_drawdown_pct,
+                    "overall_drawdown_threshold_pct": KiConfig.OVERALL_DRAWDOWN_THRESHOLD_PCT,
+                    "circuit_breaker_tripped": self.circuit_breaker_tripped,
+                    "circuit_breaker_reason": self.circuit_breaker_reason,
+                    "circuit_breaker_ack_at": self.circuit_breaker_ack_at,
+                    "circuit_breaker_ack_reason": self.circuit_breaker_ack_reason,
                 }, f, indent=4)
             self._write_daily_anchor()
         except Exception as e:
             logger.error(f"❌ Failed to save Capital Governor state: {e}")
 
     def _reconcile_operator_deposits(self) -> float:
-        """Process unreconciled operator deposit events, adjusting starting baseline equity."""
+        """Process unreconciled operator deposit events, adjusting starting baseline equity and high-water mark."""
         try:
             from Core.Treasury.deposit_event_manager import get_deposit_manager
-            dep_mgr = get_deposit_manager()
+            dep_mgr = get_deposit_manager(log_file=STATE_DIR / "deposit_events.jsonl")
             unreconciled = dep_mgr.get_unreconciled_deposits()
             if not unreconciled:
                 return 0.0
@@ -743,24 +787,62 @@ class CapitalGovernor:
                 effective_equity = self.start_total_equity_idr + total_added
                 if self.max_daily_loss_idr > 0:
                     self.max_daily_loss_idr = max(effective_equity, KiConfig.MIN_EQUITY_FLOOR_IDR) * (KiConfig.MAX_DAILY_LOSS_PERCENT / 100.0)
+                # Adjust peak equity proportionally so new deposit does NOT mask existing drawdown or count as trading profit
+                if self.peak_total_equity_idr > 0:
+                    self.peak_total_equity_idr += total_added
                 dep_mgr.mark_reconciled(event_ids)
                 logger.info(
-                    f"💰 [CapitalGovernor] Successfully reconciled operator deposit of Rp{total_added:,.2f} IDR into daily deposits flow."
+                    f"💰 [CapitalGovernor] Successfully reconciled operator deposit of Rp{total_added:,.2f} IDR. Adjusted Peak: Rp{self.peak_total_equity_idr:,.2f}"
                 )
             return total_added
         except Exception as err:
             logger.warning(f"Failed to reconcile operator deposits: {err}")
             return 0.0
 
+    def _reconcile_operator_withdrawals(self) -> float:
+        """Process unreconciled operator withdrawal events, adjusting starting baseline equity and high-water mark."""
+        try:
+            from Core.Treasury.deposit_event_manager import get_deposit_manager
+            dep_mgr = get_deposit_manager(log_file=STATE_DIR / "deposit_events.jsonl")
+            unreconciled = dep_mgr.get_unreconciled_withdrawals()
+            if not unreconciled:
+                return 0.0
+
+            total_withdrawn = 0.0
+            event_ids = []
+            for wd in unreconciled:
+                amt = float(wd.get("amount_idr", 0.0))
+                if amt > 0:
+                    total_withdrawn += amt
+                    event_ids.append(wd["event_id"])
+
+            if total_withdrawn > 0:
+                self.start_indodax_equity_idr = max(0.0, self.start_indodax_equity_idr - total_withdrawn)
+                # Adjust peak equity down so withdrawal is NOT counted as a trading loss
+                if self.peak_total_equity_idr > 0:
+                    self.peak_total_equity_idr = max(
+                        KiConfig.MIN_EQUITY_FLOOR_IDR,
+                        self.peak_total_equity_idr - total_withdrawn
+                    )
+                dep_mgr.mark_reconciled(event_ids)
+                logger.info(
+                    f"💸 [CapitalGovernor] Successfully reconciled operator withdrawal of Rp{total_withdrawn:,.2f} IDR. Adjusted Peak: Rp{self.peak_total_equity_idr:,.2f}"
+                )
+            return total_withdrawn
+        except Exception as err:
+            logger.warning(f"Failed to reconcile operator withdrawals: {err}")
+            return 0.0
+
     def _read_daily_transfers(self, date_str: str) -> tuple[float, float]:
         """Read state/treasury_transfers.jsonl and deposit_events.jsonl for daily transfers."""
         operator_deposit_amt = self._reconcile_operator_deposits()
+        operator_withdrawal_amt = self._reconcile_operator_withdrawals()
 
         transfers_file = STATE_DIR / "treasury_transfers.jsonl"
         deposits = operator_deposit_amt
-        withdrawals = 0.0
+        withdrawals = operator_withdrawal_amt
         if not transfers_file.exists():
-            return deposits, 0.0
+            return deposits, withdrawals
         try:
             with open(transfers_file, "r") as f:
                 for line in f:
@@ -840,6 +922,24 @@ class CapitalGovernor:
         self.locked_inventory_symbols = list(inventory.get("locked_symbols", []) or [])
         day_changed = self.last_reset_date != today
         pending_reset = bool(getattr(self, "pending_daily_reset", False))
+
+        # Overall Drawdown Circuit Breaker check:
+        # If the circuit breaker is tripped, trading remains strictly locked across midnight!
+        if getattr(self, "circuit_breaker_tripped", False):
+            self.last_reset_date = today
+            self.start_total_equity_idr = total_equity_idr
+            self.max_daily_loss_idr = max(total_equity_idr, KiConfig.MIN_EQUITY_FLOOR_IDR) * (KiConfig.MAX_DAILY_LOSS_PERCENT / 100.0)
+            self.status = "OVERALL_DRAWDOWN_BREAKER_TRIPPED"
+            self.allow_new_orders = False
+            self.allow_new_orders_reason = self.circuit_breaker_reason or "overall_drawdown_breaker_tripped"
+            self.save()
+            logger.warning(
+                "🚨 Daily reset rolled over date to %s, but trading remains LOCKED by Overall Drawdown Circuit Breaker: %s",
+                today,
+                self.circuit_breaker_reason,
+            )
+            return
+
         today_anchor = self._load_daily_anchor()
         anchor_equity = float(today_anchor.get("start_equity_idr", 0.0) or 0.0)
 
@@ -1021,9 +1121,22 @@ class CapitalGovernor:
                 else indodax_shadow_balance
             )
 
+            # Total equity in Indodax-only mode must be exactly Indodax cash +
+            # held coin mark-to-market + pending buy reserve.
+            self.current_total_equity_idr = primary_indodax_balance + in_flight_idr
+            
+            # Check and initialize today's start anchor if needed
+            await self.check_daily_reset(self.current_total_equity_idr)
+            
+            # Read daily transfers to adjust starting equity & reconcile deposits/withdrawals
+            deposits, withdrawals = self._read_daily_transfers(self.last_reset_date)
+            adjusted_deposits = deposits - self.reset_deposits_offset
+            adjusted_withdrawals = withdrawals - self.reset_withdrawals_offset
+            
+            self.external_deposits_today = adjusted_deposits
+            self.external_withdrawals_today = adjusted_withdrawals
+
             # Venue-specific anchors keep one venue's drawdown from blocking the others.
-            if self.start_indodax_equity_idr <= 0.0:
-                self.start_indodax_equity_idr = float(primary_indodax_balance or 0.0)
             if self.start_indodax_equity_idr <= 0.0:
                 self.start_indodax_equity_idr = float(primary_indodax_balance or 0.0)
 
@@ -1032,21 +1145,6 @@ class CapitalGovernor:
             indodax_daily_loss_cap_idr = self.max_daily_loss_idr
             self.indodax_daily_pnl_idr = primary_indodax_balance - self.start_indodax_equity_idr
             self.indodax_daily_pnl_pct = (self.indodax_daily_pnl_idr / max(self.start_indodax_equity_idr, 1.0)) * 100.0
-
-            # Total equity in Indodax-only mode must be exactly Indodax cash +
-            # held coin mark-to-market + pending buy reserve.
-            self.current_total_equity_idr = primary_indodax_balance + in_flight_idr
-            
-            # Check and initialize today's start anchor if needed
-            await self.check_daily_reset(self.current_total_equity_idr)
-            
-            # Read daily transfers to adjust starting equity
-            deposits, withdrawals = self._read_daily_transfers(self.last_reset_date)
-            adjusted_deposits = deposits - self.reset_deposits_offset
-            adjusted_withdrawals = withdrawals - self.reset_withdrawals_offset
-            
-            self.external_deposits_today = adjusted_deposits
-            self.external_withdrawals_today = adjusted_withdrawals
             
             # Compute daily consolidated PnL (adjusted for capital flows and offset)
             new_daily_pnl_idr = self.current_total_equity_idr - self.start_total_equity_idr - adjusted_deposits + adjusted_withdrawals
@@ -1085,17 +1183,53 @@ class CapitalGovernor:
             self.ledger.update_venue("indodax_shadow", equity_idr=indodax_shadow_balance)
             self.ledger.update_venue("cash_wait", equity_idr=self.current_total_equity_idr * targets.get("reserve", 0.20))
 
+            # --- LAYER 2: OVERALL DRAWDOWN CIRCUIT BREAKER & HIGH-WATER MARK ---
+            if self.current_total_equity_idr > 0.0:
+                if self.peak_total_equity_idr <= 0.0:
+                    self.peak_total_equity_idr = self.current_total_equity_idr
+                    logger.info(f"⚓ [CapitalGovernor] Initialized Peak Total Equity: Rp{self.peak_total_equity_idr:,.2f}")
+                elif self.current_total_equity_idr > self.peak_total_equity_idr:
+                    # New organic trading high-water mark reached
+                    self.peak_total_equity_idr = self.current_total_equity_idr
+                    logger.info(f"🏆 [CapitalGovernor] New High-Water Mark Reached: Rp{self.peak_total_equity_idr:,.2f}")
+
+            if self.peak_total_equity_idr > KiConfig.MIN_EQUITY_FLOOR_IDR and self.current_total_equity_idr > 0.0:
+                self.overall_drawdown_idr = max(0.0, self.peak_total_equity_idr - self.current_total_equity_idr)
+                self.overall_drawdown_pct = (self.overall_drawdown_idr / self.peak_total_equity_idr) * 100.0
+            else:
+                self.overall_drawdown_idr = 0.0
+                self.overall_drawdown_pct = 0.0
+
+            threshold_pct = KiConfig.OVERALL_DRAWDOWN_THRESHOLD_PCT
+            is_drawdown_breached = (
+                self.peak_total_equity_idr > KiConfig.MIN_EQUITY_FLOOR_IDR
+                and self.current_total_equity_idr > 0.0
+                and self.overall_drawdown_pct >= threshold_pct
+            )
+
+            if is_drawdown_breached:
+                self.circuit_breaker_tripped = True
+                self.circuit_breaker_reason = (
+                    f"overall_drawdown_breaker_tripped "
+                    f"({self.overall_drawdown_pct:.2f}% >= {threshold_pct:.1f}%, "
+                    f"peak Rp{self.peak_total_equity_idr:,.2f} -> current Rp{self.current_total_equity_idr:,.2f})"
+                )
+
+            circuit_breaker_active = bool(self.circuit_breaker_tripped)
+
             global_hard_stop = (
                 self.max_daily_loss_idr > 0.0 and self.daily_pnl_idr <= -self.max_daily_loss_idr
             )
             daily_reset_block = bool(getattr(self, "pending_daily_reset", False))
 
             indodax_local_allow = indodax_ready and self.indodax_daily_pnl_idr > -indodax_daily_loss_cap_idr
-            indodax_allow_orders = indodax_local_allow and not global_hard_stop and not daily_reset_block
+            indodax_allow_orders = indodax_local_allow and not global_hard_stop and not daily_reset_block and not circuit_breaker_active
 
             indodax_reason = ""
             if not indodax_ready:
                 indodax_reason = "indodax_balance_unavailable"
+            elif circuit_breaker_active:
+                indodax_reason = self.circuit_breaker_reason or "overall_drawdown_breaker_tripped"
             elif daily_reset_block:
                 indodax_reason = self.daily_reset_reason or "daily_rollover_exit_pending"
             elif global_hard_stop:
@@ -1110,9 +1244,11 @@ class CapitalGovernor:
                 )
 
             allow_new_orders = indodax_allow_orders
-            if global_hard_stop or daily_reset_block:
+            if circuit_breaker_active or global_hard_stop or daily_reset_block:
                 allow_new_orders = False
-                if daily_reset_block:
+                if circuit_breaker_active:
+                    allow_reason = self.circuit_breaker_reason or "overall_drawdown_breaker_tripped"
+                elif daily_reset_block:
                     allow_reason = self.daily_reset_reason or "daily_rollover_exit_pending"
                 else:
                     allow_reason = (
@@ -1129,7 +1265,13 @@ class CapitalGovernor:
                 if indodax_reason:
                     blocked_bits.append(f"indodax={indodax_reason}")
                 allow_reason = "; ".join(blocked_bits) or "no venue ready for orders"
-            self.status = "BLOCKED_WITH_REASON" if (global_hard_stop or daily_reset_block) else ("RECONCILED" if allow_new_orders else "DEGRADED")
+
+            if circuit_breaker_active:
+                self.status = "OVERALL_DRAWDOWN_BREAKER_TRIPPED"
+            elif (global_hard_stop or daily_reset_block):
+                self.status = "BLOCKED_WITH_REASON"
+            else:
+                self.status = "RECONCILED" if allow_new_orders else "DEGRADED"
             
             payload = {
                 "date": self.last_reset_date,
@@ -1159,6 +1301,14 @@ class CapitalGovernor:
                 "global_hard_stop_reason": allow_reason if global_hard_stop else "",
                 "allow_new_orders": allow_new_orders,
                 "allow_new_orders_reason": allow_reason,
+                "peak_total_equity_idr": self.peak_total_equity_idr,
+                "overall_drawdown_idr": self.overall_drawdown_idr,
+                "overall_drawdown_pct": self.overall_drawdown_pct,
+                "overall_drawdown_threshold_pct": KiConfig.OVERALL_DRAWDOWN_THRESHOLD_PCT,
+                "circuit_breaker_tripped": self.circuit_breaker_tripped,
+                "circuit_breaker_reason": self.circuit_breaker_reason,
+                "circuit_breaker_ack_at": self.circuit_breaker_ack_at,
+                "circuit_breaker_ack_reason": self.circuit_breaker_ack_reason,
                 "venues": {
                     "indodax": {
                         "status": "RECONCILED" if indodax_allow_orders else "BLOCKED_WITH_REASON",
@@ -1188,11 +1338,52 @@ class CapitalGovernor:
             self.save()
             raise e
 
+    def acknowledge_drawdown_breaker(self, reason: str) -> Dict[str, Any]:
+        """
+        Sovereign operator manual acknowledgement to unlock the Overall Drawdown Circuit Breaker.
+        Requires explicit justification reason. Re-bases High-Water Mark to current consolidated equity.
+        """
+        now_iso = _now_wib().isoformat()
+        self.circuit_breaker_tripped = False
+        self.circuit_breaker_reason = ""
+        self.circuit_breaker_ack_at = now_iso
+        self.circuit_breaker_ack_reason = str(reason).strip()
+
+        # Consciously rebase peak to current equity
+        current_eq = self.current_total_equity_idr
+        self.peak_total_equity_idr = max(current_eq, KiConfig.MIN_EQUITY_FLOOR_IDR)
+        self.overall_drawdown_idr = 0.0
+        self.overall_drawdown_pct = 0.0
+
+        # Also align daily anchor
+        self.start_total_equity_idr = max(current_eq, KiConfig.MIN_EQUITY_FLOOR_IDR)
+        self.max_daily_loss_idr = self.start_total_equity_idr * (KiConfig.MAX_DAILY_LOSS_PERCENT / 100.0)
+        self.daily_pnl_idr = 0.0
+        self.daily_pnl_pct = 0.0
+
+        self.status = "RECONCILED" if current_eq > 0 else "UNRECONCILED"
+        self.allow_new_orders = current_eq > 0
+        self.allow_new_orders_reason = ""
+        self.save()
+        self._write_daily_anchor(force=True)
+
+        logger.info(
+            f"🔓 [CapitalGovernor] Circuit Breaker ACKNOWLEDGED by operator: \"{reason}\". "
+            f"Rebased Peak to Rp{self.peak_total_equity_idr:,.2f}"
+        )
+        return {
+            "status": "ACKNOWLEDGED",
+            "new_status": self.status,
+            "new_peak_idr": self.peak_total_equity_idr,
+            "ack_at": now_iso,
+            "ack_reason": self.circuit_breaker_ack_reason,
+        }
+
 def get_capital_governor() -> CapitalGovernor:
     return CapitalGovernor()
 
 
-async def run_governor_service(reset_only=False):
+async def run_governor_service(reset_only=False, drawdown_ack_reason=None):
     # Instantiate gateways
     try:
         from Core.Exchange.indodax import IndodaxGateway
@@ -1203,6 +1394,13 @@ async def run_governor_service(reset_only=False):
         
     gov = CapitalGovernor(indodax, None)
     
+    if drawdown_ack_reason:
+        logger.info(f"Executing manual Overall Drawdown Circuit Breaker acknowledgement...")
+        await gov.reconcile_governor()
+        res = gov.acknowledge_drawdown_breaker(drawdown_ack_reason)
+        logger.info(f"✅ Drawdown Circuit Breaker acknowledged. Result: {res}")
+        return
+
     if reset_only:
         logger.info("Executing initial reconciliation to get current consolidated equity...")
         await gov.reconcile_governor()
@@ -1238,10 +1436,13 @@ if __name__ == "__main__":
     
     parser = argparse.ArgumentParser(description="KiBot Capital Governor CLI/Service")
     parser.add_argument("--reset-pnl", action="store_true", help="Trigger manual PnL reset to current reconciled equity")
+    parser.add_argument("--drawdown-ack", type=str, default="", help="Acknowledge and reset Overall Drawdown Circuit Breaker with operator reason")
     args = parser.parse_args()
 
     try:
-        if args.reset_pnl:
+        if args.drawdown_ack:
+            asyncio.run(run_governor_service(drawdown_ack_reason=args.drawdown_ack))
+        elif args.reset_pnl:
             asyncio.run(run_governor_service(reset_only=True))
         else:
             asyncio.run(run_governor_service(reset_only=False))
