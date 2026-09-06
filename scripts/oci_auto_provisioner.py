@@ -163,14 +163,16 @@ def main():
                                 print(f"  Private IP: {vnic.private_ip}")
                                 print(f"{'='*65}\n", flush=True)
 
-                                # Update ACCESS.md
-                                access_file = Path("ACCESS.md")
+                                # Update docs/ACCESS_GUIDE.md
+                                access_file = Path("docs/ACCESS_GUIDE.md")
+                                if not access_file.exists():
+                                    access_file = Path("ACCESS.md")
                                 if access_file.exists():
                                     import re
                                     content = access_file.read_text(encoding="utf-8")
                                     new_content = re.sub(r"- IP: `[^`]+`", f"- IP: `{public_ip}`", content)
                                     access_file.write_text(new_content, encoding="utf-8")
-                                    print(f"[+] Updated ACCESS.md with new IP: {public_ip}")
+                                    print(f"[+] Updated {access_file} with new IP: {public_ip}")
 
                                 # Send multi-channel notifications
                                 send_notifications(public_ip, ocpus, ram, fd_name)
