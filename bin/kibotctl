@@ -187,8 +187,11 @@ cmd_doctor() {
   cmd_status
   section "Python Runtime"
   local py_bin="/home/ubuntu/KiBot/.venv/bin/python3"
+  if [[ ! -x "$py_bin" ]]; then
+    py_bin="$(command -v python3 || echo /usr/bin/python3)"
+  fi
   if [[ -n "${SUDO_USER:-}" ]]; then
-    py_bin="sudo -u $SUDO_USER /home/ubuntu/KiBot/.venv/bin/python3"
+    py_bin="sudo -u $SUDO_USER $py_bin"
   fi
   $py_bin - <<'PY'
 checks = [
