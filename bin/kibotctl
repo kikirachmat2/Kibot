@@ -48,6 +48,7 @@ Usage:
   kibotctl drawdown-ack --reason "..."
   kibotctl reset-pnl
   kibotctl learn-status
+  kibotctl live-readiness [--json] [--send]
   kibotctl daily-report [--full] [--send]
   kibotctl ai-report [--refresh] [--send]
   kibotctl hunt-status
@@ -69,7 +70,7 @@ EOF
 fi
 
 case "${1:-}" in
-  hunt-status|hunt-follow|singapore-status|ack|daily-report|ai-report|variant-compare)
+  hunt-status|hunt-follow|singapore-status|ack|daily-report|ai-report|variant-compare|live-readiness)
     ;; # Remote or state-only commands allowed without local systemd
   *)
     if ! command -v systemctl >/dev/null 2>&1; then
@@ -742,8 +743,21 @@ cmd_daily_report() {
   PYTHONPATH="." "$py_bin" -m Core.Intelligence.daily_report $full_flag $send_flag
 }
 
+cmd_live_readiness() {
+  local py_bin="venv/bin/python"
+  if [[ -f "/home/ubuntu/KiBot/.venv/bin/python3" ]]; then
+    py_bin="/home/ubuntu/KiBot/.venv/bin/python3"
+  elif [[ -x ".venv/bin/python" ]]; then
+    py_bin=".venv/bin/python"
+  elif [[ ! -x "$py_bin" ]]; then
+    py_bin="python3"
+  fi
+  PYTHONPATH="." "$py_bin" -m Core.Intelligence.live_readiness "$@"
+}
+
 case "${1:-}" in
   status) shift; cmd_status "$@" ;;
+  live-readiness) shift; cmd_live_readiness "$@" ;;
   daily-report) shift; cmd_daily_report "$@" ;;
   ack) shift; cmd_ack "$@" ;;
   doctor) shift; cmd_doctor "$@" ;;
