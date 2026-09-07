@@ -98,7 +98,7 @@ class IndodaxMarketScanner:
         return out
 
     async def collect_signals(self) -> list:
-        """Standard scanner interface required by engine.py. Runs scan() and returns candidates."""
+        """Standard scanner interface required by scanner_engine.py. Runs scan() and returns candidates."""
         state = await self.scan()
         return state.get("candidates", []) if isinstance(state, dict) else []
 

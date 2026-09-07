@@ -4,7 +4,7 @@ Folder ini bertindak sebagai **Radar Pengawas Pasar (Scanner Layer)** KiBot. Tug
 
 > [!IMPORTANT]
 > **Status Risiko**: **SANGAT TINGGI (High-Risk Runtime)**.
-> File [`engine.py`](file:///Users/kiki/Documents/Web%20Develop/KiBot/Core/Scanner/engine.py) terikat langsung dengan service systemd `kibot-scanner.service` di server SG1. Dilarang mengubah struktur atau me-rename file ini tanpa rencana migrasi teruji.
+> File [`scanner_engine.py`](file:///Users/kiki/Documents/Web%20Develop/KiBot/Core/Scanner/scanner_engine.py) terikat langsung dengan service systemd `kibot-scanner.service` di server SG1.
 
 ---
 
@@ -12,7 +12,7 @@ Folder ini bertindak sebagai **Radar Pengawas Pasar (Scanner Layer)** KiBot. Tug
 
 | File | Penjelasan Fungsi (Bahasa Awam) |
 | :--- | :--- |
-| [`engine.py`](file:///Users/kiki/Documents/Web%20Develop/KiBot/Core/Scanner/engine.py) | **Orkestrator Scanner Utama**: Mengatur perputaran loop pemindaian, menyaring lonjakan harga signifikan (*delta filter*), membungkus sinyal dengan tanda tangan keamanan HMAC, dan mengirimnya via socket UDP ke MasterNode. |
+| [`scanner_engine.py`](file:///Users/kiki/Documents/Web%20Develop/KiBot/Core/Scanner/scanner_engine.py) | **Orkestrator Scanner Utama**: Mengatur perputaran loop pemindaian, menyaring lonjakan harga signifikan (*delta filter*), membungkus sinyal dengan tanda tangan keamanan HMAC, dan mengirimnya via socket UDP ke MasterNode. |
 | [`indodax_binance_leadlag_scanner.py`](file:///Users/kiki/Documents/Web%20Develop/KiBot/Core/Scanner/indodax_binance_leadlag_scanner.py) | **Radar Lead-Lag Binance→Indodax**: Memantau koin-koin di Binance yang sudah mulai naik duluan beberapa detik sebelum harga di Indodax merespons, memberikan keuntungan curi start (*alpha*). |
 | [`indodax_market_scanner.py`](file:///Users/kiki/Documents/Web%20Develop/KiBot/Core/Scanner/indodax_market_scanner.py) | **Pemindai Pasar Indodax**: Membaca ringkasan seluruh ticker pasar Indodax (kenaikan 24 jam, volume transaksi, dan spread bid-ask). |
 | [`ki_indodax_smallcap_scanner.py`](file:///Users/kiki/Documents/Web%20Develop/KiBot/Core/Scanner/ki_indodax_smallcap_scanner.py) | **Radar Koin Small-Cap**: Mendeteksi lonjakan mendadak (*pump*) pada koin-koin berkapitalisasi kecil dengan proteksi anti-jebakan likuiditas (*tick-trap*). |

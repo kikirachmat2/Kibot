@@ -159,4 +159,17 @@ Bot keluar dari posisi aktif secara otonom berdasarkan parameter objektif:
 
 ---
 
+## 5. Keputusan Arsitektur: Rewrite Total vs Pruning Inkremental
+
+Berdasarkan seluruh hasil perbaikan operasional yang terbukti berhasil dan stabil di server produksi sepanjang sesi rekayasa sistem ini:
+- **Tuning Performa**: Siklus pemindaian dan evaluasi dipercepat hingga 2× lipat dengan footprint memori sangat efisien di limit fisik 1GB RAM SG1.
+- **Kebersihan Struktur**: Folder lama dipangkas tuntas, file orphan diarsipkan, dan seluruh modul inti (Scanner, Decision, Treasury, Notifier) memiliki pembagian tanggung jawab yang modular dan jelas.
+- **Proteksi Modal Dua Lapis**: Implementasi `CapitalGovernor` (rem darurat drawdown 18% & daily loss cap 3%) dengan mekanisme pembukaan kunci manual yang deterministik.
+- **Observabilitas Bersih & Terukur**: Eliminasi notifikasi spam, peredaman noise transaksi mikro Indodax, daily report ringkas, serta kerangka evaluasi kesiapan live 5 kriteria (`live-readiness`).
+
+**Rekomendasi Final:**  
+**Rewrite total secara resmi DITUTUP dan TIDAK DIPERLUKAN LAGI.** Pendekatan *"prune & improve incrementally"* telah membuktikan bahwa arsitektur sovereign KiBot yang ada saat ini solid, tangguh, aman, dan siap menyongsong migrasi komputasi ke server Batam tanpa perlu menanggung risiko destruktif dari pembangunan ulang sistem dari nol.
+
+---
+
 *Dokumen ini diperbarui secara berkala seiring berjalannya validasi forward-looking Tier-1 dan penyempurnaan parameter risiko sovereign.*

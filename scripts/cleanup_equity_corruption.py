@@ -64,12 +64,12 @@ def run_cleanup():
 This archive contains 12 paper trade records (4 pairs x 3 variants) generated on 2026-08-07 at ~23:30 WIB.
 
 ## Root Cause
-- Core/Scanner/engine.py mapped expected_net_pct (yield percentage values like 4.422%, 82.6%, 129.7%, 97.2%) to the generic price field in LEADLAG_ALPHA signals.
+- Core/Scanner/scanner_engine.py mapped expected_net_pct (yield percentage values like 4.422%, 82.6%, 129.7%, 97.2%) to the generic price field in LEADLAG_ALPHA signals.
 - autonomous_director.py and paper_trade_tracker.py accepted these generic percentage numbers as entry prices in IDR.
 - When trades closed, exit prices were fetched from real Indodax IDR tickers (e.g. BTC=Rp1,153,838,000), producing astronomical PnL (+Rp 65.2 Trillion) that contaminated paper_equity.json, paper_equity_conservative.json, and paper_equity_aggressive.json.
 
 ## Resolution
-- Root cause fixed in commit 758d91b (engine.py, leadlag_alpha.py, paper_trade_tracker.py, autonomous_director.py).
+- Root cause fixed in commit 758d91b (scanner_engine.py, leadlag_alpha.py, paper_trade_tracker.py, autonomous_director.py).
 - Valuation sanity checks and circuit breaker (>500% PnL) added.
 - These 12 corrupted records are preserved here for historical audit and excluded from active trade history.
 - Cumulative equity curves recalculated from all remaining valid trades.

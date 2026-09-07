@@ -29,7 +29,7 @@
 ┌──────────────────────────────────────────────────────────────────────────────┐
 │                  STAGE 1 — SIGNAL ACQUISITION                               │
 │                                                                              │
-│  Core/Scanner/engine.py :: ScannerEngine._build_scanners()                  │
+│  Core/Scanner/scanner_engine.py :: ScannerEngine._build_scanners()          │
 │    ├─ IndodaxMarketScanner  (Core/Scanner/indodax_market_scanner.py)         │
 │    │   └─ Scans 180+ Indodax IDR pairs, detects pumps/volume spikes         │
 │    │   └─ Embeds Binance lead-lag via indodax_binance_leadlag_scanner.py     │
@@ -42,8 +42,8 @@
 │    └─ Compares Binance BTC/ETH/SOL/XRP vs Indodax follower prices           │
 │    └─ Generates LEADLAG_ALPHA opportunities when leader move > 1.2%         │
 │                                                                              │
-│  engine.py._scan_one() stamps exchange="INDODAX" from scanner.exchange      │
-│  engine.py filters: only exchange="INDODAX" candidates pass to pipeline     │
+│  scanner_engine.py._scan_one() stamps exchange="INDODAX" from scanner.exchange│
+│  scanner_engine.py filters: only exchange="INDODAX" candidates pass to pipeline│
 └──────────────┬───────────────────────────────────────────────────────────────┘
                │ raw candidates
                ▼
@@ -212,7 +212,7 @@
 
 | File | Lines | Function | Status | Last Modified |
 |------|-------|----------|--------|---------------|
-| [engine.py](file:///Users/kiki/Documents/Web%20Develop/KiBot/Core/Scanner/engine.py) | 471 | Scanner orchestrator; builds scanners, dispatches `collect_signals()`, stamps `exchange` field | **ACTIVE** | 2026-06-06 |
+| [scanner_engine.py](file:///Users/kiki/Documents/Web%20Develop/KiBot/Core/Scanner/scanner_engine.py) | 471 | Scanner orchestrator; builds scanners, dispatches `collect_signals()`, stamps `exchange` field | **ACTIVE** | 2026-06-06 |
 | [indodax_market_scanner.py](file:///Users/kiki/Documents/Web%20Develop/KiBot/Core/Scanner/indodax_market_scanner.py) | 481 | Primary Indodax scanner; scans 180+ pairs for volume/pump signals | **ACTIVE** | 2026-08-05 |
 | [ki_indodax_smallcap_scanner.py](file:///Users/kiki/Documents/Web%20Develop/KiBot/Core/Scanner/ki_indodax_smallcap_scanner.py) | 771 | Fallback smallcap scanner; targets micro/low-cap Indodax pairs | **PARTIAL** (fallback only) | 2026-05-15 |
 | [ki_universal_leadlag_scanner.py](file:///Users/kiki/Documents/Web%20Develop/KiBot/Core/Scanner/ki_universal_leadlag_scanner.py) | 128 | Global lead-lag scanner across 18+ sources (disabled by default via `SCANNER_ENABLE_UNIVERSAL`) | **FEATURE-FLAGGED** | 2026-08-05 |
@@ -424,7 +424,7 @@ Files with **>300 lines**, status **ACTIVE**, and **NOT YET fully audited** in p
 
 | # | Issue | Root Cause | Fix | Commit | Impact |
 |---|-------|-----------|-----|--------|--------|
-| 1 | **Scanner Exchange Field Missing** | `IndodaxMarketScanner.__init__()` lacked `self.exchange = "INDODAX"`, causing all 177+ candidates/cycle to be tagged `"UNKNOWN"` and silently discarded by `engine.py._scan_one()` | Added `self.exchange = "INDODAX"` in `__init__` | `198b4ef` | IndodaxMarketScanner candidates now reach Council (was 0% → now 99.6% of all signals) |
+| 1 | **Scanner Exchange Field Missing** | `IndodaxMarketScanner.__init__()` lacked `self.exchange = "INDODAX"`, causing all 177+ candidates/cycle to be tagged `"UNKNOWN"` and silently discarded by `scanner_engine.py._scan_one()` | Added `self.exchange = "INDODAX"` in `__init__` | `198b4ef` | IndodaxMarketScanner candidates now reach Council (was 0% → now 99.6% of all signals) |
 | 2 | **Fee Overestimate (1.02% → 0.61%)** | `indodax_executor.py`, `exit_plan.py`, `pre_trade_simulator.py` used hardcoded 1.02% fee (2× overestimate of actual 0.61% taker roundtrip) | Unified all fee references to `KiConfig` SSOT with verified Indodax official rates | `7a1087b` | Breakeven calculations now accurate; EV gate no longer rejects profitable trades |
 | 3 | **LEADLAG_ALPHA Metadata Unknown** | LEADLAG_ALPHA candidates lacked microstructure fields (`spread_pct`, `volume_ratio`, `daily_volatility_pct`), causing signal_quality to grade them all as REJECT | Implemented `_IndodaxSummariesFetcher` with 10s TTL cache in `signal_quality.py` for real-time enrichment | `ed8d01f` | LEADLAG_ALPHA candidates can now be properly graded instead of blanket REJECT |
 | 4 | **Paper Trade TP/SL Deadlock** | With correct 0.61% fee, old TP=+3.0%/SL=-1.0% params yielded net R:R=1.34, below MIN_NET_RR_BUFFER=1.60, blocking ALL new paper trades | Recalibrated defaults to TP=+3.5%/SL=-1.0% → net R:R=1.63 ≥ 1.60 | `3b5796d` | Paper trades can open again with fee-accurate parameters |
