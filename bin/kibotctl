@@ -223,8 +223,8 @@ PY
       case "$svc" in
         kibot-master) entry_file="MasterNode.py" ;;
         kibot-ai-scout) entry_file="Core/Intelligence/kibot_ai_scout.py" ;;
-        kibot-scanner) entry_file="Core/Scanner/indodax_scanner.py" ;;
-        kibot-executor) entry_file="Executors/unified_executor.py" ;;
+        kibot-scanner) entry_file="Core/Scanner/scanner_engine.py" ;;
+        kibot-executor) entry_file="Core/Executors/Indodax/indodax_executor.py" ;;
         kibot-janitor) entry_file="Core/Support/sovereign_janitor.py" ;;
       esac
       if [[ -n "$entry_file" && -f "/home/ubuntu/KiBot/$entry_file" ]]; then
