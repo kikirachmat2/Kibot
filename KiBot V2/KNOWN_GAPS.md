@@ -11,6 +11,7 @@ Dokumen ini mencatat secara formal 3 kelemahan/gap kritis arsitektur yang teride
 | **GAP-01** | Partial Fill & Liquidity Exhaustion | **HIGH** | Modal tersangkut, orderbook tipis tereksekusi di harga buruk | Fase 2 (Execution Engine) | **BELUM DITANGANI** |
 | **GAP-02** | Cloudflare / 502 Bad Gateway Handling | **HIGH** | Bot buta sesaat, order state menggantung (in-flight limbo) | Fase 2 (REST Gateway) | **BELUM DITANGANI** |
 | **GAP-03** | State Discrepancy Ekstrem saat Boot Reconciliation | **CRITICAL** | Posisi hantu (ghost positions), double open, overleveraged | Fase 2 (Reconciliation Engine) | **BELUM DITANGANI** |
+| **GAP-04** | Heuristic Win-Probability Weights without per-symbol statistical calibration | **MEDIUM** | Formula estimasi probabilitas belum membaca historical track record riil per koin | Fase 2 (Strategy Stats Port) | **BELUM DITANGANI** |
 
 ---
 
@@ -79,3 +80,26 @@ Saat bot crash atau di-restart di server, `NonRecursiveStateReconciler` membaca 
   - Jika saldo bursa < posisi lokal: Catat posisi sebagai `FORCE_CLOSED_EXTERNALLY`, jangan pernah kirim sell order untuk saldo yang tidak ada.
   - Jika saldo bursa > posisi lokal (ada aset tak dikenal): Masukkan ke `UNMANAGED_EXTERNAL_ASSETS`, kirim alert telegram/email ke operator, dan JANGAN sembarangan menjual aset tersebut tanpa izin eksplisit.
 - Boot-Safe Lock: Bot menolak membuka trade baru selama rekonsiliasi awal belum selesai dengan status `CLEAN` atau `MANUALLY_ACKNOWLEDGED`.
+
+---
+
+## 4. GAP-04: Heuristic Win-Probability Weights without Per-Symbol Statistical Calibration
+
+- **Status**: **BELUM DITANGANI**
+- **Severity**: MEDIUM
+- **Komponen Terdampak**: `KiBot V2/council/evaluator.py`
+
+### Deskripsi Masalah
+Meskipun baseline win rate telah dikalibrasi ke `0.35` (berdasarkan rata-rata varian APPROVED V1), formula penyesuaian probabilitas saat ini masih mengandalkan bobot heuristik statis:
+- Bonus `+0.10` jika `volume_ratio >= 1.5`
+- Bonus `+0.08` jika `leadlag_score > 0.3` (atau penalti `-0.15` jika `< -0.2`)
+- Bonus `+0.08` / Penalti `-0.12` untuk sentimen LLM
+
+Kelemahan pendekatan ini:
+1. **Tidak Ada Pembedaan Karakter Koin**: Koin likuid seperti `BTC/IDR` (yang memiliki win rate historis 58.3%) diperlakukan dengan formula bobot yang identik dengan altcoin berkapitalisasi mikro (yang memiliki win rate historis 25.0%).
+2. **Missing Historical Sample Gate**: Belum ada verifikasi jumlah sampel minimum (`historical_sample_size >= 20`) sebelum mengizinkan order, berbeda dengan V1 `expected_value.py` yang mewajibkan `MIN_SAMPLE_SIZE`.
+
+### Mitigasi yang Direncanakan (Fase 2)
+- Porting penuh modul `strategy_stats.py` dari V1 ke arsitektur non-blocking / SQLite lokal.
+- Evaluator membaca tabel win rate dan average win/loss aktual yang dikelompokkan secara spesifik per-simbol (`symbol_stats[symbol]`).
+- Jika suatu pasangan koin memiliki riwayat trade <20 sampel, otomatis gunakan conservative fallback rate atau tolak masuk hingga sampel memadai.

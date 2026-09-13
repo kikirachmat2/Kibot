@@ -27,9 +27,11 @@ class OrderRouter:
         symbol: str,
         price: float,
         notional_idr: float,
-        stop_loss_pct: float = 2.0,
-        take_profit_pct: float = 3.0,
+        stop_loss_pct: Optional[float] = None,
+        take_profit_pct: Optional[float] = None,
     ) -> Dict[str, Any]:
+        sl_pct = stop_loss_pct if stop_loss_pct is not None else settings.DEFAULT_STOP_LOSS_PCT
+        tp_pct = take_profit_pct if take_profit_pct is not None else settings.DEFAULT_TAKE_PROFIT_PCT
         # 1. Evaluate Risk Gate
         allow, reason = self.risk_gate.evaluate_new_order(symbol=symbol, notional_idr=notional_idr)
         if not allow:
@@ -43,8 +45,8 @@ class OrderRouter:
                 symbol=symbol,
                 price=price,
                 notional_idr=notional_idr,
-                stop_loss_pct=stop_loss_pct,
-                take_profit_pct=take_profit_pct,
+                stop_loss_pct=sl_pct,
+                take_profit_pct=tp_pct,
             )
             if result.get("success"):
                 self.risk_gate.record_order_placed(symbol)

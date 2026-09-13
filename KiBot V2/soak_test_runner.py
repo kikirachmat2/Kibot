@@ -80,6 +80,9 @@ class SoakTestMonitor:
                 dropped = self.pipeline.router.total_signals_dropped_capacity
                 drop_rate = self.pipeline.router.drop_rate_pct()
                 decisions = self.pipeline.council_pool.total_decisions_made
+                approved = self.pipeline.council_pool.total_approved
+                rejected = self.pipeline.council_pool.total_rejected
+                rejection_rate = (rejected / decisions * 100.0) if decisions > 0 else 0.0
                 
                 ledger = self.pipeline.virtual_ledger
                 equity = ledger.get_total_equity()
@@ -108,6 +111,9 @@ class SoakTestMonitor:
                     "signals_dropped": dropped,
                     "drop_rate_pct": round(drop_rate, 2),
                     "council_decisions_made": decisions,
+                    "council_approved": approved,
+                    "council_rejected": rejected,
+                    "council_rejection_rate_pct": round(rejection_rate, 2),
                     "latency_ms": latency,
                     "equity_idr": round(equity, 2),
                     "open_positions": open_pos,
@@ -128,8 +134,8 @@ class SoakTestMonitor:
 
                 logger.info(
                     f"[Soak Iteration {iteration} | {sample['elapsed_human']}] "
-                    f"RAM: {mem_mb} MB | Signals: {total_signals} | Dropped: {dropped} ({drop_rate:.2f}%) | "
-                    f"Decisions: {decisions} | Latency avg: {latency['mean_ms']}ms (p90: {latency['p90_ms']}ms) | "
+                    f"RAM: {mem_mb} MB | Decisions: {decisions} (Apprv: {approved}, Rej: {rejected} [{rejection_rate:.1f}%]) | "
+                    f"Latency avg: {latency['mean_ms']}ms (p90: {latency['p90_ms']}ms) | "
                     f"Equity: Rp {equity:,.0f} | Open: {open_pos} | Closed: {closed_count} {exit_reasons}"
                 )
 

@@ -41,6 +41,8 @@ def test_zero_wait_hot_path_when_cache_empty():
         "spread_pct": 0.002,
         "volume_ratio": 2.0,
         "leadlag_score": 0.5,
+        "avg_win_pct": 0.05,
+        "avg_loss_pct": 0.015,
     }
     
     t0 = time.perf_counter()

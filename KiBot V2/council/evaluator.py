@@ -73,7 +73,8 @@ class FastCouncilEvaluator:
 
         # 3. Probability Estimation (Win Probability p)
         # Combines baseline momentum, lead-lag alignment, volume surge, and cached sentiment
-        base_p = 0.50
+        # Calibrated to V1 APPROVED empirical realized win rate (36.7%)
+        base_p = 0.35
         if volume_ratio >= 1.5:
             base_p += 0.10
         if leadlag_score > 0.3:
@@ -85,9 +86,9 @@ class FastCouncilEvaluator:
         loss_prob = 1.0 - win_prob
 
         # 4. Canonical Expected Value & Kelly Math (Ported from Core/Intelligence/expected_value.py)
-        # Expected gross targets: avg_win_pct = 3.5% (target TP), avg_loss_pct = 1.5% (stop loss)
-        avg_win_gross = float(candidate.get("avg_win_pct", 0.035))
-        avg_loss_gross = float(candidate.get("avg_loss_pct", 0.015))
+        # Expected targets calibrated to V1 empirical data: avg_win_pct = 2.8%, avg_loss_pct = 2.4%
+        avg_win_gross = float(candidate.get("avg_win_pct", 0.028))
+        avg_loss_gross = float(candidate.get("avg_loss_pct", 0.024))
         fee_pct = settings.FEE_ROUNDTRIP_PCT / 100.0  # e.g. 0.0042 (0.42%)
         slippage_pct = 0.001                         # 0.1%
 

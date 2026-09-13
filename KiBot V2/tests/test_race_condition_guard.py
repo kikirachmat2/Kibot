@@ -55,6 +55,8 @@ async def test_race_condition_double_entry_same_symbol():
         "spread_pct": 0.001,
         "volume_ratio": 3.0,
         "leadlag_score": 0.6,
+        "avg_win_pct": 0.05,
+        "avg_loss_pct": 0.015,
     }
     await router.enqueue_candidate("BTC/IDR", cand_1, score=90.0)
 
@@ -69,6 +71,8 @@ async def test_race_condition_double_entry_same_symbol():
         "spread_pct": 0.001,
         "volume_ratio": 3.2,
         "leadlag_score": 0.7,
+        "avg_win_pct": 0.05,
+        "avg_loss_pct": 0.015,
     }
     await router.enqueue_candidate("BTC/IDR", cand_2, score=92.0)
 
@@ -117,8 +121,8 @@ async def test_per_symbol_concurrency_different_symbols():
 
     # Enqueue two distinct symbols simultaneously
     await asyncio.gather(
-        router.enqueue_candidate("BTC/IDR", {"symbol": "BTC/IDR", "price": 1000000000.0, "volume_ratio": 3.0, "spread_pct": 0.001, "leadlag_score": 0.5}, score=90.0),
-        router.enqueue_candidate("ETH/IDR", {"symbol": "ETH/IDR", "price": 50000000.0, "volume_ratio": 2.8, "spread_pct": 0.001, "leadlag_score": 0.5}, score=88.0),
+        router.enqueue_candidate("BTC/IDR", {"symbol": "BTC/IDR", "price": 1000000000.0, "volume_ratio": 3.0, "spread_pct": 0.001, "leadlag_score": 0.5, "avg_win_pct": 0.05, "avg_loss_pct": 0.015}, score=90.0),
+        router.enqueue_candidate("ETH/IDR", {"symbol": "ETH/IDR", "price": 50000000.0, "volume_ratio": 2.8, "spread_pct": 0.001, "leadlag_score": 0.5, "avg_win_pct": 0.05, "avg_loss_pct": 0.015}, score=88.0),
     )
 
     await asyncio.sleep(0.08)

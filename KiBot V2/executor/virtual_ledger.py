@@ -44,9 +44,11 @@ class VirtualLedger:
         symbol: str,
         price: float,
         notional_idr: float,
-        stop_loss_pct: float = 2.0,
-        take_profit_pct: float = 3.0,
+        stop_loss_pct: Optional[float] = None,
+        take_profit_pct: Optional[float] = None,
     ) -> Dict[str, Any]:
+        sl = stop_loss_pct if stop_loss_pct is not None else settings.DEFAULT_STOP_LOSS_PCT
+        tp = take_profit_pct if take_profit_pct is not None else settings.DEFAULT_TAKE_PROFIT_PCT
         sym = symbol.upper().strip()
         if notional_idr > self.cash_idr:
             return {"success": False, "reason": f"Insufficient virtual cash (Required: {notional_idr}, Available: {self.cash_idr})"}
@@ -69,8 +71,8 @@ class VirtualLedger:
             amount_coins=amount_coins,
             cost_idr=notional_idr,
             entry_time=time.time(),
-            stop_loss_price=slippage_price * (1.0 - (stop_loss_pct / 100.0)),
-            take_profit_price=slippage_price * (1.0 + (take_profit_pct / 100.0)),
+            stop_loss_price=slippage_price * (1.0 - (sl / 100.0)),
+            take_profit_price=slippage_price * (1.0 + (tp / 100.0)),
             max_price_seen=slippage_price,
         )
         self.open_positions[sym] = pos

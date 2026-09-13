@@ -64,6 +64,8 @@ def test_fast_council_evaluator_speed():
         "spread_pct": 0.001,
         "volume_ratio": 2.5,
         "leadlag_score": 0.5,
+        "avg_win_pct": 0.05,
+        "avg_loss_pct": 0.015,
     }
     
     t0 = time.perf_counter()
@@ -115,3 +117,20 @@ async def test_worker_pool_concurrency_no_global_lock():
     assert len(decisions) == 10
     stats = pool.get_latency_stats()
     assert stats["mean_ms"] < 50.0
+
+def test_calibrated_evaluator_rejects_substandard_ev_and_rr():
+    """Verify calibrated defaults (35% win, 2.8% win, 2.4% loss) reject weak trades."""
+    cache = EnrichmentCache()
+    evaluator = FastCouncilEvaluator(cache=cache)
+    
+    # Candidate relying purely on defaults
+    candidate = {
+        "symbol": "WEAK/IDR",
+        "price": 1000.0,
+        "spread_pct": 0.002,
+        "volume_ratio": 1.0,
+        "leadlag_score": 0.0,
+    }
+    decision = evaluator.evaluate(candidate)
+    assert decision.verdict == "REJECTED"
+    assert "below threshold 0.30%" in decision.reason or "below minimum 1.40" in decision.reason

@@ -41,6 +41,8 @@ class CouncilWorkerPool:
         
         # Performance & Latency Telemetry
         self.total_decisions_made: int = 0
+        self.total_approved: int = 0
+        self.total_rejected: int = 0
         self.total_race_duplicates_blocked: int = 0
         self.deliberation_durations_ms: List[float] = []
 
@@ -90,6 +92,10 @@ class CouncilWorkerPool:
                     decision.deliberation_duration_ms = total_duration_ms
                     
                     self.total_decisions_made += 1
+                    if decision.verdict == "APPROVED":
+                        self.total_approved += 1
+                    else:
+                        self.total_rejected += 1
                     if len(self.deliberation_durations_ms) >= 1000:
                         self.deliberation_durations_ms.pop(0)
                     self.deliberation_durations_ms.append(total_duration_ms)

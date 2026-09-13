@@ -35,8 +35,10 @@ class Settings(BaseModel):
     ENRICHMENT_TTL_SECONDS: int = Field(default=1800, description="Enrichment cache TTL in seconds (30m)")
     ENRICHMENT_TIMEOUT_SECONDS: float = Field(default=2.0, description="Hard timeout per external enrichment request")
     
-    # Trading Fees & Sizing
+    # Trading Fees, Targets & Sizing (Empirically calibrated to V1 data)
     FEE_ROUNDTRIP_PCT: float = Field(default=0.42, description="Estimated roundtrip fee percentage (0.21% maker + 0.21% taker)")
+    DEFAULT_TAKE_PROFIT_PCT: float = Field(default=1.8, description="Calibrated realistic take-profit percentage (1.8%)")
+    DEFAULT_STOP_LOSS_PCT: float = Field(default=2.4, description="Calibrated realistic stop-loss percentage (2.4%)")
     MIN_ORDER_NOTIONAL_IDR: float = Field(default=10_000.0, description="Indodax minimum order size in IDR")
     
     # Storage & Logging
