@@ -1,6 +1,7 @@
 import asyncio
 import json
 import logging
+import os
 import time
 from pathlib import Path
 from typing import Dict, Any, Optional
@@ -106,10 +107,18 @@ class DurableStateStore:
                 self._queue.task_done()
 
     def _write_atomic(self, state: Dict[str, Any]) -> None:
-        tmp_file = self.state_file.with_suffix(".tmp")
-        with open(tmp_file, "w", encoding="utf-8") as f:
-            json.dump(state, f, indent=2)
-        tmp_file.replace(self.state_file)
+        tmp_file = self.state_file.with_name(f"{self.state_file.stem}_{os.getpid()}_{time.time_ns()}.tmp")
+        try:
+            with open(tmp_file, "w", encoding="utf-8") as f:
+                json.dump(state, f, indent=2)
+            tmp_file.replace(self.state_file)
+        except Exception:
+            if tmp_file.exists():
+                try:
+                    tmp_file.unlink()
+                except Exception:
+                    pass
+            raise
 
 # Global singleton durable state store
 durable_state_store = DurableStateStore()
