@@ -145,6 +145,8 @@ def load_settings() -> Settings:
         MAX_SYMBOL_QUEUE_CAP=int(os.getenv("MAX_SYMBOL_QUEUE_CAP", "20")),
         MAX_DRAWDOWN_PCT=float(os.getenv("MAX_DRAWDOWN_PCT", "18.0")),
         MAX_DAILY_LOSS_PCT=float(os.getenv("MAX_DAILY_LOSS_PCT", "3.0")),
+        HEALTH_SERVER_HOST=os.getenv("HEALTH_SERVER_HOST", "0.0.0.0"),
+        HEALTH_SERVER_PORT=int(os.getenv("HEALTH_SERVER_PORT", "8789")),
     )
 
 settings = load_settings()
