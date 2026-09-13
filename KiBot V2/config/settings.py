@@ -35,6 +35,8 @@ class Settings(BaseModel):
     MAX_TOTAL_EXPOSURE_PCT: float = Field(default=35.0, ge=5.0, le=100.0, description="Maximum total portfolio exposure in active positions")
     RECONCILIATION_INTERVAL_SECONDS: float = Field(default=300.0, ge=10.0, description="Periodic venue truth reconciliation interval (seconds)")
     RECONCILIATION_DRIFT_TOLERANCE_IDR: float = Field(default=1_000.0, ge=0.0, description="Acceptable cash drift tolerance in IDR before halting")
+    HEALTH_SERVER_PORT: int = Field(default=8789, description="Port for lightweight external watchdog healthcheck HTTP server")
+    HEALTH_SERVER_HOST: str = Field(default="0.0.0.0", description="Bind host for healthcheck HTTP server")
     
     # Out-of-band Enrichment
     ENRICHMENT_INTERVAL_SECONDS: int = Field(default=900, description="Background enrichment interval in seconds (15m)")

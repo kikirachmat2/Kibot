@@ -5,6 +5,7 @@ import sys
 import time
 from typing import Dict, Any
 
+from aiohttp import web
 from config import settings
 from ingestion import IndodaxWebSocketClient, BinanceWebSocketClient, metrics_registry
 from council import PerSymbolCoalescingRouter, CouncilWorkerPool, CouncilDecision
@@ -37,6 +38,8 @@ class KiBotV2Pipeline:
         self.indodax_ws = IndodaxWebSocketClient()
         self.binance_ws = BinanceWebSocketClient()
         self._running = False
+        self._start_time = time.time()
+        self._health_runner = None
 
     async def start(self) -> None:
         self._running = True
@@ -74,6 +77,39 @@ class KiBotV2Pipeline:
 
         # 8. Start Continuous Venue Truth Reconciliation Loop
         asyncio.create_task(self.venue_ledger.start_periodic_loop(self.virtual_ledger))
+
+        # 9. Start Lightweight Health Server for External Watchdog (SG2)
+        await self._start_health_server()
+
+    async def _start_health_server(self) -> None:
+        try:
+            app = web.Application()
+            async def handle_health(request):
+                status_data = {
+                    "status": "HEALTHY",
+                    "service": "kibot-v2-paper",
+                    "mode": "LIVE" if settings.LIVE_TRADING_ENABLED else "PAPER",
+                    "uptime_s": round(time.time() - self._start_time, 1),
+                    "timestamp": time.time(),
+                    "total_equity_idr": self.virtual_ledger.get_total_equity(),
+                    "open_positions": len(self.virtual_ledger.open_positions),
+                    "closed_trades": len(self.virtual_ledger.trade_history),
+                    "is_halted": self.venue_ledger.is_halted,
+                }
+                return web.json_response(status_data)
+
+            app.router.add_get("/health", handle_health)
+            app.router.add_get("/", handle_health)
+            self._health_runner = web.AppRunner(app)
+            await self._health_runner.setup()
+            site = web.TCPSite(self._health_runner, settings.HEALTH_SERVER_HOST, settings.HEALTH_SERVER_PORT)
+            await site.start()
+            logger.info(
+                f"[KiBotV2] 🩺 External watchdog health server listening on "
+                f"http://{settings.HEALTH_SERVER_HOST}:{settings.HEALTH_SERVER_PORT}/health"
+            )
+        except Exception as e:
+            logger.warning(f"[KiBotV2] Could not start health server on port {settings.HEALTH_SERVER_PORT}: {e}")
 
     async def _on_indodax_ticker(self, ticker: Dict[str, Any]) -> None:
         pair = ticker.get("pair", "")
@@ -167,6 +203,8 @@ class KiBotV2Pipeline:
         await self.council_pool.stop()
         await self.enrichment_worker.stop()
         self.venue_ledger.stop()
+        if self._health_runner:
+            await self._health_runner.cleanup()
         await durable_state_store.stop()
         logger.info("[KiBotV2] ✅ All services stopped safely.")
 
