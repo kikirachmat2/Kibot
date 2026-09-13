@@ -11,6 +11,18 @@ from config import settings
 
 logger = logging.getLogger("KiBotV2.IndodaxWS")
 
+def _safe_float(val: Any, default: Optional[float] = None) -> Optional[float]:
+    if val is None or val == "" or val == "NaN" or val == "null" or val == "undefined":
+        return default
+    try:
+        f = float(val)
+        import math
+        if math.isnan(f) or math.isinf(f):
+            return default
+        return f
+    except (ValueError, TypeError):
+        return default
+
 class IndodaxWebSocketClient(BaseWebSocketClient):
     def __init__(
         self,
@@ -107,9 +119,20 @@ class IndodaxWebSocketClient(BaseWebSocketClient):
         except Exception:
             return
 
-        result = msg.get("result", {})
-        channel = result.get("channel", "")
+        if not isinstance(msg, dict):
+            return
+
+        result = msg.get("result")
+        if not isinstance(result, dict):
+            return
+
+        channel = result.get("channel")
+        if not isinstance(channel, str):
+            return
+
         data_block = result.get("data", {})
+        if not isinstance(data_block, dict):
+            return
 
         # Handle 24h summary channel
         if "market:summary-24h" in channel:
@@ -117,19 +140,36 @@ class IndodaxWebSocketClient(BaseWebSocketClient):
             now_ts = time.time()
             if isinstance(items, list):
                 for item in items:
-                    if isinstance(item, list) and len(item) >= 5:
-                        pair = str(item[0]).upper()
-                        metrics_registry.record_tick(pair, now_ts)
-                        if self.on_ticker_cb:
-                            ticker_dict = {
-                                "pair": pair,
-                                "epoch": item[1],
-                                "last_price": float(item[4]),
-                                "high_24h": float(item[2]),
-                                "low_24h": float(item[3]),
-                                "volume_idr": float(item[5]) if len(item) > 5 else 0.0,
-                            }
-                            await self.on_ticker_cb(ticker_dict)
+                    if not isinstance(item, list) or len(item) < 5:
+                        logger.warning(f"[IndodaxWS] ⚠️ Skipping malformed summary item (invalid structure): {item}")
+                        continue
+
+                    pair_raw = item[0]
+                    if not pair_raw or not isinstance(pair_raw, str):
+                        logger.warning(f"[IndodaxWS] ⚠️ Skipping item with invalid pair identifier: {pair_raw}")
+                        continue
+
+                    last_price = _safe_float(item[4])
+                    if last_price is None or last_price <= 0:
+                        logger.warning(f"[IndodaxWS] ⚠️ Skipping {pair_raw} due to invalid last_price: {item[4]}")
+                        continue
+
+                    high_24h = _safe_float(item[2], default=last_price)
+                    low_24h = _safe_float(item[3], default=last_price)
+                    vol_idr = _safe_float(item[5], default=0.0) if len(item) > 5 else 0.0
+
+                    pair = pair_raw.upper().strip()
+                    metrics_registry.record_tick(pair, now_ts)
+                    if self.on_ticker_cb:
+                        ticker_dict = {
+                            "pair": pair,
+                            "epoch": item[1] if len(item) > 1 else int(now_ts),
+                            "last_price": last_price,
+                            "high_24h": high_24h,
+                            "low_24h": low_24h,
+                            "volume_idr": vol_idr,
+                        }
+                        await self.on_ticker_cb(ticker_dict)
                             
         # Handle orderbook streaming channel
         elif "market:order-book-" in channel:

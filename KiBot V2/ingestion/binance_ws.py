@@ -10,6 +10,18 @@ from config import settings
 
 logger = logging.getLogger("KiBotV2.BinanceWS")
 
+def _safe_float(val: Any, default: Optional[float] = None) -> Optional[float]:
+    if val is None or val == "" or val == "NaN" or val == "null":
+        return default
+    try:
+        f = float(val)
+        import math
+        if math.isnan(f) or math.isinf(f):
+            return default
+        return f
+    except (ValueError, TypeError):
+        return default
+
 class BinanceWebSocketClient(BaseWebSocketClient):
     """
     High-throughput, lightweight Binance WebSocket client.
@@ -36,18 +48,25 @@ class BinanceWebSocketClient(BaseWebSocketClient):
         for t in tickers:
             if not isinstance(t, dict):
                 continue
-            symbol = t.get("s", "").upper()  # e.g. "BTCUSDT"
-            if symbol.endswith("USDT"):
-                metrics_registry.record_tick(symbol, now_ts)
-                if self.on_mini_ticker_cb:
-                    parsed = {
-                        "symbol": symbol,
-                        "close": float(t.get("c", 0.0)),
-                        "open": float(t.get("o", 0.0)),
-                        "high": float(t.get("h", 0.0)),
-                        "low": float(t.get("l", 0.0)),
-                        "volume": float(t.get("v", 0.0)),
-                        "quote_volume": float(t.get("q", 0.0)),
-                        "ts": now_ts,
-                    }
-                    await self.on_mini_ticker_cb(parsed)
+            symbol = t.get("s", "")
+            if not isinstance(symbol, str) or not symbol.endswith("USDT"):
+                continue
+
+            close_p = _safe_float(t.get("c"))
+            if close_p is None or close_p <= 0:
+                continue
+
+            symbol_upper = symbol.upper().strip()
+            metrics_registry.record_tick(symbol_upper, now_ts)
+            if self.on_mini_ticker_cb:
+                parsed = {
+                    "symbol": symbol_upper,
+                    "close": close_p,
+                    "open": _safe_float(t.get("o"), default=close_p),
+                    "high": _safe_float(t.get("h"), default=close_p),
+                    "low": _safe_float(t.get("l"), default=close_p),
+                    "volume": _safe_float(t.get("v"), default=0.0),
+                    "quote_volume": _safe_float(t.get("q"), default=0.0),
+                    "ts": now_ts,
+                }
+                await self.on_mini_ticker_cb(parsed)
