@@ -50,6 +50,8 @@ class VirtualLedger:
         sl = stop_loss_pct if stop_loss_pct is not None else settings.DEFAULT_STOP_LOSS_PCT
         tp = take_profit_pct if take_profit_pct is not None else settings.DEFAULT_TAKE_PROFIT_PCT
         sym = symbol.upper().strip()
+        if sym in self.open_positions:
+            return {"success": False, "reason": f"Position already open for {sym}"}
         if notional_idr > self.cash_idr:
             return {"success": False, "reason": f"Insufficient virtual cash (Required: {notional_idr}, Available: {self.cash_idr})"}
 

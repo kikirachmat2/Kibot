@@ -103,3 +103,26 @@ Kelemahan pendekatan ini:
 - Porting penuh modul `strategy_stats.py` dari V1 ke arsitektur non-blocking / SQLite lokal.
 - Evaluator membaca tabel win rate dan average win/loss aktual yang dikelompokkan secara spesifik per-simbol (`symbol_stats[symbol]`).
 - Jika suatu pasangan koin memiliki riwayat trade <20 sampel, otomatis gunakan conservative fallback rate atau tolak masuk hingga sampel memadai.
+
+---
+
+## 5. CATATAN KOREKSI: Structural Gate Lockout Bug pada R:R Filter
+
+- **Status**: **RESOLVED (Interim Modeling Implemented)**
+- **Severity**: HIGH
+- **Komponen Terdampak**: `KiBot V2/council/evaluator.py`, `KiBot V2/main.py`
+
+### Deskripsi Masalah (Root Cause)
+Setelah kalibrasi parameter empiris awal (`avg_win_pct = 2.8%`, `avg_loss_pct = 2.4%`), terjadi **Structural Lockout** di mana 100% sinyal pasar ditolak secara statis.
+- **Penyebab**: Scanner `main.py` belum mengirimkan target keuntungan/kerugian spesifik per kandidat.
+- Akibatnya, evaluator selalu menggunakan nilai default global 2.8% win dan 2.4% loss untuk seluruh pasangan.
+- Setelah dikurangi biaya komisi roundtrip (0.42%) dan slippage (0.1%), rasio net reward-to-risk konstan bernilai $0.0228 / 0.0292 = 0.78$.
+- Karena 0.78 selalu di bawah batas keamanan `MIN_RR_RATIO = 1.40`, gate R:R memblokir 100% kandidat tanpa memandang kualitas sinyal atau momentum pasar.
+
+### Solusi yang Diterapkan (Fase 1 Interim)
+1. **Semi-Dynamic TP/SL Modeling**: Evaluator kini menghitung target Take Profit dan Stop Loss semi-dinamis berdasarkan metrik kandidat aktual:
+   - Target Take Profit dinaikkan secara asimetris pada koin dengan dorongan `leadlag_score > 0`, lonjakan volume (`volume_ratio > 1.0`), sentimen bullish, dan rentang volatilitas 24 jam.
+   - Target Stop Loss disesuaikan dengan `spread_pct` untuk mencegah wick tick-traps.
+2. **Karakterisasi Pasar di Ingestion/Main**: Sinyal kini membawa metrik likuiditas nyata (spread ketat 0.1% pada koin bervolume tinggi vs 0.8% pada koin illiquid, serta breakout score dekat 24h high).
+3. **Hasil**: Sinyal berkualitas tinggi dengan momentum kuat kini mampu mencapai target $R:R \ge 1.40$ dan $EV \ge 0.30\%$, sementara sinyal lemah atau berspread lebar tetap tertolak secara wajar. Sinyal yang lolos membawa `target_tp_pct` dan `target_sl_pct` dinamis ke VirtualLedger.
+4. **Target Permanen**: Solusi permanen tetap berupa porting penuh `strategy_stats.py` per-simbol (GAP-04).

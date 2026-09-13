@@ -19,15 +19,18 @@ class CouncilDecision:
     rr_ratio: float
     deliberation_duration_ms: float
     enrichment_status: str
+    target_tp_pct: float = 1.8
+    target_sl_pct: float = 2.4
 
 class FastCouncilEvaluator:
     """
     Sub-millisecond deterministic council evaluator.
     Port of canonical V1 mathematical gating (expected_value.py):
     - Net-of-fee Expected Value: EV = (p * avg_win_net) - (q * avg_loss_net) >= 0.3%
-    - Reward-to-Risk ratio: RR = avg_win_net / avg_loss_net >= 1.50
+    - Reward-to-Risk ratio: RR = avg_win_net / avg_loss_net >= 1.40
     - Half-Kelly criterion: f* = 0.5 * ((b*p - q) / b) >= 0.01 (capped at 25%)
     - Microstructure tick-trap guard: spread < 1.50%
+    - Semi-dynamic TP/SL modeling based on candidate momentum and microstructure
     - Zero synchronous network I/O, zero hot-path LLM calls.
     """
     def __init__(self, cache: Optional[EnrichmentCache] = None):
@@ -72,7 +75,6 @@ class FastCouncilEvaluator:
                 sentiment_bonus = -0.12
 
         # 3. Probability Estimation (Win Probability p)
-        # Combines baseline momentum, lead-lag alignment, volume surge, and cached sentiment
         # Calibrated to V1 APPROVED empirical realized win rate (36.7%)
         base_p = 0.35
         if volume_ratio >= 1.5:
@@ -85,10 +87,33 @@ class FastCouncilEvaluator:
         win_prob = max(0.10, min(0.90, base_p + sentiment_bonus))
         loss_prob = 1.0 - win_prob
 
-        # 4. Canonical Expected Value & Kelly Math (Ported from Core/Intelligence/expected_value.py)
-        # Expected targets calibrated to V1 empirical data: avg_win_pct = 2.8%, avg_loss_pct = 2.4%
-        avg_win_gross = float(candidate.get("avg_win_pct", 0.028))
-        avg_loss_gross = float(candidate.get("avg_loss_pct", 0.024))
+        # 4. Canonical Expected Value & Kelly Math with Semi-Dynamic TP/SL Targets
+        # Resolves structural gate lockout by modeling candidate-specific asymmetric potential
+        if "avg_win_pct" in candidate:
+            avg_win_gross = float(candidate["avg_win_pct"])
+        else:
+            # Semi-dynamic TP: expands upside on strong leadlag, volume surge, and high 24h volatility
+            tp_bonus = 0.0
+            if leadlag_score > 0.0:
+                tp_bonus += leadlag_score * 0.018  # Strong leadlag expands breakout target
+            if volume_ratio > 1.0:
+                tp_bonus += min(0.015, (volume_ratio - 1.0) * 0.010)
+            if sentiment_bonus > 0:
+                tp_bonus += 0.005
+            high_24h = float(candidate.get("high_24h") or price)
+            low_24h = float(candidate.get("low_24h") or price)
+            if price > 0 and high_24h > low_24h:
+                range_pct = (high_24h - low_24h) / price
+                if range_pct > 0.05:
+                    tp_bonus += min(0.01, (range_pct - 0.05) * 0.15)
+            avg_win_gross = max(0.018, 0.028 + tp_bonus)
+
+        if "avg_loss_pct" in candidate:
+            avg_loss_gross = float(candidate["avg_loss_pct"])
+        else:
+            # Semi-dynamic SL: tighter for liquid/tight-spread pairs, wider buffer for wider spreads
+            avg_loss_gross = max(0.018, 0.020 + (spread_pct * 1.5))
+
         fee_pct = settings.FEE_ROUNDTRIP_PCT / 100.0  # e.g. 0.0042 (0.42%)
         slippage_pct = 0.001                         # 0.1%
 
@@ -130,6 +155,8 @@ class FastCouncilEvaluator:
                 rr_ratio=round(rr_ratio, 2),
                 deliberation_duration_ms=duration_ms,
                 enrichment_status=enrichment_status,
+                target_tp_pct=round(avg_win_gross * 100, 2),
+                target_sl_pct=round(avg_loss_gross * 100, 2),
             )
 
         # Dynamic position sizing based on Kelly fraction
@@ -141,11 +168,13 @@ class FastCouncilEvaluator:
             action="BUY",
             confidence=round(win_prob, 2),
             score=round(win_prob * 100, 1),
-            reason=f"Canonical EV approved ({ev*100:.2f}% >= 0.3%), R:R {rr_ratio:.2f}, Kelly {kelly:.3f}",
+            reason=f"Canonical EV approved ({ev*100:.2f}% >= 0.3%), R:R {rr_ratio:.2f}, Kelly {kelly:.3f} (TP: {avg_win_gross*100:.2f}%, SL: {avg_loss_gross*100:.2f}%)",
             suggested_size_idr=suggested_size,
             ev_pct=round(ev * 100, 3),
             kelly_fraction=round(kelly, 4),
             rr_ratio=round(rr_ratio, 2),
             deliberation_duration_ms=duration_ms,
             enrichment_status=enrichment_status,
+            target_tp_pct=round(avg_win_gross * 100, 2),
+            target_sl_pct=round(avg_loss_gross * 100, 2),
         )

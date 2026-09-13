@@ -38,6 +38,11 @@ class OrderRouter:
             logger.warning(f"[OrderRouter] Order for {symbol} rejected by risk gate: {reason}")
             return {"success": False, "mode": "REJECTED_BY_RISK_GATE", "reason": reason}
 
+        # Check if position already open in virtual ledger
+        if symbol.upper().strip() in self.virtual_ledger.open_positions:
+            logger.debug(f"[OrderRouter] Position already open for {symbol}. Skipping.")
+            return {"success": False, "mode": "ALREADY_OPEN", "reason": f"Position already open for {symbol}"}
+
         # 2. Check Live Trading Gate (MANDATORY ENFORCEMENT)
         if not settings.LIVE_TRADING_ENABLED:
             logger.info(f"[OrderRouter] 🔒 LIVE_TRADING_ENABLED=False. Routing {symbol} BUY (Rp {notional_idr:,.0f}) to VirtualLedger.")

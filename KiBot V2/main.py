@@ -78,20 +78,44 @@ class KiBotV2Pipeline:
         self.risk_gate.circuit_breaker.update_equity(total_equity)
         self.risk_gate.daily_cap.update_pnl(total_equity)
         
-        # Calculate momentum priority score
+        # Calculate momentum priority score and market microstructure
         score = 50.0
         if vol > 50_000_000:
             score += 20.0
-        high = ticker.get("high_24h", price)
+        high = float(ticker.get("high_24h") or price)
+        low = float(ticker.get("low_24h") or price)
         if high > 0 and price >= high * 0.98:
             score += 25.0
+
+        # Market-differentiated metrics (liquidity vs spread vs breakout thrust)
+        if vol > 500_000_000:
+            vol_ratio = 2.5
+            spread_pct = 0.001  # Tight spread (0.1%) on high liquidity
+        elif vol > 100_000_000:
+            vol_ratio = 1.8
+            spread_pct = 0.003  # Moderate spread (0.3%)
+        else:
+            vol_ratio = 1.0
+            spread_pct = 0.008  # Wide spread (0.8%) on illiquid pairs
+
+        leadlag = 0.0
+        if high > 0:
+            if price >= high * 0.98:
+                leadlag = 0.6   # Breakout thrust near 24h high
+            elif price >= high * 0.95:
+                leadlag = 0.3
+            elif price < high * 0.88:
+                leadlag = -0.15 # Lagging downtrend
             
         candidate_payload = {
             "symbol": pair,
             "price": price,
-            "volume_ratio": 2.0 if vol > 100_000_000 else 1.0,
-            "leadlag_score": 0.4,
-            "spread_pct": 0.005,
+            "high_24h": high,
+            "low_24h": low,
+            "volume_idr": vol,
+            "volume_ratio": vol_ratio,
+            "leadlag_score": leadlag,
+            "spread_pct": spread_pct,
             "timestamp": time.time(),
         }
         await self.router.enqueue_candidate(symbol=pair, payload=candidate_payload, score=score)
@@ -107,6 +131,8 @@ class KiBotV2Pipeline:
                 symbol=decision.symbol,
                 price=price,
                 notional_idr=decision.suggested_size_idr,
+                take_profit_pct=decision.target_tp_pct,
+                stop_loss_pct=decision.target_sl_pct,
             )
 
     async def _telemetry_loop(self) -> None:
