@@ -94,3 +94,28 @@ def test_virtual_ledger_enforces_depth_check_and_applies_vwap():
     # Filled across 200k @ 1000 + 300k @ 1005 -> VWAP should be > 1000.0 and < 1005.0
     assert pos.entry_price > 1000.0
     assert pos.entry_price < 1005.0
+
+
+def test_microstructure_guard_zero_or_negative_notional():
+    """
+    Edge case guard: target_notional_idr <= 0.
+    Must return reject without raising ZeroDivisionError or any other exception.
+    """
+    orderbook = {
+        "bids": [["995", "100"]],
+        "asks": [["1000", "100"]],
+    }
+    analyzer = IndodaxMicrostructureAnalyzer()
+
+    # Zero notional
+    res_zero = analyzer.analyze_orderbook(orderbook, target_notional_idr=0.0)
+    assert res_zero.is_depth_sufficient is False
+    assert res_zero.pass_liquidity is False
+    assert res_zero.reason == "INVALID_ZERO_OR_NEGATIVE_NOTIONAL"
+
+    # Negative notional
+    res_neg = analyzer.analyze_orderbook(orderbook, target_notional_idr=-5000.0)
+    assert res_neg.is_depth_sufficient is False
+    assert res_neg.pass_liquidity is False
+    assert res_neg.reason == "INVALID_ZERO_OR_NEGATIVE_NOTIONAL"
+

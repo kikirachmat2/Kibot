@@ -57,6 +57,12 @@ class IndodaxMicrostructureAnalyzer:
         """
         res = MicrostructureAnalysis()
         
+        if target_notional_idr <= 0:
+            res.reason = "INVALID_ZERO_OR_NEGATIVE_NOTIONAL"
+            res.is_depth_sufficient = False
+            res.pass_liquidity = False
+            return res
+
         if not orderbook or not isinstance(orderbook, dict):
             res.reason = "EMPTY_OR_MALFORMED_ORDERBOOK"
             return res
