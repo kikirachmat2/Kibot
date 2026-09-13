@@ -54,6 +54,7 @@ class Settings(BaseModel):
     LOG_DIR: Path = Field(default=ROOT_DIR / "logs", description="Application log directory")
     MAX_LOG_SIZE_BYTES: int = Field(default=10 * 1024 * 1024, description="Max rotating log file size (10MB)")
     LOG_BACKUP_COUNT: int = Field(default=3, description="Number of rotating log backups")
+    MAX_IN_MEMORY_TRADES: int = Field(default=500, description="Max closed trades kept in active memory before archiving")
     
     def __init__(self, **data):
         mapping = {
@@ -147,6 +148,7 @@ def load_settings() -> Settings:
         MAX_DAILY_LOSS_PCT=float(os.getenv("MAX_DAILY_LOSS_PCT", "3.0")),
         HEALTH_SERVER_HOST=os.getenv("HEALTH_SERVER_HOST", "0.0.0.0"),
         HEALTH_SERVER_PORT=int(os.getenv("HEALTH_SERVER_PORT", "8789")),
+        MAX_IN_MEMORY_TRADES=int(os.getenv("MAX_IN_MEMORY_TRADES", "500")),
     )
 
 settings = load_settings()

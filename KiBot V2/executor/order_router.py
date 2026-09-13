@@ -35,6 +35,7 @@ class OrderRouter:
         notional_idr: float,
         stop_loss_pct: Optional[float] = None,
         take_profit_pct: Optional[float] = None,
+        orderbook: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
         sl_pct = stop_loss_pct if stop_loss_pct is not None else settings.DEFAULT_STOP_LOSS_PCT
         tp_pct = take_profit_pct if take_profit_pct is not None else settings.DEFAULT_TAKE_PROFIT_PCT
@@ -56,17 +57,19 @@ class OrderRouter:
             logger.debug(f"[OrderRouter] Position already open for {symbol}. Skipping.")
             return {"success": False, "mode": "ALREADY_OPEN", "reason": f"Position already open for {symbol}"}
 
-        # 2. Evaluate Capital Governor (Max Concurrent Positions & Max Total Exposure)
+        # 2. Evaluate Capital Governor (Max Concurrent Positions & Max Total Exposure & Sector Limits)
         if self.capital_governor:
             open_count = len(self.virtual_ledger.open_positions)
             open_exposure = sum(pos.amount_coins * pos.current_price for pos in self.virtual_ledger.open_positions.values())
             total_equity = self.virtual_ledger.get_total_equity()
+            open_symbols = list(self.virtual_ledger.open_positions.keys())
             gov_allow, gov_reason = self.capital_governor.evaluate_order_allocation(
                 symbol=symbol,
                 notional_idr=notional_idr,
                 current_open_positions_count=open_count,
                 current_open_exposure_idr=open_exposure,
                 total_equity_idr=total_equity,
+                open_positions_symbols=open_symbols,
             )
             if not gov_allow:
                 logger.warning(f"[OrderRouter] Order for {symbol} rejected by Capital Governor: {gov_reason}")
@@ -81,6 +84,7 @@ class OrderRouter:
                 notional_idr=notional_idr,
                 stop_loss_pct=sl_pct,
                 take_profit_pct=tp_pct,
+                orderbook=orderbook,
             )
             if result.get("success"):
                 self.risk_gate.record_order_placed(symbol)

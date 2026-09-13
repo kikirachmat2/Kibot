@@ -1,3 +1,4 @@
+import json
 import logging
 import time
 from typing import Dict, Any, Optional, List
@@ -50,6 +51,7 @@ class VirtualLedger:
         notional_idr: float,
         stop_loss_pct: Optional[float] = None,
         take_profit_pct: Optional[float] = None,
+        orderbook: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
         sl = stop_loss_pct if stop_loss_pct is not None else settings.DEFAULT_STOP_LOSS_PCT
         tp = take_profit_pct if take_profit_pct is not None else settings.DEFAULT_TAKE_PROFIT_PCT
@@ -59,8 +61,29 @@ class VirtualLedger:
         if notional_idr > self.cash_idr:
             return {"success": False, "reason": f"Insufficient virtual cash (Required: {notional_idr}, Available: {self.cash_idr})"}
 
-        # Simulate execution slippage (0.1%) + taker fee (0.21%)
+        # Calculate realistic execution price (Real orderbook depth VWAP or fallback to 0.1% static slippage)
         slippage_price = price * 1.001
+        slippage_pct = 0.1
+
+        if orderbook:
+            from enrichment.microstructure import microstructure_analyzer
+            analysis = microstructure_analyzer.analyze_orderbook(orderbook, notional_idr, side="BUY")
+            if not analysis.is_depth_sufficient:
+                # GAP-01 Pre-trade check: Reject orders exceeding available orderbook depth
+                return {
+                    "success": False,
+                    "mode": "INSUFFICIENT_DEPTH",
+                    "reason": analysis.reason,
+                }
+            if not analysis.pass_liquidity:
+                return {
+                    "success": False,
+                    "mode": "LIQUIDITY_REJECT",
+                    "reason": analysis.reason,
+                }
+            slippage_price = analysis.avg_fill_price
+            slippage_pct = analysis.slippage_pct
+
         fee_idr = notional_idr * (settings.FEE_ROUNDTRIP_PCT / 100.0 / 2.0)
         net_notional = notional_idr - fee_idr
         amount_coins = net_notional / slippage_price
@@ -152,6 +175,7 @@ class VirtualLedger:
             "closed_at": time.time(),
         }
         self.trade_history.append(trade_record)
+        self._prune_trade_history_if_needed()
 
         # Durable state persistence
         durable_state_store.record_position_change(
@@ -182,3 +206,25 @@ class VirtualLedger:
             f"PnL: Rp {realized_pnl_idr:+,.1f} ({realized_pnl_pct:+.2f}%) | Cash: Rp {self.cash_idr:,.0f}"
         )
         return trade_record
+
+    def _prune_trade_history_if_needed(self) -> None:
+        max_trades = getattr(settings, "MAX_IN_MEMORY_TRADES", 500)
+        if len(self.trade_history) > max_trades:
+            excess = len(self.trade_history) - max_trades
+            to_archive = self.trade_history[:excess]
+            # WHAT IF: Archive I/O fails? We slice in-memory list first to strictly protect process RAM.
+            self.trade_history = self.trade_history[excess:]
+            self._write_archive(to_archive)
+
+    def _write_archive(self, trades: List[Dict[str, Any]]) -> None:
+        try:
+            archive_path = settings.STATE_DIR / "trades_archive.jsonl"
+            archive_path.parent.mkdir(parents=True, exist_ok=True)
+            with open(archive_path, "a", encoding="utf-8") as f:
+                for trade in trades:
+                    f.write(json.dumps(trade) + "\n")
+        except Exception as exc:
+            # Failure scenario: disk full or permission error.
+            # In-memory list is already safely pruned; log error and do not crash trading engine.
+            logger.error(f"[VirtualLedger] Failed to write {len(trades)} trades to archive: {exc}")
+

@@ -104,3 +104,55 @@ async def test_order_router_rejects_when_capital_governor_blocks():
     # Verify ADA was NOT added to VirtualLedger
     assert "ADA/IDR" not in vl.open_positions
     assert len(vl.open_positions) == 3
+
+
+def test_capital_governor_enforces_sector_concentration_meme():
+    """
+    Verify sector diversification:
+    - If DOGE (MEME_ROTATION) is already open, attempting to open PEPE (MEME_ROTATION) is BLOCKED.
+    - Attempting to open ETH (HIGH_LIQUIDITY_MAJOR) is APPROVED.
+    """
+    gov = CapitalGovernor(max_concurrent_positions=5, max_total_exposure_pct=50.0)
+
+    # 1 MEME position already open
+    allow_pepe, reason_pepe = gov.evaluate_order_allocation(
+        symbol="PEPE/IDR",
+        notional_idr=500_000.0,
+        current_open_positions_count=1,
+        current_open_exposure_idr=500_000.0,
+        total_equity_idr=10_000_000.0,
+        open_positions_symbols=["DOGE/IDR"],
+    )
+
+    assert allow_pepe is False
+    assert "Sector concentration limit reached for category 'MEME_ROTATION'" in reason_pepe
+    assert "(Max allowed: 1, currently open: 1 [DOGE/IDR])" in reason_pepe
+
+    # But non-meme should be allowed
+    allow_eth, reason_eth = gov.evaluate_order_allocation(
+        symbol="ETH/IDR",
+        notional_idr=1_000_000.0,
+        current_open_positions_count=1,
+        current_open_exposure_idr=500_000.0,
+        total_equity_idr=10_000_000.0,
+        open_positions_symbols=["DOGE/IDR"],
+    )
+
+    assert allow_eth is True
+    assert reason_eth == "APPROVED_BY_CAPITAL_GOVERNOR"
+
+
+def test_capital_governor_blocks_stablecoin_and_prohibited_symbols():
+    """Verify that quote/stablecoin pairs are prevented from trading."""
+    gov = CapitalGovernor()
+
+    allow_usdt, reason_usdt = gov.evaluate_order_allocation(
+        symbol="USDT/IDR",
+        notional_idr=1_000_000.0,
+        current_open_positions_count=0,
+        current_open_exposure_idr=0.0,
+        total_equity_idr=10_000_000.0,
+    )
+
+    assert allow_usdt is False
+    assert "Sector 'AVOID_STABLE' is not allowed for trading" in reason_usdt

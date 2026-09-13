@@ -75,7 +75,11 @@ class DurableStateStore:
             self._latest_state.setdefault("open_positions", {})[sym] = position_data
         elif change_type == "CLOSE":
             self._latest_state.setdefault("open_positions", {}).pop(sym, None)
-            self._latest_state.setdefault("closed_trades", []).append(position_data)
+            closed = self._latest_state.setdefault("closed_trades", [])
+            closed.append(position_data)
+            max_trades = getattr(settings, "MAX_IN_MEMORY_TRADES", 500)
+            if len(closed) > max_trades:
+                self._latest_state["closed_trades"] = closed[-max_trades:]
         elif change_type == "PARTIAL":
             self._latest_state.setdefault("open_positions", {})[sym] = position_data
 
