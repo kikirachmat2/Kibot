@@ -45,7 +45,7 @@ def test_virtual_ledger_fee_and_pnl_tracking():
     # Price rises 5% to 52,500,000 -> trigger TP
     tp_res = ledger.update_market_price("ETH/IDR", current_price=52500000.0)
     assert tp_res is not None
-    assert tp_res["exit_reason"] == "TAKE_PROFIT_HIT"
+    assert tp_res["exit_reason"] == "TAKE_PROFIT_TARGET_HIT"
     assert tp_res["realized_pnl_idr"] > 0.0
     assert "ETH/IDR" not in ledger.open_positions
 

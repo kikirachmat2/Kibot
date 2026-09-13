@@ -88,8 +88,8 @@ class VirtualLedger:
         logger.info(f"[VirtualLedger] 🟢 Opened paper BUY for {sym}: {amount_coins:.6f} coins @ Rp {slippage_price:,.1f} (Notional: Rp {notional_idr:,.0f})")
         return {"success": True, "position_id": pos_id, "symbol": sym, "price": slippage_price, "amount": amount_coins}
 
-    def update_market_price(self, symbol: str, current_price: float) -> Optional[Dict[str, Any]]:
-        """Updates position price and evaluates TP / SL triggers."""
+    def update_market_price(self, symbol: str, current_price: float, max_hold_time_s: float = 900.0) -> Optional[Dict[str, Any]]:
+        """Updates position price and evaluates TP / SL / Max Hold triggers."""
         sym = symbol.upper().strip()
         pos = self.open_positions.get(sym)
         if not pos:
@@ -99,13 +99,18 @@ class VirtualLedger:
         if current_price > pos.max_price_seen:
             pos.max_price_seen = current_price
 
-        # Check Stop Loss
+        now = time.time()
+        # 1. Check Stop Loss
         if current_price <= pos.stop_loss_price:
-            return self.close_paper_position(sym, reason="STOP_LOSS_HIT")
+            return self.close_paper_position(sym, reason="STOP_LOSS_BREACHED")
 
-        # Check Take Profit
+        # 2. Check Take Profit
         if current_price >= pos.take_profit_price:
-            return self.close_paper_position(sym, reason="TAKE_PROFIT_HIT")
+            return self.close_paper_position(sym, reason="TAKE_PROFIT_TARGET_HIT")
+
+        # 3. Check Max Hold Time Expired
+        if (now - pos.entry_time) >= max_hold_time_s:
+            return self.close_paper_position(sym, reason="MAX_HOLD_TIME_EXPIRED")
 
         return None
 

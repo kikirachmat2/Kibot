@@ -15,21 +15,25 @@ class CouncilDecision:
     reason: str
     suggested_size_idr: float
     ev_pct: float
+    kelly_fraction: float
+    rr_ratio: float
     deliberation_duration_ms: float
     enrichment_status: str
 
 class FastCouncilEvaluator:
     """
     Sub-millisecond deterministic council evaluator.
-    Evaluates market candidates using pure in-memory logic:
-    - Zero synchronous network I/O.
-    - Zero web searches or LLM blocking calls in the hot path.
-    - Reads cached sentiment instantly (0ms); falls back gracefully if cache is empty.
+    Port of canonical V1 mathematical gating (expected_value.py):
+    - Net-of-fee Expected Value: EV = (p * avg_win_net) - (q * avg_loss_net) >= 0.3%
+    - Reward-to-Risk ratio: RR = avg_win_net / avg_loss_net >= 1.50
+    - Half-Kelly criterion: f* = 0.5 * ((b*p - q) / b) >= 0.01 (capped at 25%)
+    - Microstructure tick-trap guard: spread < 1.50%
+    - Zero synchronous network I/O, zero hot-path LLM calls.
     """
     def __init__(self, cache: Optional[EnrichmentCache] = None):
         self.cache = cache or enrichment_cache
 
-    def evaluate(self, candidate: Dict[str, Any]) -> CouncilDecision:
+    def evaluate(self, candidate: Dict[str, Any], bankroll_idr: float = 10_000_000.0) -> CouncilDecision:
         t0 = time.perf_counter()
         
         symbol = str(candidate.get("symbol") or candidate.get("pair") or "UNKNOWN").upper().strip()
@@ -38,13 +42,13 @@ class FastCouncilEvaluator:
         volume_ratio = float(candidate.get("volume_ratio") or 1.0)
         leadlag_score = float(candidate.get("leadlag_score") or 0.0)
         
-        # 1. Tick-Trap & Microstructure Guard
+        # 1. Tick-Trap & Microstructure Guard (SignalQuality port)
         if price <= 0:
             duration_ms = (time.perf_counter() - t0) * 1000.0
             return CouncilDecision(
                 verdict="REJECTED", symbol=symbol, action="NONE", confidence=0.0, score=0.0,
                 reason="Invalid zero or negative price", suggested_size_idr=0.0, ev_pct=0.0,
-                deliberation_duration_ms=duration_ms, enrichment_status="SKIPPED"
+                kelly_fraction=0.0, rr_ratio=0.0, deliberation_duration_ms=duration_ms, enrichment_status="SKIPPED"
             )
             
         if spread_pct > 0.015:  # Spread > 1.5% is an immediate tick-trap reject
@@ -52,8 +56,8 @@ class FastCouncilEvaluator:
             return CouncilDecision(
                 verdict="REJECTED", symbol=symbol, action="NONE", confidence=0.1, score=10.0,
                 reason=f"Tick trap: spread {spread_pct*100:.2f}% exceeds 1.50% threshold",
-                suggested_size_idr=0.0, ev_pct=-0.5, deliberation_duration_ms=duration_ms,
-                enrichment_status="SKIPPED"
+                suggested_size_idr=0.0, ev_pct=-0.5, kelly_fraction=0.0, rr_ratio=0.0,
+                deliberation_duration_ms=duration_ms, enrichment_status="SKIPPED"
             )
 
         # 2. Check In-Memory Enrichment Cache (Zero-wait read)
@@ -63,52 +67,84 @@ class FastCouncilEvaluator:
         if enrichment_data:
             sentiment = enrichment_data.get("sentiment", "NEUTRAL")
             if sentiment == "BULLISH":
-                sentiment_bonus = 0.10
+                sentiment_bonus = 0.08
             elif sentiment == "BEARISH":
-                sentiment_bonus = -0.15
+                sentiment_bonus = -0.12
 
-        # 3. Deterministic Technical Scoring & EV Calculation
-        # Base confidence from momentum, leadlag alignment, and volume
-        base_confidence = 0.50
-        if volume_ratio > 1.5:
-            base_confidence += 0.15
+        # 3. Probability Estimation (Win Probability p)
+        # Combines baseline momentum, lead-lag alignment, volume surge, and cached sentiment
+        base_p = 0.50
+        if volume_ratio >= 1.5:
+            base_p += 0.10
         if leadlag_score > 0.3:
-            base_confidence += 0.15
+            base_p += 0.08
         elif leadlag_score < -0.2:
-            base_confidence -= 0.20
+            base_p -= 0.15
             
-        confidence = max(0.0, min(1.0, base_confidence + sentiment_bonus))
-        
-        # Sizing via simplified fractional Kelly
-        # Estimated reward: 2.5%, risk: 1.5%, fees: 0.42%
-        win_prob = confidence
-        reward_pct = 2.5
-        risk_pct = 1.5 + (settings.FEE_ROUNDTRIP_PCT)
-        ev_pct = (win_prob * reward_pct) - ((1.0 - win_prob) * risk_pct)
-        
-        if ev_pct <= 0.0 or confidence < 0.60:
-            duration_ms = (time.perf_counter() - t0) * 1000.0
-            return CouncilDecision(
-                verdict="REJECTED", symbol=symbol, action="NONE", confidence=confidence,
-                score=round(confidence * 100, 1),
-                reason=f"Sub-optimal EV ({ev_pct:.2f}%) or low confidence ({confidence:.2f} < 0.60)",
-                suggested_size_idr=0.0, ev_pct=round(ev_pct, 2),
-                deliberation_duration_ms=duration_ms, enrichment_status=enrichment_status
-            )
-            
-        # Approved trade mandate
-        suggested_size = max(settings.MIN_ORDER_NOTIONAL_IDR, 250_000.0)
+        win_prob = max(0.10, min(0.90, base_p + sentiment_bonus))
+        loss_prob = 1.0 - win_prob
+
+        # 4. Canonical Expected Value & Kelly Math (Ported from Core/Intelligence/expected_value.py)
+        # Expected gross targets: avg_win_pct = 3.5% (target TP), avg_loss_pct = 1.5% (stop loss)
+        avg_win_gross = float(candidate.get("avg_win_pct", 0.035))
+        avg_loss_gross = float(candidate.get("avg_loss_pct", 0.015))
+        fee_pct = settings.FEE_ROUNDTRIP_PCT / 100.0  # e.g. 0.0042 (0.42%)
+        slippage_pct = 0.001                         # 0.1%
+
+        avg_win_net = max(0.0, avg_win_gross - fee_pct - slippage_pct)
+        avg_loss_net = max(0.0001, avg_loss_gross + fee_pct + slippage_pct)
+
+        ev = (win_prob * avg_win_net) - (loss_prob * avg_loss_net)
+        rr_ratio = avg_win_net / avg_loss_net if avg_loss_net > 0 else 0.0
+
+        # Kelly Criterion: f* = (b*p - q) / b
+        b = avg_win_net / avg_loss_net if avg_loss_net > 0 else 0.0
+        kelly_raw = ((b * win_prob) - loss_prob) / b if b > 0 else 0.0
+        kelly = max(0.0, min(0.25, kelly_raw * 0.5))  # Half-Kelly capped at 25% max
+
+        # 5. Canonical Gating Thresholds
+        rejection_reasons = []
+        if ev < 0.003:  # EV < 0.3%
+            rejection_reasons.append(f"EV {ev*100:.2f}% below threshold 0.30%")
+        if rr_ratio < 1.4:  # R:R buffer
+            rejection_reasons.append(f"R:R {rr_ratio:.2f} below minimum 1.40")
+        if kelly < 0.01:  # Kelly floor 1%
+            rejection_reasons.append(f"Kelly {kelly:.4f} below floor 0.0100")
+        if win_prob < 0.45:
+            rejection_reasons.append(f"Win probability {win_prob*100:.1f}% below 45.0%")
+
         duration_ms = (time.perf_counter() - t0) * 1000.0
-        
+
+        if rejection_reasons:
+            return CouncilDecision(
+                verdict="REJECTED",
+                symbol=symbol,
+                action="NONE",
+                confidence=round(win_prob, 2),
+                score=round(win_prob * 100, 1),
+                reason="; ".join(rejection_reasons),
+                suggested_size_idr=0.0,
+                ev_pct=round(ev * 100, 3),
+                kelly_fraction=round(kelly, 4),
+                rr_ratio=round(rr_ratio, 2),
+                deliberation_duration_ms=duration_ms,
+                enrichment_status=enrichment_status,
+            )
+
+        # Dynamic position sizing based on Kelly fraction
+        suggested_size = max(settings.MIN_ORDER_NOTIONAL_IDR, min(bankroll_idr * 0.15, bankroll_idr * kelly))
+
         return CouncilDecision(
             verdict="APPROVED",
             symbol=symbol,
             action="BUY",
-            confidence=round(confidence, 2),
-            score=round(confidence * 100, 1),
-            reason=f"Positive EV ({ev_pct:.2f}%), strong volume & lead-lag alignment",
+            confidence=round(win_prob, 2),
+            score=round(win_prob * 100, 1),
+            reason=f"Canonical EV approved ({ev*100:.2f}% >= 0.3%), R:R {rr_ratio:.2f}, Kelly {kelly:.3f}",
             suggested_size_idr=suggested_size,
-            ev_pct=round(ev_pct, 2),
+            ev_pct=round(ev * 100, 3),
+            kelly_fraction=round(kelly, 4),
+            rr_ratio=round(rr_ratio, 2),
             deliberation_duration_ms=duration_ms,
             enrichment_status=enrichment_status,
         )
