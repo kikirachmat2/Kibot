@@ -9,8 +9,8 @@ from config import settings
 from ingestion import IndodaxWebSocketClient, BinanceWebSocketClient, metrics_registry
 from council import PerSymbolCoalescingRouter, CouncilWorkerPool, CouncilDecision
 from enrichment import BackgroundEnrichmentWorker
-from risk import RiskGate
-from storage import setup_logging, durable_state_store, StartupReconciler
+from risk import RiskGate, CapitalGovernor
+from storage import setup_logging, durable_state_store, StartupReconciler, venue_ledger
 from executor import OrderRouter, VirtualLedger
 
 setup_logging()
@@ -23,8 +23,15 @@ class KiBotV2Pipeline:
         self.enrichment_worker = BackgroundEnrichmentWorker()
         
         self.risk_gate = RiskGate()
+        self.capital_governor = CapitalGovernor()
+        self.venue_ledger = venue_ledger
         self.virtual_ledger = VirtualLedger(initial_cash_idr=10_000_000.0)
-        self.order_router = OrderRouter(risk_gate=self.risk_gate, virtual_ledger=self.virtual_ledger)
+        self.order_router = OrderRouter(
+            risk_gate=self.risk_gate,
+            virtual_ledger=self.virtual_ledger,
+            capital_governor=self.capital_governor,
+            venue_ledger_instance=self.venue_ledger,
+        )
         self.reconciler = StartupReconciler()
         
         self.indodax_ws = IndodaxWebSocketClient()
@@ -64,6 +71,9 @@ class KiBotV2Pipeline:
 
         # 7. Start Periodic Telemetry Reporter
         asyncio.create_task(self._telemetry_loop())
+
+        # 8. Start Continuous Venue Truth Reconciliation Loop
+        asyncio.create_task(self.venue_ledger.start_periodic_loop(self.virtual_ledger))
 
     async def _on_indodax_ticker(self, ticker: Dict[str, Any]) -> None:
         pair = ticker.get("pair", "")
@@ -156,6 +166,7 @@ class KiBotV2Pipeline:
         await self.binance_ws.stop()
         await self.council_pool.stop()
         await self.enrichment_worker.stop()
+        self.venue_ledger.stop()
         await durable_state_store.stop()
         logger.info("[KiBotV2] ✅ All services stopped safely.")
 

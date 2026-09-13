@@ -27,10 +27,14 @@ class Settings(BaseModel):
     COUNCIL_WORKERS: int = Field(default=4, ge=1, le=16, description="Parallel worker coroutines for council deliberation")
     MAX_SYMBOL_QUEUE_CAP: int = Field(default=20, ge=5, le=100, description="Max concurrent symbol queues before lowest score drop")
     
-    # Risk Limits
+    # Risk Limits & Capital Governance
     MAX_DRAWDOWN_PCT: float = Field(default=18.0, description="Circuit breaker overall drawdown limit percentage")
     MAX_DAILY_LOSS_PCT: float = Field(default=3.0, description="Daily loss cap percentage")
     IDEMPOTENCY_WINDOW_SECONDS: float = Field(default=30.0, description="Window to prevent duplicate orders on identical pair")
+    MAX_CONCURRENT_POSITIONS: int = Field(default=3, ge=1, le=10, description="Maximum simultaneous open positions allowed")
+    MAX_TOTAL_EXPOSURE_PCT: float = Field(default=35.0, ge=5.0, le=100.0, description="Maximum total portfolio exposure in active positions")
+    RECONCILIATION_INTERVAL_SECONDS: float = Field(default=300.0, ge=10.0, description="Periodic venue truth reconciliation interval (seconds)")
+    RECONCILIATION_DRIFT_TOLERANCE_IDR: float = Field(default=1_000.0, ge=0.0, description="Acceptable cash drift tolerance in IDR before halting")
     
     # Out-of-band Enrichment
     ENRICHMENT_INTERVAL_SECONDS: int = Field(default=900, description="Background enrichment interval in seconds (15m)")
