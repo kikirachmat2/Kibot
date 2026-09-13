@@ -3,6 +3,8 @@ import time
 from datetime import datetime, timezone, timedelta
 from typing import Dict, Any, Optional
 
+from notifications import telegram_notifier
+
 logger = logging.getLogger("KiBotV2.DailyLossCap")
 
 WIB = timezone(timedelta(hours=7))
@@ -11,7 +13,7 @@ class DailyLossCap:
     """
     3% Daily Loss Cap ported from KiBot V1.
     - Tracks realized and unrealized PnL against the start-of-day equity anchor.
-    - If daily loss exceeds max_daily_loss_pct (default 3.0%), blocks all new buy orders until next day.
+    - If daily loss exceeds max_loss_pct (default 3.0%), blocks all new buy orders until next day.
     """
     def __init__(self, max_loss_pct: float = 3.0):
         self.max_loss_pct = max_loss_pct
@@ -55,6 +57,14 @@ class DailyLossCap:
                 f"(Start: Rp {self.start_day_equity_idr:,.0f}, Current: Rp {current_equity_idr:,.0f})"
             )
             logger.warning(f"🛑 [DAILY LOSS CAP LOCKED] {self.lock_reason}")
+            telegram_notifier.send_alert_non_blocking(
+                event_type="DAILY_LOSS_CAP_TRIPPED",
+                title="🛑 DAILY LOSS CAP LOCKED (3%)",
+                message=self.lock_reason,
+                severity="HIGH",
+                details=self.state_dict(),
+                force=True,
+            )
 
         return not self.is_locked
 

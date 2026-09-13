@@ -5,6 +5,7 @@ import time
 from enum import Enum
 from typing import Optional, Callable, Awaitable
 import websockets
+from notifications import telegram_notifier
 
 logger = logging.getLogger("KiBotV2.WSBase")
 
@@ -36,6 +37,7 @@ class BaseWebSocketClient:
         self._running: bool = False
         self._current_backoff_s: float = min_backoff_s
         self._last_heartbeat_ts: float = 0.0
+        self._max_backoff_alert_sent = False
         
         # Callbacks
         self.on_message_cb: Optional[Callable[[str], Awaitable[None]]] = None
@@ -43,10 +45,11 @@ class BaseWebSocketClient:
 
     async def start(self) -> None:
         self._running = True
+        logger.info(f"[{self.name}] Starting connection loop for {self.url}...")
+        
         while self._running:
             try:
-                self.state = ConnectionState.CONNECTING if self.state == ConnectionState.DISCONNECTED else ConnectionState.RECONNECTING
-                logger.info(f"[{self.name}] Connecting to {self.url} (state={self.state})...")
+                self.state = ConnectionState.CONNECTING
                 
                 async with websockets.connect(
                     self.url,
@@ -57,6 +60,7 @@ class BaseWebSocketClient:
                     self.state = ConnectionState.CONNECTED
                     self._current_backoff_s = self.min_backoff_s
                     self._last_heartbeat_ts = time.time()
+                    self._max_backoff_alert_sent = False
                     logger.info(f"[{self.name}] ✅ Connected to {self.url}")
                     
                     # On successful reconnect, trigger snapshot resync if registered
@@ -94,6 +98,21 @@ class BaseWebSocketClient:
             jitter = random.uniform(0.1, 0.5)
             sleep_time = min(self.max_backoff_s, self._current_backoff_s + jitter)
             logger.info(f"[{self.name}] Reconnecting in {sleep_time:.2f}s...")
+            
+            # Send alert if backoff has reached maximum limit (30s) and failed to reconnect
+            if self._current_backoff_s >= self.max_backoff_s and not self._max_backoff_alert_sent:
+                self._max_backoff_alert_sent = True
+                telegram_notifier.send_alert_non_blocking(
+                    event_type="WEBSOCKET_DISCONNECT_MAX_BACKOFF",
+                    title=f"⚠️ WS DISCONNECT MAX BACKOFF: {self.name}",
+                    message=(
+                        f"WebSocket client [{self.name}] failed to reconnect after hitting maximum backoff "
+                        f"({self.max_backoff_s:.0f}s). Reconnection attempts will continue in background."
+                    ),
+                    severity="HIGH",
+                    details={"client": self.name, "url": self.url, "max_backoff_s": self.max_backoff_s},
+                )
+
             await asyncio.sleep(sleep_time)
             self._current_backoff_s = min(self.max_backoff_s, self._current_backoff_s * 2.0)
 

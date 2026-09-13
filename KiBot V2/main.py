@@ -175,9 +175,26 @@ async def main():
         except NotImplementedError:
             pass
 
-    await pipeline.start()
-    await stop_event.wait()
-    await pipeline.stop()
+    try:
+        await pipeline.start()
+        await stop_event.wait()
+        await pipeline.stop()
+    except Exception as exc:
+        logger.critical(f"[KiBotV2] 💥 Pipeline crashed unexpectedly: {exc}", exc_info=True)
+        try:
+            from notifications import telegram_notifier
+            await telegram_notifier.send_alert(
+                event_type="PROCESS_CRASH",
+                title="🚨 KIBOT V2 PROCESS CRASH",
+                message=f"KiBot V2 process crashed with unhandled exception: `{exc}`",
+                severity="CRITICAL",
+                details={"error": str(exc), "type": type(exc).__name__},
+                force=True,
+            )
+            await telegram_notifier.close()
+        except Exception:
+            pass
+        sys.exit(1)
 
 if __name__ == "__main__":
     asyncio.run(main())

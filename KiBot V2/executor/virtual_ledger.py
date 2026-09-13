@@ -32,12 +32,16 @@ class VirtualLedger:
     def __init__(self, initial_cash_idr: float = 10_000_000.0):
         self.cash_idr: float = initial_cash_idr
         self.initial_equity_idr: float = initial_cash_idr
+        self.peak_equity_idr: float = initial_cash_idr
         self.open_positions: Dict[str, VirtualPosition] = {}
         self.trade_history: List[Dict[str, Any]] = []
 
     def get_total_equity(self) -> float:
         positions_value = sum(pos.amount_coins * pos.current_price for pos in self.open_positions.values())
-        return self.cash_idr + positions_value
+        total = self.cash_idr + positions_value
+        if total > self.peak_equity_idr:
+            self.peak_equity_idr = total
+        return total
 
     def place_paper_buy(
         self,
@@ -155,6 +159,21 @@ class VirtualLedger:
             position_data=trade_record,
             total_equity_idr=self.get_total_equity(),
         )
+
+        # Automatic live readiness evaluation & milestone tracking
+        try:
+            from storage.live_readiness import live_readiness_evaluator
+            current_eq = self.get_total_equity()
+            dd_pct = ((self.peak_equity_idr - current_eq) / self.peak_equity_idr * 100.0) if self.peak_equity_idr > 0 else 0.0
+            live_readiness_evaluator.evaluate_trades(
+                trade_history=self.trade_history,
+                current_equity_idr=current_eq,
+                initial_bankroll_idr=self.initial_equity_idr,
+                peak_equity_idr=self.peak_equity_idr,
+                current_drawdown_pct=max(0.0, dd_pct),
+            )
+        except Exception as eval_exc:
+            logger.error(f"[VirtualLedger] Live readiness evaluation error: {eval_exc}")
 
         log_level = logger.info if realized_pnl_idr >= 0 else logger.warning
         badge = "🟢" if realized_pnl_idr >= 0 else "🔴"

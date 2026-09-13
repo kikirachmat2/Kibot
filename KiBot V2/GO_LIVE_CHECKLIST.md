@@ -1,64 +1,62 @@
-# 🛡️ KIBOT V2: GO-LIVE CHECKLIST & PROTOCOL
+# 🛡️ KIBOT V2: GO-LIVE CHECKLIST & READINESS PROTOCOL
 
-**Status Dokumen**: DRAFT - PENDING OPERATOR & STAKEHOLDER REVIEW  
-**Tujuan**: Menetapkan kerangka kriteria kuantitatif wajib yang harus dipenuhi dan diverifikasi bersama sebelum flag `LIVE_TRADING_ENABLED` diubah dari `false` menjadi `true`.
+**Status Dokumen**: AUTOMATED READ-ONLY EVALUATION (Ported from V1 `live_readiness.py`)  
+**Evaluator Engine**: [`storage.live_readiness.LiveReadinessEvaluator`](file:///Users/kiki/Documents/Web%20Develop/KiBot/KiBot%20V2/storage/live_readiness.py)  
 
 > [!CAUTION]
-> **ATURAN MUTLAK:**
-> DILARANG menyalakan `LIVE_TRADING_ENABLED=true` jika salah satu dari checklist kuantitatif di bawah ini belum berstatus **VERIFIED** dengan bukti rekaman data konkret. Angka target final di bawah ini akan disepakati bersama oleh operator.
+> **ATURAN MUTLAK KEAMANAN (READ-ONLY GATEWAY):**
+> Status yang dihasilkan oleh evaluator otomatis (`BELUM_SIAP` atau `SIAP_SOFT_LAUNCH`) bersifat **100% INFORMATIF & READ-ONLY**.
+> Evaluator **DILARANG KERAS DAN TIDAK PERNAH** mengubah flag `LIVE_TRADING_ENABLED` secara otomatis.
+> Perubahan flag `LIVE_TRADING_ENABLED` dari `false` ke `true` mutlak wajib dilakukan secara manual oleh operator setelah review komprehensif bersama Director.
 
 ---
 
-## 📊 1. Stabilitas & Ketahanan Runtime (Stability Gate)
-- [ ] **Stabilitas Berkelanjutan**: Sistem berjalan minimal **[N_HARI] hari berturut-turut** dalam mode paper trading tanpa pernah mengalami:
-  * Crash proses (`SIGSEGV`, `OOM`, `uncaught exception`).
-  * Socket hang / deadlock.
-  * Memory leak (RAM stabil di bawah target budget).
-- [ ] **Log & Resource Hygiene**:
-  * Systemd journal terbukti tidak melebihi **[MAX_JOURNAL_MB] MB**.
-  * Log aplikasi berputar (*rotated*) dengan benar tanpa penumpukan disk.
-  * CPU Steal dari hypervisor terpantau aman (**< [MAX_STEAL_PCT]%**).
+## 🤖 Otomasi Evaluasi Kesiapan (5 Kriteria Kuantitatif V1)
+
+Evaluator otomatis membaca riwayat trade tertutup dari `VirtualLedger` (`trade_history`) secara real-time setiap kali posisi ditutup, memvalidasi 5 kriteria canonical:
+
+| # | Kriteria Evaluasi | Target Threshold | Logika Pengujian | Status Dampak |
+|---|---|---|---|---|
+| **1** | **Sample Size (N)** | $\ge 30$ closed trades | Uji signifikansi statistik performa | Mencegah premature live dari small sample luck |
+| **2** | **Profit Factor (PF)** | $\ge 1.50$ | Gross Profit / Gross Loss (net fee 0.21%) | Memastikan reward jauh melampaui drag biaya transaksi |
+| **3** | **Net Win Rate (WR)** | $\ge 45.0\%$ | Realized wins / Total trades | Memastikan akurasi sinyal di atas baseline acak |
+| **4** | **Max Drawdown (MDD)** | $\le 6.0\%$ | $(Peak - Equity) / Peak \times 100\%$ | Menguji daya tahan drawdown di bawah risk cap |
+| **5** | **Time Diversity** | $\ge 10$ hari kalender | Tanggal unik WIB pada closed trades | Menguji performa di multi-regime (bukan 1 hari tren) |
 
 ---
 
-## ⚡ 2. Kualitas Ingestion & Concurrency (Data & Latency Gate)
-- [ ] **Signal Drop Rate**:
-  * Rasio sinyal terbuang (*dropped signals*) di bawah **< [TARGET_DROP_RATE_PCT]%** (Target desain V2: < 2.0%, batas toleransi < 5.0%).
-  * Tidak ada pembekuan antrian simbol (*coalescing queue* bekerja optimal).
-- [ ] **Council Deliberation Latency**:
-  * Latensi keputusan rata-rata: **< [TARGET_LATENCY_AVG_MS] ms** (Target desain V2: < 150 ms).
-  * Latensi p90: **< [TARGET_LATENCY_P90_MS] ms** (Target desain V2: < 800 ms).
-  * Latensi worst-case: **< [TARGET_LATENCY_MAX_MS] ms** (Target desain V2: < 2.000 ms).
-- [ ] **Market Data Freshness**:
-  * Usia data (*data age*) saat keputusan diambil: rata-rata **< [MAX_DATA_AGE_MS] ms**.
-  * Heartbeat WebSocket mendeteksi koneksi mati dalam **< 5 detik**.
+## 🚦 Status Verdict & Tahapan Transisi
+
+Sistem mengklasifikasikan kesiapan ke dalam 2 tingkatan status:
+
+1. **🔴 BELUM_SIAP**
+   - Terjadi jika salah satu atau lebih dari 5 kriteria belum terpenuhi.
+   - Tindakan: Sistem tetap berjalan dalam mode Paper Virtual Ledger. Live trading ditolak keras.
+
+2. **🟡 SIAP_SOFT_LAUNCH (Bukan Langsung Full Live)**
+   - Terbuka hanya jika seluruh 5 kriteria terpenuhi serentak ($\ge 30$ trades, PF $\ge 1.5$, WR $\ge 45\%$, MDD $\le 6\%$, $\ge 10$ hari).
+   - **Protokol Fase 1 (Modal Mikro):**
+     * Alokasi modal mikro riil: **Rp 50.000 – Rp 100.000** per posisi.
+     * Tujuan: Mengukur slippage aktual Indodax, maker/taker queue fill rate, dan perilaku orderbook riil tanpa risiko modal signifikan.
+     * Evaluasi ulang setelah 50 trade di Fase 1 sebelum pertimbangan ekspansi ukuran modal.
 
 ---
 
-## 📈 3. Kinerja Strategi & Profitabilitas (Paper Trade Readiness)
-- [ ] **Jumlah Sampel Minimum**: Telah mengeksekusi minimal **[MIN_SAMPLE_TRADES] trade** tertutup dalam mode paper trading.
-- [ ] **Profit Factor (PF)**: Konsisten mencapai **PF $\ge$ [TARGET_PROFIT_FACTOR]** (misal $\ge$ 1.50) pada periode evaluasi.
-- [ ] **Net Win Rate (WR)**: Konsisten mencapai **WR $\ge$ [TARGET_WIN_RATE_PCT]%** (misal $\ge$ 45.0%).
-- [ ] **Diversitas Rezim Pasar**: Trade tersebar di minimal **[MIN_CALENDAR_DAYS] hari kalender berbeda** mencakup kondisi pasar *bullish*, *bearish*, dan *choppy/sideways*.
+## 🎯 Notifikasi Milestone & Transisi Status (Telegram)
+
+Evaluator terhubung langsung ke [`TelegramNotifier`](file:///Users/kiki/Documents/Web%20Develop/KiBot/KiBot%20V2/notifications/telegram_notifier.py) (asynchronous, non-blocking 0ms hot-path impact):
+- **Milestone Alert**: Terkirim otomatis saat paper trade mencapai **10, 20, 30, dan 50 closed trades**.
+- **Status Change Alert**: Terkirim otomatis saat status berubah (misal: `BELUM_SIAP` $\rightarrow$ `SIAP_SOFT_LAUNCH`).
+- **Risk Gate Trip Alerts**: Terkirim saat Circuit Breaker (18% DD) atau Daily Loss Cap (3%) terpicu.
+- **System Alerts**: Terkirim saat WebSocket disconnect gagal reconnect setelah backoff maksimal (30s) atau saat proses crash.
 
 ---
 
-## 🔒 4. Pengujian Safety Gate Terkonfirmasi (Safety Simulation)
-- [ ] **Drawdown Circuit Breaker**:
-  * Telah diuji memicu (*tripped*) dengan benar saat drawdown buatan mencapai **[DRAWDOWN_THRESHOLD_PCT]%** (18.0%).
-  * Terbukti mengunci seluruh order beli baru secara otomatis hingga reset manual.
-- [ ] **Daily Loss Cap**:
-  * Telah diuji memicu (*locked*) saat kerugian harian mencapai **[DAILY_LOSS_CAP_PCT]%** (3.0%).
-  * Terbukti melakukan rollover bersih pada pukul 00:00 WIB.
-- [ ] **Idempotency Guard**:
-  * Terbukti menolak order duplikat/kembar pada simbol yang sama dalam jendela waktu **[IDEMPOTENCY_WINDOW_SEC] detik**.
-- [ ] **Startup Reconciliation**:
-  * Terbukti mencocokkan saldo akun riil dan posisi lokal tanpa *recursion error* saat bot di-restart.
+## ✍️ PROTOKOL PENGESAHAN MANUAL OPERATOR
 
----
+Ketika status mencapai `SIAP_SOFT_LAUNCH`, langkah yang WAJIB dilakukan sebelum mengubah setting:
+1. Jalankan audit trade report: `python3 -m storage.live_readiness`
+2. Ekspor ringkasan performa paper ledger ke log terverifikasi.
+3. Review bersama Director untuk persetujuan alokasi modal mikro (Rp 50.000 - Rp 100.000).
+4. Operator secara sadar mengubah `LIVE_TRADING_ENABLED = true` di environment / config.
 
-## ✍️ LEMBAR PENGESAHAN OPERATOR
-Sebelum flag live diaktifkan:
-* **Tanggal Audit Terakhir**: `____________________`
-* **Nama Operator Peninjau**: `____________________`
-* **Tanda Tangan / Konfirmasi**: `[ ] APPROVED FOR SOFT LAUNCH ONLY`

@@ -2,6 +2,8 @@ import logging
 import time
 from typing import Dict, Any, Optional
 
+from notifications import telegram_notifier
+
 logger = logging.getLogger("KiBotV2.CircuitBreaker")
 
 class DrawdownCircuitBreaker:
@@ -54,6 +56,14 @@ class DrawdownCircuitBreaker:
         self.tripped_at = time.time()
         self.trip_reason = reason
         logger.critical(f"🚨 [CIRCUIT BREAKER TRIPPED] {reason}")
+        telegram_notifier.send_alert_non_blocking(
+            event_type="CIRCUIT_BREAKER_TRIPPED",
+            title="🚨 CIRCUIT BREAKER TRIPPED (18% DD)",
+            message=reason,
+            severity="CRITICAL",
+            details=self.state_dict(),
+            force=True,
+        )
 
     def manual_reset(self, operator_note: str) -> None:
         logger.warning(f"⚠️ [CIRCUIT BREAKER RESET] Reset by operator. Note: {operator_note}")

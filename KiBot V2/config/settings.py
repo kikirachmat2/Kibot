@@ -11,6 +11,8 @@ class Settings(BaseModel):
     # Credentials (Loaded from ENV or files with permission 600)
     INDODAX_KEY: str = Field(default="", description="Indodax API Key")
     INDODAX_SECRET: str = Field(default="", description="Indodax API Secret")
+    TELEGRAM_BOT_TOKEN: str = Field(default="", description="Telegram bot token for alert notifications")
+    TELEGRAM_CHAT_ID: str = Field(default="", description="Telegram chat ID for alert notifications")
     
     # WebSocket Endpoints
     INDODAX_WS_URL: str = Field(default="wss://ws3.indodax.com/ws/", description="Indodax WebSocket endpoint")
@@ -70,6 +72,10 @@ class Settings(BaseModel):
             data["INDODAX_KEY"] = "********"
         if data.get("INDODAX_SECRET"):
             data["INDODAX_SECRET"] = "********"
+        if data.get("TELEGRAM_BOT_TOKEN"):
+            data["TELEGRAM_BOT_TOKEN"] = "********"
+        if data.get("TELEGRAM_CHAT_ID"):
+            data["TELEGRAM_CHAT_ID"] = "********"
         return data
 
     @property
@@ -84,6 +90,14 @@ class Settings(BaseModel):
     def indodax_secret_key(self) -> str:
         return self.INDODAX_SECRET
 
+    @property
+    def telegram_bot_token(self) -> str:
+        return self.TELEGRAM_BOT_TOKEN
+
+    @property
+    def telegram_chat_id(self) -> str:
+        return self.TELEGRAM_CHAT_ID
+
 BotConfig = Settings
 
 def load_settings() -> Settings:
@@ -91,6 +105,8 @@ def load_settings() -> Settings:
     live_flag = os.getenv("LIVE_TRADING_ENABLED", "false").strip().lower() in {"1", "true", "yes"}
     key = os.getenv("INDODAX_KEY", os.getenv("INDODAX_API_KEY", ""))
     secret = os.getenv("INDODAX_SECRET", os.getenv("INDODAX_SECRET_KEY", ""))
+    tg_token = os.getenv("TELEGRAM_BOT_TOKEN", os.getenv("KIBOT_TELEGRAM_TOKEN", ""))
+    tg_chat = os.getenv("TELEGRAM_CHAT_ID", os.getenv("KIBOT_TELEGRAM_CHAT_ID", ""))
     
     # If permission 600 credentials file exists, read it
     cred_file = os.getenv("KIBOT_CREDENTIALS_FILE", "")
@@ -106,6 +122,10 @@ def load_settings() -> Settings:
                         key = line.split("=", 1)[1].strip().strip('"').strip("'")
                     elif line.startswith("INDODAX_SECRET="):
                         secret = line.split("=", 1)[1].strip().strip('"').strip("'")
+                    elif line.startswith("TELEGRAM_BOT_TOKEN="):
+                        tg_token = line.split("=", 1)[1].strip().strip('"').strip("'")
+                    elif line.startswith("TELEGRAM_CHAT_ID="):
+                        tg_chat = line.split("=", 1)[1].strip().strip('"').strip("'")
         except Exception:
             pass
 
@@ -113,6 +133,8 @@ def load_settings() -> Settings:
         LIVE_TRADING_ENABLED=live_flag,
         INDODAX_KEY=key,
         INDODAX_SECRET=secret,
+        TELEGRAM_BOT_TOKEN=tg_token,
+        TELEGRAM_CHAT_ID=tg_chat,
         COUNCIL_WORKERS=int(os.getenv("COUNCIL_WORKERS", "4")),
         MAX_SYMBOL_QUEUE_CAP=int(os.getenv("MAX_SYMBOL_QUEUE_CAP", "20")),
         MAX_DRAWDOWN_PCT=float(os.getenv("MAX_DRAWDOWN_PCT", "18.0")),

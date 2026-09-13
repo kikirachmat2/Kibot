@@ -1,6 +1,7 @@
 from .durable_state import DurableStateStore, durable_state_store
 from .reconciler import StartupReconciler
 from .async_logger import setup_logging, SecretRedactingFilter
+from .live_readiness import LiveReadinessEvaluator, live_readiness_evaluator
 
 __all__ = [
     "DurableStateStore",
@@ -8,4 +9,6 @@ __all__ = [
     "StartupReconciler",
     "setup_logging",
     "SecretRedactingFilter",
+    "LiveReadinessEvaluator",
+    "live_readiness_evaluator",
 ]
