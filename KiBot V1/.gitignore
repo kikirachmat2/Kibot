@@ -1,6 +1,6 @@
-# 🛡️ KIBOT REPOSITORY GITIGNORE
+# 🛡️ KIBOT SOVEREIGN PROTECTION
 
-# Infrastructure & Secrets (STRICT - ALL DIRECTORIES)
+# Infrastructure & Secrets (STRICT)
 .env
 .env.*
 !.env.example
@@ -8,17 +8,15 @@
 *.key
 *.kiv
 *.pid
-relaunch_batam_node.py
+scripts/relaunch_batam_node.py
 
-# Logs & Runtime State
+# AI & Data State
 Logs/
 logs/
 state/
 backups/
 /data/
-KiBot V1/data/
 !**/id/kibot/monitor/data/**
-candles_cache/
 *.log
 *.parquet
 *.duckdb
@@ -35,12 +33,6 @@ __pycache__/
 .venv/
 venv/
 
-# Build & Mobile / Gradle Caches
-.gradle/
-build/
-8.9/
-android/
-
 # OS Metadata
 .DS_Store
 ._*
@@ -49,14 +41,17 @@ Thumbs.db
 *.bak
 *.bak.*
 
-# Scratch & Temporary
-scratch/
+# Deployment & Legacy
+deploy_all.sh
+readyecho
+kibot-node.service
 SERVER_BATAM/
 SERVER_EXECUTOR/
 SERVER_SCANNER/
 Shared/
 SHARED_INTELLIGENCE/
+scratch/
 
-# Allow explicit example states
+# Explicit runtime sample allowlist
 !state_samples/
 !state_samples/*.example.json
