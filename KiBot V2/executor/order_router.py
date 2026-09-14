@@ -63,6 +63,7 @@ class OrderRouter:
             open_exposure = sum(pos.amount_coins * pos.current_price for pos in self.virtual_ledger.open_positions.values())
             total_equity = self.virtual_ledger.get_total_equity()
             open_symbols = list(self.virtual_ledger.open_positions.keys())
+            trade_hist = getattr(self.virtual_ledger, "trade_history", [])
             gov_allow, gov_reason = self.capital_governor.evaluate_order_allocation(
                 symbol=symbol,
                 notional_idr=notional_idr,
@@ -70,6 +71,7 @@ class OrderRouter:
                 current_open_exposure_idr=open_exposure,
                 total_equity_idr=total_equity,
                 open_positions_symbols=open_symbols,
+                trade_history=trade_hist,
             )
             if not gov_allow:
                 logger.warning(f"[OrderRouter] Order for {symbol} rejected by Capital Governor: {gov_reason}")

@@ -36,6 +36,7 @@ class VirtualLedger:
         self.peak_equity_idr: float = initial_cash_idr
         self.open_positions: Dict[str, VirtualPosition] = {}
         self.trade_history: List[Dict[str, Any]] = []
+        self.on_trade_closed_cb: Optional[Any] = None
 
     def get_total_equity(self) -> float:
         positions_value = sum(pos.amount_coins * pos.current_price for pos in self.open_positions.values())
@@ -198,6 +199,13 @@ class VirtualLedger:
             )
         except Exception as eval_exc:
             logger.error(f"[VirtualLedger] Live readiness evaluation error: {eval_exc}")
+
+        # Notify risk subsystems (PairQuarantine & ChurnGuard via CapitalGovernor)
+        if self.on_trade_closed_cb:
+            try:
+                self.on_trade_closed_cb(sym, realized_pnl_idr, reason, exit_fee)
+            except Exception as cb_exc:
+                logger.error(f"[VirtualLedger] on_trade_closed_cb error: {cb_exc}")
 
         log_level = logger.info if realized_pnl_idr >= 0 else logger.warning
         badge = "🟢" if realized_pnl_idr >= 0 else "🔴"

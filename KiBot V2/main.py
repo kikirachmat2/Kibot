@@ -27,6 +27,7 @@ class KiBotV2Pipeline:
         self.capital_governor = CapitalGovernor()
         self.venue_ledger = venue_ledger
         self.virtual_ledger = VirtualLedger(initial_cash_idr=10_000_000.0)
+        self.virtual_ledger.on_trade_closed_cb = self.capital_governor.on_trade_closed
         self.order_router = OrderRouter(
             risk_gate=self.risk_gate,
             virtual_ledger=self.virtual_ledger,
