@@ -41,6 +41,7 @@ class IndodaxWebSocketClient(BaseWebSocketClient):
         self.on_message_cb = self._handle_message
         
         self._subscribed_orderbooks: set[str] = set()
+        self._orderbook_cache: Dict[str, Dict[str, Any]] = {}
         self._req_id = 1
         self._http_session: Optional[aiohttp.ClientSession] = None
 
@@ -87,18 +88,45 @@ class IndodaxWebSocketClient(BaseWebSocketClient):
                 except Exception as e:
                     logger.error(f"[IndodaxWS] Failed to fetch REST depth for {pair}: {e}")
 
-    async def _fetch_rest_depth_snapshot(self, pair: str) -> None:
-        """Fetches fresh depth snapshot from Indodax REST API."""
-        formatted_pair = pair.lower().replace("/", "_")
+    async def fetch_orderbook(self, pair: str) -> Optional[Dict[str, Any]]:
+        """Fetches fresh depth snapshot from Indodax REST API and updates cache."""
+        formatted_pair = pair.lower().replace("/", "")
         url = f"{self.rest_url}/api/depth/{formatted_pair}"
         if not self._http_session or self._http_session.closed:
             self._http_session = aiohttp.ClientSession()
-        async with self._http_session.get(url, timeout=aiohttp.ClientTimeout(total=2.0)) as resp:
-            if resp.status == 200:
-                data = await resp.json()
-                metrics_registry.record_tick(pair)
-                if self.on_orderbook_cb:
-                    await self.on_orderbook_cb(pair, {"type": "SNAPSHOT", "bids": data.get("buy", []), "asks": data.get("sell", [])})
+        try:
+            async with self._http_session.get(url, timeout=aiohttp.ClientTimeout(total=2.5)) as resp:
+                if resp.status == 200:
+                    data = await resp.json()
+                    book = {
+                        "bids": data.get("buy", []),
+                        "asks": data.get("sell", []),
+                        "timestamp": time.time(),
+                    }
+                    norm_pair = pair.upper().replace("/", "").strip()
+                    self._orderbook_cache[norm_pair] = book
+                    metrics_registry.record_tick(pair)
+                    if self.on_orderbook_cb:
+                        await self.on_orderbook_cb(pair, {"type": "SNAPSHOT", **book})
+                    return book
+                else:
+                    logger.warning(f"[IndodaxWS] Depth API returned status {resp.status} for {pair}")
+                    return None
+        except Exception as e:
+            logger.error(f"[IndodaxWS] Failed to fetch REST depth for {pair}: {e}")
+            return None
+
+    async def get_orderbook(self, pair: str, max_age_s: float = 3.0) -> Optional[Dict[str, Any]]:
+        """Returns cached orderbook if fresh, otherwise fetches live snapshot."""
+        norm_pair = pair.upper().replace("/", "").strip()
+        cached = self._orderbook_cache.get(norm_pair)
+        if cached and (time.time() - cached.get("timestamp", 0) <= max_age_s):
+            return cached
+        return await self.fetch_orderbook(pair)
+
+    async def _fetch_rest_depth_snapshot(self, pair: str) -> None:
+        """Helper to fetch REST snapshot and notify callback."""
+        await self.fetch_orderbook(pair)
 
     async def subscribe_orderbook(self, pair: str) -> None:
         """Dynamically subscribe to an orderbook channel for a high-interest candidate."""
@@ -111,7 +139,7 @@ class IndodaxWebSocketClient(BaseWebSocketClient):
                 "params": {"channel": f"market:order-book-{formatted_pair}"},
                 "id": req_id,
             })
-            await self._fetch_rest_depth_snapshot(pair)
+            await self.fetch_orderbook(pair)
 
     async def _handle_message(self, raw_msg: str) -> None:
         try:

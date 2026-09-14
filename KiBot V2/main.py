@@ -173,13 +173,23 @@ class KiBotV2Pipeline:
     async def _on_council_decision(self, decision: CouncilDecision, candidate: Dict[str, Any]) -> None:
         if decision.verdict == "APPROVED" and decision.action == "BUY":
             price = float(candidate.get("price", 0.0))
-            await self.order_router.route_buy_order(
+            # Stage 2: Microstructure & Orderbook Depth Verification (GAP-01 Pre-Trade Check)
+            orderbook = await self.indodax_ws.get_orderbook(decision.symbol)
+            res = await self.order_router.route_buy_order(
                 symbol=decision.symbol,
                 price=price,
                 notional_idr=decision.suggested_size_idr,
                 take_profit_pct=decision.target_tp_pct,
                 stop_loss_pct=decision.target_sl_pct,
+                orderbook=orderbook,
             )
+            if res.get("success"):
+                # Dynamically subscribe to WS orderbook stream for active tracking
+                await self.indodax_ws.subscribe_orderbook(decision.symbol)
+            elif res.get("mode") in ("INSUFFICIENT_DEPTH", "LIQUIDITY_REJECT"):
+                logger.warning(
+                    f"[KiBotV2] 🛑 Stage 2 Microstructure blocked {decision.symbol}: {res.get('reason')}"
+                )
 
     async def _telemetry_loop(self) -> None:
         while self._running:
