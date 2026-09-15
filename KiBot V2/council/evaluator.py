@@ -21,6 +21,8 @@ class CouncilDecision:
     enrichment_status: str
     target_tp_pct: float = 1.8
     target_sl_pct: float = 2.4
+    strategy: str = "NONE"
+    max_hold_time_s: int = 0
 
 class FastCouncilEvaluator:
     """
