@@ -84,6 +84,77 @@ def _compute_indicators(df: pd.DataFrame, pair: str) -> pd.DataFrame:
     else:
         df_calc["corr_24h"] = 0.0
 
+    # 4. Multi-Timeframe: 4H Resampling for MR_4H (Zero look-ahead shift)
+    df_calc["bucket_4h"] = df_calc["timestamp_utc"] // 14400
+    df_4h = df_calc.groupby("bucket_4h").agg({
+        "indo_open": "first",
+        "indo_high": "max",
+        "indo_low": "min",
+        "indo_close": "last",
+        "indo_volume": "sum"
+    }).reset_index()
+
+    c_4h = df_4h["indo_close"]
+    delta_4h = c_4h.diff()
+    gain_4h = delta_4h.where(delta_4h > 0, 0.0).rolling(14, min_periods=2).mean()
+    loss_4h = (-delta_4h.where(delta_4h < 0, 0.0)).rolling(14, min_periods=2).mean()
+    rs_4h = gain_4h / loss_4h.replace(0, np.nan)
+    df_4h["rsi_4h"] = (100.0 - (100.0 / (1.0 + rs_4h))).fillna(50.0)
+
+    sma20_4h = c_4h.rolling(20, min_periods=5).mean()
+    std20_4h = c_4h.rolling(20, min_periods=5).std(ddof=0).fillna(0.0)
+    df_4h["middle_bb_4h"] = sma20_4h
+    df_4h["lower_bb_4h"] = sma20_4h - 2.0 * std20_4h
+    df_4h["upper_bb_4h"] = sma20_4h + 2.0 * std20_4h
+
+    for col in ["rsi_4h", "middle_bb_4h", "lower_bb_4h", "upper_bb_4h"]:
+        df_4h[col] = df_4h[col].shift(1)
+
+    df_calc = pd.merge(
+        df_calc,
+        df_4h[["bucket_4h", "rsi_4h", "middle_bb_4h", "lower_bb_4h", "upper_bb_4h"]],
+        on="bucket_4h",
+        how="left"
+    )
+
+    # 5. Multi-Timeframe: 1D Resampling for TREND_1D & MR_1D (Zero look-ahead shift)
+    df_calc["bucket_1d"] = df_calc["timestamp_utc"] // 86400
+    df_1d = df_calc.groupby("bucket_1d").agg({
+        "indo_open": "first",
+        "indo_high": "max",
+        "indo_low": "min",
+        "indo_close": "last",
+        "indo_volume": "sum"
+    }).reset_index()
+
+    c_1d = df_1d["indo_close"]
+    h_1d = df_1d["indo_high"]
+    l_1d = df_1d["indo_low"]
+
+    df_1d["sma50_1d"] = c_1d.rolling(50, min_periods=5).mean()
+    df_1d["sma200_1d"] = c_1d.rolling(200, min_periods=10).mean()
+
+    tr1 = h_1d - l_1d
+    tr2 = (h_1d - c_1d.shift(1)).abs()
+    tr3 = (l_1d - c_1d.shift(1)).abs()
+    tr = pd.concat([tr1, tr2, tr3], axis=1).max(axis=1)
+    df_1d["atr14_1d"] = tr.rolling(14, min_periods=2).mean()
+
+    sma20_1d = c_1d.rolling(20, min_periods=5).mean()
+    std20_1d = c_1d.rolling(20, min_periods=5).std(ddof=0).replace(0, np.nan)
+    df_1d["sma20_1d"] = sma20_1d
+    df_1d["z_score_1d"] = ((c_1d - sma20_1d) / std20_1d).fillna(0.0)
+
+    for col in ["sma50_1d", "sma200_1d", "atr14_1d", "sma20_1d", "z_score_1d"]:
+        df_1d[col] = df_1d[col].shift(1)
+
+    df_calc = pd.merge(
+        df_calc,
+        df_1d[["bucket_1d", "sma50_1d", "sma200_1d", "atr14_1d", "sma20_1d", "z_score_1d"]],
+        on="bucket_1d",
+        how="left"
+    )
+
     df_calc["is_valid_bar"] = is_valid
     return df_calc
 
@@ -118,12 +189,14 @@ def run_backtest(
         raise ValueError("aligned_df must contain at least 2 rows for replay.")
 
     strat_clean = strategy_name.strip()
-    if strat_clean in ("D1", "D2", "D3"):
+    if strat_clean in ("D1", "D2", "D3", "MR_4H", "MR_1D"):
         strategy_type = StrategyType.MEAN_REVERSION
     elif strat_clean in ("C_prime", "C'", "CPRIME"):
         strategy_type = StrategyType.LEAD_LAG
+    elif strat_clean in ("TREND_1D", "TREND"):
+        strategy_type = StrategyType.TREND_FOLLOWING
     else:
-        raise ValueError(f"Unknown strategy: {strategy_name}. Expected D1, D2, D3, or C_prime.")
+        raise ValueError(f"Unknown strategy: {strategy_name}.")
 
     # Prepare DataFrame with indicators
     df = _compute_indicators(aligned_df, pair)
@@ -166,9 +239,10 @@ def run_backtest(
                 entry_price = curr_open
                 pos_tp = pending_entry.get("tp_price")
                 pos_sl = pending_entry.get("sl_price")
+                use_fixed_tp = pending_entry.get("use_fixed_tp", True)
 
-                # If dynamic TP not set, calculate default TP/SL based on entry_price
-                if pos_tp is None:
+                # If dynamic TP not set and fixed TP enabled, calculate default TP/SL based on entry_price
+                if pos_tp is None and use_fixed_tp:
                     pos_tp = entry_price * (1.0 + tp_pct)
                 if pos_sl is None:
                     pos_sl = entry_price * (1.0 - sl_pct)
@@ -181,6 +255,10 @@ def run_backtest(
                     "size_idr": position_size_idr,
                     "holding_bars": 0,
                     "max_holding_bars": pending_entry.get("max_bars", max_holding_bars),
+                    "highest_high": entry_price,
+                    "atr_val": pending_entry.get("atr_val"),
+                    "trail_mult": pending_entry.get("trail_mult"),
+                    "strategy_name": strat_clean,
                 }
                 open_positions.append(new_pos)
                 cash_idr -= position_size_idr
@@ -195,25 +273,47 @@ def run_backtest(
         surviving_positions = []
         for pos in open_positions:
             pos["holding_bars"] += 1
-            hit_tp = curr_high >= pos["tp_price"]
+            pos["highest_high"] = max(pos.get("highest_high", pos["entry_price"]), curr_high)
+
+            # Update trailing stop for ATR trailing strategy
+            if pos.get("trail_mult") is not None and pos.get("atr_val") is not None:
+                trail_sl = pos["highest_high"] - (pos["trail_mult"] * pos["atr_val"])
+                pos["sl_price"] = max(pos["sl_price"], trail_sl)
+
+            hit_tp = (pos["tp_price"] is not None) and (curr_high >= pos["tp_price"])
             hit_sl = curr_low <= pos["sl_price"]
 
             exit_price = None
             exit_reason = None
 
+            # Strategy-specific conditional exits:
+            # MR_4H: Exit when RSI_4H > 50
+            if pos.get("strategy_name") == "MR_4H":
+                rsi_val = current_bar.get("rsi_4h")
+                if pd.notna(rsi_val) and rsi_val > 50.0:
+                    exit_price = curr_close
+                    exit_reason = "EXIT_RSI50"
+            # MR_1D: Exit when Z-score_1D > 0
+            elif pos.get("strategy_name") == "MR_1D":
+                z_val = current_bar.get("z_score_1d")
+                if pd.notna(z_val) and z_val > 0.0:
+                    exit_price = curr_close
+                    exit_reason = "EXIT_ZSCORE"
+
             # Worst-case prioritization: if both hit in the same bar, assume SL first
-            if hit_tp and hit_sl:
-                exit_price = pos["sl_price"]
-                exit_reason = "SL"
-            elif hit_sl:
-                exit_price = pos["sl_price"]
-                exit_reason = "SL"
-            elif hit_tp:
-                exit_price = pos["tp_price"]
-                exit_reason = "TP"
-            elif pos["holding_bars"] >= pos["max_holding_bars"]:
-                exit_price = curr_close
-                exit_reason = "TIMEOUT"
+            if exit_price is None:
+                if hit_tp and hit_sl:
+                    exit_price = pos["sl_price"]
+                    exit_reason = "SL"
+                elif hit_sl:
+                    exit_price = pos["sl_price"]
+                    exit_reason = "TRAILING_ATR" if pos.get("trail_mult") is not None else "SL"
+                elif hit_tp:
+                    exit_price = pos["tp_price"]
+                    exit_reason = "TP"
+                elif pos["holding_bars"] >= pos["max_holding_bars"]:
+                    exit_price = curr_close
+                    exit_reason = "TIMEOUT"
 
             if exit_price is not None:
                 # Position closed
@@ -262,6 +362,7 @@ def run_backtest(
             target_tp = None
             target_sl = None
             max_bars = max_holding_bars
+            extra_params = {}
 
             # Strategy Option D1: Mean Reversion Lower BB touch murni
             if strat_clean == "D1":
@@ -325,12 +426,73 @@ def run_backtest(
                     target_sl = curr_close * (1.0 - sl_pct)
                     max_bars = 6
 
+            # Strategy Option TREND_1D: Trend following daily (close > SMA200 & SMA50 > SMA200)
+            elif strat_clean in ("TREND_1D", "TREND"):
+                sma200_1d = current_bar.get("sma200_1d")
+                sma50_1d = current_bar.get("sma50_1d")
+                atr_d = current_bar.get("atr14_1d")
+
+                if (
+                    pd.notna(sma200_1d)
+                    and pd.notna(sma50_1d)
+                    and curr_close > sma200_1d
+                    and sma50_1d > sma200_1d
+                    and len(open_positions) == 0  # 1 position at a time riding trend
+                ):
+                    signal = True
+                    atr_effective = atr_d if (pd.notna(atr_d) and atr_d > 0) else curr_close * 0.03
+                    target_tp = None
+                    target_sl = curr_close - (2.5 * atr_effective)
+                    max_bars = 720  # 30 days
+                    extra_params = {
+                        "use_fixed_tp": False,
+                        "atr_val": atr_effective,
+                        "trail_mult": 2.5,
+                    }
+
+            # Strategy Option MR_4H: Mean reversion 4H (RSI < 30 & price < lower BB(20,2))
+            elif strat_clean == "MR_4H":
+                rsi_4h = current_bar.get("rsi_4h")
+                lower_bb_4h = current_bar.get("lower_bb_4h")
+                middle_bb_4h = current_bar.get("middle_bb_4h")
+
+                if (
+                    pd.notna(rsi_4h)
+                    and pd.notna(lower_bb_4h)
+                    and rsi_4h < 30.0
+                    and (curr_close < lower_bb_4h or curr_low <= lower_bb_4h)
+                ):
+                    signal = True
+                    target_tp = middle_bb_4h if pd.notna(middle_bb_4h) else curr_close * 1.03
+                    target_sl = curr_close * 0.95  # 5% SL
+                    max_bars = 96  # 4 days
+                    extra_params = {"use_fixed_tp": True}
+
+            # Strategy Option MR_1D: Mean reversion 1D (Z-score < -2.0 & price > SMA200)
+            elif strat_clean == "MR_1D":
+                z_1d = current_bar.get("z_score_1d")
+                sma200_1d = current_bar.get("sma200_1d")
+                sma20_1d = current_bar.get("sma20_1d")
+
+                if (
+                    pd.notna(z_1d)
+                    and pd.notna(sma200_1d)
+                    and z_1d < -2.0
+                    and curr_close > sma200_1d
+                ):
+                    signal = True
+                    target_tp = sma20_1d if pd.notna(sma20_1d) else curr_close * 1.05
+                    target_sl = curr_close * 0.94  # 6% SL
+                    max_bars = 240  # 10 days
+                    extra_params = {"use_fixed_tp": True}
+
             if signal:
                 pending_entry = {
                     "signal_ts": curr_ts,
                     "tp_price": target_tp,
                     "sl_price": target_sl,
                     "max_bars": max_bars,
+                    **extra_params,
                 }
 
         # Track total equity at end of bar

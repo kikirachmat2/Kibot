@@ -86,3 +86,47 @@ def test_report_generator_markdown_validity(tmp_path):
     assert "## DECISION & EVALUATION GATES" in content
     assert "BTCIDR" in content
     assert "D1" in content
+
+
+def test_broad_universe_backtest_and_report_validity(tmp_path, mini_df):
+    """Verifies that run_broad_universe_backtest runs offline with mocks and writes universe report."""
+    from backtest.scenario_runner import run_broad_universe_backtest
+    from backtest.report_universe import generate_universe_report
+
+    mock_universe = [
+        {"pair": "BTCIDR", "binance_pair": "BTCUSDT", "has_binance": True, "volume_idr": 1e9, "spread_pct": 0.1},
+        {"pair": "XYZIDR", "binance_pair": None, "has_binance": False, "volume_idr": 5e8, "spread_pct": 0.2},
+    ]
+
+    with patch("backtest.scenario_runner.select_tradable_universe", return_value=mock_universe), \
+         patch("backtest.scenario_runner.fetch_indodax_ohlcv", return_value=mini_df), \
+         patch("backtest.scenario_runner.fetch_binance_ohlcv", return_value=mini_df):
+
+        res = run_broad_universe_backtest(
+            universe=["BTCIDR", "XYZIDR"],
+            scenarios=["S1_2023_full"],
+            strategies=["D1", "D3", "TREND_1D"],
+            results_dir=tmp_path,
+            max_pairs=2,
+        )
+
+        assert "scenarios" in res
+        assert "results" in res
+        assert "S1_2023_full" in res["results"]
+        assert "BTCIDR" in res["results"]["S1_2023_full"]
+        # XYZIDR has no Binance mapping -> D3 (lead-lag) should be excluded, only D1 and TREND_1D run
+        assert "XYZIDR" in res["results"]["S1_2023_full"]
+        assert "D3" not in res["results"]["S1_2023_full"]["XYZIDR"]
+        assert "TREND_1D" in res["results"]["S1_2023_full"]["XYZIDR"]
+
+        # Check universe report markdown
+        report_file = tmp_path / "test_universe_report.md"
+        md_content = generate_universe_report(res, report_file)
+        assert report_file.exists()
+        assert "# REPORT EVALUASI BROAD UNIVERSE — KIBOT V2" in md_content
+        assert "## 1. Agregasi Kinerja Per Pair" in md_content
+        assert "## 2. Agregasi Kinerja Per Strategi" in md_content
+        assert "## 3. Top 10 Pairs by Net Profit" in md_content
+        assert "## 4. Top 5 Strategies by Net Profit" in md_content
+        assert "## 5. Rekomendasi Shadow Ledger" in md_content
+
