@@ -14,7 +14,7 @@ from ingestion import (
     metrics_registry,
 )
 from council import PerSymbolCoalescingRouter, CouncilWorkerPool, CouncilDecision, SwingEvaluator
-from enrichment import BackgroundEnrichmentWorker
+from enrichment import BackgroundEnrichmentWorker, CandleEnrichmentManager
 from risk import RiskGate, CapitalGovernor
 from storage import setup_logging, durable_state_store, StartupReconciler, venue_ledger
 from executor import OrderRouter, VirtualLedger
@@ -32,6 +32,7 @@ class KiBotV2Pipeline:
             evaluator=self.swing_evaluator,
         )
         self.enrichment_worker = BackgroundEnrichmentWorker()
+        self.candle_manager = CandleEnrichmentManager()
         
         self.risk_gate = RiskGate()
         self.capital_governor = CapitalGovernor()
@@ -102,8 +103,9 @@ class KiBotV2Pipeline:
             peak_equity_idr=shadow_data.get("peak_equity_idr", shadow_data.get("equity_idr")),
         )
 
-        # 3. Start Out-of-band Enrichment Background Worker
+        # 3. Start Out-of-band Enrichment Background Worker & Candle Manager
         await self.enrichment_worker.start()
+        await self.candle_manager.start()
 
         # 4. Wire Council Decision to Order Router
         self.council_pool.on_decision_cb = self._on_council_decision
@@ -208,6 +210,9 @@ class KiBotV2Pipeline:
         bin_mom = self.binance_tracker.get_momentum(bin_sym)
         is_dumping, dump_reason = self.binance_tracker.is_dumping(bin_sym)
 
+        # Update live price and get precomputed 1D candle technical indicators
+        indicators = self.candle_manager.update_live_price(pair, price) or self.candle_manager.get_indicators(pair) or {}
+
         candidate_payload = {
             "symbol": pair,
             "price": price,
@@ -223,6 +228,22 @@ class KiBotV2Pipeline:
             "binance_is_dumping": is_dumping,
             "binance_dump_reason": dump_reason,
             "timestamp": time.time(),
+            # Precomputed 1D Swing Indicators
+            "ema20": indicators.get("ema20", 0.0),
+            "ema50": indicators.get("ema50", 0.0),
+            "ema100": indicators.get("ema100", 0.0),
+            "rsi14": indicators.get("rsi14", 50.0),
+            "atr14": indicators.get("atr14", 0.0),
+            "volume": indicators.get("volume", 1.0),
+            "volume_sma20": indicators.get("volume_sma20", 1.0),
+            "lower_bb": indicators.get("lower_bb", 0.0),
+            "middle_bb": indicators.get("middle_bb", 0.0),
+            "upper_bb": indicators.get("upper_bb", 0.0),
+            "adx14": indicators.get("adx14", 20.0),
+            "sma20_slope": indicators.get("sma20_slope", 0.0),
+            "choppiness_index": indicators.get("choppiness_index", 50.0),
+            "volume_zscore": indicators.get("volume_zscore", 0.0),
+            "bollinger_pct_b": indicators.get("bollinger_pct_b", 0.5),
         }
         await self.router.enqueue_candidate(symbol=pair, payload=candidate_payload, score=score)
 
@@ -279,6 +300,7 @@ class KiBotV2Pipeline:
         await self.binance_ws.stop()
         await self.council_pool.stop()
         await self.enrichment_worker.stop()
+        await self.candle_manager.stop()
         self.venue_ledger.stop()
         if self._health_runner:
             await self._health_runner.cleanup()

@@ -88,7 +88,7 @@ class VenueLedger:
         snapshot = durable_state_store.get_latest_snapshot()
         if snapshot:
             return {
-                "cash_idr": float(snapshot.get("total_equity_idr", 10_000_000.0)),
+                "cash_idr": float(snapshot.get("cash_idr") or snapshot.get("equity_idr", 10_000_000.0)),
                 "positions": snapshot.get("open_positions", {}),
                 "source": "DURABLE_STATE_SNAPSHOT",
             }

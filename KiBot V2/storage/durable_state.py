@@ -78,6 +78,11 @@ class DurableStateStore:
     def get_state(self) -> Dict[str, Any]:
         return dict(self._latest_state)
 
+    def get_latest_snapshot(self) -> Dict[str, Any]:
+        """Alias for get_state() used by VenueLedger reconciliation."""
+        return self.get_state()
+
+
     def record_position_change(
         self,
         change_type: str,
