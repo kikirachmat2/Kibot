@@ -29,6 +29,7 @@ class VirtualPosition:
     tp1_executed: bool = False
     partial_pnl_idr: float = 0.0
     initial_cost_idr: float = 0.0
+    atr14: float = 0.0
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -50,6 +51,7 @@ class VirtualPosition:
             "partial_tp_price": self.partial_tp_price,
             "tp1_executed": self.tp1_executed,
             "partial_pnl_idr": self.partial_pnl_idr,
+            "atr14": self.atr14,
         }
 
     @classmethod
@@ -88,6 +90,8 @@ class VirtualPosition:
             tp_delta = tp - entry_price
             partial_tp_price = entry_price + (tp_delta * (partial_tp_pct / 100.0))
 
+        atr14 = float(data.get("atr14", 0.0))
+
         return cls(
             position_id=pos_id,
             symbol=sym,
@@ -107,6 +111,7 @@ class VirtualPosition:
             tp1_executed=tp1_executed,
             partial_pnl_idr=partial_pnl_idr,
             initial_cost_idr=initial_cost_idr,
+            atr14=atr14,
         )
 
 class VirtualLedger:
@@ -209,6 +214,7 @@ class VirtualLedger:
         strategy: Optional[str] = None,
         partial_tp_pct: Optional[float] = None,
         partial_tp_price: Optional[float] = None,
+        atr14: Optional[float] = None,
     ) -> Dict[str, Any]:
         """
         Executes a paper BUY order.
@@ -273,6 +279,8 @@ class VirtualLedger:
             tp_delta = tp_target_price - slippage_price
             p_tp_price = slippage_price + (tp_delta * (p_tp_pct / 100.0))
 
+        calc_atr = float(atr14) if (atr14 is not None and atr14 > 0) else (slippage_price * 0.035)
+
         pos = VirtualPosition(
             position_id=pos_id,
             symbol=sym,
@@ -292,6 +300,7 @@ class VirtualLedger:
             tp1_executed=False,
             partial_pnl_idr=0.0,
             initial_cost_idr=notional_idr,
+            atr14=calc_atr,
         )
         self.open_positions[sym] = pos
         
@@ -313,69 +322,61 @@ class VirtualLedger:
         )
         return {"success": True, "position_id": pos_id, "symbol": sym, "price": slippage_price, "amount": amount_coins}
 
-    def execute_partial_tp(self, symbol: str, current_price: float, fraction: Optional[float] = None) -> Optional[Dict[str, Any]]:
+    def execute_partial_tp(self, symbol: str, current_price: float) -> Optional[Dict[str, Any]]:
         """
-        Executes Tier 1 Partial Take Profit (Capital Recycling).
-        - Closes `fraction` (default pos.partial_tp_pct %) of position lot.
-        - Returns capital + profit to `cash_idr` immediately for recycling into new setups.
-        - Ratchets stop loss of remaining position to Break-Even + Roundtrip Fee buffer.
-        - Enforces Indodax minimum lot value (Rp 10,000) check.
+        Executes Tier 1 Partial Take Profit (Capital Recycling):
+        - Closes 50% of the position coins.
+        - Returns recycled capital + realized profit back into cash ledger.
+        - Ratchets stop-loss of remaining 50% runner to Break-Even (Entry + 0.52% fee buffer).
+        - Position remains OPEN for the runner to catch fat tails.
         """
         sym = symbol.upper().strip()
         pos = self.open_positions.get(sym)
         if not pos or pos.tp1_executed:
             return None
 
-        frac = fraction if fraction is not None else (pos.partial_tp_pct / 100.0)
-        frac = max(0.01, min(0.99, frac))
-
+        frac = pos.partial_tp_pct / 100.0
         coins_to_close = pos.amount_coins * frac
-        cost_portion = pos.cost_idr * frac
-        gross_value = coins_to_close * current_price
+        cost_of_closed = pos.cost_idr * frac
 
-        # WHAT-IF: Indodax minimum lot restriction (Rp 10,000)
+        gross_proceeds = coins_to_close * current_price
         remaining_coins = pos.amount_coins - coins_to_close
         remaining_val = remaining_coins * current_price
-        if gross_value < 10_000.0 or remaining_val < 10_000.0:
+        if gross_proceeds < 10_000.0 or remaining_val < 10_000.0:
             logger.warning(
                 f"[VirtualLedger:{self.name}] ⚠️ Partial TP skipped for {sym}: "
-                f"lot value (close: Rp {gross_value:,.0f}, remain: Rp {remaining_val:,.0f}) < Rp 10,000 minimum lot size."
+                f"lot value (close: Rp {gross_proceeds:,.0f}, remain: Rp {remaining_val:,.0f}) < Rp 10,000 minimum lot size."
             )
             return None
 
-        # Exit fee for the partial portion (0.21%)
-        exit_fee = gross_value * (settings.FEE_ROUNDTRIP_PCT / 100.0 / 2.0)
-        net_proceeds = gross_value - exit_fee
-        partial_pnl_idr = net_proceeds - cost_portion
-        partial_pnl_pct = (partial_pnl_idr / cost_portion) * 100.0
+        exit_fee = gross_proceeds * (settings.FEE_ROUNDTRIP_PCT / 100.0 / 2.0)
+        net_proceeds = gross_proceeds - exit_fee
+        partial_pnl_idr = net_proceeds - cost_of_closed
+        partial_pnl_pct = (partial_pnl_idr / cost_of_closed * 100.0) if cost_of_closed > 0 else 0.0
 
-        # Update position size and cost
+        # Adjust position in memory
         pos.amount_coins -= coins_to_close
-        pos.cost_idr -= cost_portion
+        pos.cost_idr -= cost_of_closed
         pos.tp1_executed = True
         pos.partial_pnl_idr = partial_pnl_idr
 
-        # Immediate capital recycling back to available bankroll
-        self.cash_idr += net_proceeds
+        # Break-Even Ratchet: Entry + roundtrip fee buffer (0.42% + 0.1% slippage = 0.52%)
+        bep_price = pos.entry_price * 1.0052
+        pos.stop_loss_price = round(max(pos.stop_loss_price, bep_price), 2)
 
-        # Break-Even Ratchet: Entry + Roundtrip Fee (0.42%) + Safety Buffer (0.10%) = +0.52%
-        fee_buffer_rate = (settings.FEE_ROUNDTRIP_PCT / 100.0) + 0.0010
-        breakeven_sl = pos.entry_price * (1.0 + fee_buffer_rate)
-        pos.stop_loss_price = max(pos.stop_loss_price, breakeven_sl)
+        # Capital Recycling: Inject recycled cash back into ledger
+        self.cash_idr += net_proceeds
 
         partial_record = {
             "position_id": pos.position_id,
             "symbol": sym,
-            "action": "PARTIAL_TAKE_PROFIT",
-            "fraction_closed": frac,
-            "exit_price": current_price,
-            "coins_closed": coins_to_close,
-            "cost_portion_idr": cost_portion,
+            "closed_coins": coins_to_close,
+            "remaining_coins": pos.amount_coins,
+            "tp1_price": current_price,
             "net_proceeds_idr": net_proceeds,
             "partial_pnl_idr": round(partial_pnl_idr, 2),
             "partial_pnl_pct": round(partial_pnl_pct, 2),
-            "recycled_cash_idr": round(self.cash_idr, 2),
-            "new_stop_loss_price": pos.stop_loss_price,
+            "ratcheted_sl": pos.stop_loss_price,
             "timestamp": time.time(),
             "ledger": self.name,
         }
@@ -411,9 +412,28 @@ class VirtualLedger:
             pos.max_price_seen = current_price
 
         now = time.time()
-        # 1. Check Stop Loss (Evaluated against ratcheted BEP if TP1 was already taken)
+
+        # Dynamic Chandelier ATR Trailing Stop Ratchet for Runner Tier 2
+        if pos.tp1_executed and pos.max_price_seen > pos.entry_price:
+            effective_atr = getattr(pos, "atr14", 0.0)
+            if effective_atr <= 0 or effective_atr > pos.current_price:
+                effective_atr = pos.entry_price * 0.035
+
+            # Chandelier trail: 1.5x ATR below peak price seen
+            trailing_stop = pos.max_price_seen - (1.5 * effective_atr)
+            # Stop loss only moves UP monotonically, never moves down
+            if trailing_stop > pos.stop_loss_price:
+                pos.stop_loss_price = round(trailing_stop, 2)
+
+        # 1. Check Stop Loss (Evaluated against ratcheted BEP or Chandelier Trailing Stop)
         if current_price <= pos.stop_loss_price:
-            reason = "BREAKEVEN_STOP_BREACHED" if pos.tp1_executed else "STOP_LOSS_BREACHED"
+            bep_price = pos.entry_price * 1.0052
+            if pos.tp1_executed and pos.stop_loss_price > (bep_price + 1.0):
+                reason = "CHANDELIER_TRAILING_STOP_HIT"
+            elif pos.tp1_executed:
+                reason = "BREAKEVEN_STOP_BREACHED"
+            else:
+                reason = "STOP_LOSS_BREACHED"
             return self.close_paper_position(sym, reason=reason)
 
         # 2. Check Take Profit Target (Full exit or Tier 2 Runner exit)

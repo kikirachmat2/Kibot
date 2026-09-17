@@ -40,6 +40,7 @@ class OrderRouter:
         orderbook: Optional[Dict[str, Any]] = None,
         max_hold_time_s: Optional[float] = None,
         strategy: Optional[str] = None,
+        atr14: Optional[float] = None,
     ) -> Dict[str, Any]:
         sl_pct = stop_loss_pct if stop_loss_pct is not None else settings.DEFAULT_STOP_LOSS_PCT
         tp_pct = take_profit_pct if take_profit_pct is not None else settings.DEFAULT_TAKE_PROFIT_PCT
@@ -104,6 +105,7 @@ class OrderRouter:
                 orderbook=orderbook,
                 max_hold_time_s=max_hold_time_s,
                 strategy=strategy,
+                atr14=atr14,
             )
             if result.get("success"):
                 self.risk_gate.record_order_placed(symbol)

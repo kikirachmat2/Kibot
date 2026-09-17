@@ -195,3 +195,99 @@ def test_hybrid_exit_state_serialization_roundtrip():
     assert restored.partial_tp_price == 1_040_000_000.0
     assert restored.stop_loss_price == 1_005_200_000.0
     assert restored.initial_cost_idr == 2_000_000.0
+
+
+def test_chandelier_trailing_stop_runner_locks_profit():
+    """
+    Test Chandelier ATR Trailing Stop on Runner Tier 2:
+    - Entry at 1,000,000,000 IDR with atr14 = 30,000,000 IDR (3.0%).
+    - Trigger TP1 at +4.0% -> 50% position closed, SL set to BEP (+0.52%).
+    - Price surges to +7.0% (1,070,000,000) -> Chandelier trail (Peak - 1.5*ATR)
+      rises to 1,025,000,000, ratcheting SL up above BEP.
+    - Price extends to +7.5% (1,075,000,000) -> SL ratchets up to 1,030,000,000.
+    - Price dips to 1,050,000,000 -> SL remains at 1,030,000,000 (monotonic).
+    - Price drops to 1,028,000,000 -> Runner exits with CHANDELIER_TRAILING_STOP_HIT,
+      locking in alpha well above breakeven.
+    """
+    ledger = VirtualLedger(initial_cash_idr=10_000_000.0, name="TEST_CHANDELIER")
+
+    buy_res = ledger.place_paper_buy(
+        symbol="BTC/IDR",
+        price=1_000_000_000.0,
+        notional_idr=2_000_000.0,
+        stop_loss_pct=3.5,
+        take_profit_pct=8.0,
+        partial_tp_pct=50.0,
+        strategy="TREND_FOLLOWING",
+        atr14=30_000_000.0,
+    )
+    assert buy_res["success"] is True
+    pos = ledger.open_positions["BTC/IDR"]
+    entry_price = pos.entry_price
+
+    # 1. Trigger TP1
+    tp1_trigger_price = 1_045_000_000.0
+    res_tp1 = ledger.update_market_price("BTC/IDR", tp1_trigger_price)
+    assert pos.tp1_executed is True
+    bep_stop = pos.stop_loss_price
+    assert bep_stop == pytest.approx(entry_price * 1.0052, abs=100.0)
+
+    # 2. Surge to 1,070,000,000 (+7.0%)
+    ledger.update_market_price("BTC/IDR", 1_070_000_000.0)
+    # 1.5 * ATR = 45,000,000 -> 1,070,000,000 - 45,000,000 = 1,025,000,000
+    assert pos.stop_loss_price == 1_025_000_000.0
+    assert pos.stop_loss_price > bep_stop
+
+    # 3. Surge further to 1,075,000,000 (+7.5%)
+    ledger.update_market_price("BTC/IDR", 1_075_000_000.0)
+    # 1,075,000,000 - 45,000,000 = 1,030,000,000
+    assert pos.stop_loss_price == 1_030_000_000.0
+
+    # 4. Pullback to 1,050,000,000 (above stop loss) - SL must stay monotonic
+    ledger.update_market_price("BTC/IDR", 1_050_000_000.0)
+    assert pos.stop_loss_price == 1_030_000_000.0
+    assert "BTC/IDR" in ledger.open_positions
+
+    # 5. Drop below Chandelier Stop to 1,028,000,000
+    exit_res = ledger.update_market_price("BTC/IDR", 1_028_000_000.0)
+    assert "BTC/IDR" not in ledger.open_positions
+    assert exit_res["exit_reason"] == "CHANDELIER_TRAILING_STOP_HIT"
+    assert exit_res["realized_pnl_idr"] > 0
+    # Net profit on runner locked at ~ +3.11%
+    assert exit_res["realized_pnl_pct"] > 2.0
+
+
+def test_capital_governor_70_pct_multi_asset_diversification():
+    """
+    Validates Directive D-06:
+    Under MAX_TOTAL_EXPOSURE_PCT = 70.0%:
+    - 1st position (BTC 25% = Rp 2,500,000) is APPROVED.
+    - 2nd position (ETH 25% = Rp 2,500,000) is APPROVED (Projected 50% <= 70%).
+    - 3rd position (SOL 20% = Rp 2,000,000) is APPROVED (Projected 70% <= 70%).
+    - 4th position (AVAX 10% = Rp 1,000,000) is BLOCKED (Projected 80% > 70%).
+    """
+    from risk.capital_governor import CapitalGovernor
+
+    gov = CapitalGovernor(max_concurrent_positions=3, max_total_exposure_pct=70.0)
+    total_eq = 10_000_000.0
+
+    # 1. First order: BTC 2.5M (25%)
+    allow1, reason1 = gov.evaluate_order_allocation("BTC/IDR", 2_500_000.0, 0, 0.0, total_eq)
+    assert allow1 is True
+    assert reason1 == "APPROVED_BY_CAPITAL_GOVERNOR"
+
+    # 2. Second order: ETH 2.5M (Current 2.5M + 2.5M = 5.0M / 50%)
+    allow2, reason2 = gov.evaluate_order_allocation("ETH/IDR", 2_500_000.0, 1, 2_500_000.0, total_eq)
+    assert allow2 is True
+    assert reason2 == "APPROVED_BY_CAPITAL_GOVERNOR"
+
+    # 3. Third order: SOL 2.0M (Current 5.0M + 2.0M = 7.0M / 70%)
+    allow3, reason3 = gov.evaluate_order_allocation("SOL/IDR", 2_000_000.0, 2, 5_000_000.0, total_eq)
+    assert allow3 is True
+    assert reason3 == "APPROVED_BY_CAPITAL_GOVERNOR"
+
+    # 4. Fourth order: Exceeds both concurrent positions (3) and exposure (80%)
+    allow4, reason4 = gov.evaluate_order_allocation("AVAX/IDR", 1_000_000.0, 3, 7_000_000.0, total_eq)
+    assert allow4 is False
+    assert "BLOCKED" in reason4
+

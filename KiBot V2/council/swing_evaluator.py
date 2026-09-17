@@ -84,14 +84,14 @@ class SwingEvaluator:
         self,
         allocation_pct: Optional[float] = None,
         use_volatility_parity: bool = True,
-        target_risk_pct: float = 0.02,
+        target_risk_pct: float = 0.015,
         max_cap_pct: Optional[float] = None,
     ):
-        # Default allocation: 33.33% of bankroll per position (Model B)
-        self.allocation_pct = allocation_pct if allocation_pct is not None else getattr(settings, "POSITION_ALLOCATION_PCT", 0.3333)
+        # Default allocation: 25.0% of bankroll per position (enabling 2-3 positions within 70% cap)
+        self.allocation_pct = allocation_pct if allocation_pct is not None else getattr(settings, "POSITION_ALLOCATION_PCT", 0.25)
         self.use_volatility_parity = use_volatility_parity
         self.target_risk_pct = target_risk_pct
-        self.max_cap_pct = max_cap_pct if max_cap_pct is not None else self.allocation_pct
+        self.max_cap_pct = max_cap_pct if max_cap_pct is not None else 0.25
 
     def calculate_position_size(self, bankroll_idr: float, sl_pct: float) -> float:
         """
@@ -323,6 +323,7 @@ class SwingEvaluator:
             target_sl_pct=sl_pct,
             strategy="TREND_FOLLOWING",
             max_hold_time_s=self.TF_STATS["max_hold_days"] * 86400,
+            atr14=round(effective_atr, 2),
         )
 
     def evaluate_mean_reversion(self, norm_sym: str, raw_sym: str, vals: Dict[str, Any], bankroll_idr: float, t0: float) -> Optional[CouncilDecision]:
@@ -392,6 +393,7 @@ class SwingEvaluator:
             target_sl_pct=sl_pct,
             strategy="MEAN_REVERSION",
             max_hold_time_s=self.MR_STATS["max_hold_days"] * 86400,
+            atr14=round(effective_atr, 2),
         )
 
     def evaluate(self, candidate: Dict[str, Any], bankroll_idr: float = 10_000_000.0) -> CouncilDecision:

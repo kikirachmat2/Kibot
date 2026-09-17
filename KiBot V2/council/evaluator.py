@@ -23,6 +23,7 @@ class CouncilDecision:
     target_sl_pct: float = 2.4
     strategy: str = "NONE"
     max_hold_time_s: int = 0
+    atr14: float = 0.0
 
 class FastCouncilEvaluator:
     """

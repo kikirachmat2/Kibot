@@ -32,7 +32,7 @@ class Settings(BaseModel):
     MAX_DAILY_LOSS_PCT: float = Field(default=3.0, description="Daily loss cap percentage")
     IDEMPOTENCY_WINDOW_SECONDS: float = Field(default=30.0, description="Window to prevent duplicate orders on identical pair")
     MAX_CONCURRENT_POSITIONS: int = Field(default=3, ge=1, le=10, description="Maximum simultaneous open positions allowed")
-    MAX_TOTAL_EXPOSURE_PCT: float = Field(default=35.0, ge=5.0, le=100.0, description="Maximum total portfolio exposure in active positions")
+    MAX_TOTAL_EXPOSURE_PCT: float = Field(default=70.0, ge=5.0, le=100.0, description="Maximum total portfolio exposure in active positions")
     RECONCILIATION_INTERVAL_SECONDS: float = Field(default=300.0, ge=10.0, description="Periodic venue truth reconciliation interval (seconds)")
     RECONCILIATION_DRIFT_TOLERANCE_IDR: float = Field(default=1_000.0, ge=0.0, description="Acceptable cash drift tolerance in IDR before halting")
     HEALTH_SERVER_PORT: int = Field(default=8789, description="Port for lightweight external watchdog healthcheck HTTP server")

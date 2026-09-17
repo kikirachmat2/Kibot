@@ -231,7 +231,7 @@ def test_sol_trend_following_inclusion_and_volatility_parity():
     Validates that SOLIDR is included in TF_ELIGIBLE and approved under
     trend-following conditions with Volatility Risk Parity sizing.
     """
-    evaluator = SwingEvaluator(use_volatility_parity=True, target_risk_pct=0.02)
+    evaluator = SwingEvaluator(use_volatility_parity=True, target_risk_pct=0.02, max_cap_pct=0.35)
     sol_candidate = {
         "symbol": "SOL/IDR",
         "price": 1_800_000.0,

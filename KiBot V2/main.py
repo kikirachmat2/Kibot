@@ -132,14 +132,42 @@ class KiBotV2Pipeline:
         try:
             app = web.Application()
             async def handle_health(request):
+                tf_equity = self.virtual_ledger.get_total_equity()
+                open_positions_detail = []
+                total_open_exposure = 0.0
+
+                for sym, pos in self.virtual_ledger.open_positions.items():
+                    exposure = pos.amount_coins * pos.current_price
+                    total_open_exposure += exposure
+                    floating_pnl_idr = exposure - pos.cost_idr
+                    floating_pnl_pct = (floating_pnl_idr / pos.cost_idr * 100.0) if pos.cost_idr > 0 else 0.0
+                    open_positions_detail.append({
+                        "symbol": sym,
+                        "side": pos.side,
+                        "entry_price": pos.entry_price,
+                        "current_price": pos.current_price,
+                        "exposure_idr": round(exposure, 2),
+                        "floating_pnl_idr": round(floating_pnl_idr, 2),
+                        "floating_pnl_pct": round(floating_pnl_pct, 2),
+                        "stop_loss_price": pos.stop_loss_price,
+                        "take_profit_price": pos.take_profit_price,
+                        "tp1_price": pos.partial_tp_price,
+                        "tp1_executed": pos.tp1_executed,
+                        "strategy": pos.strategy,
+                    })
+
+                exposure_pct = round((total_open_exposure / tf_equity * 100.0), 2) if tf_equity > 0 else 0.0
+
                 status_data = {
                     "status": "HEALTHY",
                     "service": "kibot-v2-paper",
                     "mode": "LIVE" if settings.LIVE_TRADING_ENABLED else "PAPER",
                     "uptime_s": round(time.time() - self._start_time, 1),
                     "timestamp": time.time(),
-                    "total_equity_idr": self.virtual_ledger.get_total_equity(),
+                    "total_equity_idr": tf_equity,
+                    "exposure_pct": exposure_pct,
                     "open_positions": len(self.virtual_ledger.open_positions),
+                    "active_positions_detail": open_positions_detail,
                     "closed_trades": len(self.virtual_ledger.trade_history),
                     "shadow_mr_equity_idr": self.shadow_ledger.get_total_equity(),
                     "shadow_mr_open_positions": len(self.shadow_ledger.open_positions),
@@ -269,6 +297,7 @@ class KiBotV2Pipeline:
                 orderbook=orderbook,
                 max_hold_time_s=decision.max_hold_time_s,
                 strategy=decision.strategy,
+                atr14=getattr(decision, "atr14", 0.0) or float(candidate.get("atr14") or 0.0),
             )
             if res.get("success"):
                 # Dynamically subscribe to WS orderbook stream for active tracking
@@ -291,8 +320,20 @@ class KiBotV2Pipeline:
             mr_open = len(self.shadow_ledger.open_positions) if self.shadow_ledger else 0
             mr_closed = len(self.shadow_ledger.trade_history) if self.shadow_ledger else 0
             
+            # Exposure and position floating PnL breakdown
+            open_summary = []
+            total_open_exp = 0.0
+            for sym, pos in self.virtual_ledger.open_positions.items():
+                exp = pos.amount_coins * pos.current_price
+                total_open_exp += exp
+                pnl_idr = exp - pos.cost_idr
+                pnl_pct = (pnl_idr / pos.cost_idr * 100.0) if pos.cost_idr > 0 else 0.0
+                open_summary.append(f"{sym}:{pnl_pct:+.2f}%(Rp {pnl_idr:+,.0f})")
+            pos_str = f" | Positions: {', '.join(open_summary)}" if open_summary else ""
+            exposure_pct = (total_open_exp / tf_eq * 100.0) if tf_eq > 0 else 0.0
+
             logger.info(
-                f"[Telemetry] 📊 TF Equity: Rp {tf_eq:,.0f} (Open: {tf_open}, Closed: {tf_closed}) | "
+                f"[Telemetry] 📊 TF Equity: Rp {tf_eq:,.0f} (Open: {tf_open}, Exp: {exposure_pct:.1f}%, Closed: {tf_closed}{pos_str}) | "
                 f"MR Shadow: Rp {mr_eq:,.0f} (Open: {mr_open}, Closed: {mr_closed}) | "
                 f"Latency (p50: {latency['p50_ms']}ms, p90: {latency['p90_ms']}ms) | Drop: {drop_rate:.1f}%"
             )
