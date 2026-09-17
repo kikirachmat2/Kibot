@@ -9,6 +9,7 @@ from council.evaluator import CouncilDecision
 from executor.virtual_ledger import VirtualLedger
 from executor.order_router import OrderRouter
 from risk import RiskGate, CapitalGovernor
+from async_helper import run_async
 
 def test_pipeline_initializes_with_swing_evaluator():
     """Verify KiBotV2Pipeline uses SwingEvaluator instead of FastCouncilEvaluator."""
@@ -96,7 +97,7 @@ def test_virtual_ledger_swing_hold_time_expiry_differentiation():
     assert btc_close_22d["strategy"] == "TREND_FOLLOWING"
     assert "BTC/IDR" not in ledger.open_positions
 
-@pytest.mark.anyio
+@run_async
 async def test_order_router_forwards_swing_decision_metadata():
     """Verify OrderRouter forwards max_hold_time_s and strategy to VirtualLedger."""
     virtual_ledger = VirtualLedger(initial_cash_idr=10_000_000.0)
