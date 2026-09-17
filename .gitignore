@@ -63,3 +63,9 @@ SHARED_INTELLIGENCE/
 
 # Graphify Output
 graphify-out/
+
+# Backtest Datasets & Cache
+backtest/data/
+backtest/cache/
+KiBot V2/backtest/data/
+KiBot V2/backtest/cache/
