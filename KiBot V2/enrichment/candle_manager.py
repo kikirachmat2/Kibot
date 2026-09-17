@@ -159,15 +159,18 @@ class CandleEnrichmentManager:
         lows = [float(d.get("Low") or d.get("low") or d.get("l") or 0.0) for d in data]
         volumes = [float(d.get("Volume") or d.get("volume") or d.get("v") or 0.0) for d in data]
 
+        times = [float(d.get("Time") or d.get("time") or d.get("t") or 0.0) for d in data]
+
         # Cache raw series for live price adjustment
         self._raw_candles[norm_sym] = {
             "closes": list(closes),
             "highs": list(highs),
             "lows": list(lows),
             "volumes": list(volumes),
+            "times": list(times),
         }
 
-        computed = self._compute_from_series(closes, highs, lows, volumes)
+        computed = self._compute_from_series(closes, highs, lows, volumes, times)
         self._indicators[norm_sym] = computed
         return computed
 
@@ -177,8 +180,9 @@ class CandleEnrichmentManager:
         highs: List[float],
         lows: List[float],
         volumes: List[float],
+        times: Optional[List[float]] = None,
     ) -> Dict[str, Any]:
-        """Computes technical indicator values from OHLCV arrays."""
+        """Computes technical indicator values from OHLCV arrays including intraday volume run-rate."""
         n = len(closes)
         if n < 20:
             return {}
@@ -197,6 +201,23 @@ class CandleEnrichmentManager:
         vol_z_s = calc_volume_zscore(volumes, 20)
         pct_b_s = calc_bollinger_pct_b(closes, up_bb, low_bb)
 
+        # Intraday Volume Run-Rate Normalization
+        now = time.time()
+        tau = 1.0
+        if times and len(times) > 0 and times[-1] > 0:
+            elapsed = max(0.0, now - times[-1])
+            # Bound tau between 0.15 (~3.6h of trading day) and 1.0
+            tau = max(0.15, min(1.0, elapsed / 86400.0))
+
+        vol_last = volumes[-1] if volumes else 0.0
+        volume_projected = vol_last / tau
+        current_vol_sma20 = vol_sma20[-1] if (vol_sma20 and vol_sma20[-1] > 0) else 1.0
+        volume_projected_ratio = round(volume_projected / current_vol_sma20, 2)
+
+        prior_vol = volumes[-2] if len(volumes) >= 2 else vol_last
+        prior_bar_volume_ratio = round(prior_vol / current_vol_sma20, 2)
+        prior_bar_zscore = round(vol_z_s[-2], 2) if len(vol_z_s) >= 2 else 0.0
+
         return {
             "price": closes[-1],
             "ema20": round(ema20_s[-1], 2),
@@ -206,6 +227,11 @@ class CandleEnrichmentManager:
             "atr14": round(atr_s[-1], 2),
             "volume": round(volumes[-1], 4),
             "volume_sma20": round(vol_sma20[-1], 4),
+            "volume_projected": round(volume_projected, 4),
+            "volume_projected_ratio": volume_projected_ratio,
+            "prior_bar_volume_ratio": prior_bar_volume_ratio,
+            "prior_bar_zscore": prior_bar_zscore,
+            "intraday_tau": round(tau, 3),
             "lower_bb": round(low_bb[-1], 2),
             "middle_bb": round(mid_bb[-1], 2),
             "upper_bb": round(up_bb[-1], 2),
@@ -233,6 +259,7 @@ class CandleEnrichmentManager:
         highs = list(raw["highs"])
         lows = list(raw["lows"])
         volumes = raw["volumes"]
+        times = raw.get("times")
 
         closes[-1] = current_price
         if current_price > highs[-1]:
@@ -240,7 +267,7 @@ class CandleEnrichmentManager:
         if current_price < lows[-1]:
             lows[-1] = current_price
 
-        updated = self._compute_from_series(closes, highs, lows, volumes)
+        updated = self._compute_from_series(closes, highs, lows, volumes, times)
         self._indicators[norm_sym] = updated
         return updated
 

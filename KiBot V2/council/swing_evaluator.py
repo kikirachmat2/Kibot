@@ -54,7 +54,7 @@ class SwingEvaluator:
     Matches empirical distributions from the 730-day Indodax historical backtest.
     """
 
-    TF_ELIGIBLE = {"BTCIDR", "ETHIDR"}
+    TF_ELIGIBLE = {"BTCIDR", "ETHIDR", "SOLIDR"}
     MR_ELIGIBLE = {"ETHIDR", "AVAXIDR"}
 
     # Calibrated empirical backtest performance metrics
@@ -150,6 +150,10 @@ class SwingEvaluator:
             vals["choppiness_index"] = float(candidate.get("choppiness_index", 50.0))
             vals["volume_zscore"] = float(candidate.get("volume_zscore", 0.0))
             vals["bollinger_pct_b"] = float(candidate.get("bollinger_pct_b", 0.5))
+            vals["volume_projected_ratio"] = float(candidate.get("volume_projected_ratio", 1.0))
+            vals["prior_bar_volume_ratio"] = float(candidate.get("prior_bar_volume_ratio", 1.0))
+            vals["prior_bar_zscore"] = float(candidate.get("prior_bar_zscore", 0.0))
+            vals["volume_ratio"] = float(candidate.get("volume_ratio", 1.0))
             vals["binance_momentum_1h"] = float(candidate.get("binance_momentum_1h", 0.0))
             vals["binance_momentum_5m"] = float(candidate.get("binance_momentum_5m", 0.0))
             vals["binance_is_dumping"] = bool(candidate.get("binance_is_dumping", False))
@@ -204,6 +208,10 @@ class SwingEvaluator:
             vals["choppiness_index"] = float(candidate.get("choppiness_index", 50.0))
             vals["volume_zscore"] = float(candidate.get("volume_zscore", 0.0))
             vals["bollinger_pct_b"] = float(candidate.get("bollinger_pct_b", 0.5))
+            vals["volume_projected_ratio"] = float(candidate.get("volume_projected_ratio", 1.0))
+            vals["prior_bar_volume_ratio"] = float(candidate.get("prior_bar_volume_ratio", 1.0))
+            vals["prior_bar_zscore"] = float(candidate.get("prior_bar_zscore", 0.0))
+            vals["volume_ratio"] = float(candidate.get("volume_ratio", 1.0))
 
         vals["binance_momentum_1h"] = float(candidate.get("binance_momentum_1h", 0.0))
         vals["binance_momentum_5m"] = float(candidate.get("binance_momentum_5m", 0.0))
@@ -214,11 +222,11 @@ class SwingEvaluator:
 
     def evaluate_trend_following(self, norm_sym: str, raw_sym: str, vals: Dict[str, Any], bankroll_idr: float, t0: float) -> Optional[CouncilDecision]:
         """
-        Sub-strategy 1: Trend-Following (TF) for BTC & ETH
+        Sub-strategy 1: Trend-Following (TF) for BTC, ETH, and SOL
         Rules:
         - EMA20 > EMA50
         - Close > EMA100
-        - Volume Thrust: Volume Z-Score >= 0.50 OR Volume >= 0.95 * Volume_SMA20
+        - Dual-Verification Volume Gate (Run-rate projection, prior bar confirmation, or volume z-score)
         - RSI14: 48.0 <= RSI <= 72.0 (healthy pullback, avoid blow-off tops)
         - Choppiness Index: CI < 61.8 (avoid choppy sideways whipsaws)
         - Binance Lead-Lag: No liquidation dump (Return_1h >= -1.5% and not dumping)
@@ -247,8 +255,25 @@ class SwingEvaluator:
         cond_ema_cross = ema20 > ema50
         cond_above_ema100 = price > ema100
         
-        # Volume thrust: Z-score >= 0.50 or historical SMA ratio >= 0.95
-        cond_volume = (vol_z >= 0.50) or (vol >= (0.95 * vol_sma20) if vol_sma20 > 0 else True)
+        # Dual-Verification Volume Gate:
+        # 1. Run-Rate Projection: projected daily volume >= 0.85 * SMA20, OR
+        # 2. Volume Z-Score >= 0.30, OR
+        # 3. Prior Bar Confirmation: yesterday's closed volume >= 0.90 * SMA20 or Z >= 0.20, OR
+        # 4. Standard volume >= 0.90 * SMA20, OR
+        # 5. 24h rolling ticker volume ratio >= 1.0
+        vol_projected_ratio = vals.get("volume_projected_ratio", 0.0)
+        prior_vol_ratio = vals.get("prior_bar_volume_ratio", 0.0)
+        prior_vol_z = vals.get("prior_bar_zscore", 0.0)
+        vol_ratio = vals.get("volume_ratio", 1.0)
+
+        cond_volume = (
+            (vol_projected_ratio >= 0.85) or
+            (vol_z >= 0.30) or
+            (prior_vol_ratio >= 0.90) or
+            (prior_vol_z >= 0.20) or
+            (vol >= 0.90 * vol_sma20 if vol_sma20 > 0 else True) or
+            (vol_ratio >= 1.0)
+        )
         
         # Pullback healthy, not in overbought blow-off top
         cond_rsi = 48.0 <= rsi14 <= 72.0
@@ -275,7 +300,12 @@ class SwingEvaluator:
         suggested_size = self.calculate_position_size(bankroll_idr, sl_pct)
         duration_ms = (time.perf_counter() - t0) * 1000.0
 
-        vol_desc = f"VolZ={vol_z:.2f}>=0.5" if vol_z > 0 else f"VolRatio={vol/vol_sma20:.2f}>=0.95"
+        vol_desc = (
+            f"VolProj={vol_projected_ratio:.2f}>=0.85" if vol_projected_ratio >= 0.85
+            else f"PriorVolRatio={prior_vol_ratio:.2f}>=0.90" if prior_vol_ratio >= 0.90
+            else f"VolZ={vol_z:.2f}>=0.30" if vol_z >= 0.30
+            else f"VolRatio={vol_ratio:.2f}>=1.0"
+        )
         return CouncilDecision(
             verdict="APPROVED",
             symbol=raw_sym,
@@ -382,7 +412,7 @@ class SwingEvaluator:
                 action="NONE",
                 confidence=0.0,
                 score=0.0,
-                reason=f"Symbol {raw_sym} is not in swing universe (BTC, ETH, AVAX)",
+                reason=f"Symbol {raw_sym} is not in swing universe (BTC, ETH, AVAX, SOL)",
                 suggested_size_idr=0.0,
                 ev_pct=0.0,
                 kelly_fraction=0.0,
