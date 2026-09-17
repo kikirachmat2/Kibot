@@ -244,6 +244,10 @@ class KiBotV2Pipeline:
             "choppiness_index": indicators.get("choppiness_index", 50.0),
             "volume_zscore": indicators.get("volume_zscore", 0.0),
             "bollinger_pct_b": indicators.get("bollinger_pct_b", 0.5),
+            "volume_projected_ratio": indicators.get("volume_projected_ratio", 1.0),
+            "prior_bar_volume_ratio": indicators.get("prior_bar_volume_ratio", 1.0),
+            "prior_bar_zscore": indicators.get("prior_bar_zscore", 0.0),
+            "intraday_tau": indicators.get("intraday_tau", 1.0),
         }
         await self.router.enqueue_candidate(symbol=pair, payload=candidate_payload, score=score)
 
