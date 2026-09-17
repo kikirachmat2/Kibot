@@ -23,7 +23,7 @@ class CouncilWorkerPool:
         self,
         router: PerSymbolCoalescingRouter,
         worker_count: Optional[int] = None,
-        evaluator: Optional[FastCouncilEvaluator] = None,
+        evaluator: Optional[Any] = None,
         idempotency_guard: Optional[IdempotencyGuard] = None,
     ):
         self.router = router

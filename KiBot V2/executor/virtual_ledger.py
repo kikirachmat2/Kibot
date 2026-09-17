@@ -22,6 +22,8 @@ class VirtualPosition:
     stop_loss_price: float
     take_profit_price: float
     max_price_seen: float
+    max_hold_time_s: float = 21 * 86400.0
+    strategy: str = "SWING"
 
 class VirtualLedger:
     """
@@ -53,6 +55,8 @@ class VirtualLedger:
         stop_loss_pct: Optional[float] = None,
         take_profit_pct: Optional[float] = None,
         orderbook: Optional[Dict[str, Any]] = None,
+        max_hold_time_s: Optional[float] = None,
+        strategy: Optional[str] = None,
     ) -> Dict[str, Any]:
         sl = stop_loss_pct if stop_loss_pct is not None else settings.DEFAULT_STOP_LOSS_PCT
         tp = take_profit_pct if take_profit_pct is not None else settings.DEFAULT_TAKE_PROFIT_PCT
@@ -92,6 +96,9 @@ class VirtualLedger:
         self.cash_idr -= notional_idr
         pos_id = f"paper_{sym}_{int(time.time())}"
         
+        hold_time = float(max_hold_time_s) if (max_hold_time_s is not None and max_hold_time_s > 0) else (21.0 * 86400.0)
+        strat_name = strategy or "SWING"
+
         pos = VirtualPosition(
             position_id=pos_id,
             symbol=sym,
@@ -104,6 +111,8 @@ class VirtualLedger:
             stop_loss_price=slippage_price * (1.0 - (sl / 100.0)),
             take_profit_price=slippage_price * (1.0 + (tp / 100.0)),
             max_price_seen=slippage_price,
+            max_hold_time_s=hold_time,
+            strategy=strat_name,
         )
         self.open_positions[sym] = pos
         
@@ -112,15 +121,16 @@ class VirtualLedger:
             change_type="OPEN",
             position_data={
                 "position_id": pos_id, "symbol": sym, "entry_price": slippage_price,
-                "amount_coins": amount_coins, "cost_idr": notional_idr, "entry_time": pos.entry_time
+                "amount_coins": amount_coins, "cost_idr": notional_idr, "entry_time": pos.entry_time,
+                "max_hold_time_s": pos.max_hold_time_s, "strategy": pos.strategy,
             },
             total_equity_idr=self.get_total_equity(),
         )
         
-        logger.info(f"[VirtualLedger] 🟢 Opened paper BUY for {sym}: {amount_coins:.6f} coins @ Rp {slippage_price:,.1f} (Notional: Rp {notional_idr:,.0f})")
+        logger.info(f"[VirtualLedger] 🟢 Opened paper BUY for {sym}: {amount_coins:.6f} coins @ Rp {slippage_price:,.1f} (Notional: Rp {notional_idr:,.0f}) | Strat: {strat_name} | MaxHold: {hold_time/86400:.1f}d")
         return {"success": True, "position_id": pos_id, "symbol": sym, "price": slippage_price, "amount": amount_coins}
 
-    def update_market_price(self, symbol: str, current_price: float, max_hold_time_s: float = 900.0) -> Optional[Dict[str, Any]]:
+    def update_market_price(self, symbol: str, current_price: float, max_hold_time_s: Optional[float] = None) -> Optional[Dict[str, Any]]:
         """Updates position price and evaluates TP / SL / Max Hold triggers."""
         sym = symbol.upper().strip()
         pos = self.open_positions.get(sym)
@@ -141,7 +151,8 @@ class VirtualLedger:
             return self.close_paper_position(sym, reason="TAKE_PROFIT_TARGET_HIT")
 
         # 3. Check Max Hold Time Expired
-        if (now - pos.entry_time) >= max_hold_time_s:
+        effective_max_hold = max_hold_time_s if max_hold_time_s is not None else getattr(pos, "max_hold_time_s", 21.0 * 86400.0)
+        if (now - pos.entry_time) >= effective_max_hold:
             return self.close_paper_position(sym, reason="MAX_HOLD_TIME_EXPIRED")
 
         return None
@@ -174,6 +185,7 @@ class VirtualLedger:
             "hold_duration_s": round(time.time() - pos.entry_time, 1),
             "exit_reason": reason,
             "closed_at": time.time(),
+            "strategy": getattr(pos, "strategy", "SWING"),
         }
         self.trade_history.append(trade_record)
         self._prune_trade_history_if_needed()
