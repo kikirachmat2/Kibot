@@ -32,7 +32,14 @@ class VirtualLedger:
     - Accurately tracks cash, open positions, unrealized PnL, realized PnL, and drawdowns.
     - Emits state updates directly to DurableStateStore.
     """
-    def __init__(self, initial_cash_idr: float = 10_000_000.0):
+    def __init__(
+        self,
+        initial_cash_idr: float = 10_000_000.0,
+        name: str = "PRIMARY_TF",
+        readiness_evaluator: Optional[Any] = None,
+    ):
+        self.name = name
+        self.readiness_evaluator = readiness_evaluator
         self.cash_idr: float = initial_cash_idr
         self.initial_equity_idr: float = initial_cash_idr
         self.peak_equity_idr: float = initial_cash_idr
@@ -58,18 +65,31 @@ class VirtualLedger:
         max_hold_time_s: Optional[float] = None,
         strategy: Optional[str] = None,
     ) -> Dict[str, Any]:
-        sl = stop_loss_pct if stop_loss_pct is not None else settings.DEFAULT_STOP_LOSS_PCT
-        tp = take_profit_pct if take_profit_pct is not None else settings.DEFAULT_TAKE_PROFIT_PCT
+        """
+        Executes a paper BUY order.
+        Simulates realistic execution:
+        - If L2 orderbook is supplied: walks depth to calculate true VWAP and market-impact slippage.
+        - Enforces minimum executable liquidity before filling.
+        - Deducts roundtrip exchange fee (0.21%).
+        """
         sym = symbol.upper().strip()
+        if notional_idr <= 0:
+            return {"success": False, "mode": "INVALID_NOTIONAL", "reason": "Target notional must be strictly positive"}
+
+        if self.cash_idr < notional_idr:
+            return {"success": False, "mode": "INSUFFICIENT_FUNDS", "reason": f"Cash Rp {self.cash_idr:,.0f} < required Rp {notional_idr:,.0f}"}
+
         if sym in self.open_positions:
             return {"success": False, "reason": f"Position already open for {sym}"}
-        if notional_idr > self.cash_idr:
-            return {"success": False, "reason": f"Insufficient virtual cash (Required: {notional_idr}, Available: {self.cash_idr})"}
+
+        sl = stop_loss_pct if stop_loss_pct is not None else settings.DEFAULT_STOP_LOSS_PCT
+        tp = take_profit_pct if take_profit_pct is not None else settings.DEFAULT_TAKE_PROFIT_PCT
 
         # Calculate realistic execution price (Real orderbook depth VWAP or fallback to 0.1% static slippage)
         slippage_price = price * 1.001
         slippage_pct = 0.1
 
+        # Stage 2 Execution: Real depth & VWAP modeling
         if orderbook:
             from enrichment.microstructure import microstructure_analyzer
             analysis = microstructure_analyzer.analyze_orderbook(orderbook, notional_idr, side="BUY")
@@ -81,6 +101,7 @@ class VirtualLedger:
                     "reason": analysis.reason,
                 }
             if not analysis.pass_liquidity:
+                logger.warning(f"[VirtualLedger:{self.name}] 🛑 Order rejected for {sym}: {analysis.reason}")
                 return {
                     "success": False,
                     "mode": "LIQUIDITY_REJECT",
@@ -123,11 +144,13 @@ class VirtualLedger:
                 "position_id": pos_id, "symbol": sym, "entry_price": slippage_price,
                 "amount_coins": amount_coins, "cost_idr": notional_idr, "entry_time": pos.entry_time,
                 "max_hold_time_s": pos.max_hold_time_s, "strategy": pos.strategy,
+                "ledger": self.name,
             },
             total_equity_idr=self.get_total_equity(),
+            ledger_name=self.name,
         )
         
-        logger.info(f"[VirtualLedger] 🟢 Opened paper BUY for {sym}: {amount_coins:.6f} coins @ Rp {slippage_price:,.1f} (Notional: Rp {notional_idr:,.0f}) | Strat: {strat_name} | MaxHold: {hold_time/86400:.1f}d")
+        logger.info(f"[VirtualLedger:{self.name}] 🟢 Opened paper BUY for {sym}: {amount_coins:.6f} coins @ Rp {slippage_price:,.1f} (Notional: Rp {notional_idr:,.0f}) | Strat: {strat_name} | MaxHold: {hold_time/86400:.1f}d")
         return {"success": True, "position_id": pos_id, "symbol": sym, "price": slippage_price, "amount": amount_coins}
 
     def update_market_price(self, symbol: str, current_price: float, max_hold_time_s: Optional[float] = None) -> Optional[Dict[str, Any]]:
@@ -151,6 +174,7 @@ class VirtualLedger:
             return self.close_paper_position(sym, reason="TAKE_PROFIT_TARGET_HIT")
 
         # 3. Check Max Hold Time Expired
+        # Use position-specific max_hold_time_s (e.g. 21d for TF, 10d for MR) or override if explicitly passed
         effective_max_hold = max_hold_time_s if max_hold_time_s is not None else getattr(pos, "max_hold_time_s", 21.0 * 86400.0)
         if (now - pos.entry_time) >= effective_max_hold:
             return self.close_paper_position(sym, reason="MAX_HOLD_TIME_EXPIRED")
@@ -186,6 +210,7 @@ class VirtualLedger:
             "exit_reason": reason,
             "closed_at": time.time(),
             "strategy": getattr(pos, "strategy", "SWING"),
+            "ledger": self.name,
         }
         self.trade_history.append(trade_record)
         self._prune_trade_history_if_needed()
@@ -195,14 +220,18 @@ class VirtualLedger:
             change_type="CLOSE",
             position_data=trade_record,
             total_equity_idr=self.get_total_equity(),
+            ledger_name=self.name,
         )
 
         # Automatic live readiness evaluation & milestone tracking
         try:
-            from storage.live_readiness import live_readiness_evaluator
+            evaluator = self.readiness_evaluator
+            if not evaluator:
+                from storage.live_readiness import live_readiness_evaluator
+                evaluator = live_readiness_evaluator
             current_eq = self.get_total_equity()
             dd_pct = ((self.peak_equity_idr - current_eq) / self.peak_equity_idr * 100.0) if self.peak_equity_idr > 0 else 0.0
-            live_readiness_evaluator.evaluate_trades(
+            evaluator.evaluate_trades(
                 trade_history=self.trade_history,
                 current_equity_idr=current_eq,
                 initial_bankroll_idr=self.initial_equity_idr,
@@ -210,7 +239,7 @@ class VirtualLedger:
                 current_drawdown_pct=max(0.0, dd_pct),
             )
         except Exception as eval_exc:
-            logger.error(f"[VirtualLedger] Live readiness evaluation error: {eval_exc}")
+            logger.error(f"[VirtualLedger:{self.name}] Live readiness evaluation error: {eval_exc}")
 
         # Notify risk subsystems (PairQuarantine & ChurnGuard via CapitalGovernor)
         if self.on_trade_closed_cb:

@@ -31,11 +31,28 @@ class KiBotV2Pipeline:
         self.risk_gate = RiskGate()
         self.capital_governor = CapitalGovernor()
         self.venue_ledger = venue_ledger
-        self.virtual_ledger = VirtualLedger(initial_cash_idr=10_000_000.0)
+
+        # 1. Primary Virtual Ledger (Jalur 1: Trend-Following -> GO_LIVE_CHECKLIST N>=30)
+        from storage.live_readiness import live_readiness_evaluator, shadow_mr_readiness_evaluator
+        self.virtual_ledger = VirtualLedger(
+            initial_cash_idr=10_000_000.0,
+            name="PRIMARY_TF",
+            readiness_evaluator=live_readiness_evaluator,
+        )
         self.virtual_ledger.on_trade_closed_cb = self.capital_governor.on_trade_closed
+
+        # 2. Shadow Virtual Ledger (Jalur 2: Mean-Reversion -> Shadow Observation N>=20, PF>=1.25)
+        self.shadow_ledger = VirtualLedger(
+            initial_cash_idr=10_000_000.0,
+            name="SHADOW_MR",
+            readiness_evaluator=shadow_mr_readiness_evaluator,
+        )
+        self.shadow_ledger.on_trade_closed_cb = self.capital_governor.on_trade_closed
+
         self.order_router = OrderRouter(
             risk_gate=self.risk_gate,
             virtual_ledger=self.virtual_ledger,
+            shadow_ledger=self.shadow_ledger,
             capital_governor=self.capital_governor,
             venue_ledger_instance=self.venue_ledger,
         )
@@ -100,6 +117,9 @@ class KiBotV2Pipeline:
                     "total_equity_idr": self.virtual_ledger.get_total_equity(),
                     "open_positions": len(self.virtual_ledger.open_positions),
                     "closed_trades": len(self.virtual_ledger.trade_history),
+                    "shadow_mr_equity_idr": self.shadow_ledger.get_total_equity(),
+                    "shadow_mr_open_positions": len(self.shadow_ledger.open_positions),
+                    "shadow_mr_closed_trades": len(self.shadow_ledger.trade_history),
                     "is_halted": self.venue_ledger.is_halted,
                 }
                 return web.json_response(status_data)
@@ -122,8 +142,10 @@ class KiBotV2Pipeline:
         price = ticker.get("last_price", 0.0)
         vol = ticker.get("volume_idr", 0.0)
         
-        # Update price on virtual ledger for active positions
+        # Update price on primary virtual ledger (TF) and shadow ledger (MR)
         self.virtual_ledger.update_market_price(pair, price)
+        if self.shadow_ledger:
+            self.shadow_ledger.update_market_price(pair, price)
         
         # Update risk gate equity
         total_equity = self.virtual_ledger.get_total_equity()
@@ -204,13 +226,18 @@ class KiBotV2Pipeline:
             await asyncio.sleep(30)
             latency = self.council_pool.get_latency_stats()
             drop_rate = self.router.drop_rate_pct()
-            equity = self.virtual_ledger.get_total_equity()
-            open_pos = len(self.virtual_ledger.open_positions)
-            trades_done = len(self.virtual_ledger.trade_history)
+            tf_eq = self.virtual_ledger.get_total_equity()
+            tf_open = len(self.virtual_ledger.open_positions)
+            tf_closed = len(self.virtual_ledger.trade_history)
+
+            mr_eq = self.shadow_ledger.get_total_equity() if self.shadow_ledger else 0.0
+            mr_open = len(self.shadow_ledger.open_positions) if self.shadow_ledger else 0
+            mr_closed = len(self.shadow_ledger.trade_history) if self.shadow_ledger else 0
             
             logger.info(
-                f"[Telemetry] 📊 Council Latency (p50: {latency['p50_ms']}ms, p90: {latency['p90_ms']}ms, avg: {latency['mean_ms']}ms) | "
-                f"Drop Rate: {drop_rate:.1f}% | Equity: Rp {equity:,.0f} | Open: {open_pos} | Closed: {trades_done}"
+                f"[Telemetry] 📊 TF Equity: Rp {tf_eq:,.0f} (Open: {tf_open}, Closed: {tf_closed}) | "
+                f"MR Shadow: Rp {mr_eq:,.0f} (Open: {mr_open}, Closed: {mr_closed}) | "
+                f"Latency (p50: {latency['p50_ms']}ms, p90: {latency['p90_ms']}ms) | Drop: {drop_rate:.1f}%"
             )
 
     async def stop(self) -> None:
