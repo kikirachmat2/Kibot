@@ -24,10 +24,16 @@ class DurableStateStore:
         self._latest_state: Dict[str, Any] = {
             "version": "2.0.0",
             "updated_at": 0.0,
-            "equity_idr": 0.0,
-            "cash_idr": 0.0,
+            "equity_idr": 10_000_000.0,
+            "peak_equity_idr": 10_000_000.0,
+            "cash_idr": 10_000_000.0,
             "open_positions": {},
             "closed_trades": [],
+            "shadow_mr_equity_idr": 10_000_000.0,
+            "shadow_mr_peak_equity_idr": 10_000_000.0,
+            "shadow_mr_cash_idr": 10_000_000.0,
+            "shadow_mr_open_positions": {},
+            "shadow_mr_closed_trades": [],
         }
 
     async def start(self) -> None:
@@ -49,13 +55,22 @@ class DurableStateStore:
         self._write_atomic(self._latest_state)
         logger.info("[DurableState] Stopped & flushed final state to disk.")
 
+    def flush_sync(self) -> None:
+        """Forces immediate synchronous atomic flush of state to disk."""
+        self._write_atomic(self._latest_state)
+
     def load_sync(self) -> Dict[str, Any]:
         """Loads state synchronously on startup."""
         if self.state_file.is_file():
             try:
                 with open(self.state_file, "r", encoding="utf-8") as f:
-                    self._latest_state = json.load(f)
-                logger.info(f"[DurableState] Loaded existing state from disk (Open positions: {len(self._latest_state.get('open_positions', {}))})")
+                    data = json.load(f)
+                    self._latest_state.update(data)
+                logger.info(
+                    f"[DurableState] Loaded existing state from disk "
+                    f"(TF Open: {len(self._latest_state.get('open_positions', {}))}, "
+                    f"MR Open: {len(self._latest_state.get('shadow_mr_open_positions', {}))})"
+                )
             except Exception as e:
                 logger.error(f"[DurableState] Error reading state file, starting fresh: {e}")
         return self._latest_state
@@ -69,6 +84,7 @@ class DurableStateStore:
         position_data: Dict[str, Any],
         total_equity_idr: float,
         ledger_name: str = "PRIMARY_TF",
+        cash_idr: Optional[float] = None,
     ) -> None:
         """
         Hot-path non-blocking call.
@@ -80,11 +96,17 @@ class DurableStateStore:
 
         prefix = "shadow_mr_" if ledger_name == "SHADOW_MR" else ""
         equity_key = f"{prefix}equity_idr" if prefix else "equity_idr"
+        peak_key = f"{prefix}peak_equity_idr" if prefix else "peak_equity_idr"
+        cash_key = f"{prefix}cash_idr" if prefix else "cash_idr"
         open_key = f"{prefix}open_positions" if prefix else "open_positions"
         closed_key = f"{prefix}closed_trades" if prefix else "closed_trades"
 
         self._latest_state[equity_key] = total_equity_idr
-        
+        current_peak = self._latest_state.get(peak_key, total_equity_idr)
+        self._latest_state[peak_key] = max(current_peak, total_equity_idr)
+        if cash_idr is not None:
+            self._latest_state[cash_key] = cash_idr
+
         if change_type == "OPEN":
             self._latest_state.setdefault(open_key, {})[sym] = position_data
         elif change_type == "CLOSE":

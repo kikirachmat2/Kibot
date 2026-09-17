@@ -77,8 +77,24 @@ class KiBotV2Pipeline:
 
         # 2. Startup Reconciliation (Non-recursive)
         reconcile_res = await self.reconciler.reconcile_on_startup()
-        if reconcile_res.get("cash_idr"):
-            self.virtual_ledger.cash_idr = reconcile_res["cash_idr"]
+        
+        # Re-hydrate Primary Ledger (TF)
+        primary_data = reconcile_res.get("primary", {})
+        self.virtual_ledger.restore_state(
+            cash_idr=primary_data.get("cash_idr", reconcile_res.get("cash_idr")),
+            open_positions_data=primary_data.get("open_positions", reconcile_res.get("open_positions")),
+            trade_history_data=primary_data.get("closed_trades"),
+            peak_equity_idr=primary_data.get("peak_equity_idr", primary_data.get("equity_idr")),
+        )
+
+        # Re-hydrate Shadow Ledger (MR)
+        shadow_data = reconcile_res.get("shadow", {})
+        self.shadow_ledger.restore_state(
+            cash_idr=shadow_data.get("cash_idr"),
+            open_positions_data=shadow_data.get("open_positions"),
+            trade_history_data=shadow_data.get("closed_trades"),
+            peak_equity_idr=shadow_data.get("peak_equity_idr", shadow_data.get("equity_idr")),
+        )
 
         # 3. Start Out-of-band Enrichment Background Worker
         await self.enrichment_worker.start()

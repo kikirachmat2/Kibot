@@ -30,16 +30,18 @@ class StartupReconciler:
         self.reconciled_at: Optional[float] = None
         self.reconciled_cash_idr: float = 0.0
         self.reconciled_positions: Dict[str, Any] = {}
+        self.reconciled_shadow_cash_idr: float = 0.0
+        self.reconciled_shadow_positions: Dict[str, Any] = {}
 
     async def fetch_exchange_balance_safe(self) -> Optional[Dict[str, Any]]:
         """
         Non-recursive iterative balance query with strict timeout & retry limits.
         GUARANTEE: Will never raise RecursionError.
         """
-        # If credentials are not configured or live trading is disabled, return mock/paper ground truth
-        if not settings.INDODAX_KEY or not settings.INDODAX_SECRET:
-            logger.info("[Reconciler] No live API credentials provided. Using local paper ledger anchor.")
-            return {"idr": 10_000_000.0}
+        # If live trading is disabled or credentials are not configured, return None to use durable state anchor
+        if not settings.LIVE_TRADING_ENABLED or not settings.INDODAX_KEY or not settings.INDODAX_SECRET:
+            logger.info("[Reconciler] Live trading not enabled or credentials absent. Using local durable state anchor.")
+            return None
 
         url = f"{settings.INDODAX_REST_URL}/tapi"
         # Iterative loop with explicit max_retries
@@ -73,28 +75,60 @@ class StartupReconciler:
         """Runs the complete reconciliation sequence before trading starts."""
         logger.info("[Reconciler] 🔍 Starting startup state reconciliation...")
         local_state = self.state_store.load_sync()
-        local_open_positions = local_state.get("open_positions", {})
         
+        # Primary (TF) state
+        primary_open = local_state.get("open_positions", {})
+        primary_closed = local_state.get("closed_trades", [])
+        primary_saved_cash = float(local_state.get("cash_idr", 10_000_000.0))
+        primary_equity = float(local_state.get("equity_idr", primary_saved_cash))
+        primary_peak = float(local_state.get("peak_equity_idr", max(primary_equity, primary_saved_cash)))
+        
+        # Shadow (MR) state
+        shadow_open = local_state.get("shadow_mr_open_positions", {})
+        shadow_closed = local_state.get("shadow_mr_closed_trades", [])
+        shadow_saved_cash = float(local_state.get("shadow_mr_cash_idr", 10_000_000.0))
+        shadow_equity = float(local_state.get("shadow_mr_equity_idr", shadow_saved_cash))
+        shadow_peak = float(local_state.get("shadow_mr_peak_equity_idr", max(shadow_equity, shadow_saved_cash)))
+
         exchange_balance = await self.fetch_exchange_balance_safe()
         
         if exchange_balance:
             cash_idr = float(exchange_balance.get("idr", 0.0))
             self.reconciled_cash_idr = cash_idr
-            self.reconciled_positions = dict(local_open_positions)
-            self.reconciled = True
-            self.reconciled_at = time.time()
-            logger.info(f"[Reconciler] ✅ Reconciliation complete. Cash IDR: Rp {cash_idr:,.0f}, Open positions: {len(self.reconciled_positions)}")
+            logger.info(f"[Reconciler] ✅ Live exchange balance verified: Rp {cash_idr:,.0f}")
         else:
-            # Fallback to local state if offline
-            self.reconciled_cash_idr = float(local_state.get("cash_idr", 10_000_000.0))
-            self.reconciled_positions = dict(local_open_positions)
-            self.reconciled = True
-            self.reconciled_at = time.time()
-            logger.warning("[Reconciler] ⚠️ Reconciled using local state cache (exchange offline).")
+            self.reconciled_cash_idr = primary_saved_cash
+            logger.info(f"[Reconciler] ℹ️ Using local state cash anchor: Rp {self.reconciled_cash_idr:,.0f}")
+
+        self.reconciled_positions = dict(primary_open)
+        self.reconciled_shadow_cash_idr = shadow_saved_cash
+        self.reconciled_shadow_positions = dict(shadow_open)
+        self.reconciled = True
+        self.reconciled_at = time.time()
+
+        logger.info(
+            f"[Reconciler] ✅ Reconciliation complete.\n"
+            f"   - Primary TF: Cash Rp {self.reconciled_cash_idr:,.0f} | Open: {len(self.reconciled_positions)} | Closed: {len(primary_closed)}\n"
+            f"   - Shadow MR : Cash Rp {shadow_saved_cash:,.0f} | Open: {len(shadow_open)} | Closed: {len(shadow_closed)}"
+        )
 
         return {
             "reconciled": self.reconciled,
             "cash_idr": self.reconciled_cash_idr,
             "open_positions": self.reconciled_positions,
             "reconciled_at": self.reconciled_at,
+            "primary": {
+                "cash_idr": self.reconciled_cash_idr,
+                "open_positions": self.reconciled_positions,
+                "closed_trades": primary_closed,
+                "equity_idr": primary_equity,
+                "peak_equity_idr": primary_peak,
+            },
+            "shadow": {
+                "cash_idr": shadow_saved_cash,
+                "open_positions": shadow_open,
+                "closed_trades": shadow_closed,
+                "equity_idr": shadow_equity,
+                "peak_equity_idr": shadow_peak,
+            },
         }

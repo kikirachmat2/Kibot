@@ -25,6 +25,65 @@ class VirtualPosition:
     max_hold_time_s: float = 21 * 86400.0
     strategy: str = "SWING"
 
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "position_id": self.position_id,
+            "symbol": self.symbol,
+            "side": self.side,
+            "entry_price": self.entry_price,
+            "current_price": self.current_price,
+            "amount_coins": self.amount_coins,
+            "cost_idr": self.cost_idr,
+            "entry_time": self.entry_time,
+            "stop_loss_price": self.stop_loss_price,
+            "take_profit_price": self.take_profit_price,
+            "max_price_seen": self.max_price_seen,
+            "max_hold_time_s": self.max_hold_time_s,
+            "strategy": self.strategy,
+        }
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> "VirtualPosition":
+        sym = str(data.get("symbol", "")).upper().strip()
+        entry_price = float(data.get("entry_price", 0.0))
+        current_price = float(data.get("current_price", entry_price))
+        amount_coins = float(data.get("amount_coins", 0.0))
+        cost_idr = float(data.get("cost_idr", 0.0))
+        if cost_idr <= 0.0 and amount_coins > 0.0 and entry_price > 0.0:
+            cost_idr = amount_coins * entry_price
+
+        sl = float(data.get("stop_loss_price", 0.0))
+        tp = float(data.get("take_profit_price", 0.0))
+        if sl <= 0.0 and entry_price > 0.0:
+            sl = entry_price * (1.0 - (settings.DEFAULT_STOP_LOSS_PCT / 100.0))
+        if tp <= 0.0 and entry_price > 0.0:
+            tp = entry_price * (1.0 + (settings.DEFAULT_TAKE_PROFIT_PCT / 100.0))
+
+        strategy = str(data.get("strategy", "SWING"))
+        default_hold = 10 * 86400.0 if "MEAN_REVERSION" in strategy else 21 * 86400.0
+        max_hold_time_s = float(data.get("max_hold_time_s", default_hold))
+
+        pos_id = str(data.get("position_id", f"paper_{sym}_{int(data.get('entry_time', time.time()))}"))
+        side = str(data.get("side", "BUY"))
+        entry_time = float(data.get("entry_time", time.time()))
+        max_seen = float(data.get("max_price_seen", max(entry_price, current_price)))
+
+        return cls(
+            position_id=pos_id,
+            symbol=sym,
+            side=side,
+            entry_price=entry_price,
+            current_price=current_price,
+            amount_coins=amount_coins,
+            cost_idr=cost_idr,
+            entry_time=entry_time,
+            stop_loss_price=sl,
+            take_profit_price=tp,
+            max_price_seen=max_seen,
+            max_hold_time_s=max_hold_time_s,
+            strategy=strategy,
+        )
+
 class VirtualLedger:
     """
     High-fidelity paper trading engine.
@@ -53,6 +112,65 @@ class VirtualLedger:
         if total > self.peak_equity_idr:
             self.peak_equity_idr = total
         return total
+
+    def restore_state(
+        self,
+        cash_idr: Optional[float] = None,
+        open_positions_data: Optional[Dict[str, Any]] = None,
+        trade_history_data: Optional[List[Dict[str, Any]]] = None,
+        peak_equity_idr: Optional[float] = None,
+    ) -> None:
+        """
+        Restores ledger state from durable storage on startup.
+        Re-hydrates open_positions as VirtualPosition dataclass instances,
+        restores trade_history, updates cash, and re-evaluates live readiness.
+        """
+        if cash_idr is not None and cash_idr > 0:
+            self.cash_idr = float(cash_idr)
+
+        if open_positions_data:
+            self.open_positions.clear()
+            for sym, pos_data in open_positions_data.items():
+                if isinstance(pos_data, dict):
+                    pos = VirtualPosition.from_dict(pos_data)
+                    self.open_positions[pos.symbol] = pos
+                elif isinstance(pos_data, VirtualPosition):
+                    self.open_positions[pos_data.symbol] = pos_data
+
+        if trade_history_data:
+            self.trade_history = list(trade_history_data)
+            self._prune_trade_history_if_needed()
+
+        # Recalculate total equity and peak equity
+        current_eq = self.get_total_equity()
+        if peak_equity_idr is not None and peak_equity_idr > 0:
+            self.peak_equity_idr = max(peak_equity_idr, current_eq, self.peak_equity_idr)
+        else:
+            self.peak_equity_idr = max(self.peak_equity_idr, current_eq)
+
+        # Re-evaluate live readiness if evaluator present and trade history exists
+        if self.trade_history:
+            try:
+                evaluator = self.readiness_evaluator
+                if not evaluator:
+                    from storage.live_readiness import live_readiness_evaluator
+                    evaluator = live_readiness_evaluator
+                dd_pct = ((self.peak_equity_idr - current_eq) / self.peak_equity_idr * 100.0) if self.peak_equity_idr > 0 else 0.0
+                evaluator.evaluate_trades(
+                    trade_history=self.trade_history,
+                    current_equity_idr=current_eq,
+                    initial_bankroll_idr=self.initial_equity_idr,
+                    peak_equity_idr=self.peak_equity_idr,
+                    current_drawdown_pct=max(0.0, dd_pct),
+                )
+            except Exception as exc:
+                logger.warning(f"[VirtualLedger:{self.name}] Error re-evaluating readiness on restore: {exc}")
+
+        logger.info(
+            f"[VirtualLedger:{self.name}] 🔄 Restored state: Cash=Rp {self.cash_idr:,.0f} | "
+            f"Open Positions={len(self.open_positions)} | Trades History={len(self.trade_history)} | "
+            f"Equity=Rp {current_eq:,.0f}"
+        )
 
     def place_paper_buy(
         self,
@@ -138,16 +256,14 @@ class VirtualLedger:
         self.open_positions[sym] = pos
         
         # Durable state persistence
+        pos_dict = pos.to_dict()
+        pos_dict["ledger"] = self.name
         durable_state_store.record_position_change(
             change_type="OPEN",
-            position_data={
-                "position_id": pos_id, "symbol": sym, "entry_price": slippage_price,
-                "amount_coins": amount_coins, "cost_idr": notional_idr, "entry_time": pos.entry_time,
-                "max_hold_time_s": pos.max_hold_time_s, "strategy": pos.strategy,
-                "ledger": self.name,
-            },
+            position_data=pos_dict,
             total_equity_idr=self.get_total_equity(),
             ledger_name=self.name,
+            cash_idr=self.cash_idr,
         )
         
         logger.info(f"[VirtualLedger:{self.name}] 🟢 Opened paper BUY for {sym}: {amount_coins:.6f} coins @ Rp {slippage_price:,.1f} (Notional: Rp {notional_idr:,.0f}) | Strat: {strat_name} | MaxHold: {hold_time/86400:.1f}d")
@@ -221,6 +337,7 @@ class VirtualLedger:
             position_data=trade_record,
             total_equity_idr=self.get_total_equity(),
             ledger_name=self.name,
+            cash_idr=self.cash_idr,
         )
 
         # Automatic live readiness evaluation & milestone tracking
