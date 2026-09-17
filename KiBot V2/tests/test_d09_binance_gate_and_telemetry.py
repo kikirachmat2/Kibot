@@ -146,8 +146,10 @@ def test_binance_gate_mr_candidate_ok_allows_entry():
 
 
 # ============================================================================
-# TASK 3 — TELEMETRY LOOP RESILIENCE
+# TASK 3 — TELEMETRY LOOP RESILIENCE & PRODUCTION BINDING (D-10)
 # ============================================================================
+from main import KiBotV2Pipeline
+
 
 class _FakePosition:
     """Minimal position stub for ledger mocking."""
@@ -178,67 +180,48 @@ class _FakeLedger:
         return equity
 
 
-async def _run_one_telemetry_cycle(pipeline, last_snapshot_date=""):
+async def _execute_one_telemetry_cycle(pipeline: KiBotV2Pipeline) -> list:
     """
-    Runs exactly one cycle of the telemetry body (without the sleep or while loop).
-    Mirrors the implementation in main.py._telemetry_loop after the 30s sleep.
+    Executes exactly one iteration of the real KiBotV2Pipeline._telemetry_loop()
+    production code.
+
+    Deterministic termination:
+    Inside the mocked asyncio.sleep(30), we record the sleep duration argument
+    and immediately set pipeline._running = False. This allows the first cycle body
+    to run to completion, after which the 'while self._running:' condition evaluates
+    to False and the loop exits cleanly with zero sleep delay.
     """
-    import logging
-    from datetime import datetime, timezone
-    logger = logging.getLogger("test_telemetry")
-
-    # ---- mirror the telemetry body ----
-    latency = pipeline.council_pool.get_latency_stats()
-    tf_eq = pipeline.virtual_ledger.get_total_equity()
-    tf_open = len(pipeline.virtual_ledger.open_positions)
-    tf_closed = len(pipeline.virtual_ledger.trade_history)
-
-    open_summary = []
-    total_open_exp = 0.0
-    for sym, pos in pipeline.virtual_ledger.open_positions.items():
-        exp = pos.amount_coins * pos.current_price
-        total_open_exp += exp
-        pnl_idr = exp - pos.cost_idr
-        pnl_pct = (pnl_idr / pos.cost_idr * 100.0) if pos.cost_idr > 0 else 0.0
-        open_summary.append(f"{sym}:{pnl_pct:+.2f}%")
-
-    today_utc = datetime.now(timezone.utc).strftime("%Y-%m-%d")
-    snapshot_taken = False
-    if last_snapshot_date != today_utc:
-        try:
-            open_positions_snap = dict(pipeline.virtual_ledger.open_positions)
-            cost_sum = sum(p.cost_idr for p in open_positions_snap.values())
-            snap_open_exp = sum(
-                p.amount_coins * p.current_price for p in open_positions_snap.values()
-            )
-            unrealized_pnl = snap_open_exp - cost_sum
-            pipeline.performance_tracker.record_daily_snapshot(
-                total_equity_idr=tf_eq,
-                cash_idr=pipeline.virtual_ledger.cash_idr,
-                open_positions_count=len(open_positions_snap),
-                unrealized_pnl_idr=unrealized_pnl,
-                trade_history=pipeline.virtual_ledger.trade_history,
-                date_str=today_utc,
-            )
-            last_snapshot_date = today_utc
-            snapshot_taken = True
-        except Exception as snap_err:
-            logger.warning(f"[Telemetry] Daily snapshot failed (non-fatal): {snap_err}")
-
-    return last_snapshot_date, snapshot_taken, total_open_exp
-
-
-def _make_pipeline_stub(positions=None, cash=8_000_000.0, snapshot_raises=False):
-    """Build a minimal pipeline mock suitable for telemetry testing."""
-    pipeline = MagicMock()
-    pipeline.virtual_ledger = _FakeLedger(cash=cash, positions=positions or {})
-    pipeline.shadow_ledger = _FakeLedger()
-    pipeline.council_pool.get_latency_stats.return_value = {"p50_ms": 1, "p90_ms": 2}
-    pipeline.router.drop_rate_pct.return_value = 0.0
+    sleep_calls = []
     pipeline._running = True
 
+    async def mock_sleep(seconds):
+        sleep_calls.append(seconds)
+        pipeline._running = False
+
+    with patch("main.asyncio.sleep", side_effect=mock_sleep):
+        await pipeline._telemetry_loop()
+
+    return sleep_calls
+
+
+def _make_pipeline_stub(positions=None, cash=8_000_000.0, snapshot_raises=False, last_snapshot_date=""):
+    """
+    Build a KiBotV2Pipeline instance with isolated components specifically
+    for testing the production _telemetry_loop() without network or external I/O.
+    """
+    pipeline = KiBotV2Pipeline.__new__(KiBotV2Pipeline)
+    pipeline._running = True
+    pipeline._last_snapshot_date = last_snapshot_date
+    pipeline.virtual_ledger = _FakeLedger(cash=cash, positions=positions or {})
+    pipeline.shadow_ledger = _FakeLedger()
+    pipeline.council_pool = MagicMock()
+    pipeline.council_pool.get_latency_stats.return_value = {"p50_ms": 1, "p90_ms": 2}
+    pipeline.router = MagicMock()
+    pipeline.router.drop_rate_pct.return_value = 0.0
+    pipeline.performance_tracker = MagicMock()
+
     if snapshot_raises:
-        pipeline.performance_tracker.record_daily_snapshot.side_effect = RuntimeError("disk full")
+        pipeline.performance_tracker.record_daily_snapshot.side_effect = RuntimeError("simulated disk full")
     else:
         pipeline.performance_tracker.record_daily_snapshot.return_value = None
 
@@ -246,81 +229,130 @@ def _make_pipeline_stub(positions=None, cash=8_000_000.0, snapshot_raises=False)
 
 
 def test_telemetry_snapshot_taken_on_new_date():
-    """Normal path: snapshot succeeds and _last_snapshot_date is updated."""
-    pipeline = _make_pipeline_stub()
-    yesterday = "2000-01-01"  # definitely not today
+    """
+    Task 3A — Normal snapshot path using real KiBotV2Pipeline._telemetry_loop():
+    - Date is different from today UTC
+    - record_daily_snapshot() is called
+    - _last_snapshot_date changes to today UTC
+    """
+    pipeline = _make_pipeline_stub(last_snapshot_date="2000-01-01")
+    today_utc = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%d")
 
-    new_date, taken, _ = asyncio.run(_run_one_telemetry_cycle(pipeline, yesterday))
+    sleep_calls = asyncio.run(_execute_one_telemetry_cycle(pipeline))
 
-    assert taken is True
-    assert new_date != yesterday
+    assert sleep_calls == [30]
+    assert pipeline._last_snapshot_date == today_utc
     pipeline.performance_tracker.record_daily_snapshot.assert_called_once()
+    kwargs = pipeline.performance_tracker.record_daily_snapshot.call_args.kwargs
+    assert kwargs["date_str"] == today_utc
+    assert kwargs["cash_idr"] == 8_000_000.0
+    assert kwargs["total_equity_idr"] == 8_000_000.0
 
 
 def test_telemetry_snapshot_not_repeated_same_date():
-    """If _last_snapshot_date already equals today, no snapshot should be taken."""
-    pipeline = _make_pipeline_stub()
-    from datetime import datetime, timezone
-    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    """
+    Task 3C — Same-date path using real KiBotV2Pipeline._telemetry_loop():
+    - _last_snapshot_date == today UTC
+    - record_daily_snapshot() is NOT called
+    """
+    today_utc = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%d")
+    pipeline = _make_pipeline_stub(last_snapshot_date=today_utc)
 
-    new_date, taken, _ = asyncio.run(_run_one_telemetry_cycle(pipeline, today))
+    sleep_calls = asyncio.run(_execute_one_telemetry_cycle(pipeline))
 
-    assert taken is False
+    assert sleep_calls == [30]
+    assert pipeline._last_snapshot_date == today_utc
     pipeline.performance_tracker.record_daily_snapshot.assert_not_called()
 
 
 def test_telemetry_snapshot_exception_does_not_update_date():
     """
-    When record_daily_snapshot() raises an exception:
-    - last_snapshot_date must NOT be updated (stays as the old value).
-    - The cycle must complete without raising (exception is swallowed).
+    Task 3B — Snapshot failure path using real KiBotV2Pipeline._telemetry_loop():
+    - record_daily_snapshot() raises Exception
+    - _last_snapshot_date does NOT update (stays old value)
+    - telemetry cycle completes without raising exception
     """
-    pipeline = _make_pipeline_stub(snapshot_raises=True)
-    yesterday = "2000-01-01"
+    old_date = "2000-01-01"
+    pipeline = _make_pipeline_stub(snapshot_raises=True, last_snapshot_date=old_date)
 
-    new_date, taken, _ = asyncio.run(_run_one_telemetry_cycle(pipeline, yesterday))
+    # Must complete without unhandled exception:
+    sleep_calls = asyncio.run(_execute_one_telemetry_cycle(pipeline))
 
-    assert taken is False
-    assert new_date == yesterday, (
-        "_last_snapshot_date must remain unchanged when snapshot raises"
+    assert sleep_calls == [30]
+    assert pipeline._last_snapshot_date == old_date, (
+        f"_last_snapshot_date must remain '{old_date}', got '{pipeline._last_snapshot_date}'"
     )
+    pipeline.performance_tracker.record_daily_snapshot.assert_called_once()
 
 
-def test_telemetry_total_open_exp_computed_from_positions():
+def test_telemetry_total_open_exp_computed_from_positions(caplog):
     """
-    total_open_exp must be computed by walking open_positions directly,
-    not referencing any outer-scope variable (no NameError risk).
+    Task 3D — Real _telemetry_loop() exposure calculation:
+    - Fake open position
+    - Verifies exposure is computed from amount_coins * current_price
+    - Validates telemetry log formatting and snapshot unrealized PnL
     """
     pos = _FakePosition(amount_coins=0.002, current_price=1_350_000_000.0, cost_idr=2_500_000.0)
-    pipeline = _make_pipeline_stub(positions={"BTCIDR": pos})
+    expected_exp = 0.002 * 1_350_000_000.0  # = 2_700_000 IDR
+    cash = 7_500_000.0
+    total_eq = cash + expected_exp  # 10_200_000 IDR
+    expected_exp_pct = (expected_exp / total_eq) * 100.0  # 26.470588% -> 26.5%
 
-    _, _, total_open_exp = asyncio.run(_run_one_telemetry_cycle(pipeline, "2000-01-01"))
+    pipeline = _make_pipeline_stub(positions={"BTCIDR": pos}, cash=cash)
 
-    expected = pos.amount_coins * pos.current_price  # 2_700_000
-    assert total_open_exp == pytest.approx(expected, rel=1e-6), (
-        f"total_open_exp must equal sum of (coins * current_price), "
-        f"expected {expected:,.0f} got {total_open_exp:,.0f}"
-    )
+    import logging
+    with caplog.at_level(logging.INFO, logger="KiBotV2.Main"):
+        asyncio.run(_execute_one_telemetry_cycle(pipeline))
+
+    # 1. Verify snapshot received exact exposure and unrealized pnl
+    pipeline.performance_tracker.record_daily_snapshot.assert_called_once()
+    kwargs = pipeline.performance_tracker.record_daily_snapshot.call_args.kwargs
+    assert kwargs["unrealized_pnl_idr"] == pytest.approx(expected_exp - 2_500_000.0, rel=1e-6)
+    assert kwargs["open_positions_count"] == 1
+    assert kwargs["total_equity_idr"] == pytest.approx(total_eq, rel=1e-6)
+
+    # 2. Verify logger emitted the exact calculated exposure percentage
+    assert f"Exp: {expected_exp_pct:.1f}%" in caplog.text
+    assert "BTCIDR:+8.00%(Rp +200,000)" in caplog.text
 
 
-def test_telemetry_no_positions_zero_exposure():
+def test_telemetry_no_positions_zero_exposure(caplog):
     """
-    With no open positions, total_open_exp must be 0.0 and the
-    loop must complete without NameError.
+    Task 3E — Real _telemetry_loop() with no open positions:
+    - No positions in ledger
+    - No NameError (e.g. from total_open_exp)
+    - Exposure is 0.0%
     """
-    pipeline = _make_pipeline_stub(positions={})
-    _, _, total_open_exp = asyncio.run(_run_one_telemetry_cycle(pipeline, "2000-01-01"))
-    assert total_open_exp == 0.0
+    pipeline = _make_pipeline_stub(positions={}, cash=10_000_000.0)
+
+    import logging
+    with caplog.at_level(logging.INFO, logger="KiBotV2.Main"):
+        asyncio.run(_execute_one_telemetry_cycle(pipeline))
+
+    pipeline.performance_tracker.record_daily_snapshot.assert_called_once()
+    kwargs = pipeline.performance_tracker.record_daily_snapshot.call_args.kwargs
+    assert kwargs["unrealized_pnl_idr"] == 0.0
+    assert kwargs["open_positions_count"] == 0
+    assert kwargs["total_equity_idr"] == pytest.approx(10_000_000.0, rel=1e-6)
+
+    assert "Exp: 0.0%" in caplog.text
+    assert "Open: 0" in caplog.text
 
 
 def test_telemetry_snapshot_unrealized_pnl_correct():
-    """Verify that unrealized_pnl = market_value - cost_idr is passed correctly."""
-    pos = _FakePosition(amount_coins=1.0, current_price=50_000_000.0, cost_idr=45_000_000.0)
-    pipeline = _make_pipeline_stub(positions={"ETHIDR": pos})
+    """
+    Task 3 Additional: Verify unrealized_pnl = sum(market_val) - sum(cost)
+    with multiple open positions in real _telemetry_loop().
+    """
+    pos1 = _FakePosition(amount_coins=1.0, current_price=50_000_000.0, cost_idr=45_000_000.0)
+    pos2 = _FakePosition(amount_coins=0.01, current_price=1_000_000_000.0, cost_idr=11_000_000.0)
+    pipeline = _make_pipeline_stub(positions={"ETHIDR": pos1, "BTCIDR": pos2}, cash=5_000_000.0)
 
-    asyncio.run(_run_one_telemetry_cycle(pipeline, "2000-01-01"))
+    asyncio.run(_execute_one_telemetry_cycle(pipeline))
 
+    pipeline.performance_tracker.record_daily_snapshot.assert_called_once()
     call_kwargs = pipeline.performance_tracker.record_daily_snapshot.call_args.kwargs
-    expected_unrealized = 50_000_000.0 - 45_000_000.0  # = 5_000_000
+    expected_unrealized = (50_000_000.0 - 45_000_000.0) + (10_000_000.0 - 11_000_000.0)
     assert call_kwargs["unrealized_pnl_idr"] == pytest.approx(expected_unrealized, rel=1e-6)
-    assert call_kwargs["open_positions_count"] == 1
+    assert call_kwargs["open_positions_count"] == 2
+
