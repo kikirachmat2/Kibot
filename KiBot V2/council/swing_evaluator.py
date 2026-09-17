@@ -36,6 +36,9 @@ from council.indicators import (
     calc_bollinger_bands,
     calc_adx,
     calc_slope,
+    calc_choppiness_index,
+    calc_volume_zscore,
+    calc_bollinger_pct_b,
 )
 from config import settings
 
@@ -77,9 +80,33 @@ class SwingEvaluator:
         "max_hold_days": 10,
     }
 
-    def __init__(self, allocation_pct: Optional[float] = None):
+    def __init__(
+        self,
+        allocation_pct: Optional[float] = None,
+        use_volatility_parity: bool = True,
+        target_risk_pct: float = 0.02,
+        max_cap_pct: Optional[float] = None,
+    ):
         # Default allocation: 33.33% of bankroll per position (Model B)
         self.allocation_pct = allocation_pct if allocation_pct is not None else getattr(settings, "POSITION_ALLOCATION_PCT", 0.3333)
+        self.use_volatility_parity = use_volatility_parity
+        self.target_risk_pct = target_risk_pct
+        self.max_cap_pct = max_cap_pct if max_cap_pct is not None else self.allocation_pct
+
+    def calculate_position_size(self, bankroll_idr: float, sl_pct: float) -> float:
+        """
+        Calculates position size using Volatility Risk Parity (Equal-Dollar Risk):
+        Position Size = min((Bankroll * Risk_Target) / (SL_pct / 100), Bankroll * Max_Cap_pct)
+        Ensures each trade risks exactly `target_risk_pct` (default 2.0%) of bankroll.
+        """
+        if not self.use_volatility_parity or sl_pct <= 0:
+            return round(bankroll_idr * self.allocation_pct, 2)
+
+        risk_budget_idr = bankroll_idr * self.target_risk_pct
+        volatility_sized_idr = risk_budget_idr / (sl_pct / 100.0)
+        max_size_idr = bankroll_idr * self.max_cap_pct
+        final_size = min(volatility_sized_idr, max_size_idr)
+        return max(10_000.0, round(final_size, 2))
 
     def extract_indicator_values(self, candidate: Dict[str, Any]) -> Dict[str, Any]:
         """
@@ -120,6 +147,13 @@ class SwingEvaluator:
             vals["upper_bb"] = float(candidate.get("upper_bb", 0.0))
             vals["adx14"] = float(candidate.get("adx14", 20.0))
             vals["sma20_slope"] = float(candidate.get("sma20_slope", 0.0))
+            vals["choppiness_index"] = float(candidate.get("choppiness_index", 50.0))
+            vals["volume_zscore"] = float(candidate.get("volume_zscore", 0.0))
+            vals["bollinger_pct_b"] = float(candidate.get("bollinger_pct_b", 0.5))
+            vals["binance_momentum_1h"] = float(candidate.get("binance_momentum_1h", 0.0))
+            vals["binance_momentum_5m"] = float(candidate.get("binance_momentum_5m", 0.0))
+            vals["binance_is_dumping"] = bool(candidate.get("binance_is_dumping", False))
+            vals["binance_dump_reason"] = str(candidate.get("binance_dump_reason", "STABLE"))
             return vals
 
         # Dynamic computation if series length >= 100
@@ -134,6 +168,9 @@ class SwingEvaluator:
             adx_s = calc_adx(highs, lows, closes, 14) if highs and lows else [20.0] * len(closes)
             sma20_series = calc_sma(closes, 20)
             slope = calc_slope(sma20_series, 5)
+            ci_s = calc_choppiness_index(highs, lows, closes, 14) if highs and lows else [50.0] * len(closes)
+            vol_z_s = calc_volume_zscore(volumes, 20) if volumes else [0.0] * len(closes)
+            pct_b_s = calc_bollinger_pct_b(closes, up_bb, low_bb)
 
             vals["ema20"] = ema20_s[-1]
             vals["ema50"] = ema50_s[-1]
@@ -147,6 +184,9 @@ class SwingEvaluator:
             vals["upper_bb"] = up_bb[-1]
             vals["adx14"] = adx_s[-1]
             vals["sma20_slope"] = slope
+            vals["choppiness_index"] = ci_s[-1]
+            vals["volume_zscore"] = vol_z_s[-1]
+            vals["bollinger_pct_b"] = pct_b_s[-1]
         else:
             # Defaults if not enough bars
             vals["ema20"] = float(candidate.get("ema20", 0.0))
@@ -161,6 +201,14 @@ class SwingEvaluator:
             vals["upper_bb"] = float(candidate.get("upper_bb", 0.0))
             vals["adx14"] = float(candidate.get("adx14", 20.0))
             vals["sma20_slope"] = float(candidate.get("sma20_slope", 0.0))
+            vals["choppiness_index"] = float(candidate.get("choppiness_index", 50.0))
+            vals["volume_zscore"] = float(candidate.get("volume_zscore", 0.0))
+            vals["bollinger_pct_b"] = float(candidate.get("bollinger_pct_b", 0.5))
+
+        vals["binance_momentum_1h"] = float(candidate.get("binance_momentum_1h", 0.0))
+        vals["binance_momentum_5m"] = float(candidate.get("binance_momentum_5m", 0.0))
+        vals["binance_is_dumping"] = bool(candidate.get("binance_is_dumping", False))
+        vals["binance_dump_reason"] = str(candidate.get("binance_dump_reason", "STABLE"))
 
         return vals
 
@@ -170,8 +218,11 @@ class SwingEvaluator:
         Rules:
         - EMA20 > EMA50
         - Close > EMA100
-        - Volume >= 0.95 * Volume_SMA20
-        - RSI14 >= 48.0
+        - Volume Thrust: Volume Z-Score >= 0.50 OR Volume >= 0.95 * Volume_SMA20
+        - RSI14: 48.0 <= RSI <= 72.0 (healthy pullback, avoid blow-off tops)
+        - Choppiness Index: CI < 61.8 (avoid choppy sideways whipsaws)
+        - Binance Lead-Lag: No liquidation dump (Return_1h >= -1.5% and not dumping)
+        - Sizing: Volatility Risk Parity (Equal-Dollar Risk Budget 2.0%)
         """
         if norm_sym not in self.TF_ELIGIBLE:
             return None
@@ -184,6 +235,10 @@ class SwingEvaluator:
         atr14 = vals["atr14"]
         vol = vals["volume"]
         vol_sma20 = vals["volume_sma20"]
+        ci = vals.get("choppiness_index", 50.0)
+        vol_z = vals.get("volume_zscore", 0.0)
+        binance_is_dumping = vals.get("binance_is_dumping", False)
+        binance_mom_1h = vals.get("binance_momentum_1h", 0.0)
 
         if ema20 <= 0 or ema50 <= 0 or ema100 <= 0:
             return None
@@ -191,10 +246,20 @@ class SwingEvaluator:
         # Check conditions
         cond_ema_cross = ema20 > ema50
         cond_above_ema100 = price > ema100
-        cond_volume = vol >= (0.95 * vol_sma20) if vol_sma20 > 0 else True
-        cond_rsi = rsi14 >= 48.0
+        
+        # Volume thrust: Z-score >= 0.50 or historical SMA ratio >= 0.95
+        cond_volume = (vol_z >= 0.50) or (vol >= (0.95 * vol_sma20) if vol_sma20 > 0 else True)
+        
+        # Pullback healthy, not in overbought blow-off top
+        cond_rsi = 48.0 <= rsi14 <= 72.0
 
-        if not (cond_ema_cross and cond_above_ema100 and cond_volume and cond_rsi):
+        # Anti-Whipsaw Choppiness Index filter (CI < 61.8)
+        cond_ci = ci < 61.8
+
+        # Binance macro lead-lag confirmation
+        cond_binance = not binance_is_dumping and binance_mom_1h >= -0.015
+
+        if not (cond_ema_cross and cond_above_ema100 and cond_volume and cond_rsi and cond_ci and cond_binance):
             return None
 
         # Calculate TP / SL based on ATR(14)
@@ -207,16 +272,17 @@ class SwingEvaluator:
         tp_pct = max(3.0, min(tp_pct, 15.0))
         sl_pct = max(2.0, min(sl_pct, 10.0))
 
-        suggested_size = bankroll_idr * self.allocation_pct
+        suggested_size = self.calculate_position_size(bankroll_idr, sl_pct)
         duration_ms = (time.perf_counter() - t0) * 1000.0
 
+        vol_desc = f"VolZ={vol_z:.2f}>=0.5" if vol_z > 0 else f"VolRatio={vol/vol_sma20:.2f}>=0.95"
         return CouncilDecision(
             verdict="APPROVED",
             symbol=raw_sym,
             action="BUY",
             confidence=0.88,
             score=86.5,
-            reason=f"Swing TF Approved: EMA20({ema20:.0f})>EMA50({ema50:.0f}), Close>EMA100, RSI={rsi14:.1f}>=48, VolRatio={vol/vol_sma20:.2f}>=0.95",
+            reason=f"Swing TF Approved: EMA20({ema20:.0f})>EMA50({ema50:.0f}), Close>EMA100, RSI={rsi14:.1f} in [48,72], CI={ci:.1f}<61.8, {vol_desc}",
             suggested_size_idr=suggested_size,
             ev_pct=self.TF_STATS["ev_pct"],
             kelly_fraction=self.TF_STATS["kelly_fraction"],
@@ -233,10 +299,12 @@ class SwingEvaluator:
         """
         Sub-strategy 2: Mean-Reversion (MR) for ETH & AVAX
         Rules:
-        - Close <= Lower Bollinger Band (20, 2.0)
+        - Close <= Lower Bollinger Band (20, 2.0) OR Bollinger %B <= 0.05
         - ADX14 <= 25.0
         - RSI14 <= 45.0
         - Absolute SMA20 Slope (5 bars) <= 2.0%
+        - Binance Safe: No catastrophic collapse (Binance_1h >= -4.0%)
+        - Sizing: Volatility Risk Parity (Equal-Dollar Risk Budget 2.0%)
         """
         if norm_sym not in self.MR_ELIGIBLE:
             return None
@@ -248,17 +316,20 @@ class SwingEvaluator:
         rsi14 = vals["rsi14"]
         atr14 = vals["atr14"]
         slope = vals["sma20_slope"]
+        pct_b = vals.get("bollinger_pct_b", 0.5)
+        binance_mom_1h = vals.get("binance_momentum_1h", 0.0)
 
         if lower_bb <= 0 or middle_bb <= 0:
             return None
 
-        # Check conditions
-        cond_bb = price <= lower_bb
+        # Check conditions: Lower BB touch OR Bollinger %B <= 0.05
+        cond_bb = (price <= lower_bb) or (pct_b <= 0.05)
         cond_adx = adx14 <= 25.0
         cond_rsi = rsi14 <= 45.0
         cond_slope = abs(slope) <= 0.02
+        cond_binance_safe = binance_mom_1h >= -0.040
 
-        if not (cond_bb and cond_adx and cond_rsi and cond_slope):
+        if not (cond_bb and cond_adx and cond_rsi and cond_slope and cond_binance_safe):
             return None
 
         # Calculate TP / SL
@@ -271,7 +342,7 @@ class SwingEvaluator:
         tp_pct = max(2.5, min(tp_pct, 12.0))
         sl_pct = max(2.0, min(sl_pct, 10.0))
 
-        suggested_size = bankroll_idr * self.allocation_pct
+        suggested_size = self.calculate_position_size(bankroll_idr, sl_pct)
         duration_ms = (time.perf_counter() - t0) * 1000.0
 
         return CouncilDecision(
@@ -280,7 +351,7 @@ class SwingEvaluator:
             action="BUY",
             confidence=0.85,
             score=84.0,
-            reason=f"Swing MR Approved: Price({price:.0f})<=LowerBB({lower_bb:.0f}), ADX={adx14:.1f}<=25, RSI={rsi14:.1f}<=45, Slope={slope*100:.2f}%<=2%",
+            reason=f"Swing MR Approved: Price({price:.0f})<=LowerBB({lower_bb:.0f}) or %B={pct_b:.2f}<=0.05, ADX={adx14:.1f}<=25, RSI={rsi14:.1f}<=45, Slope={slope*100:.2f}%<=2%",
             suggested_size_idr=suggested_size,
             ev_pct=self.MR_STATS["ev_pct"],
             kelly_fraction=self.MR_STATS["kelly_fraction"],

@@ -334,3 +334,78 @@ Untuk mendapatkan manfaat kecepatan perputaran modal (*Velocity of Capital*) tan
    - *Masalah*: Server reboot setelah TP1 tereksekusi tapi sebelum runner selesai.
    - *Mitigasi di Kode*: Field `tp1_executed`, `partial_tp_price`, `partial_pnl_idr`, dan ratcheted `stop_loss_price` dipersistensikan secara atomik ke `durable_state.json` via event `PARTIAL`, memastikan pemulihan sempurna tanpa kehilangan status risk-free.
 
+---
+
+## 8. VOLATILITY RISK PARITY SIZING, CHOPPINESS ANTI-WHIPSAW, & MACRO LEAD-LAG MECHANICS
+
+### A. Anti-Whipsaw Filter: Choppiness Index & Volume Z-Score
+
+Breakout teknikal pada aset kripto sering kali merupakan *bull trap* (jebakan palsu) jika terjadi saat pasar berada dalam fase kompresi volatilitas yang berkepanjangan tanpa aliran dana institusional.
+
+1. **Choppiness Index (CI) Guard**:
+   $$\text{CI} = 100 \times \frac{\log_{10}\left(\sum_{i=0}^{n-1} \text{TR}_i\right) - \log_{10}\left(\max(H_n) - \min(L_n)\right)}{\log_{10}(n)}$$
+   - $\text{CI} \ge 61.8$: Pasar berada dalam rezim *extreme consolidation / sideways* $\implies$ **TOLAK BUY TREND-FOLLOWING**.
+   - $\text{CI} < 61.8$: Rezim tren terkonfirmasi $\implies$ **IZINKAN EVALUASI TF**.
+
+2. **Volume Thrust Confirmation via Z-Score**:
+   $$Z_{\text{vol}} = \frac{V_t - \mu_V(20)}{\sigma_V(20)}$$
+   - Syarat buy valid: $Z_{\text{vol}} \ge 0.50$ (atau rasio $V_t \ge 0.95 \times \text{SMA}_{20}(V)$) untuk memastikan pergerakan harga didorong oleh akumulasi likuiditas riil, bukan *Brownian drift* pada orderbook tipis.
+
+3. **Anti-Blowoff RSI Upper Bound**:
+   - Pulback sehat: $48.0 \le \text{RSI}_{14} \le 72.0$.
+   - Jika $\text{RSI}_{14} > 72.0$: **TOLAK BUY** untuk mencegah pembelian impulsif pada puncak *exhaustion rally / blow-off top*.
+
+---
+
+### B. Volatility Risk Parity Sizing (Equal-Dollar Risk Model)
+
+Pendekatan ukuran posisi flat (misal seragam 33.33% modal) melanggar prinsip dasar manajemen risiko portofolio karena mengekspos risiko rupiah yang tidak seimbang antara koin bervolatilitas rendah dan tinggi.
+
+#### Formulasi Matematis:
+Ditetapkan target alokasi risiko konstan $R_{\text{target}} = 2.0\%$ dari total ekuitas:
+
+$$\text{Position Size (IDR)} = \min\left(\frac{\text{Bankroll} \times R_{\text{target}}}{\text{SL}_{\text{pct}} / 100},\, \text{Bankroll} \times \text{MaxCap}_{\text{pct}}\right)$$
+
+Di mana $\text{MaxCap}_{\text{pct}} = 35.0\%$ (sinkron dengan pagu alokasi per posisi `CapitalGovernor`).
+
+#### Pembuktian Numerik (Modal Rp 10.000.000, $R_{\text{target}} = \text{Rp } 200.000$):
+- **Instrumen Volatilitas Rendah (BTC/IDR @ ATR Rendah, $\text{SL} = 3.5\%$)**:
+  $$\text{Ukuran Teoretis} = \frac{\text{Rp } 200.000}{0.035} = \text{Rp } 5.714.285 \implies \text{Dicap pada } 35\% = \mathbf{\text{Rp } 3.500.000}$$
+  Risiko Maksimal: $\text{Rp } 3.500.000 \times 3.5\% = \text{Rp } 122.500$ ($1.22\%$ dari modal).
+- **Instrumen Volatilitas Tinggi (AVAX/IDR @ ATR Tinggi, $\text{SL} = 7.0\%$)**:
+  $$\text{Ukuran Teoretis} = \frac{\text{Rp } 200.000}{0.070} = \mathbf{\text{Rp } 2.857.143} \quad (\text{di bawah cap } 35\%)$$
+  Risiko Riil: $\text{Rp } 2.857.143 \times 7.0\% = \mathbf{\text{Rp } 200.000}$ (Tepat $2.0\%$ dari modal).
+
+*Hasil*: Portofolio tidak lagi terancam oleh kejatuhan altcoin beta-tinggi, karena alokasi kapital otomatis mengecil saat volatilitas aset melebar.
+
+---
+
+### C. Binance Macro Lead-Lag Confirmation Engine
+
+Pasar spot global Binance merepresentasikan $>60\%$ *price discovery* kripto, sementara bursa lokal (Indodax) berperan sebagai pasar pengikut (*lagging venue*) dengan latensi transmisi likuiditas 6s s/d 15s.
+
+```
++---------------------------------------------------------------------------------------------------+
+|                                 BINANCE LEAD-LAG DEFENSE ARCHITECTURE                             |
+|                                                                                                   |
+|   Binance WebSocket (!miniTicker@arr) ───> [BinanceLeadLagTracker (In-Memory Rolling Deque)]      |
+|                                                          │                                        |
+|                                    Hitung: 5m, 1h, 24h Price Returns                              |
+|                                                          ▼                                        |
+|   Candidate Ticker Indodax ───────────> [Evaluasi Lead-Lag Dump Gate]                             |
+|                                                          │                                        |
+|                     ┌────────────────────────────────────┴────────────────────────────────────┐   |
+|                     ▼                                                                         ▼   |
+|   [Dump Global Terdeteksi]                                                  [Momentum Global Stabil]   |
+|   - Return 1h Binance <= -1.5%                                              - Return 1h Binance > -1.5% |
+|   - Flash dump 5m <= -1.0%                                                  - Flash dump 5m > -1.0%     |
+|   ---------------------------------                                         --------------------------  |
+|   ===> BLOKIR TOTAL BUY ORDER INDODAX                                       ===> IZINKAN BUY DISPATCH   |
+|        (Mencegah Membeli Pisau Jatuh)                                            (Alpha Terkonfirmasi)  |
++---------------------------------------------------------------------------------------------------+
+```
+
+#### Mitigasi Cold-Start (Anti-Paralysis):
+Pada detik-detik awal setelah bot dinyalakan (*cold boot*), history 1 jam belum terisi penuh. Tracker menggunakan *dynamic windowing*: menghitung return dari titik tertua yang tersedia (atau 24h open bawaan miniTicker) dan mengembalikan status netral ($0.0\%$) jika data $< 5\text{s}$, mencegah *startup deadlock*.
+
+
