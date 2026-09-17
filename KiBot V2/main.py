@@ -7,7 +7,12 @@ from typing import Dict, Any
 
 from aiohttp import web
 from config import settings
-from ingestion import IndodaxWebSocketClient, BinanceWebSocketClient, metrics_registry
+from ingestion import (
+    IndodaxWebSocketClient,
+    BinanceWebSocketClient,
+    BinanceLeadLagTracker,
+    metrics_registry,
+)
 from council import PerSymbolCoalescingRouter, CouncilWorkerPool, CouncilDecision, SwingEvaluator
 from enrichment import BackgroundEnrichmentWorker
 from risk import RiskGate, CapitalGovernor
@@ -60,6 +65,7 @@ class KiBotV2Pipeline:
         
         self.indodax_ws = IndodaxWebSocketClient()
         self.binance_ws = BinanceWebSocketClient()
+        self.binance_tracker = BinanceLeadLagTracker()
         self._running = False
         self._start_time = time.time()
         self._health_runner = None
@@ -197,6 +203,11 @@ class KiBotV2Pipeline:
             elif price < high * 0.88:
                 leadlag = -0.15 # Lagging downtrend
             
+        # Binance Macro Lead-Lag Confirmation
+        bin_sym = self.binance_tracker.map_indodax_to_binance(pair)
+        bin_mom = self.binance_tracker.get_momentum(bin_sym)
+        is_dumping, dump_reason = self.binance_tracker.is_dumping(bin_sym)
+
         candidate_payload = {
             "symbol": pair,
             "price": price,
@@ -206,13 +217,18 @@ class KiBotV2Pipeline:
             "volume_ratio": vol_ratio,
             "leadlag_score": leadlag,
             "spread_pct": spread_pct,
+            "binance_momentum_1h": bin_mom.get("return_1h", 0.0),
+            "binance_momentum_5m": bin_mom.get("return_5m", 0.0),
+            "binance_momentum_24h": bin_mom.get("return_24h", 0.0),
+            "binance_is_dumping": is_dumping,
+            "binance_dump_reason": dump_reason,
             "timestamp": time.time(),
         }
         await self.router.enqueue_candidate(symbol=pair, payload=candidate_payload, score=score)
 
     async def _on_binance_ticker(self, ticker: Dict[str, Any]) -> None:
-        # Mini ticker stream updates data age and lead-lag metrics
-        pass
+        # Mini ticker stream updates data age and lead-lag metrics in memory
+        self.binance_tracker.update_ticker(ticker)
 
     async def _on_council_decision(self, decision: CouncilDecision, candidate: Dict[str, Any]) -> None:
         if decision.verdict == "APPROVED" and decision.action == "BUY":
