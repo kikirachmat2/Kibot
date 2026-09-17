@@ -2,12 +2,29 @@
 Binance Lead-Lag Tracker for KiBot V2.
 Tracks rolling prices and calculates micro/macro momentum from Binance miniTicker stream.
 Provides cross-market lead-lag confirmation to prevent buying Indodax during global liquidation dumps.
+
+Data Integrity (D-08 Fix B):
+  Cold-start and stale-data conditions are FAIL-CLOSED (i.e., treated as unsafe for entry):
+  - get_momentum() returns UNKNOWN sentinel dict when no data received yet.
+  - is_data_fresh() returns False when newest tick is > 120s old.
+  - is_dumping() / is_flash_crash() return (True, 'BINANCE_DATA_UNKNOWN') for stale data.
+  Callers MUST check for the UNKNOWN sentinel and block entry accordingly.
 """
 from __future__ import annotations
 
 import time
 from typing import Dict, Any, List, Tuple, Optional
 from collections import deque
+
+# Sentinel value used in momentum dict to signal no Binance data available.
+# Callers must check mom.get('status') == 'UNKNOWN' and treat it as FAIL-CLOSED.
+UNKNOWN_MOMENTUM: Dict[str, Any] = {
+    "status": "UNKNOWN",
+    "return_5m": None,
+    "return_1h": None,
+    "return_24h": None,
+    "data_points": 0,
+}
 
 
 class BinanceLeadLagTracker:
@@ -80,10 +97,14 @@ class BinanceLeadLagTracker:
         sym = symbol.upper().strip()
         q = self._history.get(sym)
         if not q:
-            # Fallback when cold-started or symbol not received yet
-            return {"return_5m": 0.0, "return_1h": 0.0, "return_24h": 0.0, "data_points": 0}
+            # Cold-started or symbol not received yet — FAIL-CLOSED (not safe to trade on)
+            return dict(UNKNOWN_MOMENTUM)
 
         now_ts, latest_price = q[-1]
+
+        # Check freshness: if newest tick is > 120 seconds old, treat as stale
+        if time.time() - now_ts > 120.0:
+            return dict(UNKNOWN_MOMENTUM)
 
         # Calculate 5m return (ref_ts = now - 300)
         cutoff_5m = now_ts - 300.0
@@ -103,18 +124,36 @@ class BinanceLeadLagTracker:
         ret_24h = (latest_price - open_24h) / open_24h if open_24h > 0 else ret_1h
 
         return {
+            "status": "OK",
             "return_5m": round(ret_5m, 4),
             "return_1h": round(ret_1h, 4),
             "return_24h": round(ret_24h, 4),
             "data_points": len(q),
         }
 
+    def is_data_fresh(self, symbol: str, max_age_s: float = 120.0) -> bool:
+        """
+        Returns True only if we have received Binance data for this symbol
+        within the last `max_age_s` seconds (default: 120s).
+        Returns False (stale/cold) when no data or data is older than threshold.
+        Callers should block entry when this returns False.
+        """
+        sym = symbol.upper().strip()
+        q = self._history.get(sym)
+        if not q:
+            return False
+        newest_ts = q[-1][0]
+        return (time.time() - newest_ts) <= max_age_s
+
     def is_dumping(self, symbol: str, threshold_1h: float = -0.015, threshold_5m: float = -0.010) -> Tuple[bool, str]:
         """
         Evaluates whether Binance is undergoing a liquidation dump.
         Returns (True, reason) if threshold breached, else (False, 'STABLE').
+        Returns (True, 'BINANCE_DATA_UNKNOWN') when data is stale or missing (FAIL-CLOSED).
         """
         mom = self.get_momentum(symbol)
+        if mom.get("status") == "UNKNOWN":
+            return True, f"BINANCE_DATA_UNKNOWN: no fresh data for {symbol} (fail-closed)"
         ret_1h = mom["return_1h"]
         ret_5m = mom["return_5m"]
 
@@ -129,9 +168,12 @@ class BinanceLeadLagTracker:
         """
         Detects emergency cross-market liquidation flash crashes (default: <= -2.0% in 5m).
         Returns: (is_crash: bool, ret_5m: float, reason: str).
+        Returns (True, 0.0, 'BINANCE_DATA_UNKNOWN') when data is stale or missing (FAIL-CLOSED).
         """
         binance_sym = self.map_indodax_to_binance(symbol) if not symbol.endswith("USDT") else symbol.upper().strip()
         mom = self.get_momentum(binance_sym)
+        if mom.get("status") == "UNKNOWN":
+            return True, 0.0, f"BINANCE_DATA_UNKNOWN: no fresh data for {binance_sym} (fail-closed)"
         ret_5m = mom["return_5m"]
 
         if ret_5m <= threshold_5m:

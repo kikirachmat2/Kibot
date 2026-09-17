@@ -22,6 +22,7 @@ def test_choppiness_index_rejection():
         "atr14": 35_000_000.0,
         "volume": 150.0,
         "volume_sma20": 120.0,
+        "binance_data_status": "OK",  # D-08: provide fresh Binance status
     }
 
     # 1. High Choppiness (CI = 65.0 >= 61.8) -> REJECT
@@ -55,6 +56,7 @@ def test_anti_blowoff_rsi_upper_cap():
         "volume": 150.0,
         "volume_sma20": 120.0,
         "choppiness_index": 45.0,
+        "binance_data_status": "OK",  # D-08: provide fresh Binance status
     }
     decision = evaluator.evaluate(candidate)
     assert decision.verdict == "REJECTED"
@@ -102,6 +104,7 @@ def test_binance_lead_lag_dump_rejection():
         "volume": 150.0,
         "volume_sma20": 120.0,
         "choppiness_index": 42.0,
+        "binance_data_status": "OK",  # D-08: Binance data is fresh for these tests
     }
 
     # Case 1: Binance dumping -2.0% in 1h -> REJECT
@@ -174,6 +177,7 @@ def test_mean_reversion_bollinger_pct_b():
         "atr14": 15_000.0,
         "bollinger_pct_b": 0.02, # <= 0.05 (Deep oversold)
         "binance_momentum_1h": -0.01, # -1.0% normal pullback
+        "binance_data_status": "OK",  # D-08: provide fresh Binance status
     }
     decision = evaluator.evaluate(candidate)
     assert decision.verdict == "APPROVED"
@@ -217,13 +221,17 @@ def test_intraday_volume_run_rate_normalization():
             "Volume": vol,
         })
 
-    computed = manager.process_candles("BTCIDR", bars)
+    _, live_computed = manager.process_candles("BTCIDR", bars)
+    # The live_computed snapshot includes the open bar (tau = 0.60),
+    # which is exactly what we want to test for intraday run-rate projection.
+    computed = live_computed
     # Vol projected = 10.0 / 0.60 = 16.67
     assert computed["volume_projected"] == pytest.approx(16.67, abs=0.5)
     # Projected ratio = 16.67 / 16.0 ~ 1.04 >= 0.85
     assert computed["volume_projected_ratio"] >= 0.85
     # Prior bar volume was 16.0, ratio ~ 1.0 >= 0.90
     assert computed["prior_bar_volume_ratio"] >= 0.90
+
 
 
 def test_sol_trend_following_inclusion_and_volatility_parity():
@@ -248,6 +256,7 @@ def test_sol_trend_following_inclusion_and_volatility_parity():
         "prior_bar_volume_ratio": 1.08,
         "volume_zscore": 0.10,
         "binance_momentum_1h": 0.005,
+        "binance_data_status": "OK",  # D-08: provide fresh Binance status
     }
 
     decision = evaluator.evaluate(sol_candidate, bankroll_idr=10_000_000.0)
@@ -283,6 +292,7 @@ def test_dual_verification_volume_gate_prior_bar_fallback():
         "prior_bar_volume_ratio": 1.10, # But yesterday had 110% of SMA20!
         "volume_zscore": -0.80,
         "binance_momentum_1h": 0.002,
+        "binance_data_status": "OK",  # D-08: provide fresh Binance status
     }
 
     decision = evaluator.evaluate(cand)
