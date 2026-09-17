@@ -94,3 +94,19 @@ Berdasarkan audit empiris live Indodax API terhadap 32.537 bar historis (periode
    - **Penanganan SOLIDR**: Engine wajib men-skip bar yang memiliki `volume == 0`, `high == low`, atau `range_pct < 0.05%` dari kalkulasi indikator.
    - **Penanganan BTCIDR & ETHIDR**: Engine men-skip bar dengan `volume == 0` atau `high == low`.
 
+---
+
+## 7. SIGNAL-PRICE VS ENTRY-PRICE CONVENTION & KNOWN ASSUMPTIONS
+
+1. **Konvensi Patokan SL/TP dari Signal Bar**:  
+   Pada strategi Mean Reversion (D1, D2, D3), level proteksi stop loss dan take profit dihitung saat sinyal muncul di `bar[i].close`:
+   $$\text{target\_sl} = \text{bar}[i].\text{close} \times (1 - \text{sl\_pct})$$
+   Eksekusi posisi riil terjadi pada pembukaan bar berikutnya (`bar[i+1].open`). Jika terdapat lompatan harga (*gap*) antara penutupan bar sinyal dan pembukaan bar eksekusi, jarak persentase SL efektif dari harga entry riil dapat sedikit berbeda dari parameter `sl_pct`. Konvensi ini bersifat **konservatif** dan diterima untuk mencerminkan batasan order sebelum order dikirim ke bursa.
+
+2. **Target TP Mean Reversion Bersifat Absolut (`middle_bb`)**:  
+   Target take profit utama untuk strategi MR adalah garis tengah Bollinger Band (`middle_bb` / SMA 20). Konsekuensinya, target profit merupakan harga absolut pemulihan rata-rata dinamis (*return to mean*), bukan persentase tetap dari harga entry, sehingga rasio *Risk:Reward* bervariasi pada setiap trade sesuai volatilitas pasar saat itu.
+
+3. **Asumsi Fill Rate Taker 100% (*Known Optimistic Assumption*)**:  
+   Pada eksekusi market order (Taker), model menetapkan `fill_rate = 1.0` (100% langsung terisi). Asumsi ini sangat realistis untuk BTCIDR dan ETHIDR yang memiliki kedalaman likuiditas tinggi. Namun, untuk aset altcoin seperti SOLIDR dengan alokasi posisi Rp 5.000.000, asumsi 100% fill instan tanpa partial fill dicatat sebagai *known optimistic assumption* yang akan diperketat pada iterasi microstructure berikutnya.
+
+
