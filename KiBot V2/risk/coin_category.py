@@ -38,12 +38,16 @@ STABLE_OR_QUOTE: Set[str] = {"USDT", "USDC", "DAI", "BIDR", "IDR"}
 
 
 def normalize_symbol(symbol: str) -> str:
-    """Normalizes pairs like 'DOGE/IDR', 'pepe_idr', 'btc' into clean uppercase base asset 'DOGE'."""
+    """Normalizes pairs like 'DOGE/IDR', 'pepe_idr', 'BTCIDR', 'btc' into clean uppercase base asset 'DOGE'."""
     raw = str(symbol or "").upper().strip()
     if "/" in raw:
         raw = raw.split("/", 1)[0]
-    if "_" in raw:
+    elif "_" in raw:
         raw = raw.split("_", 1)[0]
+    elif raw.endswith("IDR") and len(raw) > 3:
+        raw = raw[:-3]
+    elif raw.endswith("USDT") and len(raw) > 4:
+        raw = raw[:-4]
     return raw.strip()
 
 
