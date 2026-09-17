@@ -35,8 +35,8 @@ def fetch_all_indodax_pairs(session: Optional[requests.Session] = None) -> List[
     idr_pairs = []
     for p in pairs_data:
         pair_id = p.get("id", "").upper().replace("_", "")
-        # Indodax IDR pairs typically end with 'idr' and traded_currency is 'idr'
-        if pair_id.endswith("IDR") and p.get("traded_currency", "").lower() == "idr":
+        # Indodax IDR pairs have base_currency == 'idr' and id ends with 'idr'
+        if pair_id.endswith("IDR") and p.get("base_currency", "").lower() == "idr":
             idr_pairs.append(pair_id)
 
     idr_pairs.sort()
