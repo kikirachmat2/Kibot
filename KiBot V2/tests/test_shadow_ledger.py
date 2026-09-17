@@ -9,9 +9,10 @@ from risk import RiskGate, CapitalGovernor
 from storage.live_readiness import LiveReadinessEvaluator, live_readiness_evaluator, shadow_mr_readiness_evaluator
 from storage.durable_state import DurableStateStore
 from config import settings
+from async_helper import run_async
 
 
-@pytest.mark.anyio
+@run_async
 async def test_order_router_separates_tf_and_mr_ledgers():
     """Verify OrderRouter routes TF orders to primary virtual_ledger and MR orders to shadow_ledger."""
     tf_ledger = VirtualLedger(initial_cash_idr=10_000_000.0, name="PRIMARY_TF")
@@ -53,7 +54,7 @@ async def test_order_router_separates_tf_and_mr_ledgers():
     assert "ETH/IDR" not in tf_ledger.open_positions
 
 
-@pytest.mark.anyio
+@run_async
 async def test_mean_reversion_remains_in_shadow_mode_even_when_live_flag_set():
     """Verify Mean-Reversion is strictly guarded in shadow mode and cannot leak to live trading."""
     tf_ledger = VirtualLedger(initial_cash_idr=10_000_000.0, name="PRIMARY_TF")
