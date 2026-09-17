@@ -8,7 +8,7 @@ from typing import Dict, Any
 from aiohttp import web
 from config import settings
 from ingestion import IndodaxWebSocketClient, BinanceWebSocketClient, metrics_registry
-from council import PerSymbolCoalescingRouter, CouncilWorkerPool, CouncilDecision
+from council import PerSymbolCoalescingRouter, CouncilWorkerPool, CouncilDecision, SwingEvaluator
 from enrichment import BackgroundEnrichmentWorker
 from risk import RiskGate, CapitalGovernor
 from storage import setup_logging, durable_state_store, StartupReconciler, venue_ledger
@@ -20,7 +20,12 @@ logger = logging.getLogger("KiBotV2.Main")
 class KiBotV2Pipeline:
     def __init__(self):
         self.router = PerSymbolCoalescingRouter(max_capacity=settings.MAX_SYMBOL_QUEUE_CAP)
-        self.council_pool = CouncilWorkerPool(router=self.router, worker_count=settings.COUNCIL_WORKERS)
+        self.swing_evaluator = SwingEvaluator()
+        self.council_pool = CouncilWorkerPool(
+            router=self.router,
+            worker_count=settings.COUNCIL_WORKERS,
+            evaluator=self.swing_evaluator,
+        )
         self.enrichment_worker = BackgroundEnrichmentWorker()
         
         self.risk_gate = RiskGate()
@@ -183,6 +188,8 @@ class KiBotV2Pipeline:
                 take_profit_pct=decision.target_tp_pct,
                 stop_loss_pct=decision.target_sl_pct,
                 orderbook=orderbook,
+                max_hold_time_s=decision.max_hold_time_s,
+                strategy=decision.strategy,
             )
             if res.get("success"):
                 # Dynamically subscribe to WS orderbook stream for active tracking
