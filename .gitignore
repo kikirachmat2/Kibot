@@ -60,3 +60,6 @@ SHARED_INTELLIGENCE/
 # Allow explicit example states
 !state_samples/
 !state_samples/*.example.json
+
+# Graphify Output
+graphify-out/
