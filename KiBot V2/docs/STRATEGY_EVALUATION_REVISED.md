@@ -78,3 +78,19 @@ Strategi **DITOLAK** dan dilarang masuk ke tahap implementasi shadow engine jika
 - **Max Rolling 7-Day Drawdown**: $\text{MDD} < 4.0\%$.
 - **Frekuensi Trade**: $\ge 5 \text{ trade per minggu}$ (memastikan perputaran modal nyata).
 - **Signifikansi Statistik**: $N \ge 100 \text{ trades}$ total.
+
+---
+
+## 6. DATA QUALITY EXCLUSION — AVAXIDR
+
+Berdasarkan audit empiris live Indodax API terhadap 32.537 bar historis (periode 2023-01-01 s.d. 2026-09-17):
+1. **Temuan Anomali Likuiditas**:
+   - **Tahun 2023**: Ditemukan **55.31% flat bar** (`open == high == low == close`) dan **32.71% bar tanpa volume** (`volume == 0`).
+   - **Keseluruhan Periode**: Sebanyak **8.082 bar (24.84%)** datar dan **4.139 bar (12.72%)** bervolume nol.
+   - **Mekanisme Padding Indodax**: API Indodax melakukan forward-fill sintetis pada jam-jam tanpa transaksi dengan mengulang harga terakhir dan volume nol.
+2. **Keputusan Direktur (Exclusion)**:
+   - **AVAXIDR resmi DIKELUARKAN dari universe backtest** aktif (bukan sekadar difilter bar per bar). Distorsi indikator teknikal (ATR, BB, RSI) akibat ketiadaan rentang harga pada $>50\%$ waktu menghasilkan angka performa semu (false win/loss rate).
+   - **Universe Backtest Final**: Terbatas pada **BTCIDR, ETHIDR, dan SOLIDR** (3 pair).
+   - **Penanganan SOLIDR**: Engine wajib men-skip bar yang memiliki `volume == 0`, `high == low`, atau `range_pct < 0.05%` dari kalkulasi indikator.
+   - **Penanganan BTCIDR & ETHIDR**: Engine men-skip bar dengan `volume == 0` atau `high == low`.
+
