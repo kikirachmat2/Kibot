@@ -431,9 +431,10 @@ class SwingEvaluator:
 
         vals = self.extract_indicator_values(candidate)
 
-        # D-08 Fix B: Block entry when Binance data is stale or missing (fail-closed)
-        binance_status = vals.get("binance_data_status", "UNKNOWN")
-        if binance_status == "UNKNOWN":
+        # D-09 Hardening: Strict allowlist — ONLY the literal string "OK" allows entry.
+        # Any other value (UNKNOWN, STALE, ERROR, empty string, None, typo) is REJECTED.
+        binance_status = vals.get("binance_data_status", "")
+        if binance_status != "OK":
             duration_ms = (time.perf_counter() - t0) * 1000.0
             return CouncilDecision(
                 verdict="REJECTED",
@@ -441,7 +442,7 @@ class SwingEvaluator:
                 action="NONE",
                 confidence=0.0,
                 score=0.0,
-                reason="Binance cross-market data unavailable or stale (fail-closed: no entry without lead-lag confirmation)",
+                reason=f"Binance data status '{binance_status}' is not 'OK' (fail-closed: only confirmed fresh data allows entry)",
                 suggested_size_idr=0.0,
                 ev_pct=0.0,
                 kelly_fraction=0.0,

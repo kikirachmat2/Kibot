@@ -177,11 +177,13 @@ class CandleEnrichmentManager:
         Returns True if the candle's bar-open timestamp corresponds to the CURRENT UTC day,
         meaning the bar has not yet closed.
         A 1D bar opens at 00:00 UTC and closes at 23:59:59 UTC the same day.
-        We compare the bar's UTC date to today's UTC date.
+
+        Uses timezone-aware UTC datetimes to avoid local-timezone confusion
+        (e.g., WIB = UTC+7: midnight WIB is 17:00 previous day UTC).
         """
-        import datetime
-        bar_date = datetime.datetime.utcfromtimestamp(candle_ts).date()
-        today_utc = datetime.datetime.utcnow().date()
+        import datetime as _dt
+        bar_date   = _dt.datetime.fromtimestamp(candle_ts, tz=_dt.timezone.utc).date()
+        today_utc  = _dt.datetime.now(_dt.timezone.utc).date()
         return bar_date >= today_utc
 
     def process_candles(self, norm_sym: str, data: List[Dict[str, Any]]) -> tuple:
