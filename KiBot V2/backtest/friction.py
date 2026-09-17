@@ -18,6 +18,7 @@ class OrderType(Enum):
 class StrategyType(Enum):
     MEAN_REVERSION = "mean_reversion"
     LEAD_LAG = "lead_lag"
+    TREND_FOLLOWING = "trend_following"
 
 
 # Friksi dasar per pair (dari dokumentasi baseline STRATEGY_EVALUATION_REVISED.md)
@@ -30,6 +31,9 @@ PAIR_FRICTION: Dict[str, tuple[float, float, float]] = {
     "AVAXIDR": (0.70, 0.95, 0.35),
 }
 
+# Fallback default untuk seluruh altcoin Indodax lainnya
+DEFAULT_ALTCOIN_FRICTION: tuple[float, float, float] = (0.70, 0.95, 0.35)
+
 
 def _normalize_pair(pair: str) -> str:
     """Normalizes symbol string to uppercase without separators."""
@@ -41,12 +45,14 @@ def get_roundtrip_friction(pair: str, order_type: OrderType) -> float:
     Return friction % roundtrip.
     Maker = base maker friction (exchange fee + PPh + CFX + passive spread/slippage).
     Taker = base taker friction (higher exchange fee + PPh + CFX + spread crossing + market slippage).
+    Falls back to DEFAULT_ALTCOIN_FRICTION for any unlisted altcoins.
     """
     clean_pair = _normalize_pair(pair)
-    if clean_pair not in PAIR_FRICTION:
-        raise KeyError(f"Pair '{pair}' not configured in PAIR_FRICTION table.")
+    if clean_pair in PAIR_FRICTION:
+        maker_pct, taker_pct, _ = PAIR_FRICTION[clean_pair]
+    else:
+        maker_pct, taker_pct, _ = DEFAULT_ALTCOIN_FRICTION
 
-    maker_pct, taker_pct, _ = PAIR_FRICTION[clean_pair]
     if order_type == OrderType.MAKER:
         return maker_pct
     elif order_type == OrderType.TAKER:
@@ -57,16 +63,20 @@ def get_roundtrip_friction(pair: str, order_type: OrderType) -> float:
 
 def get_adverse_penalty(strategy: StrategyType) -> float:
     """
-    Adverse selection penalty rate based on Oxford quantitative research:
+    Adverse selection penalty rate based on quantitative research:
     - Mean Reversion: 0.30 (30% discount on gross edge due to asymmetric limit order fill / falling knives)
     - Lead-Lag: 0.40 (40% discount on gross edge due to latency crowdedness / winner slip)
+    - Trend Following: 0.20 (20% discount on gross edge due to trailing slippage)
     """
     if strategy == StrategyType.MEAN_REVERSION:
         return 0.30
     elif strategy == StrategyType.LEAD_LAG:
         return 0.40
+    elif strategy == StrategyType.TREND_FOLLOWING:
+        return 0.20
     else:
         raise ValueError(f"Unknown StrategyType: {strategy}")
+
 
 
 def should_fill(
