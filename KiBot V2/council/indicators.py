@@ -173,3 +173,80 @@ def calc_slope(series: List[float], lookback: int = 5) -> float:
     if ref == 0:
         return 0.0
     return (series[-1] - ref) / ref
+
+
+def calc_choppiness_index(highs: List[float], lows: List[float], closes: List[float], period: int = 14) -> List[float]:
+    """
+    Calculates Choppiness Index (CI) for trend vs range differentiation.
+    Formula: 100 * LOG10( SUM(TrueRange(1), n) / (MaxHigh(n) - MinLow(n)) ) / LOG10(n)
+    CI > 61.8 indicates consolidation / chop (whipsaw danger).
+    CI < 38.2 indicates strong directional trend.
+    """
+    n = len(closes)
+    if n == 0:
+        return []
+    ci = [50.0] * n
+    if n <= period:
+        return ci
+
+    # 1-period True Range for each bar
+    tr = [highs[0] - lows[0]]
+    for i in range(1, n):
+        tr.append(max(highs[i] - lows[i], abs(highs[i] - closes[i - 1]), abs(lows[i] - closes[i - 1])))
+
+    log10_period = math.log10(float(period))
+
+    for i in range(period, n):
+        sum_tr = sum(tr[i - period + 1 : i + 1])
+        max_h = max(highs[i - period + 1 : i + 1])
+        min_l = min(lows[i - period + 1 : i + 1])
+        rng = max_h - min_l
+        if rng > 0 and sum_tr > 0:
+            val = 100.0 * (math.log10(sum_tr / rng) / log10_period)
+            ci[i] = max(0.0, min(100.0, val))
+        else:
+            ci[i] = 50.0
+
+    return ci
+
+
+def calc_volume_zscore(volumes: List[float], period: int = 20) -> List[float]:
+    """
+    Calculates Volume Z-score: (Volume - Mean(Volume, period)) / Std(Volume, period).
+    Positive Z-score indicates volume thrust / expansion above historical baseline.
+    """
+    n = len(volumes)
+    if n == 0:
+        return []
+    z_scores = [0.0] * n
+    if n < period:
+        return z_scores
+
+    for i in range(period - 1, n):
+        window = volumes[i - period + 1 : i + 1]
+        mean = sum(window) / float(period)
+        variance = sum((x - mean) ** 2 for x in window) / float(period)
+        std = math.sqrt(variance)
+        if std > 0:
+            z_scores[i] = (volumes[i] - mean) / std
+        else:
+            z_scores[i] = 0.0
+
+    return z_scores
+
+
+def calc_bollinger_pct_b(closes: List[float], upper: List[float], lower: List[float]) -> List[float]:
+    """
+    Calculates Bollinger %B: (Close - LowerBB) / (UpperBB - LowerBB).
+    %B <= 0.0 indicates price below lower band (deep oversold).
+    %B >= 1.0 indicates price above upper band (deep overbought).
+    """
+    n = len(closes)
+    pct_b = [0.5] * n
+    for i in range(n):
+        band_width = upper[i] - lower[i]
+        if band_width > 0:
+            pct_b[i] = (closes[i] - lower[i]) / band_width
+        else:
+            pct_b[i] = 0.5
+    return pct_b
