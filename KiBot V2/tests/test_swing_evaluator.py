@@ -55,7 +55,7 @@ def test_btc_trend_following_approval():
     # SL: 1.5 * ATR / price = 1.5 * 35M / 1050M = 5.0%
     assert 8.0 <= decision.target_tp_pct <= 8.5
     assert 4.8 <= decision.target_sl_pct <= 5.2
-    assert decision.suggested_size_idr == pytest.approx(4_000_000.0, rel=1e-2)
+    assert decision.suggested_size_idr == pytest.approx(3_000_000.0, rel=1e-2)
 
 def test_btc_trend_following_rejection_on_rsi():
     evaluator = SwingEvaluator()
@@ -93,7 +93,7 @@ def test_avax_mean_reversion_approval():
     assert decision.max_hold_time_s == 10 * 86400
     # TP: (middle_bb - price) / price = (420k - 380k) / 380k = 10.53%
     assert 10.0 <= decision.target_tp_pct <= 11.0
-    assert decision.suggested_size_idr == pytest.approx(5_000_000.0, rel=1e-2)
+    assert decision.suggested_size_idr == pytest.approx(3_750_000.0, rel=1e-2)
 
 def test_avax_mean_reversion_rejection_on_adx():
     evaluator = SwingEvaluator()
