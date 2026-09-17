@@ -253,7 +253,7 @@ def test_trade_log_required_columns_and_exit_reasons(dummy_aligned_df):
         "size_idr", "gross_pnl_idr", "friction_idr", "adverse_penalty_idr",
         "net_pnl_idr", "exit_reason",
     ]
-    valid_reasons = {"TP", "SL", "TIMEOUT", "INVALIDATION", "STAGNATION", "END_OF_DATA"}
+    valid_reasons = {"TP", "SL", "TIMEOUT", "INVALIDATION", "STAGNATION", "END_OF_DATA", "TRAILING_ATR", "EXIT_RSI50", "EXIT_ZSCORE"}
 
     for trade in res["trades_log"]:
         for col in required_cols:
@@ -270,3 +270,19 @@ def test_engine_determinism(dummy_aligned_df):
     assert res1["n_trades"] == res2["n_trades"]
     assert res1["win_rate"] == res2["win_rate"]
     assert res1["trades_log"] == res2["trades_log"]
+
+
+def test_higher_timeframe_strategies_execution(dummy_aligned_df):
+    """Verifies TREND_1D, MR_4H, and MR_1D execute properly without runtime error."""
+    for strat in ["TREND_1D", "MR_4H", "MR_1D"]:
+        res = run_backtest(
+            dummy_aligned_df,
+            strategy_name=strat,
+            pair="BTCIDR",
+            order_type=OrderType.TAKER,
+        )
+        assert "net_pnl_idr" in res
+        assert "n_trades" in res
+        assert "max_drawdown_pct" in res
+        assert isinstance(res["trades_log"], list)
+
