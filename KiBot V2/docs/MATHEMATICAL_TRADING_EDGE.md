@@ -231,3 +231,106 @@ Di mana $\text{Target Risk IDR} = 1.5\% \times \text{Total Equity} = \text{Rp } 
 4. **`KiBot V2/tests/`**:
    - `test_choppiness_index.py`: Validasi matematis rumus CI pada data trending vs choppy.
    - `test_mathematical_edge.py`: Simulasi komprehensif Monte Carlo untuk rasio R:R terhadap fee Indodax.
+   - `test_hybrid_exit_and_recycling.py`: Validasi 2-tier partial TP, capital recycling, dan BEP ratchet.
+
+---
+
+## 7. VELOCITY OF CAPITAL VS FAT-TAILS: HYBRID 2-TIER EXIT ENGINE & SCIENTIFIC CRITIQUE
+
+### A. Jebakan Matematis: "Asymmetric Payoff Fallacy" (Micro-Scalping Paradox)
+
+Hipotesis trading retail sering berasumsi: *"Beli di harga $P_0$, begitu naik tipis melewati fee bursa (+0.80%), langsung ambil profit dan putar modal secepat mungkin (high capital recycling) daripada menunggu berhari-hari"*.
+
+Secara kuantitatif, strategi ini runtuh akibat **Payoff Inversion**:
+- **Gross Profit**: $+0.80\%$
+- **Biaya Transaksi Indodax Roundtrip ($C_{\text{friction}}$)**: $-0.42\%$ s/d $-0.60\%$
+- **Net Average Win ($\overline{W}$)**: $+0.80\% - 0.42\% = \mathbf{+0.38\%}$
+- **Stop Loss Realistis di Bawah Noise Intraday ($\overline{L}$)**: $-2.00\% + 0.42\% = \mathbf{-2.42\%}$
+- **Payoff Ratio ($R$)**:
+  $$R = \frac{\overline{W}}{\overline{L}} = \frac{0.38\%}{2.42\%} \approx 0.157$$
+- **Syarat Breakeven Win Rate**:
+  $$P_{\text{win, min}} = \frac{1}{1 + R} = \frac{1}{1 + 0.157} = \mathbf{86.4\%}$$
+
+Jika akurasi turun ke $75\%$ (angka yang sudah sangat tinggi di pasar nyata):
+$$\mathbb{E}[R] = (0.75 \times 0.38\%) - (0.25 \times 2.42\%) = 0.285\% - 0.605\% = \mathbf{-0.32\% \text{ per trade (Pasti Rugi)}}.$$
+
+Fenomena ini adalah **Truncating the Right Fat-Tail**: Menjual terlalu dini memotong distribusi keuntungan eksponensial (+10% s/d +25%), sedangkan risiko rugi fat-tail di sisi kiri tetap tidak terlindungi.
+
+---
+
+### B. BANTAHAN ILMIAH KRITIS: The Premature Breakeven Trap
+
+> [!WARNING]
+> **Kritik Saintifik atas Hipotesis Breakeven Cepat (+1.5% TP1)**:
+> Menggeser Stop Loss ke Break-Even (+0.1% buffer) saat harga baru naik $+1.5\%$ adalah **jebakan fatal** bagi sistem Trend-Following di pasar kripto!
+
+#### Alasan Matematis:
+1. **Rasio ATR vs Noise Floor**:
+   - Rata-rata True Range (Daily ATR) dari aset likuid (BTC, ETH, SOL) berada pada rentang **$3.0\% \text{ s/d } 6.0\%$**.
+   - Pergerakan $+1.5\%$ hanyalah **$0.25 \text{ s/d } 0.5 \times \text{ATR}$** (masih berada jauh di dalam pita fluktuasi acak/Brownian noise intraday).
+2. **Runner Death Rate**:
+   - Jika Stop Loss digeser ke $+0.52\%$ (Entry + Fee) saat harga baru di $+1.5\%$, probabilitas harga berbalik menyentuh level BEP sebelum mencapai $+8.5\%$ adalah sebesar **$70\% - 80\%$** berdasarkan distribusi Wiener process.
+   - Akibatnya, $8$ dari $10$ potensi trade tren besar (*super-runners*) terbunuh prematur tanpa laba signifikan.
+3. **Kolaps Ekspektansi Portofolio**:
+   $$\mathbb{E}[R]_{\text{prematur}} = 0.5 \times (+1.08\% \text{ net TP1}) + 0.5 \times (0\% \text{ BEP}) = \mathbf{+0.54\%}$$
+   Dengan memotong runner, sistem kehilangan porsi alpha yang diperlukan untuk menutupi trade-trade kalah normal ($-3.5\%$).
+
+---
+
+### C. Solusi Ilmiah Unggul: Differentiated Hybrid 2-Tier Exit Engine
+
+Untuk mendapatkan manfaat kecepatan perputaran modal (*Velocity of Capital*) tanpa membunuh kemampuan menangkap Fat-Tail, KiBot V2 membedakan mekanika exit antara **Trend-Following (TF)** dan **Mean-Reversion (MR)**:
+
+```
++---------------------------------------------------------------------------------------------------+
+|                               HYBRID 2-TIER EXIT ENGINE WORKFLOW                                  |
+|                                                                                                   |
+|   Posisi Terbuka (100% Lot)                                                                       |
+|         │                                                                                         |
+|         ├───> [TF: Naik >= 1R (+4.25%)]  ───> Eksekusi TP1 (Tutup 50% Lot)                        |
+|         ├───> [MR: Naik >= +2.25%]       ───> Eksekusi TP1 (Tutup 50% Lot)                        |
+|                     │                                                                             |
+|                     ├───> Cairkan 50% Cash + Laba ke Bankroll (Capital Recycling Langsung)        |
+|                     └───> Geser SL 50% Sisa Posisi ke Entry + Fee (0.42%) + 0.10% (Risk-Free)     |
+|                                 │                                                                 |
+|   ┌─────────────────────────────┴─────────────────────────────┐                                   |
+|   ▼                                                           ▼                                   |
+|   [Skenario A: Whipsaw Reversal]            [Skenario B: Fat-Tail Runner Surges]                  |
+|   - Harga berbalik turun menyentuh BEP      - Harga terus reli menyentuh TP2 (+8.5% s/d +15%)     |
+|   - Sisa posisi keluar di Rp BEP            - Sisa posisi keluar di Peak Alpha                    |
+|   - Net Trade PnL TETAP POSITIF             - Total Trade PnL Maksimal                            |
+|   - Modal Pokok Utuh 100%                   - Ekuitas Bertumbuh Eksponensial                      |
++---------------------------------------------------------------------------------------------------+
+```
+
+#### Parameter Implementasi:
+1. **Tier 1 (Fast Capital Recycling - 50% Lot)**:
+   - **Trend-Following (TF)**: TP1 dipasang di $1\text{R}$ (setengah jarak dari target TP penuh $+8.5\%$, yaitu **$+4.25\%$**). Pada level ini, harga telah mengonfirmasi directional breakout di atas 1x ATR, sehingga risiko whipsaw turun signifikan.
+   - **Mean-Reversion (MR)**: TP1 dipasang di **$+2.25\%$ s/d $+2.50\%$** (karena target akhir MR adalah mean EMA20 di $+4.5\%$, dan strategi ini tidak memiliki ekspektasi fat-tail).
+   - **Mekanisme**:
+     - Menutup $50\%$ ukuran lot koin.
+     - Mengembalikan modal pokok porsi tersebut ditambah laba bersih ke `self.cash_idr` secara instan (*Recycled Capital*).
+     - Menandai flag `tp1_executed = True`.
+     - Meratchet `stop_loss_price = max(stop_loss_price, entry_price * 1.0052)`.
+2. **Tier 2 (Asymmetric Fat-Tail Runner - 50% Sisa Lot)**:
+   - Sisa $50\%$ lot dibiarkan aktif dalam status **Risk-Free**.
+   - Jika pasar berbalik arah, sisa posisi ditutup pada Breakeven, dan total trade tetap mengantongi laba bersih dari TP1.
+   - Jika tren berlanjut, sisa posisi menangkap target penuh $+8.5\%$ s/d $+15\%$.
+
+---
+
+### D. Penanganan Risiko What-If & Blindspot Hunting
+
+1. **What-If Indodax Minimum Lot Restriction (Rp 10.000)**:
+   - *Masalah*: Jika nominal posisi yang tersisa setelah split 50% kurang dari batas order minimum Indodax (Rp 10.000), sisa lot menjadi *dust* yang tidak dapat dijual.
+   - *Mitigasi di Kode*: Fungsi `execute_partial_tp` memvalidasi `gross_value >= 10_000.0` DAN `remaining_val >= 10_000.0`. Jika salah satu $< 10.000$, split dibatalkan dan posisi diarahkan menunggu full exit.
+2. **What-If Capital Recycling Over-Trading Trap (FOMO Reinvestment)**:
+   - *Masalah*: Modal yang baru cair dari koin A langsung dibelikan ke koin B yang sedang berada di pucuk saat pasar makro sedang berbalik arah.
+   - *Mitigasi di Kode*: Modal cair hanya dapat diinvestasikan kembali jika koin target lolos:
+     - Filter Rezim 1D Makro ($\text{Close}_{1D} > \text{EMA}_{50}$).
+     - Filter Choppiness Index ($\text{CI} < 61.8$).
+     - Kuota Karantina Pasangan (`PairQuarantine`) dan `ChurnGuard` tidak aktif.
+3. **What-If Durable State Persistence Restart Gap**:
+   - *Masalah*: Server reboot setelah TP1 tereksekusi tapi sebelum runner selesai.
+   - *Mitigasi di Kode*: Field `tp1_executed`, `partial_tp_price`, `partial_pnl_idr`, dan ratcheted `stop_loss_price` dipersistensikan secara atomik ke `durable_state.json` via event `PARTIAL`, memastikan pemulihan sempurna tanpa kehilangan status risk-free.
+

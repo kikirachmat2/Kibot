@@ -24,6 +24,11 @@ class VirtualPosition:
     max_price_seen: float
     max_hold_time_s: float = 21 * 86400.0
     strategy: str = "SWING"
+    partial_tp_pct: float = 50.0
+    partial_tp_price: float = 0.0
+    tp1_executed: bool = False
+    partial_pnl_idr: float = 0.0
+    initial_cost_idr: float = 0.0
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -34,12 +39,17 @@ class VirtualPosition:
             "current_price": self.current_price,
             "amount_coins": self.amount_coins,
             "cost_idr": self.cost_idr,
+            "initial_cost_idr": self.initial_cost_idr or self.cost_idr,
             "entry_time": self.entry_time,
             "stop_loss_price": self.stop_loss_price,
             "take_profit_price": self.take_profit_price,
             "max_price_seen": self.max_price_seen,
             "max_hold_time_s": self.max_hold_time_s,
             "strategy": self.strategy,
+            "partial_tp_pct": self.partial_tp_pct,
+            "partial_tp_price": self.partial_tp_price,
+            "tp1_executed": self.tp1_executed,
+            "partial_pnl_idr": self.partial_pnl_idr,
         }
 
     @classmethod
@@ -51,6 +61,8 @@ class VirtualPosition:
         cost_idr = float(data.get("cost_idr", 0.0))
         if cost_idr <= 0.0 and amount_coins > 0.0 and entry_price > 0.0:
             cost_idr = amount_coins * entry_price
+
+        initial_cost_idr = float(data.get("initial_cost_idr", cost_idr))
 
         sl = float(data.get("stop_loss_price", 0.0))
         tp = float(data.get("take_profit_price", 0.0))
@@ -68,6 +80,14 @@ class VirtualPosition:
         entry_time = float(data.get("entry_time", time.time()))
         max_seen = float(data.get("max_price_seen", max(entry_price, current_price)))
 
+        partial_tp_pct = float(data.get("partial_tp_pct", 50.0))
+        tp1_executed = bool(data.get("tp1_executed", False))
+        partial_pnl_idr = float(data.get("partial_pnl_idr", 0.0))
+        partial_tp_price = float(data.get("partial_tp_price", 0.0))
+        if partial_tp_price <= 0.0 and entry_price > 0.0 and tp > entry_price:
+            tp_delta = tp - entry_price
+            partial_tp_price = entry_price + (tp_delta * (partial_tp_pct / 100.0))
+
         return cls(
             position_id=pos_id,
             symbol=sym,
@@ -82,6 +102,11 @@ class VirtualPosition:
             max_price_seen=max_seen,
             max_hold_time_s=max_hold_time_s,
             strategy=strategy,
+            partial_tp_pct=partial_tp_pct,
+            partial_tp_price=partial_tp_price,
+            tp1_executed=tp1_executed,
+            partial_pnl_idr=partial_pnl_idr,
+            initial_cost_idr=initial_cost_idr,
         )
 
 class VirtualLedger:
@@ -182,6 +207,8 @@ class VirtualLedger:
         orderbook: Optional[Dict[str, Any]] = None,
         max_hold_time_s: Optional[float] = None,
         strategy: Optional[str] = None,
+        partial_tp_pct: Optional[float] = None,
+        partial_tp_price: Optional[float] = None,
     ) -> Dict[str, Any]:
         """
         Executes a paper BUY order.
@@ -238,6 +265,14 @@ class VirtualLedger:
         hold_time = float(max_hold_time_s) if (max_hold_time_s is not None and max_hold_time_s > 0) else (21.0 * 86400.0)
         strat_name = strategy or "SWING"
 
+        tp_target_price = slippage_price * (1.0 + (tp / 100.0))
+        p_tp_pct = float(partial_tp_pct) if partial_tp_pct is not None else 50.0
+        if partial_tp_price is not None and partial_tp_price > 0:
+            p_tp_price = float(partial_tp_price)
+        else:
+            tp_delta = tp_target_price - slippage_price
+            p_tp_price = slippage_price + (tp_delta * (p_tp_pct / 100.0))
+
         pos = VirtualPosition(
             position_id=pos_id,
             symbol=sym,
@@ -248,10 +283,15 @@ class VirtualLedger:
             cost_idr=notional_idr,
             entry_time=time.time(),
             stop_loss_price=slippage_price * (1.0 - (sl / 100.0)),
-            take_profit_price=slippage_price * (1.0 + (tp / 100.0)),
+            take_profit_price=tp_target_price,
             max_price_seen=slippage_price,
             max_hold_time_s=hold_time,
             strategy=strat_name,
+            partial_tp_pct=p_tp_pct,
+            partial_tp_price=p_tp_price,
+            tp1_executed=False,
+            partial_pnl_idr=0.0,
+            initial_cost_idr=notional_idr,
         )
         self.open_positions[sym] = pos
         
@@ -266,8 +306,98 @@ class VirtualLedger:
             cash_idr=self.cash_idr,
         )
         
-        logger.info(f"[VirtualLedger:{self.name}] 🟢 Opened paper BUY for {sym}: {amount_coins:.6f} coins @ Rp {slippage_price:,.1f} (Notional: Rp {notional_idr:,.0f}) | Strat: {strat_name} | MaxHold: {hold_time/86400:.1f}d")
+        logger.info(
+            f"[VirtualLedger:{self.name}] 🟢 Opened paper BUY for {sym}: {amount_coins:.6f} coins @ Rp {slippage_price:,.1f} "
+            f"(Notional: Rp {notional_idr:,.0f}) | Strat: {strat_name} | TP1: Rp {p_tp_price:,.1f} ({p_tp_pct:.0f}%) | "
+            f"TP2: Rp {tp_target_price:,.1f} | MaxHold: {hold_time/86400:.1f}d"
+        )
         return {"success": True, "position_id": pos_id, "symbol": sym, "price": slippage_price, "amount": amount_coins}
+
+    def execute_partial_tp(self, symbol: str, current_price: float, fraction: Optional[float] = None) -> Optional[Dict[str, Any]]:
+        """
+        Executes Tier 1 Partial Take Profit (Capital Recycling).
+        - Closes `fraction` (default pos.partial_tp_pct %) of position lot.
+        - Returns capital + profit to `cash_idr` immediately for recycling into new setups.
+        - Ratchets stop loss of remaining position to Break-Even + Roundtrip Fee buffer.
+        - Enforces Indodax minimum lot value (Rp 10,000) check.
+        """
+        sym = symbol.upper().strip()
+        pos = self.open_positions.get(sym)
+        if not pos or pos.tp1_executed:
+            return None
+
+        frac = fraction if fraction is not None else (pos.partial_tp_pct / 100.0)
+        frac = max(0.01, min(0.99, frac))
+
+        coins_to_close = pos.amount_coins * frac
+        cost_portion = pos.cost_idr * frac
+        gross_value = coins_to_close * current_price
+
+        # WHAT-IF: Indodax minimum lot restriction (Rp 10,000)
+        remaining_coins = pos.amount_coins - coins_to_close
+        remaining_val = remaining_coins * current_price
+        if gross_value < 10_000.0 or remaining_val < 10_000.0:
+            logger.warning(
+                f"[VirtualLedger:{self.name}] ⚠️ Partial TP skipped for {sym}: "
+                f"lot value (close: Rp {gross_value:,.0f}, remain: Rp {remaining_val:,.0f}) < Rp 10,000 minimum lot size."
+            )
+            return None
+
+        # Exit fee for the partial portion (0.21%)
+        exit_fee = gross_value * (settings.FEE_ROUNDTRIP_PCT / 100.0 / 2.0)
+        net_proceeds = gross_value - exit_fee
+        partial_pnl_idr = net_proceeds - cost_portion
+        partial_pnl_pct = (partial_pnl_idr / cost_portion) * 100.0
+
+        # Update position size and cost
+        pos.amount_coins -= coins_to_close
+        pos.cost_idr -= cost_portion
+        pos.tp1_executed = True
+        pos.partial_pnl_idr = partial_pnl_idr
+
+        # Immediate capital recycling back to available bankroll
+        self.cash_idr += net_proceeds
+
+        # Break-Even Ratchet: Entry + Roundtrip Fee (0.42%) + Safety Buffer (0.10%) = +0.52%
+        fee_buffer_rate = (settings.FEE_ROUNDTRIP_PCT / 100.0) + 0.0010
+        breakeven_sl = pos.entry_price * (1.0 + fee_buffer_rate)
+        pos.stop_loss_price = max(pos.stop_loss_price, breakeven_sl)
+
+        partial_record = {
+            "position_id": pos.position_id,
+            "symbol": sym,
+            "action": "PARTIAL_TAKE_PROFIT",
+            "fraction_closed": frac,
+            "exit_price": current_price,
+            "coins_closed": coins_to_close,
+            "cost_portion_idr": cost_portion,
+            "net_proceeds_idr": net_proceeds,
+            "partial_pnl_idr": round(partial_pnl_idr, 2),
+            "partial_pnl_pct": round(partial_pnl_pct, 2),
+            "recycled_cash_idr": round(self.cash_idr, 2),
+            "new_stop_loss_price": pos.stop_loss_price,
+            "timestamp": time.time(),
+            "ledger": self.name,
+        }
+
+        # Durable state persistence
+        pos_dict = pos.to_dict()
+        pos_dict["ledger"] = self.name
+        durable_state_store.record_position_change(
+            change_type="PARTIAL",
+            position_data=pos_dict,
+            total_equity_idr=self.get_total_equity(),
+            ledger_name=self.name,
+            cash_idr=self.cash_idr,
+        )
+
+        logger.info(
+            f"[VirtualLedger:{self.name}] 🎯 Tier 1 TP1 Executed for {sym}: "
+            f"Closed {frac*100:.0f}% @ Rp {current_price:,.1f} | Recycled Cash: +Rp {net_proceeds:,.0f} "
+            f"| Profit: Rp {partial_pnl_idr:+,.1f} ({partial_pnl_pct:+.2f}%) | "
+            f"SL Ratcheted to BEP: Rp {pos.stop_loss_price:,.1f}"
+        )
+        return partial_record
 
     def update_market_price(self, symbol: str, current_price: float, max_hold_time_s: Optional[float] = None) -> Optional[Dict[str, Any]]:
         """Updates position price and evaluates TP / SL / Max Hold triggers."""
@@ -281,15 +411,25 @@ class VirtualLedger:
             pos.max_price_seen = current_price
 
         now = time.time()
-        # 1. Check Stop Loss
+        # 1. Check Stop Loss (Evaluated against ratcheted BEP if TP1 was already taken)
         if current_price <= pos.stop_loss_price:
-            return self.close_paper_position(sym, reason="STOP_LOSS_BREACHED")
+            reason = "BREAKEVEN_STOP_BREACHED" if pos.tp1_executed else "STOP_LOSS_BREACHED"
+            return self.close_paper_position(sym, reason=reason)
 
-        # 2. Check Take Profit
+        # 2. Check Take Profit Target (Full exit or Tier 2 Runner exit)
         if current_price >= pos.take_profit_price:
             return self.close_paper_position(sym, reason="TAKE_PROFIT_TARGET_HIT")
 
-        # 3. Check Max Hold Time Expired
+        # 3. Check Tier 1 Partial Take Profit (Capital Recycling)
+        if (
+            not pos.tp1_executed
+            and pos.partial_tp_price > 0
+            and current_price >= pos.partial_tp_price
+            and current_price < pos.take_profit_price
+        ):
+            self.execute_partial_tp(sym, current_price)
+
+        # 4. Check Max Hold Time Expired
         # Use position-specific max_hold_time_s (e.g. 21d for TF, 10d for MR) or override if explicitly passed
         effective_max_hold = max_hold_time_s if max_hold_time_s is not None else getattr(pos, "max_hold_time_s", 21.0 * 86400.0)
         if (now - pos.entry_time) >= effective_max_hold:
@@ -307,11 +447,17 @@ class VirtualLedger:
         gross_value = pos.amount_coins * pos.current_price
         exit_fee = gross_value * (settings.FEE_ROUNDTRIP_PCT / 100.0 / 2.0)
         net_proceeds = gross_value - exit_fee
-        realized_pnl_idr = net_proceeds - pos.cost_idr
-        realized_pnl_pct = (realized_pnl_idr / pos.cost_idr) * 100.0
+        remaining_pnl_idr = net_proceeds - pos.cost_idr
 
         self.cash_idr += net_proceeds
-        
+
+        # Cumulative PnL accounting (TP1 realized profit + final remaining exit)
+        total_pnl_idr = remaining_pnl_idr + getattr(pos, "partial_pnl_idr", 0.0)
+        initial_cost = getattr(pos, "initial_cost_idr", 0.0)
+        if initial_cost <= 0:
+            initial_cost = pos.cost_idr + (pos.cost_idr if pos.tp1_executed else 0.0)
+        total_pnl_pct = (total_pnl_idr / initial_cost * 100.0) if initial_cost > 0 else 0.0
+
         trade_record = {
             "position_id": pos.position_id,
             "symbol": sym,
@@ -319,9 +465,13 @@ class VirtualLedger:
             "exit_price": pos.current_price,
             "amount_coins": pos.amount_coins,
             "cost_idr": pos.cost_idr,
+            "initial_cost_idr": initial_cost,
             "net_proceeds_idr": net_proceeds,
-            "realized_pnl_idr": round(realized_pnl_idr, 2),
-            "realized_pnl_pct": round(realized_pnl_pct, 2),
+            "realized_pnl_idr": round(total_pnl_idr, 2),
+            "realized_pnl_pct": round(total_pnl_pct, 2),
+            "remaining_pnl_idr": round(remaining_pnl_idr, 2),
+            "partial_pnl_idr": round(getattr(pos, "partial_pnl_idr", 0.0), 2),
+            "tp1_executed": getattr(pos, "tp1_executed", False),
             "hold_duration_s": round(time.time() - pos.entry_time, 1),
             "exit_reason": reason,
             "closed_at": time.time(),
@@ -358,6 +508,9 @@ class VirtualLedger:
         except Exception as eval_exc:
             logger.error(f"[VirtualLedger:{self.name}] Live readiness evaluation error: {eval_exc}")
 
+        realized_pnl_idr = round(total_pnl_idr, 2)
+        realized_pnl_pct = round(total_pnl_pct, 2)
+
         # Notify risk subsystems (PairQuarantine & ChurnGuard via CapitalGovernor)
         if self.on_trade_closed_cb:
             try:
@@ -367,9 +520,10 @@ class VirtualLedger:
 
         log_level = logger.info if realized_pnl_idr >= 0 else logger.warning
         badge = "🟢" if realized_pnl_idr >= 0 else "🔴"
+        tp_status = " [TP1 Recycled + Runner]" if getattr(pos, "tp1_executed", False) else ""
         log_level(
-            f"[VirtualLedger] {badge} Closed paper position for {sym} ({reason}): "
-            f"PnL: Rp {realized_pnl_idr:+,.1f} ({realized_pnl_pct:+.2f}%) | Cash: Rp {self.cash_idr:,.0f}"
+            f"[VirtualLedger] {badge} Closed paper position for {sym} ({reason}{tp_status}): "
+            f"Total PnL: Rp {realized_pnl_idr:+,.1f} ({realized_pnl_pct:+.2f}%) | Cash: Rp {self.cash_idr:,.0f}"
         )
         return trade_record
 
