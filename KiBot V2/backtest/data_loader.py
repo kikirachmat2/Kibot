@@ -35,13 +35,16 @@ def _get_bar_seconds(tf: str) -> int:
         return 3600
 
 
-def _validate_no_gaps(df: pd.DataFrame, symbol: str, bar_seconds: int) -> None:
+def _validate_no_gaps(
+    df: pd.DataFrame, symbol: str, bar_seconds: int, max_gap_bars: int = 0
+) -> pd.DataFrame:
     """
     Validates that there are no missing bars in consecutive timestamps.
-    Raises ValueError if any gap > 1 bar is detected.
+    If max_gap_bars > 0 and gap <= max_gap_bars, bridges the gap with volume=0 (exchange maintenance).
+    Raises ValueError if any gap > max_gap_bars is detected.
     """
     if len(df) <= 1:
-        return
+        return df
     diffs = df["timestamp_utc"].diff().dropna()
     gap_mask = diffs > bar_seconds
     if gap_mask.any():
@@ -50,10 +53,29 @@ def _validate_no_gaps(df: pd.DataFrame, symbol: str, bar_seconds: int) -> None:
         prev_ts = df.loc[first_bad - 1, "timestamp_utc"]
         curr_ts = df.loc[first_bad, "timestamp_utc"]
         missing_count = int((curr_ts - prev_ts) / bar_seconds) - 1
+
+        if max_gap_bars > 0 and missing_count <= max_gap_bars:
+            logger.warning(
+                f"[DataLoader] Detected {missing_count} maintenance bar(s) for {symbol} "
+                f"between {prev_ts} and {curr_ts}. Bridging with volume=0."
+            )
+            full_ts = pd.Series(
+                range(int(df["timestamp_utc"].iloc[0]), int(df["timestamp_utc"].iloc[-1]) + 1, bar_seconds),
+                name="timestamp_utc",
+            )
+            df = pd.merge(full_ts, df, on="timestamp_utc", how="left")
+            df["close"] = df["close"].ffill()
+            df["open"] = df["open"].fillna(df["close"])
+            df["high"] = df["high"].fillna(df["close"])
+            df["low"] = df["low"].fillna(df["close"])
+            df["volume"] = df["volume"].fillna(0.0)
+            return df
+
         raise ValueError(
             f"Data gap detected for {symbol}: {missing_count} missing bar(s) "
             f"between {prev_ts} and {curr_ts} (expected step: {bar_seconds}s)."
         )
+    return df
 
 
 def _load_cache(cache_path: Path) -> Optional[pd.DataFrame]:
@@ -96,6 +118,7 @@ def fetch_indodax_ohlcv(
     to_ts: int,
     cache_dir: Optional[Path] = None,
     session: Optional[requests.Session] = None,
+    max_gap_bars: int = 0,
 ) -> pd.DataFrame:
     """
     Fetch hourly OHLCV from Indodax TradingView API.
@@ -104,7 +127,7 @@ def fetch_indodax_ohlcv(
     Caches to backtest/cache/indodax/.
     Idempotent: if cached, reads from disk.
     Sorted by timestamp_utc ascending.
-    Raises ValueError if any gap > 1 bar.
+    Raises ValueError if any gap > max_gap_bars.
     """
     clean_sym = symbol.upper().replace("/", "").strip()
     norm_tf = "60" if str(tf).lower() in ("60", "1h", "60m") else str(tf)
@@ -115,7 +138,7 @@ def fetch_indodax_ohlcv(
 
     cached_df = _load_cache(cache_file)
     if cached_df is not None:
-        _validate_no_gaps(cached_df, clean_sym, bar_seconds)
+        cached_df = _validate_no_gaps(cached_df, clean_sym, bar_seconds, max_gap_bars=max_gap_bars)
         return cached_df
 
     url = f"https://indodax.com/tradingview/history_v2?symbol={clean_sym}&tf={norm_tf}&from={from_ts}&to={to_ts}"
@@ -144,7 +167,7 @@ def fetch_indodax_ohlcv(
     df.drop_duplicates(subset=["timestamp_utc"], inplace=True)
     df.reset_index(drop=True, inplace=True)
 
-    _validate_no_gaps(df, clean_sym, bar_seconds)
+    df = _validate_no_gaps(df, clean_sym, bar_seconds, max_gap_bars=max_gap_bars)
     _save_cache(df, cache_file)
     return df
 
@@ -157,6 +180,7 @@ def fetch_binance_ohlcv(
     cache_dir: Optional[Path] = None,
     session: Optional[requests.Session] = None,
     proxy: Optional[str] = None,
+    max_gap_bars: int = 2,
 ) -> pd.DataFrame:
     """
     Fetch hourly OHLCV from Binance Public Kline REST API.
@@ -166,7 +190,7 @@ def fetch_binance_ohlcv(
     Idempotent: if cached, reads from disk.
     Supports HTTP/SOCKS5 proxy via BINANCE_PROXY or BINANCE_PROXY_HOST env vars,
     or SSH SOCKS tunnel (e.g. ssh -D 1080 to SG1).
-    Raises ValueError if any gap > 1 bar.
+    Raises ValueError if any gap > max_gap_bars.
     """
     clean_sym = symbol.upper().replace("/", "").strip()
     if not clean_sym.endswith("USDT"):
@@ -179,7 +203,7 @@ def fetch_binance_ohlcv(
 
     cached_df = _load_cache(cache_file)
     if cached_df is not None:
-        _validate_no_gaps(cached_df, clean_sym, bar_seconds)
+        cached_df = _validate_no_gaps(cached_df, clean_sym, bar_seconds, max_gap_bars=max_gap_bars)
         return cached_df
 
     # Configure proxy if running from local machine blocked by Indonesian ISP
@@ -239,9 +263,10 @@ def fetch_binance_ohlcv(
     df.drop_duplicates(subset=["timestamp_utc"], inplace=True)
     df.reset_index(drop=True, inplace=True)
 
-    _validate_no_gaps(df, clean_sym, bar_seconds)
+    df = _validate_no_gaps(df, clean_sym, bar_seconds, max_gap_bars=max_gap_bars)
     _save_cache(df, cache_file)
     return df
+
 
 
 def align_indodax_binance(indodax_df: pd.DataFrame, binance_df: pd.DataFrame) -> pd.DataFrame:
