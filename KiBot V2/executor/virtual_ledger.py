@@ -30,6 +30,7 @@ class VirtualPosition:
     partial_pnl_idr: float = 0.0
     initial_cost_idr: float = 0.0
     atr14: float = 0.0
+    current_ci: float = 50.0
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -52,6 +53,7 @@ class VirtualPosition:
             "tp1_executed": self.tp1_executed,
             "partial_pnl_idr": self.partial_pnl_idr,
             "atr14": self.atr14,
+            "current_ci": self.current_ci,
         }
 
     @classmethod
@@ -91,6 +93,7 @@ class VirtualPosition:
             partial_tp_price = entry_price + (tp_delta * (partial_tp_pct / 100.0))
 
         atr14 = float(data.get("atr14", 0.0))
+        current_ci = float(data.get("current_ci", 50.0))
 
         return cls(
             position_id=pos_id,
@@ -112,6 +115,7 @@ class VirtualPosition:
             partial_pnl_idr=partial_pnl_idr,
             initial_cost_idr=initial_cost_idr,
             atr14=atr14,
+            current_ci=current_ci,
         )
 
 class VirtualLedger:
@@ -400,18 +404,38 @@ class VirtualLedger:
         )
         return partial_record
 
-    def update_market_price(self, symbol: str, current_price: float, max_hold_time_s: Optional[float] = None) -> Optional[Dict[str, Any]]:
-        """Updates position price and evaluates TP / SL / Max Hold triggers."""
+    def update_market_price(
+        self,
+        symbol: str,
+        current_price: float,
+        max_hold_time_s: Optional[float] = None,
+        binance_mom_5m: float = 0.0,
+        current_ci: Optional[float] = None,
+    ) -> Optional[Dict[str, Any]]:
+        """Updates position price and evaluates TP / SL / Emergency Ratchet / Stagnation / Max Hold triggers."""
         sym = symbol.upper().strip()
         pos = self.open_positions.get(sym)
         if not pos:
             return None
 
         pos.current_price = current_price
+        if current_ci is not None:
+            pos.current_ci = current_ci
         if current_price > pos.max_price_seen:
             pos.max_price_seen = current_price
 
         now = time.time()
+
+        # Cross-Market Emergency De-Risking Ratchet (Lead-Lag Protection)
+        if binance_mom_5m <= -0.020:
+            emergency_sl = round(current_price * 0.990, 2)
+            if emergency_sl > pos.stop_loss_price:
+                logger.warning(
+                    f"[VirtualLedger:{self.name}] 🚨 Cross-market flash crash detected on {sym} "
+                    f"(Binance 5m: {binance_mom_5m*100:.2f}%). Emergency ratcheting SL from "
+                    f"Rp {pos.stop_loss_price:,.2f} to Rp {emergency_sl:,.2f}"
+                )
+                pos.stop_loss_price = emergency_sl
 
         # Dynamic Chandelier ATR Trailing Stop Ratchet for Runner Tier 2
         if pos.tp1_executed and pos.max_price_seen > pos.entry_price:
@@ -425,7 +449,7 @@ class VirtualLedger:
             if trailing_stop > pos.stop_loss_price:
                 pos.stop_loss_price = round(trailing_stop, 2)
 
-        # 1. Check Stop Loss (Evaluated against ratcheted BEP or Chandelier Trailing Stop)
+        # 1. Check Stop Loss (Evaluated against ratcheted BEP, Chandelier Stop, or Emergency Ratchet)
         if current_price <= pos.stop_loss_price:
             bep_price = pos.entry_price * 1.0052
             if pos.tp1_executed and pos.stop_loss_price > (bep_price + 1.0):
@@ -449,7 +473,18 @@ class VirtualLedger:
         ):
             self.execute_partial_tp(sym, current_price)
 
-        # 4. Check Max Hold Time Expired
+        # 4. Check Stagnation Exit (Dead Capital Protection: >= 5 days, CI >= 65.0, move <= 0.60%)
+        days_held = (now - pos.entry_time) / 86400.0
+        ci = current_ci if current_ci is not None else getattr(pos, "current_ci", 50.0)
+        unrealized_pct = abs((current_price - pos.entry_price) / pos.entry_price * 100.0)
+        if days_held >= 5.0 and ci >= 65.0 and unrealized_pct <= 0.60:
+            logger.info(
+                f"[VirtualLedger:{self.name}] ⏱️ Stagnation Exit triggered for {sym} "
+                f"(Held {days_held:.1f}d >= 5d, CI {ci:.1f} >= 65, Move {unrealized_pct:.2f}% <= 0.6%)"
+            )
+            return self.close_paper_position(sym, reason="STAGNATION_DEAD_CAPITAL_EXIT")
+
+        # 5. Check Max Hold Time Expired
         # Use position-specific max_hold_time_s (e.g. 21d for TF, 10d for MR) or override if explicitly passed
         effective_max_hold = max_hold_time_s if max_hold_time_s is not None else getattr(pos, "max_hold_time_s", 21.0 * 86400.0)
         if (now - pos.entry_time) >= effective_max_hold:
