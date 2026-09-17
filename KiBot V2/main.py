@@ -16,7 +16,9 @@ from ingestion import (
 from council import PerSymbolCoalescingRouter, CouncilWorkerPool, CouncilDecision, SwingEvaluator
 from enrichment import BackgroundEnrichmentWorker, CandleEnrichmentManager
 from risk import RiskGate, CapitalGovernor
+from datetime import datetime, timezone
 from storage import setup_logging, durable_state_store, StartupReconciler, venue_ledger
+from storage.performance_tracker import DailyPerformanceTracker
 from executor import OrderRouter, VirtualLedger
 
 setup_logging()
@@ -67,6 +69,8 @@ class KiBotV2Pipeline:
         self.indodax_ws = IndodaxWebSocketClient()
         self.binance_ws = BinanceWebSocketClient()
         self.binance_tracker = BinanceLeadLagTracker()
+        self.performance_tracker = DailyPerformanceTracker()
+        self._last_snapshot_date: str = ""
         self._running = False
         self._start_time = time.time()
         self._health_runner = None
@@ -173,6 +177,10 @@ class KiBotV2Pipeline:
                     "shadow_mr_open_positions": len(self.shadow_ledger.open_positions),
                     "shadow_mr_closed_trades": len(self.shadow_ledger.trade_history),
                     "is_halted": self.venue_ledger.is_halted,
+                    "window_7d_summary": self.performance_tracker.get_7d_summary(
+                        current_equity_idr=tf_equity,
+                        trade_history=self.virtual_ledger.trade_history,
+                    ),
                 }
                 return web.json_response(status_data)
 
@@ -194,10 +202,22 @@ class KiBotV2Pipeline:
         price = ticker.get("last_price", 0.0)
         vol = ticker.get("volume_idr", 0.0)
         
+        # Cross-market momentum & CI enrichment for open positions
+        binance_sym = self.binance_tracker.map_indodax_to_binance(pair)
+        mom = self.binance_tracker.get_momentum(binance_sym)
+        binance_mom_5m = mom.get("return_5m", 0.0)
+        
+        inds = self.candle_manager.get_indicators(pair) if hasattr(self, "candle_manager") else None
+        current_ci = inds.get("choppiness_index") if inds else None
+
         # Update price on primary virtual ledger (TF) and shadow ledger (MR)
-        self.virtual_ledger.update_market_price(pair, price)
+        self.virtual_ledger.update_market_price(
+            pair, price, binance_mom_5m=binance_mom_5m, current_ci=current_ci
+        )
         if self.shadow_ledger:
-            self.shadow_ledger.update_market_price(pair, price)
+            self.shadow_ledger.update_market_price(
+                pair, price, binance_mom_5m=binance_mom_5m, current_ci=current_ci
+            )
         
         # Update risk gate equity
         total_equity = self.virtual_ledger.get_total_equity()
@@ -337,6 +357,20 @@ class KiBotV2Pipeline:
                 f"MR Shadow: Rp {mr_eq:,.0f} (Open: {mr_open}, Closed: {mr_closed}) | "
                 f"Latency (p50: {latency['p50_ms']}ms, p90: {latency['p90_ms']}ms) | Drop: {drop_rate:.1f}%"
             )
+
+            # Record daily equity snapshot if date changed or on initial telemetry cycle
+            today_utc = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+            if self._last_snapshot_date != today_utc:
+                unrealized_pnl = total_open_exp - sum(p.cost_idr for p in self.virtual_ledger.open_positions.values())
+                self.performance_tracker.record_daily_snapshot(
+                    total_equity_idr=tf_eq,
+                    cash_idr=self.virtual_ledger.cash_idr,
+                    open_positions_count=tf_open,
+                    unrealized_pnl_idr=unrealized_pnl,
+                    trade_history=self.virtual_ledger.trade_history,
+                    date_str=today_utc,
+                )
+                self._last_snapshot_date = today_utc
 
     async def stop(self) -> None:
         self._running = False

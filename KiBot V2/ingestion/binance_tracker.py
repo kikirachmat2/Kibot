@@ -124,3 +124,17 @@ class BinanceLeadLagTracker:
             return True, f"Binance {symbol} 5m flash-dump: {ret_5m*100:.2f}% <= {threshold_5m*100:.1f}%"
 
         return False, "STABLE"
+
+    def is_flash_crash(self, symbol: str, threshold_5m: float = -0.020) -> Tuple[bool, float, str]:
+        """
+        Detects emergency cross-market liquidation flash crashes (default: <= -2.0% in 5m).
+        Returns: (is_crash: bool, ret_5m: float, reason: str).
+        """
+        binance_sym = self.map_indodax_to_binance(symbol) if not symbol.endswith("USDT") else symbol.upper().strip()
+        mom = self.get_momentum(binance_sym)
+        ret_5m = mom["return_5m"]
+
+        if ret_5m <= threshold_5m:
+            return True, ret_5m, f"Binance {binance_sym} 5m flash crash: {ret_5m*100:.2f}% <= {threshold_5m*100:.1f}%"
+        return False, ret_5m, "STABLE"
+
