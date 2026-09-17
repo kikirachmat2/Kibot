@@ -37,8 +37,25 @@ TARGET_CALENDAR_DAYS = 10
 MILESTONES = [10, 20, 30, 50]
 
 class LiveReadinessEvaluator:
-    def __init__(self, state_file: Optional[Path] = None):
+    def __init__(
+        self,
+        state_file: Optional[Path] = None,
+        target_sample_size: int = TARGET_SAMPLE_SIZE,
+        target_profit_factor: float = TARGET_PROFIT_FACTOR,
+        target_win_rate_pct: float = TARGET_WIN_RATE_PCT,
+        max_drawdown_limit_pct: float = MAX_DRAWDOWN_LIMIT_PCT,
+        target_calendar_days: int = TARGET_CALENDAR_DAYS,
+        name: str = "PRIMARY_TF",
+        milestones: Optional[List[int]] = None,
+    ):
         self.state_file = state_file
+        self.target_sample_size = target_sample_size
+        self.target_profit_factor = target_profit_factor
+        self.target_win_rate_pct = target_win_rate_pct
+        self.max_drawdown_limit_pct = max_drawdown_limit_pct
+        self.target_calendar_days = target_calendar_days
+        self.name = name
+        self.milestones = milestones or (MILESTONES if target_sample_size >= 30 else [5, 10, 15, 20])
         self.last_milestone_notified: int = 0
         self.last_verdict: str = "BELUM_SIAP"
 
@@ -91,20 +108,20 @@ class LiveReadinessEvaluator:
         total_pnl_idr = round(current_equity_idr - initial_bankroll_idr, 2)
 
         # Evaluate 5 Quantitative Criteria
-        c1_sample = total_trades >= TARGET_SAMPLE_SIZE
-        c2_pf = profit_factor >= TARGET_PROFIT_FACTOR
-        c3_wr = win_rate_pct >= TARGET_WIN_RATE_PCT
-        c4_mdd = net_dd_pct <= MAX_DRAWDOWN_LIMIT_PCT
-        c5_days = calendar_days_count >= TARGET_CALENDAR_DAYS
+        c1_sample = total_trades >= self.target_sample_size
+        c2_pf = profit_factor >= self.target_profit_factor
+        c3_wr = win_rate_pct >= self.target_win_rate_pct
+        c4_mdd = net_dd_pct <= self.max_drawdown_limit_pct
+        c5_days = calendar_days_count >= self.target_calendar_days
 
         all_passed = c1_sample and c2_pf and c3_wr and c4_mdd and c5_days
 
         if all_passed:
             verdict = "SIAP_SOFT_LAUNCH"
             verdict_badge = "🟡"
-            verdict_title = "SIAP SOFT LAUNCH (FASE 1: MODAL MIKRO)"
+            verdict_title = f"SIAP SOFT LAUNCH ({self.name}: MODAL MIKRO)"
             verdict_desc = (
-                "Memenuhi seluruh 5 kriteria kelayakan paper trading! "
+                f"Memenuhi seluruh kriteria kelayakan ({self.name})! "
                 "Direkomendasikan buka live trading HANYA dengan modal mikro "
                 "(Rp 50.000 - Rp 100.000 per posisi) untuk menguji slippage dan orderbook riil."
             )
@@ -113,62 +130,63 @@ class LiveReadinessEvaluator:
             verdict_badge = "🔴"
             unmet = []
             if not c1_sample:
-                unmet.append(f"Sample trade {total_trades}/{TARGET_SAMPLE_SIZE}")
+                unmet.append(f"Sample trade {total_trades}/{self.target_sample_size}")
             if not c2_pf:
-                unmet.append(f"Profit Factor {profit_factor:.2f}/{TARGET_PROFIT_FACTOR:.2f}")
+                unmet.append(f"Profit Factor {profit_factor:.2f}/{self.target_profit_factor:.2f}")
             if not c3_wr:
-                unmet.append(f"Win Rate {win_rate_pct:.1f}%/{TARGET_WIN_RATE_PCT:.1f}%")
+                unmet.append(f"Win Rate {win_rate_pct:.1f}%/{self.target_win_rate_pct:.1f}%")
             if not c4_mdd:
-                unmet.append(f"Max DD {net_dd_pct:.1f}%/{MAX_DRAWDOWN_LIMIT_PCT:.1f}%")
+                unmet.append(f"Max DD {net_dd_pct:.1f}%/{self.max_drawdown_limit_pct:.1f}%")
             if not c5_days:
-                unmet.append(f"Hari kalender {calendar_days_count}/{TARGET_CALENDAR_DAYS}")
+                unmet.append(f"Hari kalender {calendar_days_count}/{self.target_calendar_days}")
 
             verdict_title = f"BELUM SIAP ({', '.join(unmet[:2])})"
             verdict_desc = (
-                f"Kriteria belum terpenuhi: {', '.join(unmet)}. "
+                f"Kriteria belum terpenuhi ({self.name}): {', '.join(unmet)}. "
                 "Live execution dilarang. Lanjutkan pengumpulan data paper trading."
             )
 
         criteria = {
             "sample_size": {
                 "name": "1. Sample Size (N)",
-                "target": f">= {TARGET_SAMPLE_SIZE} trades",
+                "target": f">= {self.target_sample_size} trades",
                 "actual": f"{total_trades} trades",
                 "passed": c1_sample,
-                "progress_pct": round(min(1.0, total_trades / TARGET_SAMPLE_SIZE) * 100.0, 1),
+                "progress_pct": round(min(1.0, total_trades / self.target_sample_size) * 100.0, 1),
             },
             "profit_factor": {
                 "name": "2. Profit Factor (PF)",
-                "target": f">= {TARGET_PROFIT_FACTOR:.2f}",
+                "target": f">= {self.target_profit_factor:.2f}",
                 "actual": f"{profit_factor:.2f}",
                 "passed": c2_pf,
-                "progress_pct": round(min(1.0, profit_factor / TARGET_PROFIT_FACTOR) * 100.0, 1),
+                "progress_pct": round(min(1.0, profit_factor / self.target_profit_factor) * 100.0, 1) if self.target_profit_factor > 0 else 100.0,
             },
             "win_rate": {
                 "name": "3. Win Rate Net (WR)",
-                "target": f">= {TARGET_WIN_RATE_PCT:.1f}%",
+                "target": f">= {self.target_win_rate_pct:.1f}%",
                 "actual": f"{win_rate_pct:.1f}% ({wins}W / {losses}L)",
                 "passed": c3_wr,
-                "progress_pct": round(min(1.0, win_rate_pct / TARGET_WIN_RATE_PCT) * 100.0, 1),
+                "progress_pct": round(min(1.0, win_rate_pct / self.target_win_rate_pct) * 100.0, 1),
             },
             "max_drawdown": {
                 "name": "4. Max Drawdown (MDD)",
-                "target": f"<= {MAX_DRAWDOWN_LIMIT_PCT:.1f}%",
+                "target": f"<= {self.max_drawdown_limit_pct:.1f}%",
                 "actual": f"{net_dd_pct:.2f}%",
                 "passed": c4_mdd,
                 "progress_pct": 100.0 if c4_mdd else 0.0,
             },
             "calendar_days": {
                 "name": "5. Sebaran Hari Kalender",
-                "target": f">= {TARGET_CALENDAR_DAYS} hari berbeda",
+                "target": f">= {self.target_calendar_days} hari berbeda",
                 "actual": f"{calendar_days_count} hari",
                 "passed": c5_days,
-                "progress_pct": round(min(1.0, calendar_days_count / TARGET_CALENDAR_DAYS) * 100.0, 1),
+                "progress_pct": round(min(1.0, calendar_days_count / self.target_calendar_days) * 100.0, 1),
             },
         }
 
         result = {
             "evaluated_at": datetime.now(WIB).isoformat(),
+            "name": self.name,
             "verdict": verdict,
             "verdict_badge": verdict_badge,
             "verdict_title": verdict_title,
@@ -201,19 +219,19 @@ class LiveReadinessEvaluator:
         total_trades = eval_res["metrics"]["total_trades"]
         verdict = eval_res["verdict"]
 
-        # 1. Milestone Check (10, 20, 30, 50 closed trades)
-        for m in MILESTONES:
+        # 1. Milestone Check
+        for m in self.milestones:
             if total_trades >= m > self.last_milestone_notified:
                 self.last_milestone_notified = m
                 telegram_notifier.send_alert_non_blocking(
                     event_type="READINESS_MILESTONE",
-                    title=f"🎯 GO-LIVE MILESTONE REACHED: {m} Closed Trades",
+                    title=f"🎯 GO-LIVE MILESTONE REACHED ({self.name}): {m} Closed Trades",
                     message=(
-                        f"Paper trading has reached {m} closed trades milestone!\n\n"
+                        f"Paper trading track ({self.name}) has reached {m} closed trades milestone!\n\n"
                         f"• Win Rate: {eval_res['metrics']['win_rate_pct']}%\n"
                         f"• Profit Factor: {eval_res['metrics']['profit_factor']}\n"
                         f"• Max Drawdown: {eval_res['metrics']['max_drawdown_pct']}%\n"
-                        f"• Calendar Days: {eval_res['metrics']['calendar_days_count']}/10\n"
+                        f"• Calendar Days: {eval_res['metrics']['calendar_days_count']}/{self.target_calendar_days}\n"
                         f"• Status: {eval_res['verdict_title']}"
                     ),
                     severity="INFO",
@@ -228,9 +246,9 @@ class LiveReadinessEvaluator:
             severity = "SUCCESS" if verdict == "SIAP_SOFT_LAUNCH" else "WARNING"
             telegram_notifier.send_alert_non_blocking(
                 event_type="GO_LIVE_STATUS_CHANGED",
-                title=f"{eval_res['verdict_badge']} LIVE READINESS STATUS: {verdict}",
+                title=f"{eval_res['verdict_badge']} LIVE READINESS STATUS ({self.name}): {verdict}",
                 message=(
-                    f"Readiness verdict transitioned from {old} to {verdict}!\n\n"
+                    f"Readiness verdict for {self.name} transitioned from {old} to {verdict}!\n\n"
                     f"{eval_res['verdict_desc']}\n\n"
                     f"⚠️ Note: LIVE_TRADING_ENABLED remains strictly manual."
                 ),
@@ -238,4 +256,21 @@ class LiveReadinessEvaluator:
                 details=eval_res["metrics"],
             )
 
-live_readiness_evaluator = LiveReadinessEvaluator()
+# Jalur 1 Primary Track: Trend-Following (Target N >= 30, PF >= 1.50)
+live_readiness_evaluator = LiveReadinessEvaluator(
+    target_sample_size=TARGET_SAMPLE_SIZE,
+    target_profit_factor=TARGET_PROFIT_FACTOR,
+    name="PRIMARY_TF",
+)
+
+# Jalur 2 Shadow Track: Mean-Reversion (Target N >= 20, PF >= 1.25)
+shadow_mr_readiness_evaluator = LiveReadinessEvaluator(
+    target_sample_size=20,
+    target_profit_factor=1.25,
+    target_win_rate_pct=45.0,
+    max_drawdown_limit_pct=8.0,
+    target_calendar_days=10,
+    name="SHADOW_MR",
+    milestones=[5, 10, 15, 20],
+)
+

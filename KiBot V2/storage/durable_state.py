@@ -63,26 +63,39 @@ class DurableStateStore:
     def get_state(self) -> Dict[str, Any]:
         return dict(self._latest_state)
 
-    def record_position_change(self, change_type: str, position_data: Dict[str, Any], total_equity_idr: float) -> None:
+    def record_position_change(
+        self,
+        change_type: str,
+        position_data: Dict[str, Any],
+        total_equity_idr: float,
+        ledger_name: str = "PRIMARY_TF",
+    ) -> None:
         """
         Hot-path non-blocking call.
         Enqueues state update in < 2 microseconds.
+        Isolates state buckets between PRIMARY_TF and SHADOW_MR.
         """
         sym = position_data.get("symbol", "").upper()
         self._latest_state["updated_at"] = time.time()
-        self._latest_state["equity_idr"] = total_equity_idr
+
+        prefix = "shadow_mr_" if ledger_name == "SHADOW_MR" else ""
+        equity_key = f"{prefix}equity_idr" if prefix else "equity_idr"
+        open_key = f"{prefix}open_positions" if prefix else "open_positions"
+        closed_key = f"{prefix}closed_trades" if prefix else "closed_trades"
+
+        self._latest_state[equity_key] = total_equity_idr
         
         if change_type == "OPEN":
-            self._latest_state.setdefault("open_positions", {})[sym] = position_data
+            self._latest_state.setdefault(open_key, {})[sym] = position_data
         elif change_type == "CLOSE":
-            self._latest_state.setdefault("open_positions", {}).pop(sym, None)
-            closed = self._latest_state.setdefault("closed_trades", [])
+            self._latest_state.setdefault(open_key, {}).pop(sym, None)
+            closed = self._latest_state.setdefault(closed_key, [])
             closed.append(position_data)
             max_trades = getattr(settings, "MAX_IN_MEMORY_TRADES", 500)
             if len(closed) > max_trades:
-                self._latest_state["closed_trades"] = closed[-max_trades:]
+                self._latest_state[closed_key] = closed[-max_trades:]
         elif change_type == "PARTIAL":
-            self._latest_state.setdefault("open_positions", {})[sym] = position_data
+            self._latest_state.setdefault(open_key, {})[sym] = position_data
 
         # Non-blocking enqueue
         try:
