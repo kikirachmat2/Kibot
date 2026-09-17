@@ -154,10 +154,12 @@ class SwingEvaluator:
             vals["prior_bar_volume_ratio"] = float(candidate.get("prior_bar_volume_ratio", 1.0))
             vals["prior_bar_zscore"] = float(candidate.get("prior_bar_zscore", 0.0))
             vals["volume_ratio"] = float(candidate.get("volume_ratio", 1.0))
-            vals["binance_momentum_1h"] = float(candidate.get("binance_momentum_1h", 0.0))
-            vals["binance_momentum_5m"] = float(candidate.get("binance_momentum_5m", 0.0))
+            vals["binance_momentum_1h"] = float(candidate.get("binance_momentum_1h") or 0.0)
+            vals["binance_momentum_5m"] = float(candidate.get("binance_momentum_5m") or 0.0)
             vals["binance_is_dumping"] = bool(candidate.get("binance_is_dumping", False))
             vals["binance_dump_reason"] = str(candidate.get("binance_dump_reason", "STABLE"))
+            # D-08 Fix B: Binance data availability status (UNKNOWN = fail-closed)
+            vals["binance_data_status"] = str(candidate.get("binance_data_status", "UNKNOWN"))
             return vals
 
         # Dynamic computation if series length >= 100
@@ -213,10 +215,12 @@ class SwingEvaluator:
             vals["prior_bar_zscore"] = float(candidate.get("prior_bar_zscore", 0.0))
             vals["volume_ratio"] = float(candidate.get("volume_ratio", 1.0))
 
-        vals["binance_momentum_1h"] = float(candidate.get("binance_momentum_1h", 0.0))
-        vals["binance_momentum_5m"] = float(candidate.get("binance_momentum_5m", 0.0))
+        vals["binance_momentum_1h"] = float(candidate.get("binance_momentum_1h") or 0.0)
+        vals["binance_momentum_5m"] = float(candidate.get("binance_momentum_5m") or 0.0)
         vals["binance_is_dumping"] = bool(candidate.get("binance_is_dumping", False))
         vals["binance_dump_reason"] = str(candidate.get("binance_dump_reason", "STABLE"))
+        # D-08 Fix B: Binance data availability status (UNKNOWN = fail-closed)
+        vals["binance_data_status"] = str(candidate.get("binance_data_status", "UNKNOWN"))
 
         return vals
 
@@ -426,6 +430,27 @@ class SwingEvaluator:
             )
 
         vals = self.extract_indicator_values(candidate)
+
+        # D-08 Fix B: Block entry when Binance data is stale or missing (fail-closed)
+        binance_status = vals.get("binance_data_status", "UNKNOWN")
+        if binance_status == "UNKNOWN":
+            duration_ms = (time.perf_counter() - t0) * 1000.0
+            return CouncilDecision(
+                verdict="REJECTED",
+                symbol=raw_sym,
+                action="NONE",
+                confidence=0.0,
+                score=0.0,
+                reason="Binance cross-market data unavailable or stale (fail-closed: no entry without lead-lag confirmation)",
+                suggested_size_idr=0.0,
+                ev_pct=0.0,
+                kelly_fraction=0.0,
+                rr_ratio=0.0,
+                deliberation_duration_ms=duration_ms,
+                enrichment_status="BINANCE_DATA_UNKNOWN",
+                strategy="NONE",
+                max_hold_time_s=0,
+            )
 
         # Microstructure Guard
         if vals["price"] <= 0:

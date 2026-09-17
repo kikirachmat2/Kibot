@@ -11,6 +11,15 @@ Maintains rolling daily (1D) candle history and precomputes full technical indic
 
 Fetches from Indodax TradingView API out-of-band every 300 seconds and caches in memory.
 Enables sub-microsecond zero-latency injection of indicators into candidate payloads.
+
+LOOK-AHEAD SEPARATION (D-08 Fix A):
+  _strategy_indicators  — computed exclusively from CLOSED daily bars (last bar dropped if
+                          today's UTC date matches its timestamp). This is the ONLY source
+                          of truth for SwingEvaluator entry logic. Never mutated by ticks.
+  _live_indicators      — live-price-patched snapshot (latest closed close replaced with
+                          current WebSocket tick). Used ONLY for position valuation, UI/health
+                          endpoints, and stagnation/exit monitoring. Never used for entry.
+Minimum 100 closed bars required; returns None if insufficient history.
 """
 from __future__ import annotations
 
@@ -57,8 +66,12 @@ class CandleEnrichmentManager:
         self.history_days = history_days
         self.timeout_s = timeout_s
 
-        # In-memory indicator cache: normalized_symbol -> Dict[str, Any]
-        self._indicators: Dict[str, Dict[str, Any]] = {}
+        # Strategy indicators: CLOSED bars only — source of truth for entry decisions
+        self._strategy_indicators: Dict[str, Dict[str, Any]] = {}
+        # Live indicators: closed bars + live-price patch — for valuation/health/exit monitoring
+        self._live_indicators: Dict[str, Dict[str, Any]] = {}
+        # Legacy alias kept for backward compatibility (returns live-patched snapshot)
+        self._indicators: Dict[str, Dict[str, Any]] = self._live_indicators
         # In-memory raw candle cache: normalized_symbol -> Dict of lists
         self._raw_candles: Dict[str, Dict[str, List[float]]] = {}
 
@@ -135,33 +148,62 @@ class CandleEnrichmentManager:
                 data = await resp.json()
                 if not isinstance(data, list) or len(data) < 20:
                     logger.warning(f"[CandleManager] Incomplete data for {norm_sym}: {len(data) if isinstance(data, list) else type(data)}")
-                    return self._indicators.get(norm_sym)
+                    return self._strategy_indicators.get(norm_sym)
 
-                computed = self.process_candles(norm_sym, data)
-                self._indicators[norm_sym] = computed
-                logger.info(
-                    f"[CandleManager] 📊 Refreshed {norm_sym} ({len(data)} bars): "
-                    f"Close={computed['price']:,.0f} | EMA20={computed['ema20']:,.0f} | "
-                    f"EMA50={computed['ema50']:,.0f} | EMA100={computed['ema100']:,.0f} | "
-                    f"RSI={computed['rsi14']:.1f} | CI={computed['choppiness_index']:.1f}"
-                )
-                return computed
+                strategy_computed, live_computed = self.process_candles(norm_sym, data)
+                closed_count = strategy_computed.get("bars_count", 0)
+                # Use live snapshot for the log when insufficient closed bars exist
+                log_src = strategy_computed if strategy_computed else live_computed
+                if log_src:
+                    logger.info(
+                        f"[CandleManager] 📊 Refreshed {norm_sym} "
+                        f"(closed={closed_count}, total={len(data)} bars, "
+                        f"source={'CLOSED' if strategy_computed else 'LIVE_ONLY'}): "
+                        f"Close={log_src.get('price', 0):,.0f} | "
+                        f"EMA20={log_src.get('ema20', 0):,.0f} | "
+                        f"EMA50={log_src.get('ema50', 0):,.0f} | "
+                        f"EMA100={log_src.get('ema100', 0):,.0f} | "
+                        f"RSI={log_src.get('rsi14', 0):.1f} | "
+                        f"CI={log_src.get('choppiness_index', 0):.1f}"
+                    )
+                return strategy_computed
         except Exception as exc:
             logger.warning(f"[CandleManager] Network/parse error fetching {norm_sym}: {exc}")
-            return self._indicators.get(norm_sym)
+            return self._strategy_indicators.get(norm_sym)
 
-    def process_candles(self, norm_sym: str, data: List[Dict[str, Any]]) -> Dict[str, Any]:
+    @staticmethod
+    def _is_candle_open(candle_ts: float) -> bool:
+        """
+        Returns True if the candle's bar-open timestamp corresponds to the CURRENT UTC day,
+        meaning the bar has not yet closed.
+        A 1D bar opens at 00:00 UTC and closes at 23:59:59 UTC the same day.
+        We compare the bar's UTC date to today's UTC date.
+        """
+        import datetime
+        bar_date = datetime.datetime.utcfromtimestamp(candle_ts).date()
+        today_utc = datetime.datetime.utcnow().date()
+        return bar_date >= today_utc
+
+    def process_candles(self, norm_sym: str, data: List[Dict[str, Any]]) -> tuple:
         """
         Processes list of candle dicts and computes full indicators dictionary.
+
+        Returns (strategy_computed, live_computed) where:
+          - strategy_computed: indicators from CLOSED bars only (last bar dropped if still open).
+          - live_computed:     indicators including the latest (possibly open) bar, for valuation.
+
+        Populates:
+          self._strategy_indicators[norm_sym] — entry logic source of truth
+          self._live_indicators[norm_sym]     — health/valuation/exit source
+          self._raw_candles[norm_sym]         — raw OHLCV (full, including open bar) for live patching
         """
         closes = [float(d.get("Close") or d.get("close") or d.get("c") or 0.0) for d in data]
         highs = [float(d.get("High") or d.get("high") or d.get("h") or 0.0) for d in data]
         lows = [float(d.get("Low") or d.get("low") or d.get("l") or 0.0) for d in data]
         volumes = [float(d.get("Volume") or d.get("volume") or d.get("v") or 0.0) for d in data]
-
         times = [float(d.get("Time") or d.get("time") or d.get("t") or 0.0) for d in data]
 
-        # Cache raw series for live price adjustment
+        # Cache full raw series (including potentially open bar) for live price patching
         self._raw_candles[norm_sym] = {
             "closes": list(closes),
             "highs": list(highs),
@@ -170,9 +212,44 @@ class CandleEnrichmentManager:
             "times": list(times),
         }
 
-        computed = self._compute_from_series(closes, highs, lows, volumes, times)
-        self._indicators[norm_sym] = computed
-        return computed
+        # --- Live (valuation) indicators: full series including latest bar ---
+        live_computed = self._compute_from_series(closes, highs, lows, volumes, times)
+        self._live_indicators[norm_sym] = live_computed
+
+        # --- Strategy (entry) indicators: CLOSED bars only ---
+        # Drop the last bar if its timestamp matches today's UTC date (bar still open).
+        strategy_closes = closes
+        strategy_highs = highs
+        strategy_lows = lows
+        strategy_volumes = volumes
+        strategy_times = times
+
+        if times and times[-1] > 0 and self._is_candle_open(times[-1]):
+            strategy_closes = closes[:-1]
+            strategy_highs = highs[:-1]
+            strategy_lows = lows[:-1]
+            strategy_volumes = volumes[:-1]
+            strategy_times = times[:-1]
+            logger.debug(
+                f"[CandleManager] {norm_sym}: last bar timestamp {times[-1]:.0f} is today (UTC) — "
+                f"dropped for strategy indicators. Using {len(strategy_closes)} closed bars."
+            )
+
+        if len(strategy_closes) < 100:
+            logger.warning(
+                f"[CandleManager] {norm_sym}: insufficient closed bars ({len(strategy_closes)} < 100). "
+                f"Strategy indicators set to None — entry blocked until history is adequate."
+            )
+            self._strategy_indicators[norm_sym] = {}  # Empty dict signals INSUFFICIENT_HISTORY
+            return {}, live_computed
+
+        strategy_computed = self._compute_from_series(
+            strategy_closes, strategy_highs, strategy_lows, strategy_volumes, strategy_times
+        )
+        # Tag so callers can detect source
+        strategy_computed["_source"] = "CLOSED_BARS_ONLY"
+        self._strategy_indicators[norm_sym] = strategy_computed
+        return strategy_computed, live_computed
 
     def _compute_from_series(
         self,
@@ -246,15 +323,21 @@ class CandleEnrichmentManager:
 
     def update_live_price(self, symbol: str, current_price: float) -> Optional[Dict[str, Any]]:
         """
-        Adjusts the latest bar's close price with real-time WebSocket tick
-        and returns updated indicator snapshot.
+        Updates ONLY the live (valuation) indicator cache with a real-time WebSocket tick.
+
+        IMPORTANT: This method NEVER modifies _strategy_indicators. Strategy indicators are
+        immutable between full refresh cycles to prevent look-ahead contamination.
+        The live cache is used exclusively for:
+          - Position valuation / floating PnL
+          - Health endpoint display
+          - Stagnation exit monitoring (current_ci)
         """
         norm_sym = self.normalize_symbol(symbol)
         raw = self._raw_candles.get(norm_sym)
         if not raw or not raw["closes"] or current_price <= 0:
-            return self._indicators.get(norm_sym)
+            return self._live_indicators.get(norm_sym)
 
-        # Clone and update latest bar
+        # Clone full OHLCV series and patch only the latest bar close/high/low
         closes = list(raw["closes"])
         highs = list(raw["highs"])
         lows = list(raw["lows"])
@@ -267,11 +350,30 @@ class CandleEnrichmentManager:
         if current_price < lows[-1]:
             lows[-1] = current_price
 
+        # Write to LIVE cache only — strategy cache is untouched
         updated = self._compute_from_series(closes, highs, lows, volumes, times)
-        self._indicators[norm_sym] = updated
+        updated["_source"] = "LIVE_PATCHED"
+        self._live_indicators[norm_sym] = updated
         return updated
 
-    def get_indicators(self, symbol: str) -> Optional[Dict[str, Any]]:
-        """Returns the latest indicator snapshot for symbol in sub-microsecond time."""
+    def get_strategy_indicators(self, symbol: str) -> Optional[Dict[str, Any]]:
+        """
+        Returns closed-bar-only indicators for use by SwingEvaluator entry logic.
+        Returns None (or empty dict) if insufficient closed history (< 100 bars).
+        Callers should reject entry when this returns None or an empty dict.
+        """
         norm_sym = self.normalize_symbol(symbol)
-        return self._indicators.get(norm_sym)
+        result = self._strategy_indicators.get(norm_sym)
+        # Treat empty dict (insufficient history) as None
+        if not result:
+            return None
+        return result
+
+    def get_indicators(self, symbol: str) -> Optional[Dict[str, Any]]:
+        """
+        Returns the live-price-patched indicator snapshot for valuation/health/monitoring.
+        Do NOT use this for entry signal decisions — use get_strategy_indicators() instead.
+        """
+        norm_sym = self.normalize_symbol(symbol)
+        # Prefer live snapshot; fall back to strategy snapshot if live not yet available
+        return self._live_indicators.get(norm_sym) or self._strategy_indicators.get(norm_sym)

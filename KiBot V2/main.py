@@ -258,9 +258,19 @@ class KiBotV2Pipeline:
         bin_mom = self.binance_tracker.get_momentum(bin_sym)
         is_dumping, dump_reason = self.binance_tracker.is_dumping(bin_sym)
 
-        # Update live price and get precomputed 1D candle technical indicators
-        indicators = self.candle_manager.update_live_price(pair, price) or self.candle_manager.get_indicators(pair) or {}
+        # D-08 Fix A: update_live_price patches live cache for valuation only (NOT for entry)
+        self.candle_manager.update_live_price(pair, price)
+        # D-08 Fix A: get_strategy_indicators() returns CLOSED-bar-only indicators for entry logic
+        strategy_inds = self.candle_manager.get_strategy_indicators(pair) or {}
+        # get_indicators() returns live-patched snapshot for health/valuation monitoring
+        live_inds = self.candle_manager.get_indicators(pair) or {}
 
+        # D-08 Fix B: Determine Binance data freshness status
+        binance_sym_freshness = self.binance_tracker.map_indodax_to_binance(pair)
+        binance_data_status = "OK" if self.binance_tracker.is_data_fresh(binance_sym_freshness) else "UNKNOWN"
+
+        # Strategy indicators (closed bars only) drive entry decisions
+        # Live indicators drive health/valuation display
         candidate_payload = {
             "symbol": pair,
             "price": price,
@@ -270,32 +280,33 @@ class KiBotV2Pipeline:
             "volume_ratio": vol_ratio,
             "leadlag_score": leadlag,
             "spread_pct": spread_pct,
-            "binance_momentum_1h": bin_mom.get("return_1h", 0.0),
-            "binance_momentum_5m": bin_mom.get("return_5m", 0.0),
-            "binance_momentum_24h": bin_mom.get("return_24h", 0.0),
+            "binance_momentum_1h": bin_mom.get("return_1h") or 0.0,
+            "binance_momentum_5m": bin_mom.get("return_5m") or 0.0,
+            "binance_momentum_24h": bin_mom.get("return_24h") or 0.0,
             "binance_is_dumping": is_dumping,
             "binance_dump_reason": dump_reason,
+            "binance_data_status": binance_data_status,   # D-08 Fix B
             "timestamp": time.time(),
-            # Precomputed 1D Swing Indicators
-            "ema20": indicators.get("ema20", 0.0),
-            "ema50": indicators.get("ema50", 0.0),
-            "ema100": indicators.get("ema100", 0.0),
-            "rsi14": indicators.get("rsi14", 50.0),
-            "atr14": indicators.get("atr14", 0.0),
-            "volume": indicators.get("volume", 1.0),
-            "volume_sma20": indicators.get("volume_sma20", 1.0),
-            "lower_bb": indicators.get("lower_bb", 0.0),
-            "middle_bb": indicators.get("middle_bb", 0.0),
-            "upper_bb": indicators.get("upper_bb", 0.0),
-            "adx14": indicators.get("adx14", 20.0),
-            "sma20_slope": indicators.get("sma20_slope", 0.0),
-            "choppiness_index": indicators.get("choppiness_index", 50.0),
-            "volume_zscore": indicators.get("volume_zscore", 0.0),
-            "bollinger_pct_b": indicators.get("bollinger_pct_b", 0.5),
-            "volume_projected_ratio": indicators.get("volume_projected_ratio", 1.0),
-            "prior_bar_volume_ratio": indicators.get("prior_bar_volume_ratio", 1.0),
-            "prior_bar_zscore": indicators.get("prior_bar_zscore", 0.0),
-            "intraday_tau": indicators.get("intraday_tau", 1.0),
+            # Precomputed 1D Swing Indicators — from CLOSED bars only (D-08 Fix A)
+            "ema20": strategy_inds.get("ema20", 0.0),
+            "ema50": strategy_inds.get("ema50", 0.0),
+            "ema100": strategy_inds.get("ema100", 0.0),
+            "rsi14": strategy_inds.get("rsi14", 50.0),
+            "atr14": strategy_inds.get("atr14", 0.0),
+            "volume": strategy_inds.get("volume", 1.0),
+            "volume_sma20": strategy_inds.get("volume_sma20", 1.0),
+            "lower_bb": strategy_inds.get("lower_bb", 0.0),
+            "middle_bb": strategy_inds.get("middle_bb", 0.0),
+            "upper_bb": strategy_inds.get("upper_bb", 0.0),
+            "adx14": strategy_inds.get("adx14", 20.0),
+            "sma20_slope": strategy_inds.get("sma20_slope", 0.0),
+            "choppiness_index": strategy_inds.get("choppiness_index", 50.0),
+            "volume_zscore": strategy_inds.get("volume_zscore", 0.0),
+            "bollinger_pct_b": strategy_inds.get("bollinger_pct_b", 0.5),
+            "volume_projected_ratio": strategy_inds.get("volume_projected_ratio", 1.0),
+            "prior_bar_volume_ratio": strategy_inds.get("prior_bar_volume_ratio", 1.0),
+            "prior_bar_zscore": strategy_inds.get("prior_bar_zscore", 0.0),
+            "intraday_tau": live_inds.get("intraday_tau", 1.0),  # live-only field for monitoring
         }
         await self.router.enqueue_candidate(symbol=pair, payload=candidate_payload, score=score)
 
@@ -361,16 +372,24 @@ class KiBotV2Pipeline:
             # Record daily equity snapshot if date changed or on initial telemetry cycle
             today_utc = datetime.now(timezone.utc).strftime("%Y-%m-%d")
             if self._last_snapshot_date != today_utc:
-                unrealized_pnl = total_open_exp - sum(p.cost_idr for p in self.virtual_ledger.open_positions.values())
-                self.performance_tracker.record_daily_snapshot(
-                    total_equity_idr=tf_eq,
-                    cash_idr=self.virtual_ledger.cash_idr,
-                    open_positions_count=tf_open,
-                    unrealized_pnl_idr=unrealized_pnl,
-                    trade_history=self.virtual_ledger.trade_history,
-                    date_str=today_utc,
-                )
-                self._last_snapshot_date = today_utc
+                try:
+                    open_positions_snap = dict(self.virtual_ledger.open_positions)
+                    cost_sum = sum(p.cost_idr for p in open_positions_snap.values())
+                    snap_open_exp = sum(
+                        p.amount_coins * p.current_price for p in open_positions_snap.values()
+                    )
+                    unrealized_pnl = snap_open_exp - cost_sum
+                    self.performance_tracker.record_daily_snapshot(
+                        total_equity_idr=tf_eq,
+                        cash_idr=self.virtual_ledger.cash_idr,
+                        open_positions_count=len(open_positions_snap),
+                        unrealized_pnl_idr=unrealized_pnl,
+                        trade_history=self.virtual_ledger.trade_history,
+                        date_str=today_utc,
+                    )
+                    self._last_snapshot_date = today_utc
+                except Exception as snap_err:
+                    logger.warning(f"[Telemetry] Daily snapshot failed (non-fatal): {snap_err}")
 
     async def stop(self) -> None:
         self._running = False

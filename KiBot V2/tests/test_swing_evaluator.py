@@ -26,6 +26,7 @@ def test_swing_high_spread_rejection():
         "rsi14": 55.0,
         "volume": 100.0,
         "volume_sma20": 90.0,
+        "binance_data_status": "OK",  # D-08: must pass Binance guard to reach spread check
     }
     decision = evaluator.evaluate(candidate)
     assert decision.verdict == "REJECTED"
@@ -44,6 +45,7 @@ def test_btc_trend_following_approval():
         "atr14": 35_000_000.0, # 3.33%
         "volume": 150.0,
         "volume_sma20": 120.0,
+        "binance_data_status": "OK",  # D-08: fresh Binance data
     }
     decision = evaluator.evaluate(candidate, bankroll_idr=12_000_000.0)
     assert decision.verdict == "APPROVED"
@@ -85,6 +87,7 @@ def test_avax_mean_reversion_approval():
         "rsi14": 38.0, # <= 45
         "sma20_slope": 0.005, # <= 0.02
         "atr14": 15_000.0,
+        "binance_data_status": "OK",  # D-08: fresh Binance data
     }
     decision = evaluator.evaluate(candidate, bankroll_idr=15_000_000.0)
     assert decision.verdict == "APPROVED"
@@ -128,6 +131,7 @@ def test_eth_mutual_exclusivity():
         "middle_bb": 44_000_000.0,
         "adx14": 22.0,
         "sma20_slope": 0.01,
+        "binance_data_status": "OK",  # D-08: fresh Binance data
     }
     dec_bull = evaluator.evaluate(bullish_eth)
     assert dec_bull.verdict == "APPROVED"
@@ -148,6 +152,7 @@ def test_eth_mutual_exclusivity():
         "middle_bb": 42_000_000.0,
         "adx14": 20.0,
         "sma20_slope": 0.008,
+        "binance_data_status": "OK",  # D-08: fresh Binance data
     }
     dec_dip = evaluator.evaluate(dip_eth)
     assert dec_dip.verdict == "APPROVED"
