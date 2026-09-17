@@ -19,10 +19,10 @@ def test_fetch_all_indodax_pairs():
     mock_session = MagicMock()
     mock_resp = MagicMock()
     mock_resp.json.return_value = [
-        {"id": "btc_idr", "traded_currency": "idr"},
-        {"id": "eth_idr", "traded_currency": "idr"},
-        {"id": "sol_idr", "traded_currency": "idr"},
-        {"id": "btc_usdt", "traded_currency": "usdt"},  # non-IDR
+        {"id": "btc_idr", "base_currency": "idr"},
+        {"id": "eth_idr", "base_currency": "idr"},
+        {"id": "sol_idr", "base_currency": "idr"},
+        {"id": "btc_usdt", "base_currency": "usdt"},  # non-IDR
     ]
     mock_session.get.return_value = mock_resp
 
