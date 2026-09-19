@@ -122,7 +122,7 @@ class WeeklyReporter:
             f"📊 KiBOT V2 — LAPORAN HARI KE-{day_n}\n"
             f"📅 {day_name}, {date_str}\n\n"
             f"━━━━━━━━━━━━━━━━━━\n"
-            f"💰 Modal Awal Minggu: Rp {total_start_week:,.0f}\n"
+            f"💰 Modal Awal Minggu: {self.format_money(total_start_week)}\n"
             f"📈 PnL Hari Ini: {self.format_money(day_pnl, with_sign=True)} ({self.format_pct(day_pnl_pct)})\n"
             f"📊 PnL Kumulatif: {self.format_money(cum_pnl, with_sign=True)} ({self.format_pct(cum_pnl_pct)})\n"
             f"━━━━━━━━━━━━━━━━━━\n\n"

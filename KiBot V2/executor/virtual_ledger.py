@@ -281,9 +281,12 @@ class VirtualLedger:
         strat_name = strategy or "SWING"
 
         tp_target_price = slippage_price * (1.0 + (tp / 100.0))
-        p_tp_pct = float(partial_tp_pct) if partial_tp_pct is not None else 50.0
+        is_p_variant = self.name.startswith("PAPER_P") or (strat_name in ("P1", "P2", "P3", "P4"))
+        p_tp_pct = float(partial_tp_pct) if partial_tp_pct is not None else (0.0 if is_p_variant else 50.0)
         if partial_tp_price is not None and partial_tp_price > 0:
             p_tp_price = float(partial_tp_price)
+        elif is_p_variant:
+            p_tp_price = 0.0
         else:
             tp_delta = tp_target_price - slippage_price
             p_tp_price = slippage_price + (tp_delta * (p_tp_pct / 100.0))
@@ -480,7 +483,7 @@ class VirtualLedger:
 
         # 4. Check Soft Exit (3h at <= -5.0% for P1/P2 variants)
         pnl_pct = ((current_price - pos.entry_price) / pos.entry_price * 100.0) if pos.entry_price > 0 else 0.0
-        if getattr(pos, "strategy", "") in ("P1_CONSERVATIVE", "P2_BALANCED", "CONSERVATIVE", "BALANCED"):
+        if getattr(pos, "strategy", "") in ("P1", "P2", "P1_CONSERVATIVE", "P2_BALANCED", "CONSERVATIVE", "BALANCED"):
             if (now - pos.entry_time) >= (3.0 * 3600.0) and pnl_pct <= -5.0:
                 logger.info(
                     f"[VirtualLedger:{self.name}] ⏱️ Soft Exit triggered for {sym}: "
