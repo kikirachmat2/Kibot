@@ -81,6 +81,10 @@ class BatamAutoDiscovery:
             self._running = True
             self._task = asyncio.create_task(self._discovery_loop())
 
+    async def run(self) -> None:
+        self._running = True
+        await self._discovery_loop()
+
     async def stop(self) -> None:
         self._running = False
         if self._task and not self._task.done():
@@ -89,3 +93,11 @@ class BatamAutoDiscovery:
                 await self._task
             except asyncio.CancelledError:
                 pass
+
+if __name__ == "__main__":
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
+    daemon = BatamAutoDiscovery()
+    try:
+        asyncio.run(daemon.run())
+    except (KeyboardInterrupt, SystemExit):
+        logger.info("[AutoDiscovery] Daemon stopped.")
