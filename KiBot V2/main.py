@@ -21,6 +21,7 @@ from storage import setup_logging, durable_state_store, StartupReconciler, venue
 from storage.performance_tracker import DailyPerformanceTracker
 from executor import OrderRouter, VirtualLedger
 from paper_trade_runner import PaperTradeRunner
+from paper_rotation_runner import RotationPaperRunner
 from notifications.weekly_reporter import weekly_reporter
 
 setup_logging()
@@ -68,6 +69,7 @@ class KiBotV2Pipeline:
         )
         self.reconciler = StartupReconciler()
         self.paper_runner = PaperTradeRunner()
+        self.rotation_runner = RotationPaperRunner()
         
         self.indodax_ws = IndodaxWebSocketClient()
         self.binance_ws = BinanceWebSocketClient()
@@ -136,7 +138,7 @@ class KiBotV2Pipeline:
         await self._start_health_server()
 
         # 10. Start Daily Telegram Reporter (00:00 WIB)
-        weekly_reporter.start(lambda: self.paper_runner)
+        weekly_reporter.start(lambda: (self.paper_runner, self.rotation_runner))
 
     async def _start_health_server(self) -> None:
         try:
@@ -183,6 +185,7 @@ class KiBotV2Pipeline:
                     "shadow_mr_open_positions": len(self.shadow_ledger.open_positions),
                     "shadow_mr_closed_trades": len(self.shadow_ledger.trade_history),
                     "paper_p1_p4_summary": self.paper_runner.get_summary(),
+                    "paper_p5_summary": self.rotation_runner.get_summary() if hasattr(self, "rotation_runner") else None,
                     "is_halted": self.venue_ledger.is_halted,
                     "window_7d_summary": self.performance_tracker.get_7d_summary(
                         current_equity_idr=tf_equity,
@@ -227,6 +230,10 @@ class KiBotV2Pipeline:
             )
         if hasattr(self, "paper_runner"):
             self.paper_runner.on_ticker(
+                symbol=pair, price=price, binance_mom_5m=binance_mom_5m, current_ci=current_ci
+            )
+        if hasattr(self, "rotation_runner"):
+            self.rotation_runner.on_ticker(
                 symbol=pair, price=price, binance_mom_5m=binance_mom_5m, current_ci=current_ci
             )
         
@@ -322,6 +329,8 @@ class KiBotV2Pipeline:
         await self.router.enqueue_candidate(symbol=pair, payload=candidate_payload, score=score)
         if hasattr(self, "paper_runner"):
             self.paper_runner.evaluate_candidate(candidate_payload)
+        if hasattr(self, "rotation_runner"):
+            self.rotation_runner.evaluate_candidate(candidate_payload)
 
     async def _on_binance_ticker(self, ticker: Dict[str, Any]) -> None:
         # Mini ticker stream updates data age and lead-lag metrics in memory
@@ -360,13 +369,12 @@ class KiBotV2Pipeline:
             tf_open = len(self.virtual_ledger.open_positions)
             tf_closed = len(self.virtual_ledger.trade_history)
 
-            mr_eq = self.shadow_ledger.get_total_equity() if self.shadow_ledger else 0.0
-            mr_open = len(self.shadow_ledger.open_positions) if self.shadow_ledger else 0
-            mr_closed = len(self.shadow_ledger.trade_history) if self.shadow_ledger else 0
-            
-            # Exposure and position floating PnL breakdown
-            open_summary = []
+            mr_eq = self.shadow_ledger.get_total_equity()
+            mr_open = len(self.shadow_ledger.open_positions)
+            mr_closed = len(self.shadow_ledger.trade_history)
+
             total_open_exp = 0.0
+            open_summary = []
             for sym, pos in self.virtual_ledger.open_positions.items():
                 exp = pos.amount_coins * pos.current_price
                 total_open_exp += exp
@@ -377,11 +385,13 @@ class KiBotV2Pipeline:
             exposure_pct = (total_open_exp / tf_eq * 100.0) if tf_eq > 0 else 0.0
 
             paper_sum = self.paper_runner.get_summary() if hasattr(self, "paper_runner") else {}
-            paper_log_str = " | ".join([f"{c}:Rp {v['equity_idr']:,.0f}({v['open_positions']})" for c, v in paper_sum.items()])
+            p5_sum = self.rotation_runner.get_summary() if hasattr(self, "rotation_runner") else {}
+            p5_str = f" | P5:Rp {p5_sum.get('equity_idr', 100000):,.0f}({p5_sum.get('open_positions', 0)})" if p5_sum else ""
+            paper_log_str = " | ".join([f"{c}:Rp {v['equity_idr']:,.0f}({v['open_positions']})" for c, v in paper_sum.items()]) + p5_str
             logger.info(
                 f"[Telemetry] 📊 TF Equity: Rp {tf_eq:,.0f} (Open: {tf_open}, Exp: {exposure_pct:.1f}%, Closed: {tf_closed}{pos_str}) | "
                 f"MR Shadow: Rp {mr_eq:,.0f} (Open: {mr_open}, Closed: {mr_closed}) | "
-                f"Paper P1-P4: {paper_log_str} | "
+                f"Paper P1-P5: {paper_log_str} | "
                 f"Latency (p50: {latency['p50_ms']}ms, p90: {latency['p90_ms']}ms) | Drop: {drop_rate:.1f}%"
             )
 
