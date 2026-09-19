@@ -142,6 +142,11 @@ def main():
         logger.info("✅ Dry run finished successfully.")
         return
 
+    if not ts_authkey and not args.dry_run:
+        logger.error("❌ CRITICAL: TS_AUTHKEY environment variable is missing! Aborting launch to prevent orphan instance.")
+        send_telegram(tg_token, tg_chat, "⚠️ <b>OCI Batam Catcher</b>: Refusing to start without TS_AUTHKEY.")
+        sys.exit(1)
+
     # Polling Loop
     attempt = 0
     ad_idx = 0
