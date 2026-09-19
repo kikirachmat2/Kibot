@@ -128,4 +128,9 @@ Menjaga konsistensi kalkulasi state dan ledger agar metrik performa selalu akura
   - Jadwal review berikutnya: **2026-10-20**. Verifikasi apakah token lama masih aman dan tidak ada indikasi aktivitas anomali.
 - [ ] **6. Tanggap Darurat Token Abuse**
   - Jika sewaktu-waktu ditemukan indikasi token abuse (pesan asing dari bot), lakukan revoke seketika via `@BotFather` -> `/revoke`.
+- [ ] **7. Audit BotFather Tiap 7 Hari**
+  - Cek `@BotFather` → bot settings tiap 7 hari. Pastikan tidak ada activity mencurigakan.
+- [ ] **8. Deteksi Outbound Tak Dikenal**
+  - Kalau ada notif Telegram ke chat lain yang Anda tidak kenal → revoke token immediately, jangan tunggu 30 hari.
+
 

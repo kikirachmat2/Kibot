@@ -1,89 +1,84 @@
-# 📈 KiBot V2 — Paper Trade Week 1 Tracking Log
+# PAPER TRADE WEEK 1 LOG
 
-- **Week Start (Clean Baseline)**: `2026-09-20T01:18:10+07:00` (2026-09-19 18:18:10 UTC)
-- **Initial Capital per Variant**: Rp 100,000.00 (Total P1–P5: Rp 500,000.00)
-- **Primary Trend-Following Equity Baseline**: Rp 8,974,749.10 (~Rp 9.00M)
-- **Shadow Mean-Reversion Baseline**: Rp 10,000,000.00
-- **Daily Automated Report Time**: 00:00 WIB (17:00 UTC) via Telegram
+- **Week 1 Start**: Senin, 2026-09-22 00:00:00 WIB (2026-09-21 17:00 UTC)
+- **Week 1 End**: Minggu, 2026-09-28 23:59:59 WIB
+- **Pre-launch period**: 2026-09-20 s/d 2026-09-21 (tidak dihitung)
+- **Report Schedule**:
+  - Report 1: 2026-09-23 00:00 WIB (Selasa dini hari)
+  - Report 2: 2026-09-24 00:00 WIB
+  - Report 3: 2026-09-25 00:00 WIB
+  - Report 4: 2026-09-26 00:00 WIB
+  - Report 5: 2026-09-27 00:00 WIB
+  - Report 6: 2026-09-28 00:00 WIB
+  - Report 7: 2026-09-29 00:00 WIB (closing minggu + reset)
 
 ---
 
 ## Daily Performance Log
 
-### Day 1 — 2026-09-20
-- **P1 (Conservative)**: Rp 99,950.00 (PnL: -Rp 50 / -0.05%) | Open: 1 (BTCIDR) | Closed: 0
-- **P2 (Balanced)**: Rp 99,950.00 (PnL: -Rp 50 / -0.05%) | Open: 1 (BTCIDR) | Closed: 0
-- **P3 (Aggressive)**: Rp 99,950.00 (PnL: -Rp 50 / -0.05%) | Open: 1 (BTCIDR) | Closed: 0
-- **P4 (Vol Anomaly)**: Rp 100,000.00 (PnL: Rp 0 / 0.00%) | Open: 0 | Closed: 0
-- **P5 (Alt-Rotation)**: Rp 99,900.10 (PnL: -Rp 99.90 / -0.10%) | Open: 1 (BTCIDR) | Closed: 0
-- **Total Multi-Paper Equity**: Rp 499,750.10 / Rp 500,000.00 (Net: -Rp 249.90 / -0.05%)
-- **PRIMARY_TF (Live/Simulated Swing)**: Rp 9,001,411.85 (Open: 3 - ETHIDR, SOLIDR, BTCIDR)
-- **SHADOW_MR (Shadow Mean-Reversion)**: Rp 10,000,000.00 (Open: 0)
-- **Market Regime**: BULL (Confidence: 0.63, BTC.D 7h: 0.0%)
-- **Notes**: Fresh reset baseline after Bug 1 (zero cash condition) & Bug 2 (singleton ledger crosstalk) patches. Next daily snapshot scheduled at 00:00 WIB.
+### Pre-Launch Period (2026-09-20 s/d 2026-09-21)
+- Baseline State Reset: Rp 100,000.00 per varian (P1–P5)
+- Pre-launch execution testing only, not included in official Week 1 PnL competition.
 
----
-
-### Day 2 — 2026-09-21
+### Report 1 — 2026-09-23 00:00 WIB (Cover Senin 2026-09-22)
 - **P1**: TBD
 - **P2**: TBD
 - **P3**: TBD
 - **P4**: TBD
 - **P5**: TBD
 - **Regime**: TBD
-- **Notes**: Scheduled for Day 2 report.
+- **Notes**: Scheduled for Report 1.
 
----
-
-### Day 3 — 2026-09-22
+### Report 2 — 2026-09-24 00:00 WIB (Cover Selasa 2026-09-23)
 - **P1**: TBD
 - **P2**: TBD
 - **P3**: TBD
 - **P4**: TBD
 - **P5**: TBD
 - **Regime**: TBD
-- **Notes**: Scheduled for Day 3 report.
+- **Notes**: Scheduled for Report 2.
 
----
-
-### Day 4 — 2026-09-23
+### Report 3 — 2026-09-25 00:00 WIB (Cover Rabu 2026-09-24)
 - **P1**: TBD
 - **P2**: TBD
 - **P3**: TBD
 - **P4**: TBD
 - **P5**: TBD
 - **Regime**: TBD
-- **Notes**: Scheduled for Day 4 report.
+- **Notes**: Scheduled for Report 3.
 
----
-
-### Day 5 — 2026-09-24
+### Report 4 — 2026-09-26 00:00 WIB (Cover Kamis 2026-09-25)
 - **P1**: TBD
 - **P2**: TBD
 - **P3**: TBD
 - **P4**: TBD
 - **P5**: TBD
 - **Regime**: TBD
-- **Notes**: Scheduled for Day 5 report.
+- **Notes**: Scheduled for Report 4.
 
----
-
-### Day 6 — 2026-09-25
+### Report 5 — 2026-09-27 00:00 WIB (Cover Jumat 2026-09-26)
 - **P1**: TBD
 - **P2**: TBD
 - **P3**: TBD
 - **P4**: TBD
 - **P5**: TBD
 - **Regime**: TBD
-- **Notes**: Scheduled for Day 6 report.
+- **Notes**: Scheduled for Report 5.
 
----
-
-### Day 7 — 2026-09-26 (Weekly Review Milestone)
+### Report 6 — 2026-09-28 00:00 WIB (Cover Sabtu 2026-09-27)
 - **P1**: TBD
 - **P2**: TBD
 - **P3**: TBD
 - **P4**: TBD
 - **P5**: TBD
 - **Regime**: TBD
-- **Notes**: Comprehensive 7-day evaluation across Win Rate, Profit Factor, Sharpe ratio, and Max Drawdown.
+- **Notes**: Scheduled for Report 6.
+
+### Report 7 — 2026-09-29 00:00 WIB (Cover Minggu 2026-09-28 + Closing Minggu & Reset)
+- **P1**: TBD
+- **P2**: TBD
+- **P3**: TBD
+- **P4**: TBD
+- **P5**: TBD
+- **Regime**: TBD
+- **Notes**: Closing minggu + reset baseline untuk Week 2.

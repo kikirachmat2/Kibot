@@ -34,6 +34,29 @@
   4. **Outbound Burst Anomaly Alert**: If more than 5 outbound messages occur within 60 seconds outside schedule, an alert is triggered via the secondary fallback channel (local failure log / Discord-Slack webhook) to the Supervisor.
   5. **Review Interval**: Periodic review scheduled every 30 days (Next: 2026-10-20). If token abuse is detected, emergency revocation will be executed immediately.
 
+---
+
+## Residual Risk — Acknowledged
+
+**Whitelist mitigation scope**: Whitelist di kode KiBot hanya mencegah kode
+kita sendiri mengirim ke chat_id di luar daftar. Ini memitigasi skenario
+"kode kita di-inject".
+
+**TIDAK memitigasi**: Attacker yang punya token langsung bisa hit Telegram
+API dari mesin manapun:
+```bash
+curl -X POST "https://api.telegram.org/bot<TOKEN>/sendMessage" \
+  -d "chat_id=<attacker>" -d "text=<spam>"
+```
+Request ini TIDAK lewat kode kita → whitelist tidak aktif.
+
+**Only real fix**: Revoke token. Supervisor memilih accept risk.
+
+**Detection**: Monitor outbound activity via Telegram bot settings.
+Kalau ada pesan keluar yang tidak Anda kenal → segera revoke.
+
+---
+
 ### B. Credential Scrubbing & Repository Hardening
 1. Removed all hardcoded token literals and fallback strings from `infra/oci-arm-catcher-batam.py`.
 2. Updated `.gitignore` to explicitly exclude all environment credential files:

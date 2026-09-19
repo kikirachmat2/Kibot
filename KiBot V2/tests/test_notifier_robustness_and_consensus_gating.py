@@ -153,4 +153,17 @@ def test_telegram_chat_whitelist_and_rate_limit():
                 call_args = mock_webhook.call_args[1]
                 assert call_args["event_type"] == "TELEGRAM_BURST_ANOMALY"
 
+        # 4. Outbound message hash log verification
+        log_file = Path("logs/sent_messages.jsonl")
+        if log_file.exists():
+            log_file.unlink()
+        notifier._log_sent_message(123456789, "Verification test message")
+        assert log_file.exists()
+        import json
+        with open(log_file) as f:
+            entry = json.loads(f.readline())
+            assert entry["chat_id"] == "123456789"
+            assert entry["length"] == len("Verification test message")
+            assert "hash" in entry
+
     asyncio.run(_run())

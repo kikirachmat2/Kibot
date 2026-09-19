@@ -13,6 +13,7 @@ from typing import Optional, Dict, Any
 
 import aiohttp
 from collections import deque
+from pathlib import Path
 from config import settings
 
 logger = logging.getLogger("KiBotV2.Notifications")
@@ -96,6 +97,22 @@ class TelegramNotifier:
             logger.warning(f"[TelegramNotifier] ⚠️ Hourly rate limit exceeded ({len(self._hourly_sent_timestamps)}/100 msgs). Blocking dispatch.")
             return False
         return True
+
+    def _log_sent_message(self, chat_id: Any, text: str) -> None:
+        """Log hash + timestamp setiap outbound message untuk abuse detection."""
+        try:
+            log_path = Path("logs/sent_messages.jsonl")
+            log_path.parent.mkdir(parents=True, exist_ok=True)
+            entry = {
+                "ts": time.time(),
+                "chat_id": str(chat_id),
+                "hash": hashlib.sha256(text.encode()).hexdigest()[:16],
+                "length": len(text),
+            }
+            with open(log_path, "a", encoding="utf-8") as f:
+                f.write(json.dumps(entry) + "\n")
+        except Exception as e:
+            logger.error(f"[TelegramNotifier] Failed to write sent message log: {e}")
 
     def _record_sent_timestamp(self, now: float) -> None:
         self._hourly_sent_timestamps.append(now)
@@ -288,6 +305,7 @@ class TelegramNotifier:
                     self._consecutive_failures = 0
                     self._record_sent_timestamp(now)
                     await self._check_and_alert_anomaly(now)
+                    self._log_sent_message(target_chat_id, text)
                     logger.info(f"[TelegramNotifier] 📤 Alert sent successfully: [{event_type}] {title}")
                     return True
                 else:
@@ -331,6 +349,7 @@ class TelegramNotifier:
                 if resp.status == 200:
                     self._record_sent_timestamp(now)
                     await self._check_and_alert_anomaly(now)
+                    self._log_sent_message(chat_id, text)
                     logger.info(f"[TelegramNotifier] 📤 Direct message sent successfully to {chat_id}")
                     return True
                 else:
