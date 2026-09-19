@@ -20,6 +20,8 @@ from datetime import datetime, timezone
 from storage import setup_logging, durable_state_store, StartupReconciler, venue_ledger
 from storage.performance_tracker import DailyPerformanceTracker
 from executor import OrderRouter, VirtualLedger
+from paper_trade_runner import PaperTradeRunner
+from notifications.weekly_reporter import weekly_reporter
 
 setup_logging()
 logger = logging.getLogger("KiBotV2.Main")
@@ -65,6 +67,7 @@ class KiBotV2Pipeline:
             venue_ledger_instance=self.venue_ledger,
         )
         self.reconciler = StartupReconciler()
+        self.paper_runner = PaperTradeRunner()
         
         self.indodax_ws = IndodaxWebSocketClient()
         self.binance_ws = BinanceWebSocketClient()
@@ -132,6 +135,9 @@ class KiBotV2Pipeline:
         # 9. Start Lightweight Health Server for External Watchdog (SG2)
         await self._start_health_server()
 
+        # 10. Start Daily Telegram Reporter (00:00 WIB)
+        weekly_reporter.start(lambda: self.paper_runner)
+
     async def _start_health_server(self) -> None:
         try:
             app = web.Application()
@@ -176,6 +182,7 @@ class KiBotV2Pipeline:
                     "shadow_mr_equity_idr": self.shadow_ledger.get_total_equity(),
                     "shadow_mr_open_positions": len(self.shadow_ledger.open_positions),
                     "shadow_mr_closed_trades": len(self.shadow_ledger.trade_history),
+                    "paper_p1_p4_summary": self.paper_runner.get_summary(),
                     "is_halted": self.venue_ledger.is_halted,
                     "window_7d_summary": self.performance_tracker.get_7d_summary(
                         current_equity_idr=tf_equity,
@@ -217,6 +224,10 @@ class KiBotV2Pipeline:
         if self.shadow_ledger:
             self.shadow_ledger.update_market_price(
                 pair, price, binance_mom_5m=binance_mom_5m, current_ci=current_ci
+            )
+        if hasattr(self, "paper_runner"):
+            self.paper_runner.on_ticker(
+                symbol=pair, price=price, binance_mom_5m=binance_mom_5m, current_ci=current_ci
             )
         
         # Update risk gate equity
@@ -309,6 +320,8 @@ class KiBotV2Pipeline:
             "intraday_tau": live_inds.get("intraday_tau", 1.0),  # live-only field for monitoring
         }
         await self.router.enqueue_candidate(symbol=pair, payload=candidate_payload, score=score)
+        if hasattr(self, "paper_runner"):
+            self.paper_runner.evaluate_candidate(candidate_payload)
 
     async def _on_binance_ticker(self, ticker: Dict[str, Any]) -> None:
         # Mini ticker stream updates data age and lead-lag metrics in memory
@@ -363,9 +376,12 @@ class KiBotV2Pipeline:
             pos_str = f" | Positions: {', '.join(open_summary)}" if open_summary else ""
             exposure_pct = (total_open_exp / tf_eq * 100.0) if tf_eq > 0 else 0.0
 
+            paper_sum = self.paper_runner.get_summary() if hasattr(self, "paper_runner") else {}
+            paper_log_str = " | ".join([f"{c}:Rp {v['equity_idr']:,.0f}({v['open_positions']})" for c, v in paper_sum.items()])
             logger.info(
                 f"[Telemetry] 📊 TF Equity: Rp {tf_eq:,.0f} (Open: {tf_open}, Exp: {exposure_pct:.1f}%, Closed: {tf_closed}{pos_str}) | "
                 f"MR Shadow: Rp {mr_eq:,.0f} (Open: {mr_open}, Closed: {mr_closed}) | "
+                f"Paper P1-P4: {paper_log_str} | "
                 f"Latency (p50: {latency['p50_ms']}ms, p90: {latency['p90_ms']}ms) | Drop: {drop_rate:.1f}%"
             )
 
@@ -400,6 +416,7 @@ class KiBotV2Pipeline:
         await self.enrichment_worker.stop()
         await self.candle_manager.stop()
         self.venue_ledger.stop()
+        await weekly_reporter.stop()
         if self._health_runner:
             await self._health_runner.cleanup()
         await durable_state_store.stop()
