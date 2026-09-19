@@ -16,15 +16,20 @@ export DEBIAN_FRONTEND=noninteractive
 apt-get update && apt-get upgrade -y
 apt-get install -y python3-pip python3-venv git curl ufw jq
 
-# 2. Setup Tailscale Zero-Trust Mesh Network
-if [ -n "${TS_AUTHKEY:-}" ]; then
-    echo "[Bootstrap] Installing and joining Tailscale network..."
-    curl -fsSL https://tailscale.com/install.sh | sh
-    tailscale up --authkey="${TS_AUTHKEY}" --hostname="kibot-batam" --accept-routes
-    echo "[Bootstrap] ✅ Tailscale joined successfully. IP: $(tailscale ip -4 2>/dev/null || echo 'pending')"
-else
-    echo "[Bootstrap] ⚠️ TS_AUTHKEY not provided. Skipping automatic Tailscale join."
+# 2. Setup Tailscale Zero-Trust Mesh Network (MANDATORY)
+if [ -z "${TS_AUTHKEY:-}" ]; then
+    echo "[Bootstrap] ❌ CRITICAL: TS_AUTHKEY is missing! Tailscale cannot join mesh. Aborting bootstrap."
+    if [ -n "${KIBOT_TELEGRAM_BOT_TOKEN:-}" ] && [ -n "${KIBOT_TELEGRAM_CHAT_ID:-}" ]; then
+        curl -s -X POST "https://api.telegram.org/bot${KIBOT_TELEGRAM_BOT_TOKEN}/sendMessage" \
+            -d "chat_id=${KIBOT_TELEGRAM_CHAT_ID}&text=❌+<b>KIBOT+BATAM+BOOTSTRAP+FAILED</b>%0ATS_AUTHKEY+missing.+Aborted+Tailscale+mesh+join.&parse_mode=HTML" >/dev/null || true
+    fi
+    exit 1
 fi
+
+echo "[Bootstrap] Installing and joining Tailscale network..."
+curl -fsSL https://tailscale.com/install.sh | sh
+tailscale up --authkey="${TS_AUTHKEY}" --hostname="kibot-batam" --accept-routes
+echo "[Bootstrap] ✅ Tailscale joined successfully. IP: $(tailscale ip -4 2>/dev/null || echo 'pending')"
 
 # 3. Clone KiBot Codebase
 TARGET_DIR="/home/ubuntu/KiBotV2"
