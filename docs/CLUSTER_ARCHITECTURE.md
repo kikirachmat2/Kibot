@@ -165,6 +165,9 @@ Following the security incident on 2026-09-20 (detailed in [docs/SECURITY_INCIDE
    - Pre-commit Git hook (`scripts/check_secrets.py`) blocks commits containing Telegram Bot token patterns (`\d{10}:[A-Za-z0-9_-]{35}`) or hardcoded `API_KEY`/`SECRET` assignments.
 3. **Zero-Trust Network Perimeter**:
    - Inter-node communication (SG1 <-> Server 2 <-> Batam) is strictly restricted to Tailscale IPs (100.x.y.z) and protected by `X-Kibot-Secret` HMAC token validation.
+4. **Deadman Switch Scope & Manual Order Isolation**:
+   > [!WARNING]
+   > **Deadman Switch Scope Notice**: Method `countdownCancelAll` pada Indodax TAPI membatalkan **SEMUA** resting limit order pada pair yang didaftarkan (misal `btcidr`, `ethidr`), termasuk order manual yang dipasang pengguna di akun yang sama. Indodax API tidak mendukung pembatalan berdasarkan tag `clientOrderId` di endpoint deadman. Pastikan Supervisor tidak memasang order limit manual pada pair yang sedang di-trade oleh KiBot saat deadman switch aktif.
 
 ---
 
@@ -211,4 +214,50 @@ Following the security incident on 2026-09-20 (detailed in [docs/SECURITY_INCIDE
      ```
   2. Check Indodax API keys: verify `INDODAX_API_KEY` and `INDODAX_SECRET_KEY` have trade/cancel permissions.
   3. Inspect logs: `journalctl -u kibot-v2-paper.service -g "[Deadman]"`
+
+---
+
+## 13. Preparasi & Runbook Saat Batam Online
+
+### A. Otomatis Dieksekusi oleh `bootstrap-batam.sh`:
+1. **System Provisioning**: Update paket sistem & dependensi (`python3-venv`, `git`, `curl`, `ufw`, `jq`).
+2. **Zero-Trust Mesh Join**: Instalasi Tailscale & join otomatis (`--authkey=$TS_AUTHKEY --hostname=kibot-batam`).
+3. **Codebase Deployment**: Clone repositori KiBot ke `/home/ubuntu/KiBotV2`.
+4. **Environment Setup**: Pembuatan venv `/home/ubuntu/KiBotV2/venv` & instalasi FastAPI, Uvicorn, httpx, aiohttp.
+5. **Cluster Service Start**: Konfigurasi dan peluncuran daemon `kibot-batam-cluster.service` pada port `5001`.
+6. **Telegram Notification**: Pengiriman alert status '🟢 BATAM RESEARCH NODE ONLINE' beserta IP Tailscale & Public.
+
+### B. Hal yang TIDAK Dilakukan Otomatis (Perlu Langkah Manual):
+1. **Instalasi Ollama / Heavy LLM**:
+   - Cloud-init sengaja tidak mengunduh model LLM berukuran besar untuk menghemat bandwidth awal & mencegah timeout cloud-init.
+   - Jika ingin mengaktifkan sentiment analysis berbasis model lokal:
+     ```bash
+     ssh -i ~/.ssh/kibot/ssh-key-batam-active.pem ubuntu@kibot-batam
+     curl -fsSL https://ollama.com/install.sh | sh
+     ollama pull qwen2.5:3b
+     ```
+2. **Alokasi Swapfile (Rekomendasi 4GB)**:
+   - Instance ARM 12GB RAM akan jauh lebih stabil dengan swapfile 4GB:
+     ```bash
+     sudo fallocate -l 4G /swapfile
+     sudo chmod 600 /swapfile
+     sudo mkswap /swapfile
+     sudo swapon /swapfile
+     echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab
+     ```
+3. **UFW Tailscale Only Rule**:
+   - Mengunci port 5001 agar hanya bisa diakses via interface Tailscale:
+     ```bash
+     sudo ufw allow in on tailscale0 to any port 5001 proto tcp
+     ```
+
+### C. Cara Mengetahui Batam Sudah Online:
+1. **Notifikasi Telegram**: Pesan otomatis akan masuk ke chat Supervisor segera setelah bootstrap tuntas.
+2. **Auto-Discovery Log di SG1**:
+   `sudo journalctl -u kibot-auto-discovery.service -f`
+   Log akan bertransisi dari `Batam not found, using internal fallback` menjadi:
+   `🟢 Batam research node is ONLINE: BATAM_RESEARCH_NODE (uptime: ...s)`
+3. **Tailscale Console / CLI**:
+   `tailscale status` di SG1 atau Server 2 akan menampilkan node `kibot-batam` dalam status `active`.
+
 
