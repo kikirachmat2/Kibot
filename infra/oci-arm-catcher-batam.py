@@ -99,8 +99,8 @@ def main():
     identity_client = oci.identity.IdentityClient(config)
     compartment_id = config["tenancy"]
 
-    tg_token = os.getenv("KIBOT_TELEGRAM_TOKEN", "REDACTED_TELEGRAM_TOKEN")
-    tg_chat = os.getenv("KIBOT_TELEGRAM_CHAT_ID", "1346696386")
+    tg_token = os.getenv("KIBOT_TELEGRAM_TOKEN", "")
+    tg_chat = os.getenv("KIBOT_TELEGRAM_CHAT_ID", "")
     ts_authkey = os.getenv("TS_AUTHKEY", "")
 
     # 1. Fetch Availability Domains
