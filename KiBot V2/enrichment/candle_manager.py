@@ -379,3 +379,8 @@ class CandleEnrichmentManager:
         norm_sym = self.normalize_symbol(symbol)
         # Prefer live snapshot; fall back to strategy snapshot if live not yet available
         return self._live_indicators.get(norm_sym) or self._strategy_indicators.get(norm_sym)
+
+    def get_candles(self, symbol: str) -> Optional[Dict[str, Any]]:
+        """Returns raw cached candle series (times, opens, highs, lows, closes, volumes)."""
+        norm_sym = self.normalize_symbol(symbol)
+        return self._raw_candles.get(norm_sym)

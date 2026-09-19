@@ -155,9 +155,15 @@ class KiBotV2Pipeline:
             try:
                 # 1. Internal regime assessment
                 btc_candles = self.candle_manager.get_candles("BTCIDR") if hasattr(self, "candle_manager") else None
-                if btc_candles is not None and len(btc_candles) >= 30:
+                if btc_candles and "closes" in btc_candles and len(btc_candles["closes"]) >= 30:
                     import pandas as pd
-                    btc_df = pd.DataFrame(btc_candles)
+                    btc_df = pd.DataFrame({
+                        "open": btc_candles.get("opens", btc_candles["closes"]),
+                        "high": btc_candles.get("highs", btc_candles["closes"]),
+                        "low": btc_candles.get("lows", btc_candles["closes"]),
+                        "close": btc_candles["closes"],
+                        "volume": btc_candles.get("volumes", [1000.0] * len(btc_candles["closes"])),
+                    })
                     internal = detect_regime(btc_ohlcv_1h=btc_df)
                 else:
                     internal = getattr(self.rotation_runner, "latest_regime_info", {"regime": MarketRegime.RANGE, "strength": 50.0})
