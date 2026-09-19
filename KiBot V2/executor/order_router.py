@@ -2,6 +2,7 @@ import logging
 from typing import Dict, Any, Optional
 
 from .virtual_ledger import VirtualLedger
+from .deadman import register_deadman
 from config import settings
 from risk import RiskGate, CapitalGovernor
 from storage import VenueLedger, venue_ledger
@@ -109,6 +110,10 @@ class OrderRouter:
             )
             if result.get("success"):
                 self.risk_gate.record_order_placed(symbol)
+                try:
+                    await register_deadman(pair=symbol.lower(), timeout_seconds=900)
+                except Exception as dm_err:
+                    logger.warning(f"[OrderRouter] Deadman registration warning for {symbol}: {dm_err}")
             result["mode"] = "PAPER_SHADOW_LEDGER" if is_shadow else "PAPER_VIRTUAL_LEDGER"
             result["ledger"] = target_ledger.name
             return result

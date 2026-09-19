@@ -20,8 +20,11 @@ from datetime import datetime, timezone
 from storage import setup_logging, durable_state_store, StartupReconciler, venue_ledger
 from storage.performance_tracker import DailyPerformanceTracker
 from executor import OrderRouter, VirtualLedger
+from executor.deadman import deadman_switch, cancel_all_if_dead
 from paper_trade_runner import PaperTradeRunner
 from paper_rotation_runner import RotationPaperRunner
+from council.external_regime_consensus import fetch_external_regime, compute_consensus
+from council.regime_detector import MarketRegime, detect_regime
 from notifications.weekly_reporter import weekly_reporter
 
 setup_logging()
@@ -139,6 +142,56 @@ class KiBotV2Pipeline:
 
         # 10. Start Daily Telegram Reporter (00:00 WIB)
         weekly_reporter.start(lambda: (self.paper_runner, self.rotation_runner))
+
+        # 11. Start Indodax Deadman Switch Periodic Heartbeat (5m interval, 15m timeout)
+        deadman_switch.start()
+
+        # 12. Start External Regime Consensus Loop (getregime.com, 5m interval)
+        self._regime_consensus_task = asyncio.create_task(self._regime_consensus_loop())
+
+    async def _regime_consensus_loop(self) -> None:
+        """Periodically polls getregime.com (every 300s) and updates consensus for P5 Rotation."""
+        while self._running:
+            try:
+                # 1. Internal regime assessment
+                btc_candles = self.candle_manager.get_candles("BTCIDR") if hasattr(self, "candle_manager") else None
+                if btc_candles is not None and len(btc_candles) >= 30:
+                    import pandas as pd
+                    btc_df = pd.DataFrame(btc_candles)
+                    internal = detect_regime(btc_ohlcv_1h=btc_df)
+                else:
+                    internal = getattr(self.rotation_runner, "latest_regime_info", {"regime": MarketRegime.RANGE, "strength": 50.0})
+
+                # 2. Fetch external regime
+                external = await fetch_external_regime()
+
+                # 3. Compute consensus
+                consensus = compute_consensus(internal, external)
+
+                # 4. Log differences for observability
+                int_reg = consensus.get("internal_regime")
+                ext_reg = consensus.get("external_regime")
+                if ext_reg and int_reg != ext_reg:
+                    logger.info(
+                        f"[CouncilConsensus] ⚖️ Regime divergence: Internal={int_reg.value.upper() if hasattr(int_reg, 'value') else int_reg} "
+                        f"vs External={ext_reg.value.upper() if hasattr(ext_reg, 'value') else ext_reg}. "
+                        f"Status: {consensus['consensus_status']} (Damping multiplier: {consensus['damping_multiplier']})"
+                    )
+
+                # 5. Apply consensus to rotation runner
+                if hasattr(self, "rotation_runner"):
+                    curr = dict(self.rotation_runner.latest_regime_info)
+                    curr["regime"] = consensus["regime"]
+                    curr["strength"] = consensus["strength"]
+                    curr["consensus_status"] = consensus["consensus_status"]
+                    curr["damping_multiplier"] = consensus["damping_multiplier"]
+                    curr["external_regime"] = ext_reg
+                    self.rotation_runner.latest_regime_info = curr
+                    self.rotation_runner._save_state()
+            except Exception as e:
+                logger.warning(f"[CouncilConsensus] Error in regime consensus cycle: {e}")
+
+            await asyncio.sleep(300)
 
     async def _start_health_server(self) -> None:
         try:
@@ -426,7 +479,13 @@ class KiBotV2Pipeline:
         await self.enrichment_worker.stop()
         await self.candle_manager.stop()
         self.venue_ledger.stop()
-        await weekly_reporter.stop()
+        if hasattr(self, "_regime_consensus_task") and not self._regime_consensus_task.done():
+            self._regime_consensus_task.cancel()
+        try:
+            await cancel_all_if_dead()
+            await deadman_switch.stop()
+        except Exception as dm_err:
+            logger.warning(f"[KiBotV2] Deadman shutdown error: {dm_err}")
         if self._health_runner:
             await self._health_runner.cleanup()
         await durable_state_store.stop()

@@ -140,3 +140,21 @@ class IndodaxDeadmanSwitch:
             except asyncio.CancelledError:
                 pass
         logger.info("[Deadman] Stopped Indodax Deadman Switch.")
+
+deadman_switch = IndodaxDeadmanSwitch()
+
+async def register_deadman(pair: str = "all", timeout_seconds: Optional[int] = None) -> bool:
+    return await deadman_switch.register_deadman(pair=pair, timeout_seconds=timeout_seconds)
+
+async def heartbeat() -> bool:
+    return await deadman_switch.heartbeat()
+
+async def cancel_all_if_dead(pair: str = "all") -> bool:
+    return await deadman_switch.cancel_all_if_dead(pair=pair)
+
+def start() -> None:
+    deadman_switch.start()
+
+async def stop() -> None:
+    await deadman_switch.stop()
+

@@ -88,3 +88,27 @@ def test_deadman_simulate_freeze():
             cancel_res = await switch.cancel_all_if_dead("btcidr")
             assert cancel_res is True
     asyncio.run(_test())
+
+def test_deadman_wired_to_order_router():
+    """Verify deadman registration is triggered upon order router paper buy execution."""
+    from executor.order_router import OrderRouter
+    from executor.virtual_ledger import VirtualLedger
+    from risk import RiskGate
+
+    async def _test():
+        risk_gate = RiskGate()
+        ledger = VirtualLedger(name="TEST_DEADMAN")
+        router = OrderRouter(risk_gate=risk_gate, virtual_ledger=ledger)
+
+        with patch("executor.order_router.register_deadman", new_callable=AsyncMock) as mock_reg:
+            mock_reg.return_value = True
+            res = await router.route_buy_order(
+                symbol="BTCIDR",
+                price=1_000_000_000.0,
+                notional_idr=100_000.0,
+            )
+            assert res.get("success") is True
+            mock_reg.assert_awaited_once_with(pair="btcidr", timeout_seconds=900)
+
+    asyncio.run(_test())
+
