@@ -51,12 +51,17 @@ class ExternalRegimeConsensus:
         """Fetches regime classification from getregime.com with 5-minute memory cache."""
         now = time.time()
         if not force_refresh and self._cached_data and (now - self._last_fetch_ts) < self.cache_ttl:
+            logger.info(f"[ExternalRegime] 💾 Cache hit: using cached getregime.com signal (age: {now - self._last_fetch_ts:.1f}s)")
             return self._cached_data
 
         timeout = aiohttp.ClientTimeout(total=self.request_timeout)
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+            "Accept": "application/json",
+        }
         try:
             async with aiohttp.ClientSession(timeout=timeout) as session:
-                async with session.get(self.api_url) as resp:
+                async with session.get(self.api_url, headers=headers) as resp:
                     if resp.status == 200:
                         data = await resp.json()
                         raw_regime = data.get("regime", "unknown")
