@@ -1,0 +1,15 @@
+[Unit]
+Description=KiBot Cluster Service
+After=network.target
+
+[Service]
+User=ubuntu
+WorkingDirectory=/home/ubuntu/KiBotV2/KiBot V2
+Environment="KIBOT_CLUSTER_SECRET=c562818c45b9851ebc8ef8f7572f7ae843d416e61cbde40e871ed74abed5b86a"
+Environment="PYTHONPATH=/home/ubuntu/KiBotV2/KiBot V2"
+ExecStart=/usr/bin/python3 -m uvicorn cluster.server:app --host 0.0.0.0 --port 5000
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
