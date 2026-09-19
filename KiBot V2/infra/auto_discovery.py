@@ -66,6 +66,8 @@ class BatamAutoDiscovery:
             logger.warning(f"[AutoDiscovery] 🔴 Batam research node went OFFLINE.")
             if self.on_status_change_cb:
                 self.on_status_change_cb(False, {})
+        else:
+            logger.info(f"[AutoDiscovery] Batam not found ({self.node_host}:{self.node_port}), using internal fallback.")
         return False
 
     async def _discovery_loop(self) -> None:
