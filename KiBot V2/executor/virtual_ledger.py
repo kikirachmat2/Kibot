@@ -130,9 +130,13 @@ class VirtualLedger:
         initial_cash_idr: float = 10_000_000.0,
         name: str = "PRIMARY_TF",
         readiness_evaluator: Optional[Any] = None,
+        fee_pct: Optional[float] = None,
+        max_positions: int = 10,
     ):
         self.name = name
         self.readiness_evaluator = readiness_evaluator
+        self.fee_pct = fee_pct
+        self.max_positions = max_positions
         self.cash_idr: float = initial_cash_idr
         self.initial_equity_idr: float = initial_cash_idr
         self.peak_equity_idr: float = initial_cash_idr
@@ -265,7 +269,8 @@ class VirtualLedger:
             slippage_price = analysis.avg_fill_price
             slippage_pct = analysis.slippage_pct
 
-        fee_idr = notional_idr * (settings.FEE_ROUNDTRIP_PCT / 100.0 / 2.0)
+        effective_fee_rate = (self.fee_pct / 100.0) if self.fee_pct is not None else (settings.FEE_ROUNDTRIP_PCT / 100.0 / 2.0)
+        fee_idr = notional_idr * effective_fee_rate
         net_notional = notional_idr - fee_idr
         amount_coins = net_notional / slippage_price
 
@@ -473,10 +478,20 @@ class VirtualLedger:
         ):
             self.execute_partial_tp(sym, current_price)
 
-        # 4. Check Stagnation Exit (Dead Capital Protection: >= 5 days, CI >= 65.0, move <= 0.60%)
+        # 4. Check Soft Exit (3h at <= -5.0% for P1/P2 variants)
+        pnl_pct = ((current_price - pos.entry_price) / pos.entry_price * 100.0) if pos.entry_price > 0 else 0.0
+        if getattr(pos, "strategy", "") in ("P1_CONSERVATIVE", "P2_BALANCED", "CONSERVATIVE", "BALANCED"):
+            if (now - pos.entry_time) >= (3.0 * 3600.0) and pnl_pct <= -5.0:
+                logger.info(
+                    f"[VirtualLedger:{self.name}] ⏱️ Soft Exit triggered for {sym}: "
+                    f"Held {(now - pos.entry_time)/3600.0:.1f}h >= 3h with PnL {pnl_pct:.2f}% <= -5.0%"
+                )
+                return self.close_paper_position(sym, reason="SOFT_EXIT_3H_DRAWDOWN")
+
+        # 5. Check Stagnation Exit (Dead Capital Protection: >= 5 days, CI >= 65.0, move <= 0.60%)
         days_held = (now - pos.entry_time) / 86400.0
         ci = current_ci if current_ci is not None else getattr(pos, "current_ci", 50.0)
-        unrealized_pct = abs((current_price - pos.entry_price) / pos.entry_price * 100.0)
+        unrealized_pct = abs(pnl_pct)
         if days_held >= 5.0 and ci >= 65.0 and unrealized_pct <= 0.60:
             logger.info(
                 f"[VirtualLedger:{self.name}] ⏱️ Stagnation Exit triggered for {sym} "
@@ -484,7 +499,7 @@ class VirtualLedger:
             )
             return self.close_paper_position(sym, reason="STAGNATION_DEAD_CAPITAL_EXIT")
 
-        # 5. Check Max Hold Time Expired
+        # 6. Check Max Hold Time Expired
         # Use position-specific max_hold_time_s (e.g. 21d for TF, 10d for MR) or override if explicitly passed
         effective_max_hold = max_hold_time_s if max_hold_time_s is not None else getattr(pos, "max_hold_time_s", 21.0 * 86400.0)
         if (now - pos.entry_time) >= effective_max_hold:
@@ -498,9 +513,10 @@ class VirtualLedger:
         if not pos:
             return {"success": False, "reason": "Position not found"}
 
-        # Simulate exit: fee (0.21%)
+        # Simulate exit: fee (custom fee_pct e.g. 0.10% maker or 0.21% default)
         gross_value = pos.amount_coins * pos.current_price
-        exit_fee = gross_value * (settings.FEE_ROUNDTRIP_PCT / 100.0 / 2.0)
+        effective_fee_rate = (self.fee_pct / 100.0) if self.fee_pct is not None else (settings.FEE_ROUNDTRIP_PCT / 100.0 / 2.0)
+        exit_fee = gross_value * effective_fee_rate
         net_proceeds = gross_value - exit_fee
         remaining_pnl_idr = net_proceeds - pos.cost_idr
 
