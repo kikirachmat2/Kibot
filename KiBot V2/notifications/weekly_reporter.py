@@ -58,9 +58,39 @@ class WeeklyReporter:
         self.reports_dir = reports_dir or (settings.STATE_DIR / "weekly_reports")
         self.audit_cycle_days = audit_cycle_days
         # Start date baseline for Day {N}
-        self.start_date_str = start_date or "2026-09-14"
+        env_week_start = os.getenv("PAPER_TRADE_WEEK_START", "")
+        if env_week_start:
+            try:
+                # E.g. "2026-09-21T00:00:00+07:00"
+                self.start_date_str = env_week_start.split("T")[0]
+            except Exception:
+                self.start_date_str = start_date or "2026-09-21"
+        else:
+            self.start_date_str = start_date or "2026-09-21"
+
         self._running = False
         self._task: Optional[asyncio.Task] = None
+
+    def should_dispatch_report(self, now_dt: Optional[datetime] = None) -> tuple[bool, str]:
+        """
+        Determines whether 00:00 WIB daily report should fire or skip:
+        - If now == first Monday (baseline_week_start 00:00 WIB): SKIP (trading just started).
+        - If now == subsequent Monday 00:00 WIB: SEND (Report 7 closing week).
+        - If now == Tuesday..Sunday 00:00 WIB: SEND (Reports 1-6).
+        """
+        dt_wib = now_dt or datetime.now(timezone(timedelta(hours=7)))
+        base_dt = datetime.strptime(self.start_date_str, "%Y-%m-%d").date()
+        today = dt_wib.date()
+
+        # If today is before baseline date, skip
+        if today < base_dt:
+            return False, f"skip_before_baseline ({today} < {base_dt})"
+
+        # If today is exactly the first Monday baseline date
+        if today == base_dt and dt_wib.weekday() == 0:
+            return False, f"skip_first_monday_baseline ({today} is start of week)"
+
+        return True, "send_report"
 
     def get_day_number(self, target_dt: Optional[datetime] = None) -> int:
         now_dt = target_dt or datetime.now(timezone(timedelta(hours=7)))
@@ -266,6 +296,12 @@ class WeeklyReporter:
                 break
 
             try:
+                now_wib = datetime.now(timezone(timedelta(hours=7)))
+                should_send, reason = self.should_dispatch_report(now_wib)
+                if not should_send:
+                    logger.info(f"[WeeklyReporter] ⏭️ Skipping scheduled report ({reason}).")
+                    continue
+
                 item = paper_runner_fn()
                 summary = {}
                 if isinstance(item, tuple):

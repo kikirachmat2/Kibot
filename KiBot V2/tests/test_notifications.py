@@ -6,6 +6,7 @@ import asyncio
 import time
 from unittest.mock import AsyncMock, patch, MagicMock
 import pytest
+from datetime import datetime, timezone, timedelta
 
 from async_helper import run_async
 from notifications import telegram_notifier
@@ -157,3 +158,33 @@ def test_daily_loss_cap_triggers_alert():
         call_args = mock_alert.call_args[1]
         assert call_args["event_type"] == "DAILY_LOSS_CAP_TRIPPED"
         assert call_args["severity"] == "HIGH"
+
+
+def test_weekly_reporter_schedule_skip_logic():
+    """
+    Validates the 3 mock scenarios for weekly reporter baseline skip logic:
+    1. First Monday baseline 00:00 WIB -> SKIP (trading just started).
+    2. Tuesday 00:00 WIB -> SEND Report 1.
+    3. Next Monday 00:00 WIB -> SEND Report 7 (closing week).
+    """
+    from notifications.weekly_reporter import WeeklyReporter
+    reporter = WeeklyReporter(start_date="2026-09-21")
+
+    # Scenario 1: First Monday 00:00 WIB (2026-09-21 00:00 WIB / 2026-09-20 17:00 UTC)
+    dt_mon1 = datetime(2026, 9, 21, 0, 0, 5, tzinfo=timezone(timedelta(hours=7)))
+    should_send1, reason1 = reporter.should_dispatch_report(dt_mon1)
+    assert should_send1 is False
+    assert "skip_first_monday_baseline" in reason1
+
+    # Scenario 2: Tuesday 00:00 WIB (2026-09-22 00:00 WIB / 2026-09-21 17:00 UTC)
+    dt_tue = datetime(2026, 9, 22, 0, 0, 5, tzinfo=timezone(timedelta(hours=7)))
+    should_send2, reason2 = reporter.should_dispatch_report(dt_tue)
+    assert should_send2 is True
+    assert reason2 == "send_report"
+
+    # Scenario 3: Next Monday 00:00 WIB (2026-09-28 00:00 WIB / 2026-09-27 17:00 UTC)
+    dt_mon2 = datetime(2026, 9, 28, 0, 0, 5, tzinfo=timezone(timedelta(hours=7)))
+    should_send3, reason3 = reporter.should_dispatch_report(dt_mon2)
+    assert should_send3 is True
+    assert reason3 == "send_report"
+
