@@ -163,6 +163,11 @@ class WeeklyReporter:
             logger.info("\n" + message)
             return False
 
+        from notifications.telegram_notifier import telegram_notifier
+        if not telegram_notifier.is_chat_id_allowed(self.chat_id):
+            logger.warning(f"[WeeklyReporter] BLOCKED unauthorized chat_id: {self.chat_id}")
+            return False
+
         url = f"https://api.telegram.org/bot{self.bot_token}/sendMessage"
         payload = {
             "chat_id": self.chat_id,

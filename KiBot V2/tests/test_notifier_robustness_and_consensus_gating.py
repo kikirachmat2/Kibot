@@ -5,6 +5,7 @@ import shutil
 from pathlib import Path
 import pytest
 from unittest.mock import AsyncMock, patch
+import time
 
 from config import settings
 from storage.async_logger import SecretRedactingFilter, TELEGRAM_TOKEN_REGEX
@@ -13,7 +14,7 @@ from paper_rotation_runner import RotationPaperRunner
 from council.regime_detector import MarketRegime
 
 def test_secret_redacting_filter():
-    filter_obj = SecretRedactingFilter(key="my_secret_key_12345", secret="my_super_secret_indodax", tg_token="REDACTED_TELEGRAM_TOKEN")
+    filter_obj = SecretRedactingFilter(key="my_secret_key_12345", secret="my_super_secret_indodax", tg_token="9876543210:AaBbCcDdEeFfGgHhIiJjKkLlMmNnOoPpQqR")
     
     # 1. Arbitrary Telegram token pattern
     record = logging.LogRecord(
@@ -113,3 +114,43 @@ def test_p5_consensus_conflict_blocks_entry(tmp_path):
     pos = runner.ledger.open_positions["BTCIDR"]
     # 50,000 * 0.85 = 42,500 IDR
     assert abs(pos.cost_idr - 42500.0) < 1.0
+
+
+def test_telegram_chat_whitelist_and_rate_limit():
+    async def _run():
+        notifier = TelegramNotifier(
+            bot_token="1111111111:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+            chat_id="123456789",
+            allowed_chat_ids={123456789}
+        )
+
+        # 1. Whitelist validation
+        assert notifier.is_chat_id_allowed("123456789") is True
+        assert notifier.is_chat_id_allowed(123456789) is True
+        assert notifier.is_chat_id_allowed("999999999") is False
+
+        # Attempt sending to unauthorized chat_id
+        res_blocked = await notifier.send_message("999999999", "Test unauthorized")
+        assert res_blocked is False
+
+        res_alert_blocked = await notifier.send_alert("TEST", "Title", "Msg", chat_id="999999999")
+        assert res_alert_blocked is False
+
+        # 2. Rate limit validation (Max 100/hr)
+        now = time.time()
+        for _ in range(100):
+            notifier._record_sent_timestamp(now)
+        
+        assert notifier._check_rate_limit(now) is False
+        res_rate_limited = await notifier.send_message("123456789", "Test 101")
+        assert res_rate_limited is False
+
+        # 3. Anomaly detection (5+ messages in 1 min)
+        with patch.object(notifier, "_dispatch_fallback_webhook", new_callable=AsyncMock) as mock_webhook:
+            with patch.object(settings, "TELEGRAM_FALLBACK_WEBHOOK", "https://discord.com/api/webhooks/dummy"):
+                await notifier._check_and_alert_anomaly(now)
+                assert mock_webhook.call_count == 1
+                call_args = mock_webhook.call_args[1]
+                assert call_args["event_type"] == "TELEGRAM_BURST_ANOMALY"
+
+    asyncio.run(_run())
