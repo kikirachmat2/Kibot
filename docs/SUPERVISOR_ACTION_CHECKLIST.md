@@ -144,3 +144,18 @@ Jika koneksi internet SG1 terputus lebih dari 15 menit, Indodax Deadman Switch a
    sudo journalctl -u kibot-v2-paper.service -g "Deadman" -n 50 --no-pager
    ```
 3. Restart `kibot-v2-paper.service` untuk re-synchronize order ledger dan re-arm countdown timer ke Indodax.
+
+---
+
+## Section E — MONITORING DATA INTEGRITY (HARIAN)
+Menjaga konsistensi kalkulasi state dan ledger agar metrik performa selalu akurat:
+
+- [ ] **1. Cek Equity P1–P5 di Health Endpoint**
+  - Akses `curl -s http://100.105.139.21:8789/health | jq .paper_p1_p4_summary`
+- [ ] **2. Deteksi Anomali Variasi Cepat**
+  - Kalau ada variasi equity `> 5%` dalam 1 jam tanpa ada trade closed (`closed_trades == 0`) → **SEGERA LAPOR KE DIRECTOR**.
+- [ ] **3. Cek Rasio Equity P1/P2/P3**
+  - Equity P1, P2, dan P3 harus berkisar di rentang yang mirip (perbedaan wajar hanya dari spread/TP level, tidak boleh ada lonjakan 2x lipat mendadak).
+- [ ] **4. Cek Equity PRIMARY_TF**
+  - Pastikan equity `PRIMARY_TF` wajar (tidak crash `> 50%` dalam 1 hari tanpa perubahan drastis di harga pasar koin yang di-hold).
+
