@@ -91,3 +91,39 @@ def test_fetch_external_regime_and_caching():
             assert data2 == data1
             assert mock_session.get.call_count == 1
     asyncio.run(_test())
+
+def test_p5_rotation_uses_consensus(tmp_path):
+    """Verify P5 rotation runner integrates external consensus and dampens strength upon disagreement."""
+    import pandas as pd
+    from paper_rotation_runner import RotationPaperRunner
+
+    async def _test():
+        runner = RotationPaperRunner(state_file=tmp_path / "p5_test.json")
+
+        # Fake BTC OHLCV (BULL: price above EMA)
+        prices = [100.0 + i * 2.0 for i in range(50)]
+        df = pd.DataFrame({
+            "open": prices,
+            "high": [p + 1.0 for p in prices],
+            "low": [p - 1.0 for p in prices],
+            "close": prices,
+            "volume": [1000.0] * 50,
+        })
+
+        # Mock external regime as BEAR (Disagreement: Internal BULL vs External BEAR)
+        with patch("council.external_regime_consensus.fetch_external_regime", new_callable=AsyncMock) as mock_fetch:
+            mock_fetch.return_value = {
+                "raw_regime": "bear",
+                "normalized_regime": MarketRegime.BEAR,
+                "confidence": 0.88,
+            }
+            res = await runner.update_market_regime_with_consensus(btc_ohlcv_1h=df)
+            
+            # Internal was BULL, external was BEAR -> full disagreement cuts strength by 50%
+            assert res["consensus_status"] == "FULL_DISAGREEMENT"
+            assert res["damping_multiplier"] == 0.50
+            assert runner.latest_regime_info["damping_multiplier"] == 0.50
+            assert runner.latest_regime_info["external_regime"] == MarketRegime.BEAR
+
+    asyncio.run(_test())
+

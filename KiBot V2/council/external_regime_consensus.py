@@ -83,29 +83,41 @@ class ExternalRegimeConsensus:
 
     def compute_consensus(
         self,
-        internal_regime: MarketRegime,
-        internal_strength: float,
-        external_info: Optional[Dict[str, Any]],
+        internal_regime: Any = None,
+        internal_strength: Any = None,
+        external_info: Optional[Dict[str, Any]] = None,
+        **kwargs,
     ) -> Dict[str, Any]:
         """
         Calculates consensus multiplier between internal and external regime signals.
-        - Distance 0 (Full Agreement): multiplier 1.0 (internal strength maintained)
-        - Distance 1 (Partial e.g. BULL vs RANGE): multiplier 0.85 (mild damping)
-        - Distance 2 (Full Disagreement e.g. BULL vs BEAR): multiplier 0.50 (cut by half)
-        - API Down / No External Data: multiplier 1.0 (fallback 100% to internal)
+        Supports:
+          - compute_consensus(internal_dict, external_info)
+          - compute_consensus(internal_regime, internal_strength, external_info)
+          - compute_consensus(internal_regime=..., internal_strength=..., external_info=...)
         """
-        if not external_info or "normalized_regime" not in external_info:
+        if isinstance(internal_regime, dict):
+            int_regime = internal_regime.get("regime", MarketRegime.RANGE)
+            int_strength = float(internal_regime.get("strength", 50.0))
+            ext_info = internal_strength if isinstance(internal_strength, dict) else external_info
+        else:
+            int_regime = internal_regime
+            int_strength = float(internal_strength) if internal_strength is not None else 50.0
+            ext_info = external_info
+
+        if not ext_info or "normalized_regime" not in ext_info:
             return {
+                "regime": int_regime,
+                "strength": int_strength,
                 "consensus_status": "FALLBACK_INTERNAL",
-                "adjusted_strength": internal_strength,
+                "adjusted_strength": int_strength,
                 "damping_multiplier": 1.0,
-                "internal_regime": internal_regime,
+                "internal_regime": int_regime,
                 "external_regime": None,
                 "disagreement_distance": 0,
             }
 
-        ext_regime = external_info["normalized_regime"]
-        int_val = REGIME_NUMERIC_MAP.get(internal_regime, 0)
+        ext_regime = ext_info["normalized_regime"]
+        int_val = REGIME_NUMERIC_MAP.get(int_regime, 0)
         ext_val = REGIME_NUMERIC_MAP.get(ext_regime, 0)
         distance = abs(int_val - ext_val)
 
@@ -119,14 +131,33 @@ class ExternalRegimeConsensus:
             multiplier = 0.50
             status = "FULL_DISAGREEMENT"
 
-        adjusted_strength = round(internal_strength * multiplier, 2)
+        adjusted_strength = round(int_strength * multiplier, 2)
         return {
+            "regime": int_regime,
+            "strength": adjusted_strength,
             "consensus_status": status,
             "adjusted_strength": adjusted_strength,
             "damping_multiplier": multiplier,
-            "internal_regime": internal_regime,
+            "internal_regime": int_regime,
             "external_regime": ext_regime,
             "disagreement_distance": distance,
         }
 
 external_regime_consensus = ExternalRegimeConsensus()
+
+async def fetch_external_regime(force_refresh: bool = False) -> Optional[Dict[str, Any]]:
+    return await external_regime_consensus.fetch_external_regime(force_refresh=force_refresh)
+
+def compute_consensus(
+    internal_regime: Any = None,
+    internal_strength: Any = None,
+    external_info: Optional[Dict[str, Any]] = None,
+    **kwargs,
+) -> Dict[str, Any]:
+    return external_regime_consensus.compute_consensus(
+        internal_regime=internal_regime,
+        internal_strength=internal_strength,
+        external_info=external_info,
+        **kwargs,
+    )
+

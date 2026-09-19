@@ -88,6 +88,32 @@ class RotationPaperRunner:
         self.latest_regime_info = info
         return info
 
+    async def update_market_regime_with_consensus(
+        self,
+        btc_ohlcv_1h: pd.DataFrame,
+        btc_dominance_series: Optional[pd.Series] = None,
+        alt_volume_ratio: float = 1.0,
+    ) -> Dict[str, Any]:
+        """Calculates internal regime and combines with getregime.com external consensus."""
+        internal = self.update_market_regime(
+            btc_ohlcv_1h=btc_ohlcv_1h,
+            btc_dominance_series=btc_dominance_series,
+            alt_volume_ratio=alt_volume_ratio,
+        )
+        from council.external_regime_consensus import fetch_external_regime, compute_consensus
+        external = await fetch_external_regime()
+        consensus = compute_consensus(internal, external)
+
+        merged = dict(internal)
+        merged["regime"] = consensus["regime"]
+        merged["strength"] = consensus["strength"]
+        merged["consensus_status"] = consensus["consensus_status"]
+        merged["damping_multiplier"] = consensus["damping_multiplier"]
+        merged["external_regime"] = consensus["external_regime"]
+        self.latest_regime_info = merged
+        self._save_state()
+        return merged
+
     def check_weekly_reset(self) -> None:
         now_dt = datetime.now(timezone.utc)
         current_week_str = f"{now_dt.year}-W{now_dt.isocalendar().week}"
