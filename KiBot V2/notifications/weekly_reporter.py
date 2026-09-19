@@ -97,12 +97,17 @@ class WeeklyReporter:
         month_name = INDONESIAN_MONTHS.get(now_dt.month, "")
         date_str = f"{now_dt.day} {month_name} {now_dt.year}"
 
-        # Aggregate total across all 4 variants
-        total_start_week = sum(v.get("week_start_equity_idr", 100_000.0) for v in summary.values())
-        total_current_eq = sum(v.get("equity_idr", 100_000.0) for v in summary.values())
-        total_initial = sum(100_000.0 for _ in summary)
+        # Aggregate total across active variants (P1-P5)
+        variant_keys = ["P1", "P2", "P3", "P4", "P5"]
+        variant_entries = [summary[k] for k in variant_keys if k in summary and isinstance(summary[k], dict)]
+        if not variant_entries:
+            variant_entries = [v for k, v in summary.items() if isinstance(v, dict) and "equity_idr" in v]
 
-        # Cumulative PnL across P1-P4
+        total_start_week = sum(v.get("week_start_equity_idr", 100_000.0) for v in variant_entries)
+        total_current_eq = sum(v.get("equity_idr", 100_000.0) for v in variant_entries)
+        total_initial = sum(100_000.0 for _ in variant_entries) or 500_000.0
+
+        # Cumulative PnL across active variants
         cum_pnl = total_current_eq - total_initial
         cum_pnl_pct = (cum_pnl / total_initial * 100.0) if total_initial > 0 else 0.0
 
@@ -115,6 +120,20 @@ class WeeklyReporter:
         p2_pnl = summary.get("P2", {}).get("cum_pnl_idr", 0.0)
         p3_pnl = summary.get("P3", {}).get("cum_pnl_idr", 0.0)
         p4_pnl = summary.get("P4", {}).get("cum_pnl_idr", 0.0)
+        p5_pnl = summary.get("P5", {}).get("cum_pnl_idr", 0.0)
+
+        # Extract regime details
+        regime_val = summary.get("_regime_info", {}).get("regime") or summary.get("P5", {}).get("regime")
+        if hasattr(regime_val, "value"):
+            regime_str = regime_val.value.upper()
+        elif regime_val:
+            regime_str = str(regime_val).upper()
+        else:
+            regime_str = "RANGE"
+
+        btcd_trend = summary.get("_regime_info", {}).get("btc_dominance_trend_7h")
+        if btcd_trend is None:
+            btcd_trend = summary.get("P5", {}).get("btc_dominance_trend_7h", 0.0)
 
         deadline_days, deadline_date = self.get_deadline_info(now_dt)
 
@@ -130,7 +149,9 @@ class WeeklyReporter:
             f"┌─ P1 Conservative: {self.format_money(p1_pnl, with_sign=True)}\n"
             f"├─ P2 Balanced: {self.format_money(p2_pnl, with_sign=True)}\n"
             f"├─ P3 Aggressive: {self.format_money(p3_pnl, with_sign=True)}\n"
-            f"└─ P4 Vol Anomaly: {self.format_money(p4_pnl, with_sign=True)}\n\n"
+            f"├─ P4 Vol Anomaly: {self.format_money(p4_pnl, with_sign=True)}\n"
+            f"└─ P5 Rotation: {self.format_money(p5_pnl, with_sign=True)}\n\n"
+            f"📊 REGIME SAAT INI: {regime_str} | BTC.D Trend: {self.format_pct(btcd_trend)}\n\n"
             f"🎯 Deadline: {deadline_days} hari lagi ({deadline_date})"
         )
         return msg
@@ -199,7 +220,16 @@ class WeeklyReporter:
             try:
                 with open(file_path, "r", encoding="utf-8") as f:
                     data = json.load(f)
-                return sum(v.get("equity_idr", 100_000.0) for v in data.get("summary", {}).values())
+                summary_data = data.get("summary", {})
+                variant_keys = ["P1", "P2", "P3", "P4", "P5"]
+                filtered_vals = [
+                    v.get("equity_idr", 100_000.0)
+                    for k, v in summary_data.items()
+                    if k in variant_keys and isinstance(v, dict)
+                ]
+                if filtered_vals:
+                    return sum(filtered_vals)
+                return sum(v.get("equity_idr", 100_000.0) for v in summary_data.values() if isinstance(v, dict) and "equity_idr" in v)
             except Exception:
                 pass
         return None
@@ -231,9 +261,25 @@ class WeeklyReporter:
                 break
 
             try:
-                runner = paper_runner_fn()
-                if runner:
-                    summary = runner.get_summary()
+                item = paper_runner_fn()
+                summary = {}
+                if isinstance(item, tuple):
+                    p_run, r_run = item
+                    if hasattr(p_run, "get_summary"):
+                        summary.update(p_run.get_summary())
+                    if hasattr(r_run, "get_summary"):
+                        p5_sum = r_run.get_summary()
+                        summary["P5"] = p5_sum
+                        summary["_regime_info"] = {
+                            "regime": p5_sum.get("regime", "RANGE"),
+                            "btc_dominance_trend_7h": p5_sum.get("btc_dominance_trend_7h", 0.0),
+                        }
+                elif isinstance(item, dict):
+                    summary = item
+                elif hasattr(item, "get_summary"):
+                    summary = item.get_summary()
+
+                if summary:
                     await self.dispatch_daily_report(summary)
             except Exception as e:
                 logger.error(f"[WeeklyReporter] Error during scheduled report dispatch: {e}", exc_info=True)

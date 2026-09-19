@@ -156,16 +156,19 @@ def test_weekly_reporter_message_format(tmp_path):
         "P2": {"week_start_equity_idr": 100_000.0, "equity_idr": 104_000.0, "cum_pnl_idr": 4000.0},
         "P3": {"week_start_equity_idr": 100_000.0, "equity_idr": 98_000.0, "cum_pnl_idr": -2000.0},
         "P4": {"week_start_equity_idr": 100_000.0, "equity_idr": 105_000.0, "cum_pnl_idr": 5000.0},
+        "P5": {"week_start_equity_idr": 100_000.0, "equity_idr": 103_000.0, "cum_pnl_idr": 3000.0, "regime": "BULL", "btc_dominance_trend_7h": 1.25},
     }
     msg = reporter.build_report_message(fake_summary)
     assert "📊 KiBOT V2 — LAPORAN HARI KE-" in msg
-    assert "💰 Modal Awal Minggu: Rp 400.000" in msg
+    assert "💰 Modal Awal Minggu: Rp 500.000" in msg
     assert "📈 PnL Hari Ini:" in msg
-    assert "📊 PnL Kumulatif: +Rp 9.500 (+2.38%)" in msg
+    assert "📊 PnL Kumulatif: +Rp 12.500 (+2.50%)" in msg
     assert "┌─ P1 Conservative: +Rp 2.500" in msg
     assert "├─ P2 Balanced: +Rp 4.000" in msg
     assert "├─ P3 Aggressive: -Rp 2.000" in msg
-    assert "└─ P4 Vol Anomaly: +Rp 5.000" in msg
+    assert "├─ P4 Vol Anomaly: +Rp 5.000" in msg
+    assert "└─ P5 Rotation: +Rp 3.000" in msg
+    assert "📊 REGIME SAAT INI: BULL | BTC.D Trend: +1.25%" in msg
     assert "🎯 Deadline:" in msg
 
     # Test snapshot save
