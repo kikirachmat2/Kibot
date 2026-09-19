@@ -1,0 +1,21 @@
+[Unit]
+Description=KiBot V2 Batam Node Auto-Discovery Daemon
+After=network.target tailscaled.service
+Wants=tailscaled.service
+
+[Service]
+Type=simple
+User=ubuntu
+WorkingDirectory=/home/ubuntu/KiBotV2/KiBot V2
+Environment="PYTHONPATH=/home/ubuntu/KiBotV2/KiBot V2"
+EnvironmentFile=-/home/ubuntu/KiBotV2/.env
+ExecStart=/home/ubuntu/KiBotV2/venv/bin/python3 -c "import asyncio; from infra.auto_discovery import BatamAutoDiscovery; d = BatamAutoDiscovery(); d.start(); asyncio.get_event_loop().run_forever()"
+Restart=always
+RestartSec=15
+MemoryMax=40M
+
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
