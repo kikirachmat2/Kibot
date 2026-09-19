@@ -25,7 +25,7 @@ def test_batam_analyze_sentiment_symbols():
 
 def test_batam_analyze_sentiment_text():
     payload = {"text": "bitcoin pump"}
-    resp = client.post("/analyze_sentiment", json=payload)
+    resp = client.post("/analyze_sentiment", json=payload, headers={"X-Kibot-Secret": CLUSTER_SECRET})
     assert resp.status_code == 200
     data = resp.json()
     assert data["status"] == "SUCCESS"
@@ -34,7 +34,7 @@ def test_batam_analyze_sentiment_text():
 
 def test_batam_optimize_portfolio():
     payload = {"assets": ["BTC", "ETH", "SOL"], "target_risk": 0.12}
-    resp = client.post("/optimize_portfolio", json=payload)
+    resp = client.post("/optimize_portfolio", json=payload, headers={"X-Kibot-Secret": CLUSTER_SECRET})
     assert resp.status_code == 200
     data = resp.json()
     assert data["status"] == "SUCCESS"
@@ -43,20 +43,14 @@ def test_batam_optimize_portfolio():
     assert data["target_risk"] == 0.12
 
 def test_batam_auth_failure():
-    # If host is remote and secret is invalid, should reject with 401
-    resp = client.post(
+    # 1. No header -> 401
+    resp1 = client.post("/analyze_sentiment", json={"symbols": ["BTC"]})
+    assert resp1.status_code == 401
+
+    # 2. Invalid header -> 401
+    resp2 = client.post(
         "/analyze_sentiment",
         json={"symbols": ["BTC"]},
-        headers={"X-Kibot-Secret": "invalid_token_123", "X-Forwarded-For": "100.64.0.1"},
+        headers={"X-Kibot-Secret": "invalid_secret_token"},
     )
-    # When testclient sets remote host, client.host is testclient, but invalid secret from non-local rejects
-    # Let's test with custom secret directly
-    from cluster.server_batam import verify_secret
-    from unittest.mock import MagicMock
-    from fastapi import HTTPException
-
-    mock_req = MagicMock()
-    mock_req.client.host = "213.35.118.26" # Remote host
-    with pytest.raises(HTTPException) as exc:
-        verify_secret(mock_req, x_kibot_secret="wrong_secret")
-    assert exc.value.status_code == 401
+    assert resp2.status_code == 401

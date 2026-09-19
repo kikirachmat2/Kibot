@@ -15,13 +15,9 @@ app = FastAPI(title="KiBot Batam Research Cluster", version="2.0.0")
 CLUSTER_SECRET = os.getenv("KIBOT_CLUSTER_SECRET", "c562818c45b9851ebc8ef8f7572f7ae843d416e61cbde40e871ed74abed5b86a")
 START_TIME = time.time()
 
-def verify_secret(request: Request, x_kibot_secret: Optional[str] = Header(None)):
-    if x_kibot_secret == CLUSTER_SECRET:
-        return
-    client_host = request.client.host if request.client else ""
-    if client_host in ("127.0.0.1", "::1", "testclient"):
-        return
-    raise HTTPException(status_code=401, detail="Unauthorized cluster request")
+def verify_secret(x_kibot_secret: Optional[str] = Header(None)):
+    if not x_kibot_secret or x_kibot_secret != CLUSTER_SECRET:
+        raise HTTPException(status_code=401, detail="Unauthorized cluster request")
 
 class SentimentRequest(BaseModel):
     symbols: Optional[List[str]] = None
@@ -45,8 +41,8 @@ def health_check():
     }
 
 @app.post("/analyze_sentiment")
-def analyze_sentiment(payload: SentimentRequest, request: Request, x_kibot_secret: Optional[str] = Header(None)):
-    verify_secret(request, x_kibot_secret)
+def analyze_sentiment(payload: SentimentRequest, x_kibot_secret: Optional[str] = Header(None)):
+    verify_secret(x_kibot_secret)
     results = {}
     syms = payload.symbols or (["TEXT_INPUT"] if payload.text else ["BTC"])
     for sym in syms:
@@ -59,8 +55,8 @@ def analyze_sentiment(payload: SentimentRequest, request: Request, x_kibot_secre
     return {"status": "SUCCESS", "results": results, "timestamp": time.time()}
 
 @app.post("/optimize_portfolio")
-def optimize_portfolio(payload: PortfolioOptimizationRequest, request: Request, x_kibot_secret: Optional[str] = Header(None)):
-    verify_secret(request, x_kibot_secret)
+def optimize_portfolio(payload: PortfolioOptimizationRequest, x_kibot_secret: Optional[str] = Header(None)):
+    verify_secret(x_kibot_secret)
     syms = payload.symbols or payload.assets or []
     n = len(syms)
     if n == 0:

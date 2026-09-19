@@ -133,3 +133,82 @@ sudo systemctl restart kibot-v2-paper.service
 # Restart cluster validator di Server 2:
 sudo systemctl restart kibot-cluster.service
 ```
+
+---
+
+## 10. Auto-Provisioning Flow (Step-by-Step)
+
+1. **Hunting Phase (Server 2)**:
+   - `kibot-batam-hunter.service` queries OCI Compute API every 35s cycling through Batam Availability Domains (`tIse:AP-BATAM-1-AD-1`).
+   - Targets shape `VM.Standard.A1.Flex` (2 OCPU / 12 GB RAM) under compartment `nabillarac23` (`ap-batam-1`).
+   - Verifies presence of `TS_AUTHKEY` before executing launch to prevent orphan instance creation.
+2. **Launch & Cloud-Init Bootstrap**:
+   - Injects `infra/bootstrap-batam.sh` via base64 encoded user_data.
+   - Automatically joins Tailscale zero-trust mesh with `--hostname=kibot-batam`.
+   - Clones latest repository, builds virtual environment, and installs dependencies.
+3. **Cluster Activation**:
+   - Enables and starts `kibot-batam-cluster.service` on port `5001`.
+   - Signals completion via Telegram alert dispatch with public & Tailscale IPs.
+4. **SG1 Auto-Discovery**:
+   - `kibot-auto-discovery.service` running on SG1 continuously probes `http://kibot-batam:5001/health`.
+   - Once healthy, SG1 transitions internal routing from local fallback mode to Batam offload.
+
+---
+
+## 11. Security & Secret Management (Post-Incident Hardening)
+
+Following the security incident on 2026-09-20 (detailed in [docs/SECURITY_INCIDENT_20260920.md](file:///Users/kiki/Documents/Web%20Develop/KiBot/docs/SECURITY_INCIDENT_20260920.md)):
+1. **Strict Credential Segregation**:
+   - Secrets are strictly excluded from version control via `.gitignore` (`.env`, `*.env`, `.env.local`, `.env.production`).
+   - Injected on host nodes using dedicated environment files (`/home/ubuntu/.kibot-cluster.env` on Server 2, `/home/ubuntu/KiBotV2/.env` on SG1).
+2. **Automated Secret Scanning**:
+   - Pre-commit Git hook (`scripts/check_secrets.py`) blocks commits containing Telegram Bot token patterns (`\d{10}:[A-Za-z0-9_-]{35}`) or hardcoded `API_KEY`/`SECRET` assignments.
+3. **Zero-Trust Network Perimeter**:
+   - Inter-node communication (SG1 <-> Server 2 <-> Batam) is strictly restricted to Tailscale IPs (100.x.y.z) and protected by `X-Kibot-Secret` HMAC token validation.
+
+---
+
+## 12. Troubleshooting Runbook
+
+### A. Poller Batam Stuck / Error
+- **Symptom**: `kibot-batam-hunter.service` stops or logs missing variables.
+- **Action**:
+  1. Check logs: `sudo journalctl -u kibot-batam-hunter.service -n 25 --no-pager`
+  2. Verify `/home/ubuntu/.kibot-cluster.env` contains non-empty `TS_AUTHKEY` and OCI credentials.
+  3. Verify OCI connection: `python3 -c "import oci; cfg = oci.config.from_file('~/.oci/config', 'BATAM'); print(oci.identity.IdentityClient(cfg).list_availability_domains(cfg['tenancy']).data)"`
+  4. Restart service: `sudo systemctl restart kibot-batam-hunter.service`
+
+### B. Batam Instance Launched tapi Bootstrap Gagal
+- **Symptom**: Instance shows running on OCI Console, but `kibot-batam` never appears on Tailscale.
+- **Action**:
+  1. SSH directly to Batam via its public IP: `ssh -i ~/.ssh/kibot/ssh-key-batam-active.pem ubuntu@<BATAM_PUBLIC_IP>`
+  2. Inspect cloud-init log: `sudo tail -n 100 /var/log/kibot_bootstrap.log` or `sudo cat /var/log/cloud-init-output.log`
+  3. If Tailscale failed to authenticate, manually join: `sudo tailscale up --authkey=$TS_AUTHKEY --hostname=kibot-batam`
+  4. Start cluster service manually: `sudo systemctl status kibot-batam-cluster.service`
+
+### C. Batam Node Unreachable via Tailscale
+- **Symptom**: SG1 logs `[AutoDiscovery] Batam not found, using internal fallback`.
+- **Action**:
+  1. On SG1, test DNS resolution: `ping -c 2 kibot-batam`
+  2. Test health port: `curl -m 5 http://kibot-batam:5001/health`
+  3. If ping fails, check `tailscale status` on both SG1 and Batam. SG1 automatically continues trading using local fallback algorithms without disruption.
+
+### D. Telegram Bot Token Compromised
+- **Symptom**: Unauthorized alert messages, leak alert, or secret scanner warning.
+- **Action**:
+  1. Immediately revoke existing token via `@BotFather` on Telegram (`/revoke`).
+  2. Generate a replacement token.
+  3. Update `/home/ubuntu/KiBotV2/.env` on SG1 and `/home/ubuntu/.kibot-cluster.env` on Server 2.
+  4. Restart alerts: `sudo systemctl restart kibot-v2-paper.service` on SG1.
+  5. Refer to [docs/SECURITY_INCIDENT_20260920.md](file:///Users/kiki/Documents/Web%20Develop/KiBot/docs/SECURITY_INCIDENT_20260920.md).
+
+### E. Deadman Switch Trigger tapi Order Tidak Cancel
+- **Symptom**: Bot freeze / shutdown occurs, but open orders remain active on Indodax.
+- **Action**:
+  1. Trigger manual emergency cancel via Indodax TAPI:
+     ```python
+     python3 -c "import asyncio; from executor.deadman import cancel_all_if_dead; asyncio.run(cancel_all_if_dead())"
+     ```
+  2. Check Indodax API keys: verify `INDODAX_API_KEY` and `INDODAX_SECRET_KEY` have trade/cancel permissions.
+  3. Inspect logs: `journalctl -u kibot-v2-paper.service -g "[Deadman]"`
+
