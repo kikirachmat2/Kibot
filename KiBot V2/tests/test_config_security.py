@@ -42,4 +42,5 @@ def test_secret_redacting_logging_filter():
     redactor.filter(record)
     assert "TOP_SECRET_PHRASE_XYZ" not in record.msg
     assert "KEY_999_SECRET_ABC" not in record.msg
-    assert "********" in record.msg
+    assert "<REDACTED>" in record.msg
+

@@ -244,6 +244,13 @@ class RotationPaperRunner:
         corr = self.get_btc_correlation(sym)
 
         # 2. Quadrant Routing Logic
+        consensus_status = str(regime_info.get("consensus_status", ""))
+        damping = float(regime_info.get("damping_multiplier", 1.0))
+
+        # Council Safety Gate: Direct opposition between internal and external regime blocks entry
+        if consensus_status == "FULL_CONFLICT":
+            return {"evaluated": False, "reason": "external_regime_full_conflict_block"}
+
         if regime == MarketRegime.BULL and btcd_trend > 0.5:
             # Major focus: BTC / ETH only
             if sym not in ("BTCIDR", "ETHIDR"):
@@ -265,10 +272,11 @@ class RotationPaperRunner:
                 return {"evaluated": False, "reason": "no_volume_anomaly"}
 
         # 3. Order Placement (TP +5%, Hard Exit 7d, Limit Order 0.10% Maker Fee)
+        effective_notional = max(self.order_sizing_idr * damping, 10_000.0)
         res = self.ledger.place_paper_buy(
             symbol=sym,
             price=price,
-            notional_idr=self.order_sizing_idr,
+            notional_idr=effective_notional,
             stop_loss_pct=self.target_sl_pct,
             take_profit_pct=self.target_tp_pct,
             orderbook=orderbook,
@@ -278,10 +286,11 @@ class RotationPaperRunner:
         if res.get("success"):
             logger.info(
                 f"[RotationRunner] 🚀 Placed P5 Rotation BUY for {sym} @ Rp {price:,.1f} "
-                f"(Regime: {regime}, BTC.D 7H: {btcd_trend:+.2f}%)"
+                f"(Regime: {regime}, Status: {consensus_status or 'N/A'}, Damping: {damping}, BTC.D 7H: {btcd_trend:+.2f}%)"
             )
             self._save_state()
             return {"evaluated": True, "order": res, "regime": regime}
+
 
         return {"evaluated": False, "reason": res.get("reason", "order_failed")}
 

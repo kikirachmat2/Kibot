@@ -34,6 +34,7 @@ class TelegramNotifier:
         self._event_payload_hashes: Dict[str, str] = {}
         self._http_session: Optional[aiohttp.ClientSession] = None
         self._warned_missing_credentials = False
+        self._consecutive_failures: int = 0
         
         if not self.bot_token or not self.chat_id:
             logger.warning("[TelegramNotifier] ⚠️ Telegram credentials missing (TELEGRAM_BOT_TOKEN / TELEGRAM_CHAT_ID not set). Notifications will be safely skipped.")
@@ -62,6 +63,74 @@ class TelegramNotifier:
         if last_hash == payload_hash and (now - last_event_time < self.event_cooldown_s):
             return True
         return False
+
+    async def _handle_failure(
+        self,
+        event_type: str,
+        severity: str,
+        title: str,
+        message: str,
+        details: Optional[Dict[str, Any]],
+        error_str: str,
+    ) -> None:
+        self._consecutive_failures += 1
+        if self._consecutive_failures >= 3:
+            logger.warning(f"[TelegramNotifier] ⚠️ Telegram failed {self._consecutive_failures}x consecutively! Triggering fallback channels.")
+            # 1. Log to local file: logs/telegram_failures.log
+            self._log_failure_locally(event_type, severity, title, message, error_str)
+            # 2. Optional webhook (Discord/Slack)
+            fallback_webhook = getattr(settings, "TELEGRAM_FALLBACK_WEBHOOK", "") or os.getenv("TELEGRAM_FALLBACK_WEBHOOK", "")
+            if fallback_webhook:
+                await self._dispatch_fallback_webhook(fallback_webhook, event_type, severity, title, message, details)
+
+    def _log_failure_locally(self, event_type: str, severity: str, title: str, message: str, error_str: str) -> None:
+        try:
+            from pathlib import Path
+            log_dir = getattr(settings, "LOG_DIR", Path(__file__).resolve().parent.parent / "logs")
+            log_dir.mkdir(parents=True, exist_ok=True)
+            fail_log = log_dir / "telegram_failures.log"
+            timestamp = time.strftime('%Y-%m-%d %H:%M:%S', time.localtime())
+            entry = (
+                f"[{timestamp}] [FAILURE #{self._consecutive_failures}] [{severity.upper()}] [{event_type}] {title}\n"
+                f"Error: {error_str}\n"
+                f"Message: {message}\n"
+                f"{'-'*70}\n"
+            )
+            with open(fail_log, "a", encoding="utf-8") as f:
+                f.write(entry)
+            logger.info(f"[TelegramNotifier] 💾 Logged failed alert to {fail_log}")
+        except Exception as e:
+            logger.error(f"[TelegramNotifier] Failed to write local fallback log: {e}")
+
+    async def _dispatch_fallback_webhook(
+        self,
+        webhook_url: str,
+        event_type: str,
+        severity: str,
+        title: str,
+        message: str,
+        details: Optional[Dict[str, Any]],
+    ) -> bool:
+        try:
+            text = f"🚨 [KIBOT FALLBACK] [{severity.upper()}] {title}\nEvent: `{event_type}`\n{message}"
+            if details:
+                text += f"\n```json\n{json.dumps(details, indent=2, default=str)[:800]}\n```"
+            payload = {
+                "text": text,        # Slack format
+                "content": text,     # Discord format
+            }
+            if not self._http_session or self._http_session.closed:
+                self._http_session = aiohttp.ClientSession()
+            async with self._http_session.post(webhook_url, json=payload, timeout=aiohttp.ClientTimeout(total=5.0)) as resp:
+                if resp.status in (200, 204):
+                    logger.info(f"[TelegramNotifier] 🔀 Fallback webhook delivered successfully: {title}")
+                    return True
+                else:
+                    logger.warning(f"[TelegramNotifier] Fallback webhook failed (HTTP {resp.status})")
+                    return False
+        except Exception as exc:
+            logger.error(f"[TelegramNotifier] Fallback webhook dispatch exception: {exc}")
+            return False
 
     async def send_alert(
         self,
@@ -126,15 +195,19 @@ class TelegramNotifier:
                     self._last_sent_time = now
                     self._event_last_sent[event_type] = now
                     self._event_payload_hashes[event_type] = payload_hash
+                    self._consecutive_failures = 0
                     logger.info(f"[TelegramNotifier] 📤 Alert sent successfully: [{event_type}] {title}")
                     return True
                 else:
                     err_body = await resp.text()
                     logger.error(f"[TelegramNotifier] Failed to send telegram alert (HTTP {resp.status}): {err_body}")
+                    await self._handle_failure(event_type, severity, title, message, details, f"HTTP {resp.status}: {err_body}")
                     return False
         except Exception as e:
             logger.error(f"[TelegramNotifier] Exception while dispatching alert: {e}")
+            await self._handle_failure(event_type, severity, title, message, details, str(e))
             return False
+
 
     def send_alert_non_blocking(
         self,

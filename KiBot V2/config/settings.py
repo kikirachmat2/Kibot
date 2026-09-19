@@ -13,6 +13,7 @@ class Settings(BaseModel):
     INDODAX_SECRET: str = Field(default="", description="Indodax API Secret")
     TELEGRAM_BOT_TOKEN: str = Field(default="", description="Telegram bot token for alert notifications")
     TELEGRAM_CHAT_ID: str = Field(default="", description="Telegram chat ID for alert notifications")
+    TELEGRAM_FALLBACK_WEBHOOK: str = Field(default="", description="Optional fallback webhook URL (Discord/Slack) if Telegram fails")
     
     # WebSocket Endpoints
     INDODAX_WS_URL: str = Field(default="wss://ws3.indodax.com/ws/", description="Indodax WebSocket endpoint")
@@ -114,6 +115,7 @@ def load_settings() -> Settings:
     secret = os.getenv("INDODAX_SECRET", os.getenv("INDODAX_SECRET_KEY", ""))
     tg_token = os.getenv("TELEGRAM_BOT_TOKEN", os.getenv("KIBOT_TELEGRAM_TOKEN", ""))
     tg_chat = os.getenv("TELEGRAM_CHAT_ID", os.getenv("KIBOT_TELEGRAM_CHAT_ID", ""))
+    fallback_webhook = os.getenv("TELEGRAM_FALLBACK_WEBHOOK", "")
     
     # If permission 600 credentials file exists, read it
     cred_file = os.getenv("KIBOT_CREDENTIALS_FILE", "")
@@ -133,6 +135,8 @@ def load_settings() -> Settings:
                         tg_token = line.split("=", 1)[1].strip().strip('"').strip("'")
                     elif line.startswith("TELEGRAM_CHAT_ID="):
                         tg_chat = line.split("=", 1)[1].strip().strip('"').strip("'")
+                    elif line.startswith("TELEGRAM_FALLBACK_WEBHOOK="):
+                        fallback_webhook = line.split("=", 1)[1].strip().strip('"').strip("'")
         except Exception:
             pass
 
@@ -142,6 +146,7 @@ def load_settings() -> Settings:
         INDODAX_SECRET=secret,
         TELEGRAM_BOT_TOKEN=tg_token,
         TELEGRAM_CHAT_ID=tg_chat,
+        TELEGRAM_FALLBACK_WEBHOOK=fallback_webhook,
         COUNCIL_WORKERS=int(os.getenv("COUNCIL_WORKERS", "4")),
         MAX_SYMBOL_QUEUE_CAP=int(os.getenv("MAX_SYMBOL_QUEUE_CAP", "20")),
         MAX_DRAWDOWN_PCT=float(os.getenv("MAX_DRAWDOWN_PCT", "18.0")),

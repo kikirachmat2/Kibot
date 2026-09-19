@@ -5,29 +5,38 @@ import re
 
 from config import settings
 
+TELEGRAM_TOKEN_REGEX = re.compile(r'\b\d{10}:[A-Za-z0-9_-]{35}\b')
+
 class SecretRedactingFilter(logging.Filter):
     """
-    Guarantees no API key or secret can leak into logs, even at DEBUG level.
+    Guarantees no API key, bot token, or secret can leak into logs, even at DEBUG level.
+    Auto-redacts Telegram Bot Token pattern and any explicit secret strings.
     """
-    def __init__(self, key: str = "", secret: str = ""):
+    def __init__(self, key: str = "", secret: str = "", tg_token: str = ""):
         super().__init__()
         self.patterns = []
         if key and len(key) > 4:
             self.patterns.append(re.compile(re.escape(key)))
         if secret and len(secret) > 4:
             self.patterns.append(re.compile(re.escape(secret)))
+        if tg_token and len(tg_token) > 4:
+            self.patterns.append(re.compile(re.escape(tg_token)))
+
+    def _sanitize(self, text: str) -> str:
+        text = TELEGRAM_TOKEN_REGEX.sub("<REDACTED>", text)
+        for pat in self.patterns:
+            text = pat.sub("<REDACTED>", text)
+        return text
 
     def filter(self, record: logging.LogRecord) -> bool:
         if isinstance(record.msg, str):
-            for pat in self.patterns:
-                record.msg = pat.sub("********", record.msg)
+            record.msg = self._sanitize(record.msg)
         if record.args:
             # Also clean tuple/dict args if string
             new_args = []
             for arg in record.args:
                 if isinstance(arg, str):
-                    for pat in self.patterns:
-                        arg = pat.sub("********", arg)
+                    arg = self._sanitize(arg)
                 new_args.append(arg)
             record.args = tuple(new_args)
         return True
@@ -63,6 +72,7 @@ def setup_logging(
     redactor = SecretRedactingFilter(
         key=settings.INDODAX_KEY,
         secret=settings.INDODAX_SECRET,
+        tg_token=settings.TELEGRAM_BOT_TOKEN,
     )
     file_handler.addFilter(redactor)
     root_logger.addHandler(file_handler)
@@ -72,3 +82,4 @@ def setup_logging(
     console_handler.setFormatter(formatter)
     console_handler.addFilter(redactor)
     root_logger.addHandler(console_handler)
+

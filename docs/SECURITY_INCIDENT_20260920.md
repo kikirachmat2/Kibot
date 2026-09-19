@@ -45,5 +45,48 @@
 ### C. Deployment of Rotated Credentials
 Once Supervisor generates the fresh token:
 - Injected strictly via environment file `/home/ubuntu/KiBotV2/.env` on SG1.
+- Injected into `/home/ubuntu/.kibot-cluster.env` on Server 2 (`KIBOT_TELEGRAM_TOKEN`).
 - Restarted `kibot-v2-paper.service` on SG1.
 - Verified live transmission without ever exposing the new token in terminal transcripts or prompt outputs.
+
+---
+
+## 4. Prevention Framework
+Langkah pencegahan komprehensif untuk mencegah kebocoran berulang:
+1. **Pre-Commit Git Hooks**:
+   - `scripts/check_secrets.py` memblokir commit yang memuat pola token Telegram (`\d{10}:[A-Za-z0-9_-]{35}`) atau hardcoded `API_KEY`/`SECRET`.
+   - Pola sensitif seperti OCID Oracle, SSH key fingerprints, dan chat ID di konteks file konfigurasi secara otomatis memicu peringatan audit.
+2. **Runtime Log Sanitization (`SecretRedactingFilter`)**:
+   - Filter logging pada file dan stream console secara dinamis memindai semua log message dan me-redact pola bot token Telegram serta secret yang terdaftar menjadi `<REDACTED>`.
+3. **Multi-Channel Fallback & Local Failure Logging**:
+   - Jika pengiriman Telegram gagal 3x berturut-turut, pesan ditulis ke disk lokal (`logs/telegram_failures.log`) dan dialihkan ke webhook Discord/Slack (`TELEGRAM_FALLBACK_WEBHOOK`).
+4. **Strict Filesystem Isolation**:
+   - Semua file kredensial (`.env`, `.kibot-cluster.env`, `batam.pem`) dikunci dengan permission `chmod 600` (hanya dapat dibaca oleh pemilik proses).
+
+---
+
+## 5. Detection Framework
+Mekanisme deteksi dini jika ada indikasi kredensial compromised:
+1. **Audit Health & Revocation Validation**:
+   - Pengecekan otomatis via Telegram API endpoint `https://api.telegram.org/bot<TOKEN>/getMe`. Jika token lama mengembalikan respon `200 OK`, alert CRITICAL dibangkitkan.
+2. **Anomalous Bot Activity**:
+   - Pemantauan journalctl terhadap kegagalan pengiriman tak terduga, konflik webhook, atau error `401 Unauthorized` / `403 Forbidden` / `409 Conflict`.
+3. **Repository Secret Scanning**:
+   - CI dan pre-commit hooks memeriksa seluruh staging delta sebelum git push ke GitHub.
+
+---
+
+## 6. Incident Response Playbook (If Compromised Again)
+Jika token Telegram atau secret lainnya terindikasi bocor:
+1. **Immediate Revocation (< 15 menit)**:
+   - Supervisor buka `@BotFather` di Telegram -> ketik `/revoke` -> pilih bot KiBot -> konfirmasi revoke. Token lama langsung mati seketika (HTTP 401).
+2. **Generate New Credentials**:
+   - Dapatkan token baru dari `@BotFather`.
+3. **Update Secure Environment Files**:
+   - SG1: `sudo nano /home/ubuntu/KiBotV2/.env` -> ubah `TELEGRAM_BOT_TOKEN=<TOKEN_BARU>`.
+   - Server 2: `sudo nano /home/ubuntu/.kibot-cluster.env` -> ubah `KIBOT_TELEGRAM_TOKEN=<TOKEN_BARU>`.
+4. **Restart Services & Verify**:
+   - SG1: `sudo systemctl restart kibot-v2-paper.service`.
+   - Server 2: `sudo systemctl restart kibot-batam-hunter.service`.
+   - Verifikasi pengiriman pesan uji: pesan harus masuk tanpa mengekspos token di laporan audit atau shell history.
+

@@ -143,9 +143,10 @@ def main():
         return
 
     if not ts_authkey and not args.dry_run:
-        logger.error("❌ CRITICAL: TS_AUTHKEY environment variable is missing! Aborting launch to prevent orphan instance.")
-        send_telegram(tg_token, tg_chat, "⚠️ <b>OCI Batam Catcher</b>: Refusing to start without TS_AUTHKEY.")
-        sys.exit(1)
+        logger.warning("⏸️ Poller Batam in STANDBY: TS_AUTHKEY environment variable is not configured. Standing by quietly for 300s...")
+        time.sleep(300)
+        sys.exit(0)
+
 
     # Polling Loop
     attempt = 0

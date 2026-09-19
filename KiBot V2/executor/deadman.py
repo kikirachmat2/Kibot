@@ -28,8 +28,8 @@ class IndodaxDeadmanSwitch:
         default_timeout_seconds: int = 900,
         heartbeat_interval_seconds: int = 300,
     ):
-        self.api_key = api_key or getattr(settings, "INDODAX_API_KEY", "")
-        self.secret_key = secret_key or getattr(settings, "INDODAX_SECRET_KEY", "")
+        self.api_key = api_key or getattr(settings, "INDODAX_KEY", "") or getattr(settings, "INDODAX_API_KEY", "")
+        self.secret_key = secret_key or getattr(settings, "INDODAX_SECRET", "") or getattr(settings, "INDODAX_SECRET_KEY", "")
         self.tapi_url = tapi_url
         self.default_timeout_seconds = default_timeout_seconds
         self.heartbeat_interval_seconds = heartbeat_interval_seconds
@@ -53,7 +53,7 @@ class IndodaxDeadmanSwitch:
     async def _send_countdown_cancel(self, pair: str, countdown_ms: int) -> bool:
         """Sends countdownCancelAll to Indodax TAPI endpoint."""
         if not self.api_key or not self.secret_key:
-            logger.debug("[Deadman] Dry-run: Indodax API keys not configured. Mocking success.")
+            logger.info(f"[Deadman] 💓 Heartbeat refreshed for pair '{pair}' (dry-run: keys not configured, simulated {countdown_ms/1000:.0f}s countdown)")
             return True
 
         ts = int(time.time() * 1000)
@@ -83,6 +83,7 @@ class IndodaxDeadmanSwitch:
                     else:
                         logger.warning(f"[Deadman] HTTP {resp.status} while refreshing deadman for {pair}")
                         return False
+
         except Exception as exc:
             logger.error(f"[Deadman] Connection error refreshing deadman for {pair}: {exc}")
             return False
