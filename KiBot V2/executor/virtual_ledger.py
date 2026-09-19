@@ -163,10 +163,11 @@ class VirtualLedger:
         Re-hydrates open_positions as VirtualPosition dataclass instances,
         restores trade_history, updates cash, and re-evaluates live readiness.
         """
-        if cash_idr is not None and cash_idr > 0:
+        if cash_idr is not None and cash_idr >= 0:
             self.cash_idr = float(cash_idr)
 
         if open_positions_data:
+
             self.open_positions.clear()
             for sym, pos_data in open_positions_data.items():
                 if isinstance(pos_data, dict):
@@ -316,16 +317,18 @@ class VirtualLedger:
         )
         self.open_positions[sym] = pos
         
-        # Durable state persistence
-        pos_dict = pos.to_dict()
-        pos_dict["ledger"] = self.name
-        durable_state_store.record_position_change(
-            change_type="OPEN",
-            position_data=pos_dict,
-            total_equity_idr=self.get_total_equity(),
-            ledger_name=self.name,
-            cash_idr=self.cash_idr,
-        )
+        # Durable state persistence (strictly isolated to core PRIMARY_TF and SHADOW_MR)
+        if self.name in ("PRIMARY_TF", "SHADOW_MR"):
+            pos_dict = pos.to_dict()
+            pos_dict["ledger"] = self.name
+            durable_state_store.record_position_change(
+                change_type="OPEN",
+                position_data=pos_dict,
+                total_equity_idr=self.get_total_equity(),
+                ledger_name=self.name,
+                cash_idr=self.cash_idr,
+            )
+
         
         logger.info(
             f"[VirtualLedger:{self.name}] 🟢 Opened paper BUY for {sym}: {amount_coins:.6f} coins @ Rp {slippage_price:,.1f} "
@@ -393,16 +396,18 @@ class VirtualLedger:
             "ledger": self.name,
         }
 
-        # Durable state persistence
-        pos_dict = pos.to_dict()
-        pos_dict["ledger"] = self.name
-        durable_state_store.record_position_change(
-            change_type="PARTIAL",
-            position_data=pos_dict,
-            total_equity_idr=self.get_total_equity(),
-            ledger_name=self.name,
-            cash_idr=self.cash_idr,
-        )
+        # Durable state persistence (strictly isolated to core PRIMARY_TF and SHADOW_MR)
+        if self.name in ("PRIMARY_TF", "SHADOW_MR"):
+            pos_dict = pos.to_dict()
+            pos_dict["ledger"] = self.name
+            durable_state_store.record_position_change(
+                change_type="PARTIAL",
+                position_data=pos_dict,
+                total_equity_idr=self.get_total_equity(),
+                ledger_name=self.name,
+                cash_idr=self.cash_idr,
+            )
+
 
         logger.info(
             f"[VirtualLedger:{self.name}] 🎯 Tier 1 TP1 Executed for {sym}: "
@@ -555,14 +560,16 @@ class VirtualLedger:
         self.trade_history.append(trade_record)
         self._prune_trade_history_if_needed()
 
-        # Durable state persistence
-        durable_state_store.record_position_change(
-            change_type="CLOSE",
-            position_data=trade_record,
-            total_equity_idr=self.get_total_equity(),
-            ledger_name=self.name,
-            cash_idr=self.cash_idr,
-        )
+        # Durable state persistence (strictly isolated to core PRIMARY_TF and SHADOW_MR)
+        if self.name in ("PRIMARY_TF", "SHADOW_MR"):
+            durable_state_store.record_position_change(
+                change_type="CLOSE",
+                position_data=trade_record,
+                total_equity_idr=self.get_total_equity(),
+                ledger_name=self.name,
+                cash_idr=self.cash_idr,
+            )
+
 
         # Automatic live readiness evaluation & milestone tracking
         try:

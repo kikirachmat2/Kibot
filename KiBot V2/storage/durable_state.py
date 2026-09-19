@@ -96,10 +96,17 @@ class DurableStateStore:
         Enqueues state update in < 2 microseconds.
         Isolates state buckets between PRIMARY_TF and SHADOW_MR.
         """
+        # Strict isolation: experimental variants (P1-P5) maintain their own state files
+        # and must never pollute durable_state.json.
+        if ledger_name not in ("PRIMARY_TF", "SHADOW_MR"):
+            return
+
         sym = position_data.get("symbol", "").upper()
         self._latest_state["updated_at"] = time.time()
 
+
         prefix = "shadow_mr_" if ledger_name == "SHADOW_MR" else ""
+
         equity_key = f"{prefix}equity_idr" if prefix else "equity_idr"
         peak_key = f"{prefix}peak_equity_idr" if prefix else "peak_equity_idr"
         cash_key = f"{prefix}cash_idr" if prefix else "cash_idr"
