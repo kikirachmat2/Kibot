@@ -4,50 +4,16 @@ Dokumen ini memuat panduan aksi konkret yang dibutuhkan dari Supervisor untuk me
 
 ---
 
-## Section A — SEGERA (Dalam 24 Jam): Security Remediation
-Token Telegram bot KiBot sebelumnya pernah terekspos di log percakapan. Revoke wajib dilakukan agar bot terlindungi dari akses ilegal.
+## Section A — CANCELLED: Token Kept (Supervisor Decision)
+**Status**: Dibatalkan atas keputusan Supervisor (2026-09-20). Token lama tetap dipertahankan. Chat history dinilai privat dan risiko dinilai acceptable.
 
-- [ ] **1. Revoke Token Lama di Telegram**
-  - Buka aplikasi Telegram, hubungi `@BotFather`.
-  - Ketik `/revoke` -> Pilih bot `kibot_paper_bot` -> Konfirmasi revoke.
-  - `@BotFather` akan mematikan token lama dan memberikan token baru (`<TOKEN_BARU>`).
+Pertahanan berlapis di level kode telah aktif secara permanen sebagai mitigasi alternatif:
+- ✅ **Chat ID Whitelist**: Bot hanya diizinkan mengirim ke ID chat Supervisor. Pengiriman ke ID lain di-block seketika.
+- ✅ **Push-Only (No Commands)**: Bot tidak menjalankan polling (`getUpdates`) atau menerima webhook commands dari luar.
+- ✅ **Sliding Rate Limit**: Dibatasi maksimal 100 pesan/jam.
+- ✅ **Anomaly Burst Detection**: Jika terjadi >5 pesan dalam 60 detik, alert dikirim via jalur fallback webhook.
 
-- [ ] **2. Masukkan Token Baru ke Server Trading (SG1)**
-  - SSH ke SG1:
-    ```bash
-    ssh -i ~/.ssh/manake_singapore ubuntu@152.69.218.198
-    ```
-  - Buka file environment:
-    ```bash
-    nano /home/ubuntu/KiBotV2/.env
-    ```
-  - Ubah baris:
-    ```bash
-    TELEGRAM_BOT_TOKEN=<TOKEN_BARU>
-    ```
-  - Simpan (`Ctrl+O`, `Enter`) dan keluar (`Ctrl+X`).
-
-- [ ] **3. Masukkan Token Baru ke Server Executor & Poller (Server 2)**
-  - SSH ke Server 2:
-    ```bash
-    ssh -i ~/.ssh/kibot/ssh-key-executor.pem ubuntu@213.35.118.26
-    ```
-  - Buka file environment cluster:
-    ```bash
-    sudo nano /home/ubuntu/.kibot-cluster.env
-    ```
-  - Ubah baris:
-    ```bash
-    KIBOT_TELEGRAM_TOKEN=<TOKEN_BARU>
-    ```
-  - Simpan dan keluar.
-
-- [ ] **4. Restart Service di SG1 & Verifikasi**
-  - Di SG1, jalankan:
-    ```bash
-    sudo systemctl restart kibot-v2-paper.service
-    ```
-  - Pastikan notifikasi Telegram pengujian atau startup status diterima di chat Supervisor.
+Tidak ada tindakan pergantian token yang diperlukan saat ini.
 
 ---
 
@@ -158,4 +124,8 @@ Menjaga konsistensi kalkulasi state dan ledger agar metrik performa selalu akura
   - Equity P1, P2, dan P3 harus berkisar di rentang yang mirip (perbedaan wajar hanya dari spread/TP level, tidak boleh ada lonjakan 2x lipat mendadak).
 - [ ] **4. Cek Equity PRIMARY_TF**
   - Pastikan equity `PRIMARY_TF` wajar (tidak crash `> 50%` dalam 1 hari tanpa perubahan drastis di harga pasar koin yang di-hold).
+- [ ] **5. Review Dokumen SECURITY_INCIDENT Setiap 30 Hari**
+  - Jadwal review berikutnya: **2026-10-20**. Verifikasi apakah token lama masih aman dan tidak ada indikasi aktivitas anomali.
+- [ ] **6. Tanggap Darurat Token Abuse**
+  - Jika sewaktu-waktu ditemukan indikasi token abuse (pesan asing dari bot), lakukan revoke seketika via `@BotFather` -> `/revoke`.
 

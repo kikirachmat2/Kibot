@@ -168,6 +168,13 @@ Following the security incident on 2026-09-20 (detailed in [docs/SECURITY_INCIDE
 4. **Deadman Switch Scope & Manual Order Isolation**:
    > [!WARNING]
    > **Deadman Switch Scope Notice**: Method `countdownCancelAll` pada Indodax TAPI membatalkan **SEMUA** resting limit order pada pair yang didaftarkan (misal `btcidr`, `ethidr`), termasuk order manual yang dipasang pengguna di akun yang sama. Indodax API tidak mendukung pembatalan berdasarkan tag `clientOrderId` di endpoint deadman. Pastikan Supervisor tidak memasang order limit manual pada pair yang sedang di-trade oleh KiBot saat deadman switch aktif.
+5. **Telegram Defense-in-Depth Guardrails**:
+   - Token bot dipertahankan atas keputusan Supervisor (accepted risk).
+   - Dilindungi mitigasi berlapis pada runtime aplikasi:
+     - **Chat ID Whitelist**: Pemblokiran otomatis jika tujuan pesan di luar ID Supervisor yang terdaftar.
+     - **Push-Only Delivery**: Tanpa modul `getUpdates` atau handler command eksternal, menghilangkan celah pembajakan command.
+     - **Sliding Rate Limiter & Anomaly Burst**: Dibatasi maksimal 100 pesan/jam dan alert via fallback channel jika terjadi burst (>5 pesan/menit).
+
 
 ---
 

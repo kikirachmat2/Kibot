@@ -2,7 +2,8 @@
 
 - **Incident Date**: 2026-09-20 (Post-Cleanup Audit)
 - **Severity**: HIGH
-- **Status**: CONTAINMENT & MITIGATION IN PROGRESS
+- **Status**: RESOLVED — ACCEPTED RISK WITH LAYERED MITIGATIONS
+- **Next Review Date**: 2026-10-20 (30-day review cycle)
 
 ---
 
@@ -22,10 +23,16 @@
 
 ## 3. Mitigation & Corrective Actions
 
-### A. Immediate Secret Revocation (Supervisor Action Required)
-1. Supervisor accesses `@BotFather` on Telegram.
-2. Runs command: `/revoke` -> Selects the KiBot bot -> Confirms revocation.
-3. Obtains new Telegram Bot Token.
+### A. Supervisor Decision & Risk Acceptance
+- **Decision**: Token NOT revoked by Supervisor decision (accepted risk).
+- **Rationale**: Supervisor determined the chat conversation history is considered private and personal. No external users have access to the conversation session.
+- **Residual Risk**: Potential bot impersonation if conversation history is compromised.
+- **Accepted Mitigation Strategy**: Replace token rotation with strict defense-in-depth code guardrails:
+  1. **Chat ID Whitelist (`ALLOWED_CHAT_IDS`)**: Hardcoded & validated whitelist in `telegram_notifier.py` and `weekly_reporter.py`. Any attempt to send alerts or messages to any chat ID other than the configured supervisor ID is immediately blocked and logged.
+  2. **Push-Only Architecture (No Polling/Commands)**: Bot runs strictly as an outbound push notifier via `sendMessage`. No `getUpdates`, polling workers, or command listeners exist in KiBot V2, eliminating interactive webhook hijacking.
+  3. **Local Sliding Rate Limiting**: Capped at a strict maximum of **100 messages per hour**. Dispatches exceeding this limit are dropped with warning logs.
+  4. **Outbound Burst Anomaly Alert**: If more than 5 outbound messages occur within 60 seconds outside schedule, an alert is triggered via the secondary fallback channel (local failure log / Discord-Slack webhook) to the Supervisor.
+  5. **Review Interval**: Periodic review scheduled every 30 days (Next: 2026-10-20). If token abuse is detected, emergency revocation will be executed immediately.
 
 ### B. Credential Scrubbing & Repository Hardening
 1. Removed all hardcoded token literals and fallback strings from `infra/oci-arm-catcher-batam.py`.
@@ -90,3 +97,8 @@ Jika token Telegram atau secret lainnya terindikasi bocor:
    - Server 2: `sudo systemctl restart kibot-batam-hunter.service`.
    - Verifikasi pengiriman pesan uji: pesan harus masuk tanpa mengekspos token di laporan audit atau shell history.
 
+---
+
+## 7. Decision Log
+
+- **2026-09-20**: Supervisor decided to keep old token. Rationale: chat history considered private. Mitigation: local chat_id whitelist, 100 msg/hr rate limiting, push-only architecture (no getUpdates/commands), and anomaly burst alert via fallback channel. Next review: 2026-10-20.
