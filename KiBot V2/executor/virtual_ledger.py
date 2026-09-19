@@ -364,7 +364,8 @@ class VirtualLedger:
             )
             return None
 
-        exit_fee = gross_proceeds * (settings.FEE_ROUNDTRIP_PCT / 100.0 / 2.0)
+        effective_fee_rate = (self.fee_pct / 100.0) if self.fee_pct is not None else (settings.FEE_ROUNDTRIP_PCT / 100.0 / 2.0)
+        exit_fee = gross_proceeds * effective_fee_rate
         net_proceeds = gross_proceeds - exit_fee
         partial_pnl_idr = net_proceeds - cost_of_closed
         partial_pnl_pct = (partial_pnl_idr / cost_of_closed * 100.0) if cost_of_closed > 0 else 0.0
@@ -375,7 +376,7 @@ class VirtualLedger:
         pos.tp1_executed = True
         pos.partial_pnl_idr = partial_pnl_idr
 
-        # Break-Even Ratchet: Entry + roundtrip fee buffer (0.42% + 0.1% slippage = 0.52%)
+        # Break-Even Ratchet: Entry + roundtrip fee buffer (fee_pct*2 + 0.1% slippage)
         bep_price = pos.entry_price * 1.0052
         pos.stop_loss_price = round(max(pos.stop_loss_price, bep_price), 2)
 
