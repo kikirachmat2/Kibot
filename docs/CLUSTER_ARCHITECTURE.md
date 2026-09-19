@@ -217,47 +217,75 @@ Following the security incident on 2026-09-20 (detailed in [docs/SECURITY_INCIDE
 
 ---
 
-## 13. Preparasi & Runbook Saat Batam Online
+---
 
-### A. Otomatis Dieksekusi oleh `bootstrap-batam.sh`:
-1. **System Provisioning**: Update paket sistem & dependensi (`python3-venv`, `git`, `curl`, `ufw`, `jq`).
-2. **Zero-Trust Mesh Join**: Instalasi Tailscale & join otomatis (`--authkey=$TS_AUTHKEY --hostname=kibot-batam`).
-3. **Codebase Deployment**: Clone repositori KiBot ke `/home/ubuntu/KiBotV2`.
-4. **Environment Setup**: Pembuatan venv `/home/ubuntu/KiBotV2/venv` & instalasi FastAPI, Uvicorn, httpx, aiohttp.
-5. **Cluster Service Start**: Konfigurasi dan peluncuran daemon `kibot-batam-cluster.service` pada port `5001`.
-6. **Telegram Notification**: Pengiriman alert status '🟢 BATAM RESEARCH NODE ONLINE' beserta IP Tailscale & Public.
+## 13. Current Deployment Summary
 
-### B. Hal yang TIDAK Dilakukan Otomatis (Perlu Langkah Manual):
-1. **Instalasi Ollama / Heavy LLM**:
-   - Cloud-init sengaja tidak mengunduh model LLM berukuran besar untuk menghemat bandwidth awal & mencegah timeout cloud-init.
-   - Jika ingin mengaktifkan sentiment analysis berbasis model lokal:
-     ```bash
-     ssh -i ~/.ssh/kibot/ssh-key-batam-active.pem ubuntu@kibot-batam
-     curl -fsSL https://ollama.com/install.sh | sh
-     ollama pull qwen2.5:3b
-     ```
-2. **Alokasi Swapfile (Rekomendasi 4GB)**:
-   - Instance ARM 12GB RAM akan jauh lebih stabil dengan swapfile 4GB:
-     ```bash
-     sudo fallocate -l 4G /swapfile
-     sudo chmod 600 /swapfile
-     sudo mkswap /swapfile
-     sudo swapon /swapfile
-     echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab
-     ```
-3. **UFW Tailscale Only Rule**:
-   - Mengunci port 5001 agar hanya bisa diakses via interface Tailscale:
-     ```bash
-     sudo ufw allow in on tailscale0 to any port 5001 proto tcp
-     ```
+Snapshot status per server per audit 2026-09-20:
 
-### C. Cara Mengetahui Batam Sudah Online:
-1. **Notifikasi Telegram**: Pesan otomatis akan masuk ke chat Supervisor segera setelah bootstrap tuntas.
-2. **Auto-Discovery Log di SG1**:
-   `sudo journalctl -u kibot-auto-discovery.service -f`
-   Log akan bertransisi dari `Batam not found, using internal fallback` menjadi:
-   `🟢 Batam research node is ONLINE: BATAM_RESEARCH_NODE (uptime: ...s)`
-3. **Tailscale Console / CLI**:
-   `tailscale status` di SG1 atau Server 2 akan menampilkan node `kibot-batam` dalam status `active`.
+### A. SG1 — Singapore Trading Node (152.69.218.198 / Tailscale: 100.105.139.21)
+- **Role**: Active Trading Node (Paper Trading Multi-Strategy P1-P5 & Trend-Following).
+- **Active Services**:
+  - `kibot-v2-paper.service`: Running (PID 789601). Memory: ~91MB. External watchdog health port 8789.
+  - `kibot-auto-discovery.service`: Running (PID 788187). Polling Batam cluster port 5001 with graceful internal fallback.
+- **Resource Usage**:
+  - RAM: 605 MB used / 954 MB total (~63% used), Swap: 574 MB used / 8,191 MB total.
+  - Disk: 20 GB used / 48 GB total (41% used, 28 GB free).
+- **Security Posture**: Tailscale MagicDNS active (`--accept-dns=true`), Indodax Deadman switch active (300s interval, 900s timeout).
+
+### B. Server 2 — Frankfurt Executor & Witness (213.35.118.26 / Tailscale: 100.122.1.109)
+- **Role**: Witness Sentinel, Cluster Manager, Batam ARM Poller, and Piyoh POS host (cohabitation).
+- **Active Services**:
+  - `kibot-cluster.service`: Running (FastAPI cluster coordination on port 5000).
+  - `kibot-v2-witness.service`: Running (Independent heartbeat and SG1 health monitor).
+  - `kibot-batam-hunter.service`: Standby (Polling OCI Batam every 300s awaiting `TS_AUTHKEY`).
+- **Resource Usage**:
+  - RAM: 467 MB used / 954 MB total (~49% used), Swap: 380 MB used / 2,047 MB total.
+  - Disk: 15 GB used / 48 GB total (31% used, 34 GB free).
+- **Security Posture**: File permissions strictly locked (`.kibot-cluster.env`: 600, `batam.pem`: 600).
+
+### C. Batam Node — Target ap-batam-1 (NOT YET PROVISIONED)
+- **Role**: Research Node (Heavy Portfolio Optimizer, Regime Simulation & Local LLM).
+- **Target Specification**: Shape `VM.Standard.A1.Flex`, 2 OCPU / 12 GB RAM, 50 GB Boot Volume (Oracle Free Tier post-cut rule).
+- **Status**: Standby on Server 2 poller. Awaiting Supervisor to insert `TS_AUTHKEY` in `/home/ubuntu/.kibot-cluster.env`.
+
+---
+
+## 14. Auto-Provisioning Timeline & Operational Runbook
+
+### Tahap 1: Pengaktifan Poller (Aksi Supervisor)
+1. Supervisor generate Reusable Auth Key di Tailscale Admin.
+2. Pasang di `/home/ubuntu/.kibot-cluster.env` Server 2: `TS_AUTHKEY=tskey-auth-...`
+3. Restart daemon poller: `sudo systemctl restart kibot-batam-hunter.service`.
+4. Poller bertransisi dari standby ke mode hunting aktif: me-request instance ARM 2 OCPU / 12 GB ke OCI API `ap-batam-1` setiap 35-60 detik dengan jitter.
+
+### Tahap 2: Otomatis Dieksekusi Saat Kapasitas Didapat (Cloud-Init `bootstrap-batam.sh`)
+1. **OCI Launch**: Instance terbentuk di salah satu Availability Domain Batam.
+2. **System Setup**: OS Canonical Ubuntu 24.04 aarch64 mengunduh dependensi (`python3-venv`, `git`, `curl`, `ufw`, `jq`).
+3. **Zero-Trust Mesh Join**: Bergabung ke Tailscale secara otomatis menggunakan `$TS_AUTHKEY` dengan hostname `kibot-batam`.
+4. **Codebase & Virtualenv**: Repositori di-clone ke `/home/ubuntu/KiBotV2`, virtual environment dibuat, dan dependensi terinstal.
+5. **Cluster Service Launch**: Unit `kibot-batam-cluster.service` dibuat dan diluncurkan di port `5001`.
+6. **Telegram Notification**: Notifikasi otomatis dikirim ke Supervisor:  
+   `🎉 KIBOT BATAM INSTANCE CLAIMED! Shape: 2 OCPU / 12 GB ARM`
+7. **Mesh Discovery di SG1**: Service `kibot-auto-discovery.service` di SG1 mendeteksi host `kibot-batam:5001` aktif via Tailscale MagicDNS dan beralih dari internal scoring fallback ke komputasi remote Batam node.
+
+### Tahap 3: Langkah Manual Pasca-Provisioning (Rekomendasi Supervisor)
+Setelah notifikasi Telegram masuk bahwa Batam online, jalankan 3 langkah berikut melalui SSH (`ssh -i ~/.ssh/kibot/ssh-key-batam-active.pem ubuntu@kibot-batam`):
+
+1. **Alokasi Swapfile (4GB)**:
+   ```bash
+   sudo fallocate -l 4G /swapfile && sudo chmod 600 /swapfile && sudo mkswap /swapfile && sudo swapon /swapfile
+   echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab
+   ```
+2. **UFW Port 5001 Lockdown (Tailscale Only)**:
+   ```bash
+   sudo ufw allow in on tailscale0 to any port 5001 proto tcp
+   ```
+3. **Instalasi Ollama untuk Local Sentiment Model (Opsional)**:
+   ```bash
+   curl -fsSL https://ollama.com/install.sh | sh
+   ollama pull qwen2.5:3b
+   ```
+
 
 
