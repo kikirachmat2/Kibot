@@ -45,7 +45,7 @@ class Settings(BaseModel):
     ENRICHMENT_TIMEOUT_SECONDS: float = Field(default=2.0, description="Hard timeout per external enrichment request")
     
     # Trading Fees, Targets & Sizing (Empirically calibrated to V1 data)
-    FEE_ROUNDTRIP_PCT: float = Field(default=0.42, description="Estimated roundtrip fee percentage (0.21% maker + 0.21% taker)")
+    FEE_ROUNDTRIP_PCT: float = Field(default=0.4322, description="Confirmed roundtrip fee % for Indodax IDR Market PRO (maker+maker: buy 0.1111% + sell 0.3211%). Source: config/fees.py ROUNDTRIP_MAKER_MAKER_PCT")
     DEFAULT_TAKE_PROFIT_PCT: float = Field(default=1.8, description="Calibrated realistic take-profit percentage (1.8%)")
     DEFAULT_STOP_LOSS_PCT: float = Field(default=2.4, description="Calibrated realistic stop-loss percentage (2.4%)")
     MIN_ORDER_NOTIONAL_IDR: float = Field(default=10_000.0, description="Indodax minimum order size in IDR")

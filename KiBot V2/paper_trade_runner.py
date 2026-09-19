@@ -24,6 +24,7 @@ from typing import Dict, Any, Optional, List
 
 from executor.virtual_ledger import VirtualLedger
 from config import settings
+from config.fees import IDR_BUY_FEES, IDR_SELL_FEES
 
 logger = logging.getLogger("KiBotV2.PaperRunner")
 
@@ -39,7 +40,9 @@ class VariantSpec:
     order_sizing_idr: float = 50_000.0
     initial_capital_idr: float = 100_000.0
     max_concurrent_positions: int = 2
-    maker_fee_pct: float = 0.10
+    buy_fee_pct: float = IDR_BUY_FEES.maker_pct         # 0.1111% — limit buy
+    sell_maker_fee_pct: float = IDR_SELL_FEES.maker_pct  # 0.3211% — limit sell (TP/soft)
+    sell_taker_fee_pct: float = IDR_SELL_FEES.taker_pct  # 0.4211% — market sell (SL/urgent)
 
 SPECS: Dict[str, VariantSpec] = {
     "P1": VariantSpec(
@@ -93,7 +96,9 @@ class PaperTradeRunner:
             ledger = VirtualLedger(
                 initial_cash_idr=spec.initial_capital_idr,
                 name=spec.name,
-                fee_pct=spec.maker_fee_pct,
+                buy_fee_pct=spec.buy_fee_pct,
+                sell_maker_fee_pct=spec.sell_maker_fee_pct,
+                sell_taker_fee_pct=spec.sell_taker_fee_pct,
                 max_positions=spec.max_concurrent_positions,
             )
             self.ledgers[code] = ledger

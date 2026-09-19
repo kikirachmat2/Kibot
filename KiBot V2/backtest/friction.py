@@ -2,12 +2,22 @@
 KiBot V2 Backtest Friction & Execution Model.
 Implements official regulatory costs, realistic maker/taker models,
 probabilistic fill rate, and adverse selection penalties.
+
+Fee numbers imported from config/fees.py (single source of truth).
 """
 from __future__ import annotations
 
 from enum import Enum
 import random
 from typing import Dict, Any, Optional
+
+from config.fees import (
+    IDR_BUY_FEES,
+    IDR_SELL_FEES,
+    ROUNDTRIP_MAKER_MAKER_PCT,
+    ROUNDTRIP_TAKER_TAKER_PCT,
+    ROUNDTRIP_MAKER_TAKER_PCT,
+)
 
 
 class OrderType(Enum):
@@ -21,18 +31,25 @@ class StrategyType(Enum):
     TREND_FOLLOWING = "trend_following"
 
 
-# Friksi dasar per pair (dari dokumentasi baseline STRATEGY_EVALUATION_REVISED.md)
-# Format: (maker_pct, taker_pct, spread_pct)
+# Confirmed Indodax IDR Market PRO fee roundtrips (source: config/fees.py)
+# Format: (maker_roundtrip_pct, taker_roundtrip_pct, spread_pct)
+# maker_roundtrip = buy_maker + sell_maker = 0.1111 + 0.3211 = 0.4322%
+# taker_roundtrip = buy_taker + sell_taker = 0.2111 + 0.4211 = 0.6322%
 PAIR_FRICTION: Dict[str, tuple[float, float, float]] = {
-    # pair: (maker_pct, taker_pct, spread_pct)
-    "BTCIDR": (0.56, 0.78, 0.10),
-    "ETHIDR": (0.56, 0.78, 0.10),
-    "SOLIDR": (0.70, 0.95, 0.35),
-    "AVAXIDR": (0.70, 0.95, 0.35),
+    # All IDR pairs use the same fee tier (no pair-specific discount at PRO level)
+    "BTCIDR":  (ROUNDTRIP_MAKER_MAKER_PCT, ROUNDTRIP_TAKER_TAKER_PCT, 0.10),
+    "ETHIDR":  (ROUNDTRIP_MAKER_MAKER_PCT, ROUNDTRIP_TAKER_TAKER_PCT, 0.10),
+    "SOLIDR":  (ROUNDTRIP_MAKER_MAKER_PCT, ROUNDTRIP_TAKER_TAKER_PCT, 0.35),
+    "AVAXIDR": (ROUNDTRIP_MAKER_MAKER_PCT, ROUNDTRIP_TAKER_TAKER_PCT, 0.35),
 }
 
-# Fallback default untuk seluruh altcoin Indodax lainnya
-DEFAULT_ALTCOIN_FRICTION: tuple[float, float, float] = (0.70, 0.95, 0.35)
+# Fallback default: same roundtrip for all unlisted altcoins (same fee tier)
+DEFAULT_ALTCOIN_FRICTION: tuple[float, float, float] = (
+    ROUNDTRIP_MAKER_MAKER_PCT,
+    ROUNDTRIP_TAKER_TAKER_PCT,
+    0.35,
+)
+
 
 
 def _normalize_pair(pair: str) -> str:

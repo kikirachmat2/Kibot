@@ -5,6 +5,12 @@ from typing import Dict, Any, Optional, List
 from dataclasses import dataclass, field
 
 from config import settings
+from config.fees import (
+    IDR_BUY_FEES,
+    IDR_SELL_FEES,
+    URGENT_EXIT_REASONS,
+    PATIENT_EXIT_REASONS,
+)
 from storage import durable_state_store
 
 logger = logging.getLogger("KiBotV2.VirtualLedger")
@@ -121,7 +127,10 @@ class VirtualPosition:
 class VirtualLedger:
     """
     High-fidelity paper trading engine.
-    - Simulates fee-aware orderbook execution (0.21% maker + 0.21% taker).
+    - Asymmetric fee model: buy_fee_pct (entry) != sell_fee_pct (exit).
+      Mirrors Indodax IDR Market PRO: buy has no PPh, sell incurs PPh 0.21%.
+    - Urgent exits (SL, max hold) use sell_taker_pct for conservative realism.
+    - Patient exits (TP, soft exit) use sell_maker_pct.
     - Accurately tracks cash, open positions, unrealized PnL, realized PnL, and drawdowns.
     - Emits state updates directly to DurableStateStore.
     """
@@ -130,13 +139,22 @@ class VirtualLedger:
         initial_cash_idr: float = 10_000_000.0,
         name: str = "PRIMARY_TF",
         readiness_evaluator: Optional[Any] = None,
-        fee_pct: Optional[float] = None,
+        buy_fee_pct: Optional[float] = None,
+        sell_maker_fee_pct: Optional[float] = None,
+        sell_taker_fee_pct: Optional[float] = None,
         max_positions: int = 10,
+        # Legacy compat: fee_pct sets buy_fee_pct only, sell uses IDR_SELL_FEES defaults
+        fee_pct: Optional[float] = None,
     ):
         self.name = name
         self.readiness_evaluator = readiness_evaluator
-        self.fee_pct = fee_pct
         self.max_positions = max_positions
+        # Asymmetric fee model
+        self.buy_fee_pct: float = buy_fee_pct if buy_fee_pct is not None else (
+            fee_pct if fee_pct is not None else IDR_BUY_FEES.maker_pct
+        )
+        self.sell_maker_fee_pct: float = sell_maker_fee_pct if sell_maker_fee_pct is not None else IDR_SELL_FEES.maker_pct
+        self.sell_taker_fee_pct: float = sell_taker_fee_pct if sell_taker_fee_pct is not None else IDR_SELL_FEES.taker_pct
         self.cash_idr: float = initial_cash_idr
         self.initial_equity_idr: float = initial_cash_idr
         self.peak_equity_idr: float = initial_cash_idr
@@ -270,7 +288,7 @@ class VirtualLedger:
             slippage_price = analysis.avg_fill_price
             slippage_pct = analysis.slippage_pct
 
-        effective_fee_rate = (self.fee_pct / 100.0) if self.fee_pct is not None else (settings.FEE_ROUNDTRIP_PCT / 100.0 / 2.0)
+        effective_fee_rate = self.buy_fee_pct / 100.0
         fee_idr = notional_idr * effective_fee_rate
         net_notional = notional_idr - fee_idr
         amount_coins = net_notional / slippage_price
@@ -364,7 +382,8 @@ class VirtualLedger:
             )
             return None
 
-        effective_fee_rate = (self.fee_pct / 100.0) if self.fee_pct is not None else (settings.FEE_ROUNDTRIP_PCT / 100.0 / 2.0)
+        # Partial TP is a patient exit — can be executed as limit order
+        effective_fee_rate = self.sell_maker_fee_pct / 100.0
         exit_fee = gross_proceeds * effective_fee_rate
         net_proceeds = gross_proceeds - exit_fee
         partial_pnl_idr = net_proceeds - cost_of_closed
@@ -522,9 +541,15 @@ class VirtualLedger:
         if not pos:
             return {"success": False, "reason": "Position not found"}
 
-        # Simulate exit: fee (custom fee_pct e.g. 0.10% maker or 0.21% default)
+        # Asymmetric exit fee: urgent exits (SL, max hold) use taker rate;
+        # patient exits (TP, soft) use maker rate.
         gross_value = pos.amount_coins * pos.current_price
-        effective_fee_rate = (self.fee_pct / 100.0) if self.fee_pct is not None else (settings.FEE_ROUNDTRIP_PCT / 100.0 / 2.0)
+        if reason in URGENT_EXIT_REASONS:
+            effective_fee_rate = self.sell_taker_fee_pct / 100.0
+            exit_order_type = "taker"
+        else:
+            effective_fee_rate = self.sell_maker_fee_pct / 100.0
+            exit_order_type = "maker"
         exit_fee = gross_value * effective_fee_rate
         net_proceeds = gross_value - exit_fee
         remaining_pnl_idr = net_proceeds - pos.cost_idr
@@ -554,6 +579,9 @@ class VirtualLedger:
             "tp1_executed": getattr(pos, "tp1_executed", False),
             "hold_duration_s": round(time.time() - pos.entry_time, 1),
             "exit_reason": reason,
+            "exit_order_type": exit_order_type,
+            "exit_fee_pct_applied": round(effective_fee_rate * 100.0, 4),
+            "buy_fee_pct_applied": round(self.buy_fee_pct, 4),
             "closed_at": time.time(),
             "strategy": getattr(pos, "strategy", "SWING"),
             "ledger": self.name,
