@@ -1,6 +1,6 @@
-# 🤖 KiBot V2 — Sovereign Autonomous Crypto Trading Cluster
+# 🤖 KiBot — Autonomous Safety-First Crypto DCA Bot
 
-**KiBot V2** adalah sistem agen trading kripto multi-strategi independen dan nir-blokir yang dibangun khusus untuk pasar Indodax (dengan referensi lead-lag Binance). Sistem ini menggabungkan deliberasi multi-agen (Sovereign Council), dynamic regime detection berbasis HMM dan getregime.com consensus, per-pair Indodax Deadman switch otomatis, serta pengujian paralel 5 varian paper trading (P1 Conservative, P2 Balanced, P3 Aggressive, P4 Volume Anomaly, P5 BTC/Alt Rotation) sebelum alokasi modal nyata.
+**KiBot** adalah sistem bot akumulasi kripto (DCA 70/30 BTC/ETH) otomatis, transparan, dan berorientasi keamanan (*safety-first*) yang beroperasi di bursa Indodax. Sistem dirancang dengan arsitektur tangguh, pemulihan otomatis, logging terstruktur, dan pemantauan jarak jauh via Telegram.
 
 ---
 
@@ -8,38 +8,50 @@
 
 ```text
 KiBot/
-├── KiBot V2/                 # Core Python trading engine, strategies, tests, & state
-│   ├── council/              # Regime detectors, council workers, & external consensus
-│   ├── executor/             # VirtualLedger, Indodax TAPI routing, & Deadman switch
-│   ├── notifications/        # Telegram notifier & 00:00 WIB daily reporter
-│   ├── risk/                 # RiskGate circuit breakers & CapitalGovernor
-│   └── storage/              # DurableStateStore, VenueLedger, & redacting logger
-├── docs/                     # Cluster architecture, incident reports, & supervisor checklists
-├── infra/                    # Systemd units, Tailscale mesh configs, & OCI ARM poller
-└── scripts/                  # Security scanners & verification tools
+├── archive/                  # Arsip terkompresi kode historis KiBot V1 & V2
+├── cluster/                  # Watchdog failover & monitoring heartbeat
+├── config/                   # Konfigurasi sistem, fee schedules, & environment loader
+├── core/                     # Portofolio tracker, event detector (topup), & alokasi aset
+├── data/                     # Dataset historis & data candle
+├── docs/                     # Arsitektur sistem, Disaster Recovery, & panduan keamanan
+├── infra/                    # Systemd service units & konfigurasi logrotate
+├── ingestion/                # REST client Indodax untuk data pasar & akun
+├── intelligence/             # Modul diagnosa mandiri (Self-Diagnostics)
+├── notifications/            # Telegram bot reporter & command handler (/status, /health, dll)
+├── scripts/                  # Script automasi backup state SQLite WAL & security checks
+├── storage/                  # SQLite persistent storage & model data
+├── tests/                    # Unit & integration test suite (pytest)
+├── main.py                   # Titik masuk utama (Orchestrator V3)
+└── requirements.txt          # Dependensi Python
 ```
 
 ---
 
-## 🚀 Quickstart & Documentation
+## 🚀 Quickstart & Testing
 
-1. **Panduan Instalasi & Setup Lokal**:
-   - Ikuti panduan lengkap di [`docs/SUPERVISOR_ACTION_CHECKLIST.md`](./docs/SUPERVISOR_ACTION_CHECKLIST.md) dan [`KiBot V2/README.md`](./KiBot%20V2/README.md).
-   - Setup venv Python 3.10+: `python3 -m venv venv && source venv/bin/activate && pip install -r "KiBot V2/requirements.txt"`.
-   - Jalankan test suite: `cd "KiBot V2" && pytest -q`.
+1. **Setup Environment**:
+   ```bash
+   python3 -m venv venv
+   source venv/bin/activate
+   pip install -r requirements.txt
+   cp .env.example .env
+   ```
 
-2. **Deployment & Topologi Cluster**:
-   - Dokumentasi lengkap arsitektur multi-node (SG1 Trading Node, Server 2 Executor/Witness, Batam Research Node):  
-     Lihat [`docs/CLUSTER_ARCHITECTURE.md`](./docs/CLUSTER_ARCHITECTURE.md).
+2. **Jalankan Test Suite**:
+   ```bash
+   python3 -m pytest tests/
+   ```
+
+3. **Menjalankan Bot**:
+   ```bash
+   python3 main.py
+   ```
 
 ---
 
-## 📊 Status Saat Ini (Current Status)
+## 🛡️ Keamanan & Monitoring
 
-- **Mode Operasi**: Paper Trading Multi-Variant (P1–P5 + Trend Following) aktif di node SG1 (`152.69.218.198`).
-- **Cluster Node**:
-  - **SG1 (Singapore)**: `kibot-v2-paper.service` (ACTIVE), `kibot-auto-discovery.service` (ACTIVE).
-  - **Server 2 (Frankfurt)**: `kibot-cluster.service` (ACTIVE), `kibot-v2-witness.service` (ACTIVE), `kibot-batam-hunter.service` (STANDBY).
-  - **Batam Node (ap-batam-1)**: PENDING (Standby menunggu `TS_AUTHKEY` diisi oleh Supervisor untuk launch instance ARM 2 OCPU / 12 GB RAM).
-- **Security & Safety**: Git pre-commit secret scanner aktif, log redacting filter aktif, Indodax Deadman switch aktif.
-
+- **Node Produksi**: SG1 (`152.69.218.198`) menjalankan `kibot-v3-core.service`.
+- **Node Monitoring / Watchdog**: Server 2 (`213.35.118.26`) menjalankan `kibot-v3-watchdog.service`.
+- **Status Endpoint**: Endpoint HTTP `/health` lokal berjalan pada port `8789`.
+- **Disaster Recovery**: Panduan pemulihan database SQLite terdokumentasi lengkap di [`docs/DISASTER_RECOVERY.md`](./docs/DISASTER_RECOVERY.md).
