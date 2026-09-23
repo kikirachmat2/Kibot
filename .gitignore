@@ -1,76 +1,20 @@
-# 🛡️ KIBOT REPOSITORY GITIGNORE
-
-# Infrastructure & Secrets (STRICT - ALL DIRECTORIES)
 .env
-*.env
-.env.local
-.env.production
-.env.*
-!.env.example
-*.pem
-*.key
-*.kiv
-*.pid
-relaunch_batam_node.py
-
-# Logs & Runtime State
-Logs/
-logs/
-state/
-backups/
-/data/
-KiBot V1/data/
-!**/id/kibot/monitor/data/**
-candles_cache/
-*.log
-*.parquet
-*.duckdb
-*.sqlite
-*.db
-
-# Python Metadata & Cache
+.venv/
+venv/
 __pycache__/
 *.pyc
 *.pyo
+*.pyd
 .pytest_cache/
-.mypy_cache/
-.ruff_cache/
-.venv/
-venv/
-
-# Build & Mobile / Gradle Caches
-.gradle/
-build/
-8.9/
-android/
-
-# OS Metadata
+.coverage
+htmlcov/
+*.db
+*.db-wal
+*.db-shm
+*.log
+archive/
+*.tar.gz
+data/*.db
+data/trend_filter_backtest_results.json
+data/momentum_backtest_results.json
 .DS_Store
-._*
-Thumbs.db
-*.tmp
-*.bak
-*.bak.*
-
-# Scratch & Temporary
-scratch/
-SERVER_BATAM/
-SERVER_EXECUTOR/
-SERVER_SCANNER/
-Shared/
-SHARED_INTELLIGENCE/
-
-# Allow explicit example states
-!state_samples/
-!state_samples/*.example.json
-
-# Graphify Output
-graphify-out/
-
-# Backtest Datasets, Cache & Results
-backtest/data/
-backtest/cache/
-backtest/results/
-KiBot V2/backtest/data/
-KiBot V2/backtest/cache/
-KiBot V2/backtest/results/

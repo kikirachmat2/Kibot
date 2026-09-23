@@ -1,0 +1,21 @@
+[Unit]
+Description=KiBot V3 Core Engine and Telegram Reporter (SG1)
+After=network.target systemd-time-wait-sync.service
+Wants=systemd-time-wait-sync.service
+
+[Service]
+Type=simple
+User=ubuntu
+Group=ubuntu
+WorkingDirectory=/home/ubuntu/KiBotV3
+EnvironmentFile=/home/ubuntu/KiBotV3/.env
+ExecStart=/home/ubuntu/KiBotV3/venv/bin/python3 main.py
+Restart=always
+RestartSec=5s
+
+# Logging
+StandardOutput=append:/home/ubuntu/kibot_v3_data/core.log
+StandardError=append:/home/ubuntu/kibot_v3_data/core_error.log
+
+[Install]
+WantedBy=multi-user.target

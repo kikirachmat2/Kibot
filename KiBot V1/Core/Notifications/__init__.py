@@ -1,2 +1,0 @@
-"""Notification helpers for KiBot."""
-

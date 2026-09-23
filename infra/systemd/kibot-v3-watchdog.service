@@ -1,0 +1,20 @@
+[Unit]
+Description=KiBot V3 Watchdog and Offsite Backup Engine (Server 2)
+After=network.target
+
+[Service]
+Type=simple
+User=ubuntu
+Group=ubuntu
+WorkingDirectory=/home/ubuntu/KiBotV3-server2
+EnvironmentFile=/home/ubuntu/KiBotV3-server2/.env
+ExecStart=/home/ubuntu/KiBotV3-server2/venv/bin/python3 cluster/watchdog.py
+Restart=always
+RestartSec=10s
+
+# Logging
+StandardOutput=append:/home/ubuntu/kibot_v3_backup/watchdog.log
+StandardError=append:/home/ubuntu/kibot_v3_backup/watchdog_error.log
+
+[Install]
+WantedBy=multi-user.target

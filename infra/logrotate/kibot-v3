@@ -1,0 +1,17 @@
+# /etc/logrotate.d/kibot-v3
+# Logrotate configuration for KiBot V3 (SG1 & Server 2)
+# Ensures disk does not fill up over long multi-year unattended operations.
+
+/home/ubuntu/kibot_v3_data/*.log
+/home/ubuntu/kibot_v3_backup/*.log
+/home/ubuntu/KiBotV3/*.log
+/home/ubuntu/KiBotV3-server2/*.log {
+    weekly
+    rotate 12
+    compress
+    delaycompress
+    missingok
+    notifempty
+    copytruncate
+    create 0640 ubuntu ubuntu
+}
