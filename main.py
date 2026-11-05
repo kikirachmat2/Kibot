@@ -517,10 +517,15 @@ class KiBotV3Orchestrator:
                                 text = message.get("text")
                                 chat_id = str(message.get("chat", {}).get("id"))
 
-                                if text and chat_id == str(self.reporter.chat_id):
+                                # Support commands directed to @KukiraKikiBot in group
+                                if text and "@" in text:
+                                    text = text.split("@")[0].strip()
+
+                                if text and (chat_id == str(self.reporter.chat_id) or chat_id == "-5329037538"):
                                     print(f"📥 Received Command: {text}", flush=True)
                                     response_text = await self.handle_command_async(text)
                                     await self.reporter.send_message(response_text)
+
                         else:
                             raise RuntimeError(f"Telegram API HTTP status {resp.status}")
                 except Exception as e:
@@ -898,9 +903,12 @@ if __name__ == "__main__":
     db_file = os.getenv("KIBOT_DB_PATH", "kibot_v3.db")
     paper = os.getenv("PAPER_MODE", "true").lower() == "true"
     token = os.getenv("TELEGRAM_BOT_TOKEN")
-    chat = os.getenv("TELEGRAM_CHAT_ID")
+    chat = os.getenv("TELEGRAM_GROUP_CHAT_ID") or os.getenv("TELEGRAM_CHAT_ID") or "-5329037538"
+    if str(chat) in ["1346696386", "1007204855"]:
+        chat = "-5329037538"
     h_port = int(os.getenv("HEALTH_PORT", "8789"))
     h_host = os.getenv("HEALTH_HOST", "0.0.0.0")
+
 
     bot = KiBotV3Orchestrator(
         db_path=db_file,

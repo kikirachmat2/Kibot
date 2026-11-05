@@ -20,7 +20,13 @@ class TelegramReporter:
 
     def __init__(self, bot_token: Optional[str] = None, chat_id: Optional[str] = None):
         self.bot_token = bot_token
-        self.chat_id = chat_id
+        # STRICT GUARD: DILARANG PC / DM ke akun pribadi Bos Kiki (1346696386 / 1007204855).
+        # Semua laporan, alert, eksekusi DCA, dan status portofolio WAJIB masuk ke grup War Room saja!
+        resolved_chat = str(chat_id or "").strip()
+        if not resolved_chat or resolved_chat in ["1346696386", "1007204855"]:
+            resolved_chat = "-5329037538"
+        self.chat_id = resolved_chat
+
 
     def format_daily_report(
         self,
@@ -131,17 +137,22 @@ class TelegramReporter:
         return "\n".join(lines)
 
     async def send_message(self, text: str) -> bool:
-        """Sends an HTML formatted message to Telegram."""
+        """Sends an HTML formatted message to Telegram Group."""
         if not self.bot_token or not self.chat_id:
             return False
 
+        target_chat = str(self.chat_id)
+        if target_chat in ["1346696386", "1007204855"]:
+            target_chat = "-5329037538"
+
         url = f"https://api.telegram.org/bot{self.bot_token}/sendMessage"
         payload = {
-            "chat_id": self.chat_id,
+            "chat_id": target_chat,
             "text": text,
             "parse_mode": "HTML",
             "disable_web_page_preview": True,
         }
+
 
         try:
             async with aiohttp.ClientSession() as session:
