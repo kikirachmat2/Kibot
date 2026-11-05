@@ -1,19 +1,28 @@
 """
-intelligence/supabase_client.py - KiBot V3 Unified Fleet & Tri-Party Bridge
-Connects KiBot V3 with Zura COO and KisahKomisi via Supabase PostgreSQL.
+intelligence/supabase_client.py - Secondary Backup & Alternative Mirror for KiBot V3
+ROLE: Asynchronous offsite backup & alternative mirror ONLY.
+Local SQLite (kibot_v3.db) remains the primary single source of truth for all trades,
+balances, nonces, and order executions.
 """
 
 import os
 import json
 import logging
 from typing import Dict, Any, Optional
-import psycopg2
-from psycopg2.extras import RealDictCursor
+try:
+    import psycopg2
+    from psycopg2.extras import RealDictCursor
+except ImportError:
+    psycopg2 = None
+    RealDictCursor = None
 
 logger = logging.getLogger("KiBotSupabase")
 
 
 def get_pg_connection():
+    if not psycopg2:
+        return None
+
     host = os.getenv("SUPABASE_DB_HOST", "aws-0-ap-southeast-1.pooler.supabase.com")
     port = int(os.getenv("SUPABASE_DB_PORT", "5432"))
     dbname = os.getenv("SUPABASE_DB_NAME", "postgres")
@@ -27,9 +36,10 @@ def get_pg_connection():
             dbname=dbname,
             user=user,
             password=password,
-            connect_timeout=6,
+            connect_timeout=3,
             sslmode="require"
         )
+
     except Exception as e:
         logger.warning(f"⚠️ Supabase PostgreSQL connection failed: {e}")
         return None
@@ -132,3 +142,4 @@ def record_kibot_trade(
         return None
     finally:
         conn.close()
+
