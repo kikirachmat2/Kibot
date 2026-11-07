@@ -23,7 +23,7 @@ from core.portfolio import PortfolioTracker
 from core.allocator import allocate
 from notifications.telegram_reporter import TelegramReporter
 from ingestion.indodax_client import IndodaxClient
-from config.fees import IDR_BUY_FEES
+from config.fees import IDR_BUY_FEES, IDR_SELL_FEES
 from config.settings import settings
 
 WIB = timezone(timedelta(hours=7))
@@ -298,6 +298,339 @@ class KiBotV3Orchestrator:
             "deploy_breakdown": deploy_breakdown,
         }
 
+    def fetch_fear_and_greed_score(self) -> int:
+        """Fetches latest Fear & Greed index from alternative.me (default 50 on failure)."""
+        import urllib.request
+        import json
+        try:
+            url = "https://api.alternative.me/fng/?limit=1"
+            req = urllib.request.Request(url, headers={"User-Agent": "KiBotV3-Sentiment/1.0"})
+            with urllib.request.urlopen(req, timeout=5) as resp:
+                if resp.status == 200:
+                    data = json.loads(resp.read().decode("utf-8"))
+                    val = data.get("data", [{}])[0].get("value")
+                    if val is not None:
+                        return int(val)
+        except Exception as e:
+            print(f"⚠️ Fear & Greed fetch fallback: {e}", flush=True)
+        return 50
+
+    async def execute_smart_limit_dca(self, amount_idr: float, discount_pct: float = 0.003) -> Dict[str, Any]:
+        """
+        Executes Smart Limit DCA ('Wick Catcher'):
+        - Places LIMIT buy orders at a discount (default 0.3% below current bid/ask)
+        - Captures Maker fee (0.1111% vs Taker 0.2111%), saving ~47% on trading fees.
+        - Open orders have a 4-hour TTL; if unfilled after 4h, watchdog executes fallback at market.
+        """
+        if amount_idr > self.settings.MAX_SINGLE_TRADE_IDR:
+            return {
+                "success": False,
+                "total_deployed_idr": 0.0,
+                "executed_summary": [],
+                "errors": [f"Topup Rp {amount_idr:,.0f} melebihi batas aman per transaksi Rp {self.settings.MAX_SINGLE_TRADE_IDR:,.0f}."],
+                "deploy_breakdown": {},
+                "guardrail_breached": "MAX_SINGLE_TRADE_IDR"
+            }
+
+        current_monthly_total = self.portfolio.get_monthly_topup_total()
+        if (current_monthly_total + amount_idr) > self.settings.MAX_MONTHLY_TOPUP_IDR:
+            return {
+                "success": False,
+                "total_deployed_idr": 0.0,
+                "executed_summary": [],
+                "errors": [f"Total topup bulanan mencapai Rp {current_monthly_total + amount_idr:,.0f}, melebihi batas Rp {self.settings.MAX_MONTHLY_TOPUP_IDR:,.0f}."],
+                "deploy_breakdown": {},
+                "guardrail_breached": "MAX_MONTHLY_TOPUP_IDR"
+            }
+
+        prices = self.get_current_prices(["BTC", "ETH"])
+        deploy_breakdown = allocate(amount_idr)
+        maker_fee_pct = IDR_BUY_FEES.maker_pct / 100.0
+
+        executed_summary: List[str] = []
+        errors: List[str] = []
+        expires_at = (datetime.now(timezone.utc) + timedelta(hours=4)).isoformat()
+
+        self.event_detector.set_trade_happened(True)
+        try:
+            for asset, target_idr in deploy_breakdown.items():
+                if target_idr <= 0:
+                    continue
+
+                est_price = prices.get(asset, 1.0)
+                limit_price = round(est_price * (1.0 - discount_pct), 0)
+                pair_name = f"{asset.lower()}_idr"
+                est_crypto_amount = round(target_idr / limit_price, 8)
+                fee_idr = round(target_idr * maker_fee_pct, 2)
+                alpha_saved_idr = round(target_idr * ((IDR_BUY_FEES.taker_pct - IDR_BUY_FEES.maker_pct) / 100.0), 2)
+
+                if self.paper_mode:
+                    order_id = f"PAPER_LIMIT_{int(time.time() * 1000)}_{asset}"
+                    self.portfolio.save_open_order(
+                        pair=pair_name,
+                        side="BUY",
+                        order_type="LIMIT",
+                        price=limit_price,
+                        amount=est_crypto_amount,
+                        amount_idr=target_idr,
+                        expires_at=expires_at,
+                        order_id=order_id,
+                        is_paper=True
+                    )
+                    self.portfolio.record_trade(
+                        pair=pair_name,
+                        side="BUY",
+                        price=limit_price,
+                        amount=est_crypto_amount,
+                        fee=fee_idr,
+                        fee_asset="IDR",
+                        is_paper=True
+                    )
+                    executed_summary.append(
+                        f"• {asset}: Rp {target_idr:,.0f} ({est_crypto_amount:.8f} @ Limit Rp {limit_price:,.0f} [-{discount_pct*100:.1f}%]) [MAKER SIMULASI | Hemat Fee: Rp {alpha_saved_idr:,.0f}]"
+                    )
+                else:
+                    try:
+                        api_res = await self.indodax_client.place_buy_order(
+                            pair=pair_name,
+                            price=limit_price,
+                            amount_asset=est_crypto_amount,
+                            order_type="LIMIT"
+                        )
+                        order_id = str(api_res.get("orderId", f"INDODAX_{int(time.time()*1000)}"))
+                        self.portfolio.save_open_order(
+                            pair=pair_name,
+                            side="BUY",
+                            order_type="LIMIT",
+                            price=limit_price,
+                            amount=est_crypto_amount,
+                            amount_idr=target_idr,
+                            expires_at=expires_at,
+                            order_id=order_id,
+                            is_paper=False
+                        )
+                        executed_summary.append(
+                            f"• {asset}: Rp {target_idr:,.0f} ({est_crypto_amount:.8f} @ Limit Rp {limit_price:,.0f} [-{discount_pct*100:.1f}%]) [LIVE ORDER ID: {order_id} | Maker Fee 0.11%]"
+                        )
+                    except Exception as err:
+                        error_msg = f"Gagal pasang limit order {asset}: {err}"
+                        print(f"❌ {error_msg}", flush=True)
+                        errors.append(error_msg)
+
+            self.portfolio.withdraw_cash(amount_idr)
+        finally:
+            self.event_detector.set_trade_happened(False)
+
+        return {
+            "success": len(errors) == 0,
+            "total_deployed_idr": amount_idr,
+            "executed_summary": executed_summary,
+            "errors": errors,
+            "deploy_breakdown": deploy_breakdown,
+            "is_smart_limit": True
+        }
+
+    async def check_and_expire_limit_orders(self) -> List[Dict[str, Any]]:
+        """
+        4-Hour TTL Watchdog for Smart Limit Orders:
+        If an open order has reached its expires_at timestamp:
+        - Live: Cancels the limit order on Indodax
+        - Fallback: Immediately executes a MARKET order at current price so DCA is never missed!
+        - Updates open_orders status to 'EXPIRED_MARKET_FILLED'.
+        """
+        open_orders = self.portfolio.get_open_orders(status="OPEN")
+        expired_results = []
+        now_dt = datetime.now(timezone.utc)
+
+        for order in open_orders:
+            expires_at_str = order.get("expires_at")
+            if not expires_at_str:
+                continue
+
+            try:
+                exp_dt = datetime.fromisoformat(expires_at_str.replace("Z", "+00:00"))
+            except Exception:
+                continue
+
+            if now_dt >= exp_dt:
+                pair = order["pair"]
+                asset = pair.replace("_IDR", "").replace("IDR", "").upper()
+                prices = self.get_current_prices([asset])
+                mkt_price = prices.get(asset, order["price"])
+
+                if not order["is_paper"]:
+                    try:
+                        await self.indodax_client.cancel_order(pair, order["order_id"])
+                    except Exception as ce:
+                        print(f"⚠️ Cancel order warning for {order['order_id']}: {ce}", flush=True)
+
+                    try:
+                        await self.indodax_client.place_buy_order(
+                            pair=pair,
+                            price=mkt_price,
+                            amount_asset=order["amount"],
+                            order_type="MARKET"
+                        )
+                        self.portfolio.record_trade(
+                            pair=pair,
+                            side="BUY",
+                            price=mkt_price,
+                            amount=order["amount"],
+                            fee=round(order["amount_idr"] * (IDR_BUY_FEES.taker_pct / 100.0), 2),
+                            fee_asset="IDR",
+                            is_paper=False
+                        )
+                    except Exception as fe:
+                        print(f"❌ Fallback market order failed: {fe}", flush=True)
+
+                self.portfolio.update_open_order_status(order["id"], "EXPIRED_MARKET_FILLED")
+                expired_results.append({
+                    "order_id": order["order_id"],
+                    "asset": asset,
+                    "amount_idr": order["amount_idr"],
+                    "status": "EXPIRED_MARKET_FILLED"
+                })
+
+                if self.reporter.bot_token:
+                    await self.reporter.send_message(
+                        f"⏰ <b>[WATCHDOG 4-HOUR TTL TRIGGERED]</b>\n"
+                        f"Limit order {asset} (#{order['order_id']}) melewati batas 4 jam.\n"
+                        f"✅ Otomatis dialihkan ke Market Order @ Rp {mkt_price:,.0f} demi kontinuitas akumulasi DCA."
+                    )
+
+        return expired_results
+
+    async def evaluate_and_execute_partial_profit_take(
+        self,
+        fear_greed_score: Optional[int] = None
+    ) -> Dict[str, Any]:
+        """
+        Multi-Condition Partial Profit Taking:
+        - Lock 1: Floating PnL >= +25% on asset
+        - Lock 2: Crypto Sentiment Fear & Greed >= 78 (Extreme Greed)
+        - Lock 3: Min order size >= Rp 50,000 (Indodax minimum threshold)
+        - Lock 4: Cooldown of 14 days since last profit taking event
+        Action: Sells 15% of holding to bank profits into dry powder IDR cash!
+        """
+        fg_score = fear_greed_score if fear_greed_score is not None else self.fetch_fear_and_greed_score()
+        prices = self.get_current_prices(["BTC", "ETH"])
+        pnl_data = self.portfolio.calculate_floating_pnl(prices)
+        positions_pnl = pnl_data.get("positions", {})
+
+        evaluated = []
+        executed_sells = []
+        now_ts = time.time()
+        cooldown_seconds = 14 * 86400
+
+        for asset, pos_info in positions_pnl.items():
+            amount = pos_info["amount"]
+            pnl_pct = pos_info["unrealized_pnl_pct"]
+            curr_price = pos_info["current_price"]
+            last_take_ts = self.portfolio.get_last_profit_take_time(asset)
+            in_cooldown = (last_take_ts is not None) and ((now_ts - last_take_ts) < cooldown_seconds)
+
+            sell_amount = round(amount * 0.15, 8)
+            est_sell_idr = round(sell_amount * curr_price, 2)
+
+            check = {
+                "asset": asset,
+                "floating_pnl_pct": pnl_pct,
+                "fear_greed_score": fg_score,
+                "estimated_sell_idr": est_sell_idr,
+                "in_cooldown": in_cooldown,
+                "eligible": False,
+                "reason": ""
+            }
+
+            if pnl_pct < 25.0:
+                check["reason"] = f"Floating profit {pnl_pct:+.1f}% < +25.0% target"
+            elif fg_score < 78:
+                check["reason"] = f"Fear & Greed {fg_score} < 78 (belum Extreme Greed)"
+            elif est_sell_idr < 50_000:
+                check["reason"] = f"Nilai jual Rp {est_sell_idr:,.0f} < batas minimum Rp 50.000"
+            elif in_cooldown:
+                days_left = round((cooldown_seconds - (now_ts - last_take_ts)) / 86400, 1)
+                check["reason"] = f"Masih dalam masa cooldown 14 hari ({days_left} hari tersisa)"
+            else:
+                check["eligible"] = True
+                check["reason"] = "Semua 4 kriteria terpenuhi!"
+
+                pair_name = f"{asset.lower()}_idr"
+                sell_fee = round(est_sell_idr * (IDR_SELL_FEES.maker_pct / 100.0), 2)
+
+                self.event_detector.set_trade_happened(True)
+                try:
+                    if not self.paper_mode:
+                        await self.indodax_client.place_sell_order(
+                            pair=pair_name,
+                            price=curr_price,
+                            amount_asset=sell_amount,
+                            order_type="MARKET"
+                        )
+
+                    self.portfolio.record_trade(
+                        pair=pair_name,
+                        side="SELL",
+                        price=curr_price,
+                        amount=sell_amount,
+                        fee=sell_fee,
+                        fee_asset="IDR",
+                        is_paper=self.paper_mode
+                    )
+
+                    net_cash = est_sell_idr - sell_fee
+                    self.portfolio.deposit_cash(net_cash)
+
+                    meta = {
+                        "pnl_pct": pnl_pct,
+                        "fear_greed_score": fg_score,
+                        "proceeds_idr": est_sell_idr,
+                        "fee_idr": sell_fee,
+                        "net_cash_idr": net_cash,
+                        "price": curr_price,
+                        "is_paper": self.paper_mode
+                    }
+                    with self.db.get_connection() as conn:
+                        conn.execute(
+                            """
+                            INSERT INTO events (event_type, asset, amount, metadata_json)
+                            VALUES ('partial_profit_take', ?, ?, ?)
+                            """,
+                            (asset, sell_amount, json.dumps(meta))
+                        )
+                        conn.commit()
+
+                    executed_sells.append({
+                        "asset": asset,
+                        "amount_sold": sell_amount,
+                        "price": curr_price,
+                        "gross_idr": est_sell_idr,
+                        "net_idr": net_cash,
+                        "pnl_pct": pnl_pct
+                    })
+
+                    if self.reporter.bot_token:
+                        await self.reporter.send_message(
+                            f"🎉 <b>[PARTIAL PROFIT TAKE DIEKSEKUSI]</b> ({'PAPER' if self.paper_mode else 'LIVE'})\n\n"
+                            f"💎 <b>Aset</b>: {asset}\n"
+                            f"📈 <b>Floating Profit</b>: +{pnl_pct:.1f}%\n"
+                            f"🔥 <b>Sentimen Pasar</b>: F&G {fg_score} (Extreme Greed)\n"
+                            f"💰 <b>Jumlah Dijual</b>: 15% ({sell_amount:.6f} {asset})\n"
+                            f"💵 <b>Dana Kas Diamankan</b>: Rp {net_cash:,.0f}\n\n"
+                            f"<i>Keuntungan sukses dikonversi ke kas IDR untuk amunisi serok bawah saat pasar koreksi.</i>"
+                        )
+                finally:
+                    self.event_detector.set_trade_happened(False)
+
+            evaluated.append(check)
+
+        return {
+            "fear_greed_score": fg_score,
+            "evaluated": evaluated,
+            "executed_sells": executed_sells,
+            "total_executed": len(executed_sells)
+        }
+
     async def handle_command_async(self, text: str) -> str:
         """Parses and handles interactive text commands asynchronously."""
         parts = text.strip().split()
@@ -310,12 +643,14 @@ class KiBotV3Orchestrator:
         if cmd in ["/start", "/help"]:
             return (
                 "🤖 <b>SELAMAT DATANG DI KIBOT V3</b>\n"
-                "Sistem Akumulasi Portofolio & DCA Otomatis di Indodax (PURE BUY-ONLY).\n\n"
+                "Sistem Akumulasi Portofolio & DCA Otomatis di Indodax.\n\n"
                 "<b>Daftar Perintah Resmi:</b>\n"
-                "• /status — Ringkasan NAV & alokasi aset live\n"
-                "• /topup &lt;jumlah&gt; — Simulasi / catat topup modal IDR (70% BTC / 30% ETH)\n"
+                "• /status — Ringkasan NAV, floating PnL & alokasi aset live\n"
+                "• /topup &lt;jumlah&gt; — Topup modal IDR instan (Market Order 70% BTC / 30% ETH)\n"
+                "• /smartdca &lt;jumlah&gt; [diskon_persen] — Smart Limit DCA 'Wick Catcher' (Maker fee 0.11% + 4h TTL)\n"
+                "• /profittake [fg_score] — Evaluasi & eksekusi 4-lock partial profit take (15% jika PnL >= +25% & F&G >= 78)\n"
+                "• /limits — Daftar limit order aktif yang dipantau watchdog 4 jam\n"
                 "• /report — Kirim laporan portofolio harian instan\n\n"
-                "ℹ️ <i>Penjualan & penarikan dana dilakukan mandiri di aplikasi Indodax. Bot tidak memiliki fitur jual.</i>\n"
                 "<i>Mode Saat Ini: " + ("PAPER TRADING" if self.paper_mode else "LIVE TRADING") + "</i>"
             )
 
@@ -404,6 +739,74 @@ class KiBotV3Orchestrator:
                 usdt_reserve_idr=holdings.get("USDT", 0.0) * prices.get("USDT", 17500.0),
                 cycle_phase="ACCUMULATE_70_30",
             )
+
+        elif cmd == "/smartdca":
+            if not args:
+                return "❌ Format salah: /smartdca <jumlah_idr> [diskon_persen]"
+            try:
+                amount = float(args[0].replace(",", "").replace(".", ""))
+                if amount <= 0:
+                    return "❌ Jumlah topup harus lebih dari 0."
+                discount_pct = float(args[1]) / 100.0 if len(args) > 1 else 0.003
+
+                self.portfolio.deposit_cash(amount)
+                deploy_res = await self.execute_smart_limit_dca(amount, discount_pct)
+
+                if not deploy_res["success"]:
+                    res_lines = [
+                        f"⛔ <b>SMART LIMIT DCA TERTUNDA / GAGAL</b> ({'PAPER' if self.paper_mode else 'LIVE'})",
+                        f"• Nilai Topup: Rp {amount:,.0f}",
+                    ]
+                    for err in deploy_res["errors"]:
+                        res_lines.append(f"• {err}")
+                    return "\n".join(res_lines)
+
+                res_lines = [
+                    f"🎯 <b>SMART LIMIT DCA AKTIF ('WICK CATCHER')</b> ({'PAPER' if self.paper_mode else 'LIVE'})",
+                    f"• Nilai Topup: Rp {amount:,.0f}",
+                    f"• Diskon Bid: {discount_pct * 100:.1f}%",
+                    f"• Time-To-Live Watchdog: 4 Jam (Fallback Market otomatis jika tidak tersentuh)",
+                    "• Alokasi: 70% BTC / 30% ETH (Maker Fee 0.11%)\n",
+                    "<b>Status Limit Order:</b>",
+                ]
+                res_lines.extend(deploy_res["executed_summary"])
+                return "\n".join(res_lines)
+            except ValueError:
+                return "❌ Jumlah topup atau diskon harus berupa angka valid."
+
+        elif cmd == "/profittake":
+            fg_score_input = int(args[0]) if (args and args[0].isdigit()) else None
+            res = await self.evaluate_and_execute_partial_profit_take(fear_greed_score=fg_score_input)
+            lines = [
+                f"📊 <b>EVALUASI PARTIAL PROFIT TAKING</b> ({'PAPER' if self.paper_mode else 'LIVE'})",
+                f"• Fear & Greed Index: {res['fear_greed_score']}",
+                f"• Total Eksekusi Jual: {res['total_executed']} aset\n",
+                "<b>Status 4-Lock Kriteria Per Aset:</b>"
+            ]
+            for chk in res["evaluated"]:
+                status_icon = "✅" if chk["eligible"] else "⏳"
+                lines.append(
+                    f"{status_icon} <b>{chk['asset']}</b>: PnL {chk['floating_pnl_pct']:+.1f}% | {chk['reason']}"
+                )
+            if res["executed_sells"]:
+                lines.append("\n🎉 <b>Hasil Penjualan 15% (Masuk Kas IDR):</b>")
+                for s in res["executed_sells"]:
+                    lines.append(
+                        f"• {s['asset']}: Dijual {s['amount_sold']:.6f} @ Rp {s['price']:,.0f} -> Kas Masuk Rp {s['net_idr']:,.0f}"
+                    )
+            return "\n".join(lines)
+
+        elif cmd == "/limits":
+            orders = self.portfolio.get_open_orders(status="OPEN")
+            if not orders:
+                return "ℹ️ Tidak ada limit order aktif saat ini. Semua posisi telah terisi."
+            lines = [f"📋 <b>DAFTAR OPEN LIMIT ORDERS ({len(orders)})</b>:"]
+            for o in orders:
+                lines.append(
+                    f"• #{o['order_id']} | {o['pair']} {o['side']} | {o['amount']:.8f} @ Rp {o['price']:,.0f} "
+                    f"(Rp {o['amount_idr']:,.0f}) | Exp: {o['expires_at']}"
+                )
+            return "\n".join(lines)
 
         return f"❓ Perintah {cmd} tidak dikenal."
 

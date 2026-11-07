@@ -13,6 +13,7 @@ References:
 """
 
 import json
+import time
 from dataclasses import dataclass
 from typing import Dict, Optional, Any
 from storage.database import Database
@@ -357,5 +358,152 @@ class PortfolioTracker:
                 )
             row = cursor.fetchone()
             return float(row[0]) if row else 0.0
+
+    def calculate_floating_pnl(self, prices: Dict[str, float]) -> Dict[str, Any]:
+        """
+        Calculates unrealized (floating) PnL per asset and across the entire portfolio.
+        Formula:
+          unrealized_pnl_idr = (amount * current_price) - total_invested_idr
+          unrealized_pnl_pct = (unrealized_pnl_idr / total_invested_idr) * 100%
+        """
+        positions = self.get_all_positions()
+        breakdown = {}
+        total_invested = 0.0
+        total_market_val = 0.0
+
+        for asset, pos in positions.items():
+            if asset.upper() == "IDR":
+                continue
+            curr_price = float(prices.get(asset, pos.cost_basis_idr) or pos.cost_basis_idr)
+            market_val = round(pos.amount * curr_price, 2)
+            invested = round(pos.total_invested_idr, 2)
+            pnl_idr = round(market_val - invested, 2)
+            pnl_pct = round((pnl_idr / invested * 100.0), 2) if invested > 0 else 0.0
+
+            breakdown[asset] = {
+                "amount": pos.amount,
+                "cost_basis_idr": pos.cost_basis_idr,
+                "current_price": curr_price,
+                "invested_idr": invested,
+                "market_value_idr": market_val,
+                "unrealized_pnl_idr": pnl_idr,
+                "unrealized_pnl_pct": pnl_pct,
+            }
+            total_invested += invested
+            total_market_val += market_val
+
+        total_pnl_idr = round(total_market_val - total_invested, 2)
+        total_pnl_pct = round((total_pnl_idr / total_invested * 100.0), 2) if total_invested > 0 else 0.0
+
+        return {
+            "positions": breakdown,
+            "total_invested_idr": total_invested,
+            "total_market_value_idr": total_market_val,
+            "total_unrealized_pnl_idr": total_pnl_idr,
+            "total_unrealized_pnl_pct": total_pnl_pct,
+        }
+
+    def get_last_profit_take_time(self, asset: str) -> Optional[float]:
+        """Returns epoch timestamp of the most recent partial profit take for this asset."""
+        import datetime
+        with self.db.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                SELECT timestamp FROM events
+                WHERE event_type = 'partial_profit_take' AND asset = ?
+                ORDER BY id DESC LIMIT 1
+                """,
+                (asset.upper(),)
+            )
+            row = cursor.fetchone()
+            if row and row[0]:
+                try:
+                    ts_str = str(row[0]).replace("Z", "+00:00")
+                    dt = datetime.datetime.fromisoformat(ts_str)
+                    return dt.timestamp()
+                except Exception:
+                    return None
+            return None
+
+    def save_open_order(
+        self,
+        pair: str,
+        side: str,
+        order_type: str,
+        price: float,
+        amount: float,
+        amount_idr: float,
+        expires_at: Optional[str] = None,
+        order_id: Optional[str] = None,
+        is_paper: bool = True
+    ) -> int:
+        """Saves a pending limit order into open_orders table."""
+        with self.db.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                INSERT INTO open_orders (
+                    order_id, pair, side, order_type, price, amount, amount_idr,
+                    status, is_paper, expires_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, 'OPEN', ?, ?)
+                """,
+                (
+                    order_id or f"ORD_{int(time.time() * 1000)}",
+                    pair.upper(),
+                    side.upper(),
+                    order_type.upper(),
+                    price,
+                    amount,
+                    amount_idr,
+                    1 if is_paper else 0,
+                    expires_at
+                )
+            )
+            conn.commit()
+            return cursor.lastrowid
+
+    def get_open_orders(self, status: str = "OPEN") -> list:
+        """Retrieves open orders from SQLite."""
+        with self.db.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                SELECT id, order_id, pair, side, order_type, price, amount, amount_idr,
+                       status, is_paper, created_at, expires_at
+                FROM open_orders
+                WHERE status = ?
+                ORDER BY id ASC
+                """,
+                (status,)
+            )
+            rows = cursor.fetchall()
+            orders = []
+            for r in rows:
+                orders.append({
+                    "id": r[0],
+                    "order_id": r[1],
+                    "pair": r[2],
+                    "side": r[3],
+                    "order_type": r[4],
+                    "price": r[5],
+                    "amount": r[6],
+                    "amount_idr": r[7],
+                    "status": r[8],
+                    "is_paper": bool(r[9]),
+                    "created_at": r[10],
+                    "expires_at": r[11],
+                })
+            return orders
+
+    def update_open_order_status(self, order_id_or_id: Any, status: str):
+        """Updates status of an open order."""
+        with self.db.get_connection() as conn:
+            if isinstance(order_id_or_id, int):
+                conn.execute("UPDATE open_orders SET status = ? WHERE id = ?", (status, order_id_or_id))
+            else:
+                conn.execute("UPDATE open_orders SET status = ? WHERE order_id = ?", (status, str(order_id_or_id)))
+            conn.commit()
+
 
 

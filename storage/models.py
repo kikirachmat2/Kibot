@@ -56,7 +56,23 @@ CREATE TABLE IF NOT EXISTS system_state (
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 
+CREATE TABLE IF NOT EXISTS open_orders (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    order_id TEXT,
+    pair TEXT NOT NULL,
+    side TEXT NOT NULL,                -- 'BUY', 'SELL'
+    order_type TEXT NOT NULL,          -- 'LIMIT', 'MARKET'
+    price REAL NOT NULL,
+    amount REAL NOT NULL,
+    amount_idr REAL NOT NULL,
+    status TEXT NOT NULL DEFAULT 'OPEN', -- 'OPEN', 'FILLED', 'EXPIRED_MARKET_FILLED', 'CANCELLED'
+    is_paper INTEGER DEFAULT 1,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    expires_at DATETIME
+);
+
 CREATE INDEX IF NOT EXISTS idx_events_timestamp ON events(timestamp);
 CREATE INDEX IF NOT EXISTS idx_transactions_timestamp ON transactions(timestamp);
 CREATE INDEX IF NOT EXISTS idx_snapshots_timestamp ON portfolio_snapshots(timestamp);
+CREATE INDEX IF NOT EXISTS idx_open_orders_status ON open_orders(status);
 """

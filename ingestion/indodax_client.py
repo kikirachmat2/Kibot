@@ -117,7 +117,7 @@ class IndodaxClient:
     ) -> Dict[str, Any]:
         """
         Place a BUY order on Indodax via Trade API 2.0 POST /api/v2/order.
-        KiBot V3 is strictly BUY-ONLY. No sell codepath exists.
+        Supports MARKET and LIMIT orders.
         """
         if not self.api_key or not self.api_secret:
             raise ValueError("API credentials missing for trade execution")
@@ -148,4 +148,74 @@ class IndodaxClient:
             if resp.status != 200:
                 text = await resp.text()
                 raise RuntimeError(f"Buy order placement failed (HTTP {resp.status}): {text}")
+            return await resp.json()
+
+    async def place_sell_order(
+        self,
+        pair: str,
+        price: float,
+        amount_asset: float,
+        order_type: str = "MARKET"
+    ) -> Dict[str, Any]:
+        """
+        Place a SELL order on Indodax via Trade API 2.0 POST /api/v2/order.
+        Strictly restricted to controlled partial profit taking.
+        """
+        if not self.api_key or not self.api_secret:
+            raise ValueError("API credentials missing for trade execution")
+
+        pair_clean = pair.lower().replace("_", "")
+        params = {
+            "symbol": pair_clean,
+            "side": "SELL",
+            "type": order_type.upper(),
+            "quantity": str(amount_asset),
+            "timestamp": int(time.time() * 1000),
+            "recvWindow": 5000,
+        }
+        if order_type.upper() == "LIMIT":
+            params["price"] = str(price)
+
+        body_str = urlencode(params)
+        signature = self._sign_payload_v2(params)
+        url = f"{self.PRIVATE_V2_BASE_URL}/api/v2/order"
+        headers = {
+            "Content-Type": "application/x-www-form-urlencoded",
+            "X-APIKEY": self.api_key,
+            "Sign": signature,
+        }
+
+        session = await self._get_session()
+        async with session.post(url, data=body_str, headers=headers) as resp:
+            if resp.status != 200:
+                text = await resp.text()
+                raise RuntimeError(f"Sell order placement failed (HTTP {resp.status}): {text}")
+            return await resp.json()
+
+    async def cancel_order(self, pair: str, order_id: str) -> Dict[str, Any]:
+        """Cancel an open limit order via Trade API 2.0 POST /api/v2/order/cancel."""
+        if not self.api_key or not self.api_secret:
+            raise ValueError("API credentials missing for order cancellation")
+
+        pair_clean = pair.lower().replace("_", "")
+        params = {
+            "symbol": pair_clean,
+            "orderId": str(order_id),
+            "timestamp": int(time.time() * 1000),
+            "recvWindow": 5000,
+        }
+        body_str = urlencode(params)
+        signature = self._sign_payload_v2(params)
+        url = f"{self.PRIVATE_V2_BASE_URL}/api/v2/order/cancel"
+        headers = {
+            "Content-Type": "application/x-www-form-urlencoded",
+            "X-APIKEY": self.api_key,
+            "Sign": signature,
+        }
+
+        session = await self._get_session()
+        async with session.post(url, data=body_str, headers=headers) as resp:
+            if resp.status != 200:
+                text = await resp.text()
+                raise RuntimeError(f"Cancel order failed (HTTP {resp.status}): {text}")
             return await resp.json()
