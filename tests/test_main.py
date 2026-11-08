@@ -174,6 +174,8 @@ def test_guardrails_task1(tmp_path):
         mock_reporter.send_message = AsyncMock(return_value=True)
 
         orch = KiBotV3Orchestrator(db_path=db_file, paper_mode=True)
+        orch.settings.MAX_SINGLE_TRADE_IDR = 1_000_000.0
+        orch.settings.MAX_MONTHLY_TOPUP_IDR = 5_000_000.0
         orch.reporter = mock_reporter
         orch._price_cache_ts = 9999999999.0
 
