@@ -122,7 +122,7 @@ class KiBotV3Orchestrator:
                 url = f"https://indodax.com/api/ticker/{pair}"
                 req = urllib.request.Request(
                     url,
-                    headers={"User-Agent": "KiBotV3-LivePriceIngestion/1.0"}
+                    headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"}
                 )
                 with urllib.request.urlopen(req, timeout=5) as resp:
                     if resp.status == 200:
@@ -304,7 +304,10 @@ class KiBotV3Orchestrator:
         import json
         try:
             url = "https://api.alternative.me/fng/?limit=1"
-            req = urllib.request.Request(url, headers={"User-Agent": "KiBotV3-Sentiment/1.0"})
+            req = urllib.request.Request(
+                url,
+                headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"}
+            )
             with urllib.request.urlopen(req, timeout=5) as resp:
                 if resp.status == 200:
                     data = json.loads(resp.read().decode("utf-8"))
@@ -1304,7 +1307,11 @@ if __name__ == "__main__":
 
     load_dotenv()
     db_file = os.getenv("KIBOT_DB_PATH", "kibot_v3.db")
-    paper = os.getenv("PAPER_MODE", "true").lower() == "true"
+    paper_env = os.getenv("PAPER_MODE")
+    if paper_env is not None:
+        paper = paper_env.lower() == "true"
+    else:
+        paper = os.getenv("MODE", "PAPER").upper() != "LIVE"
     token = os.getenv("TELEGRAM_BOT_TOKEN")
     chat = os.getenv("TELEGRAM_GROUP_CHAT_ID") or os.getenv("TELEGRAM_CHAT_ID") or "-5329037538"
     if str(chat) in ["1346696386", "1007204855"]:
