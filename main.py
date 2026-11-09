@@ -23,6 +23,7 @@ from core.portfolio import PortfolioTracker
 from core.allocator import allocate
 from notifications.telegram_reporter import TelegramReporter
 from ingestion.indodax_client import IndodaxClient
+from intelligence.zura_gatekeeper import consult_zura_for_trade, is_system_paused
 from config.fees import IDR_BUY_FEES, IDR_SELL_FEES
 from config.settings import settings
 
@@ -337,6 +338,24 @@ class KiBotV3Orchestrator:
                 "errors": [f"Topup Rp {amount_idr:,.0f} melebihi batas aman per transaksi Rp {self.settings.MAX_SINGLE_TRADE_IDR:,.0f}."],
                 "deploy_breakdown": {},
                 "guardrail_breached": "MAX_SINGLE_TRADE_IDR"
+            }
+
+        # Centralized Zura Pre-Trade Gatekeeper Approval Check
+        zura_check = consult_zura_for_trade(
+            pair="BTC_ETH_BASKET",
+            action="BUY",
+            amount_idr=amount_idr,
+            price_idr=1.0,
+            fear_greed_score=self.fetch_fear_and_greed_score()
+        )
+        if not zura_check.get("is_approved"):
+            return {
+                "success": False,
+                "total_deployed_idr": 0.0,
+                "executed_summary": [],
+                "errors": [f"Ditolak oleh Zura Pre-Trade Gatekeeper: {zura_check.get('reason')}"],
+                "deploy_breakdown": {},
+                "guardrail_breached": "ZURA_PRE_TRADE_VETO"
             }
 
         current_monthly_total = self.portfolio.get_monthly_topup_total()
