@@ -13,6 +13,7 @@ PATTERNS = [
     (r"\b[A-F0-9]{8}-[A-Z0-9]{8}-[A-Z0-9]{8}-[A-Z0-9]{8}-[A-Z0-9]{8}\b", "Indodax API Key"),
     (r"\b[a-f0-9]{80,}\b", "Indodax API Secret"),
     (r"\b(SECRET|KEY|TOKEN|PASSWORD)\s*=\s*[A-Za-z0-9_-]{20,}\b", "Generic High-Entropy Secret"),
+    (r'(?i)(password|pass|secret)["\']?\s*[:=,]\s*["\'][A-Za-z0-9_-]{12,}["\']', "Database / Service Password"),
     (r"\bgh[po]_[A-Za-z0-9]{36}\b", "GitHub Personal Access Token"),
     (r"\bAKIA[0-9A-Z]{16}\b", "AWS Access Key"),
 ]

@@ -26,8 +26,11 @@ def get_pg_connection():
     host = os.getenv("SUPABASE_DB_HOST", "aws-0-ap-southeast-1.pooler.supabase.com")
     port = int(os.getenv("SUPABASE_DB_PORT", "5432"))
     dbname = os.getenv("SUPABASE_DB_NAME", "postgres")
-    user = os.getenv("SUPABASE_DB_USER", "postgres.zqgzrkuhemknqnlfdgjr")
-    password = os.getenv("SUPABASE_DB_PASS", "ui9nqBbLKqGSv2Px")
+    user = os.getenv("SUPABASE_DB_USER", "")
+    password = os.getenv("SUPABASE_DB_PASS", "")
+
+    if not user or not password:
+        return None
 
     try:
         return psycopg2.connect(

@@ -231,7 +231,11 @@ class KiBotV3Orchestrator:
                 if target_idr <= 0:
                     continue
 
-                est_price = prices.get(asset, 1.0)
+                est_price = prices.get(asset)
+                if not est_price or est_price <= 0:
+                    errors.append(f"Harga pasar {asset} tidak valid ({est_price}). Eksekusi dibatalkan demi keamanan.")
+                    continue
+
                 pair_name = f"{asset.lower()}_idr"
                 est_crypto_amount = round(target_idr / est_price, 8)
                 fee_idr = round(target_idr * buy_fee_pct, 2)
@@ -360,7 +364,11 @@ class KiBotV3Orchestrator:
                 if target_idr <= 0:
                     continue
 
-                est_price = prices.get(asset, 1.0)
+                est_price = prices.get(asset)
+                if not est_price or est_price <= 0:
+                    errors.append(f"Harga pasar {asset} tidak valid ({est_price}). Eksekusi dibatalkan demi keamanan.")
+                    continue
+
                 limit_price = round(est_price * (1.0 - discount_pct), 0)
                 pair_name = f"{asset.lower()}_idr"
                 est_crypto_amount = round(target_idr / limit_price, 8)
@@ -438,68 +446,107 @@ class KiBotV3Orchestrator:
         4-Hour TTL Watchdog for Smart Limit Orders:
         If an open order has reached its expires_at timestamp:
         - Live: Cancels the limit order on Indodax
-        - Fallback: Immediately executes a MARKET order at current price so DCA is never missed!
-        - Updates open_orders status to 'EXPIRED_MARKET_FILLED'.
+        - Slippage Protection: If price spiked >5% above limit, cancel without buying to protect capital.
+        - Fallback: Executes MARKET order at current price if within safe slippage range.
+        - Updates open_orders status accurately (never false filled).
         """
         open_orders = self.portfolio.get_open_orders(status="OPEN")
         expired_results = []
         now_dt = datetime.now(timezone.utc)
 
-        for order in open_orders:
-            expires_at_str = order.get("expires_at")
-            if not expires_at_str:
-                continue
+        self.event_detector.set_trade_happened(True)
+        try:
+            for order in open_orders:
+                expires_at_str = order.get("expires_at")
+                if not expires_at_str:
+                    continue
 
-            try:
-                exp_dt = datetime.fromisoformat(expires_at_str.replace("Z", "+00:00"))
-            except Exception:
-                continue
+                try:
+                    exp_dt = datetime.fromisoformat(expires_at_str.replace("Z", "+00:00"))
+                except Exception:
+                    continue
 
-            if now_dt >= exp_dt:
-                pair = order["pair"]
-                asset = pair.replace("_IDR", "").replace("IDR", "").upper()
-                prices = self.get_current_prices([asset])
-                mkt_price = prices.get(asset, order["price"])
+                if now_dt >= exp_dt:
+                    pair = order["pair"]
+                    asset = pair.replace("_IDR", "").replace("IDR", "").upper()
+                    prices = self.get_current_prices([asset])
+                    mkt_price = prices.get(asset, order["price"])
 
-                if not order["is_paper"]:
-                    try:
-                        await self.indodax_client.cancel_order(pair, order["order_id"])
-                    except Exception as ce:
-                        print(f"⚠️ Cancel order warning for {order['order_id']}: {ce}", flush=True)
+                    # 1. Slippage protection check (8% max deviation above target limit)
+                    max_allowed_price = order["price"] * 1.08
+                    if mkt_price > max_allowed_price:
+                        print(f"⚠️ [SLIPPAGE GUARD] {asset} market price Rp {mkt_price:,.0f} exceeds max allowed Rp {max_allowed_price:,.0f} (+8%). Cancelling without market buy.", flush=True)
+                        if not order["is_paper"]:
+                            try:
+                                await self.indodax_client.cancel_order(pair, order["order_id"])
+                            except Exception as ce:
+                                print(f"⚠️ Cancel order error: {ce}", flush=True)
+                        self.portfolio.update_open_order_status(order["id"], "EXPIRED_PRICE_SURGED")
+                        expired_results.append({
+                            "order_id": order["order_id"],
+                            "asset": asset,
+                            "amount_idr": order["amount_idr"],
+                            "status": "EXPIRED_PRICE_SURGED"
+                        })
+                        if self.reporter.bot_token:
+                            await self.reporter.send_message(
+                                f"🛡️ <b>[SLIPPAGE GUARD TRIGGERED]</b>\n"
+                                f"Limit order {asset} (#{order['order_id']}) expired, namun harga pasar melonjak ke Rp {mkt_price:,.0f} (+{((mkt_price/order['price'])-1)*100:.1f}%).\n"
+                                f"Order dibatalkan tanpa market buy demi melindungi modal Bos Kiki."
+                            )
+                        continue
 
-                    try:
-                        await self.indodax_client.place_buy_order(
-                            pair=pair,
-                            price=mkt_price,
-                            amount_asset=order["amount"],
-                            order_type="MARKET"
-                        )
-                        self.portfolio.record_trade(
-                            pair=pair,
-                            side="BUY",
-                            price=mkt_price,
-                            amount=order["amount"],
-                            fee=round(order["amount_idr"] * (IDR_BUY_FEES.taker_pct / 100.0), 2),
-                            fee_asset="IDR",
-                            is_paper=False
-                        )
-                    except Exception as fe:
-                        print(f"❌ Fallback market order failed: {fe}", flush=True)
+                    order_success = True
+                    if not order["is_paper"]:
+                        try:
+                            await self.indodax_client.cancel_order(pair, order["order_id"])
+                        except Exception as ce:
+                            print(f"⚠️ Cancel order warning for {order['order_id']}: {ce}", flush=True)
 
-                self.portfolio.update_open_order_status(order["id"], "EXPIRED_MARKET_FILLED")
-                expired_results.append({
-                    "order_id": order["order_id"],
-                    "asset": asset,
-                    "amount_idr": order["amount_idr"],
-                    "status": "EXPIRED_MARKET_FILLED"
-                })
+                        try:
+                            await self.indodax_client.place_buy_order(
+                                pair=pair,
+                                price=mkt_price,
+                                amount_asset=order["amount"],
+                                order_type="MARKET"
+                            )
+                            self.portfolio.record_trade(
+                                pair=pair,
+                                side="BUY",
+                                price=mkt_price,
+                                amount=order["amount"],
+                                fee=round(order["amount_idr"] * (IDR_BUY_FEES.taker_pct / 100.0), 2),
+                                fee_asset="IDR",
+                                is_paper=False
+                            )
+                        except Exception as fe:
+                            order_success = False
+                            print(f"❌ Fallback market order failed: {fe}", flush=True)
 
-                if self.reporter.bot_token:
-                    await self.reporter.send_message(
-                        f"⏰ <b>[WATCHDOG 4-HOUR TTL TRIGGERED]</b>\n"
-                        f"Limit order {asset} (#{order['order_id']}) melewati batas 4 jam.\n"
-                        f"✅ Otomatis dialihkan ke Market Order @ Rp {mkt_price:,.0f} demi kontinuitas akumulasi DCA."
-                    )
+                    status = "EXPIRED_MARKET_FILLED" if order_success else "EXPIRED_FAILED"
+                    self.portfolio.update_open_order_status(order["id"], status)
+                    expired_results.append({
+                        "order_id": order["order_id"],
+                        "asset": asset,
+                        "amount_idr": order["amount_idr"],
+                        "status": status
+                    })
+
+                    if self.reporter.bot_token:
+                        if order_success:
+                            await self.reporter.send_message(
+                                f"⏰ <b>[WATCHDOG 4-HOUR TTL TRIGGERED]</b>\n"
+                                f"Limit order {asset} (#{order['order_id']}) melewati batas 4 jam.\n"
+                                f"✅ Otomatis dialihkan ke Market Order @ Rp {mkt_price:,.0f} demi kontinuitas akumulasi DCA."
+                            )
+                        else:
+                            await self.reporter.send_message(
+                                f"🚨 <b>[WATCHDOG 4-HOUR TTL GAGAL]</b>\n"
+                                f"Limit order {asset} (#{order['order_id']}) kedaluwarsa tapi fallback market order gagal.\n"
+                                f"Status dicatat sebagai {status} demi akurasi buku kas."
+                            )
+        finally:
+            self.event_detector.set_trade_happened(False)
 
         return expired_results
 
@@ -778,7 +825,8 @@ class KiBotV3Orchestrator:
                 return "❌ Jumlah topup atau diskon harus berupa angka valid."
 
         elif cmd == "/profittake":
-            fg_score_input = int(args[0]) if (args and args[0].isdigit()) else None
+            # Strict Charter Rule: Real market Fear & Greed in LIVE mode; allow test simulation override in PAPER mode only
+            fg_score_input = int(args[0]) if (args and args[0].isdigit() and self.paper_mode) else None
             res = await self.evaluate_and_execute_partial_profit_take(fear_greed_score=fg_score_input)
             lines = [
                 f"📊 <b>EVALUASI PARTIAL PROFIT TAKING</b> ({'PAPER' if self.paper_mode else 'LIVE'})",
@@ -899,7 +947,8 @@ class KiBotV3Orchestrator:
 
         import aiohttp
         url = f"https://api.telegram.org/bot{self.reporter.bot_token}/getUpdates"
-        offset = None
+        raw_saved_offset = self.portfolio.db.get_state("telegram_last_offset")
+        offset = int(raw_saved_offset) if raw_saved_offset and raw_saved_offset.isdigit() else None
 
         print("🤖 KiBot V3 Telegram Poller Started...", flush=True)
         async with aiohttp.ClientSession() as session:
@@ -919,15 +968,21 @@ class KiBotV3Orchestrator:
 
                             for item in data.get("result", []):
                                 offset = item["update_id"] + 1
+                                self.portfolio.db.set_state("telegram_last_offset", str(offset))
                                 message = item.get("message", {})
                                 text = message.get("text")
                                 chat_id = str(message.get("chat", {}).get("id"))
+                                from_id = str(message.get("from", {}).get("id"))
 
                                 # Support commands directed to @KukiraKikiBot in group
                                 if text and "@" in text:
                                     text = text.split("@")[0].strip()
 
-                                if text and (chat_id == str(self.reporter.chat_id) or chat_id == "-5329037538"):
+                                is_authorized_user = (from_id == str(self.reporter.chat_id) or from_id == os.getenv("TELEGRAM_OWNER_ID", ""))
+                                is_direct = (chat_id == str(self.reporter.chat_id))
+                                is_group = (chat_id == "-5329037538" and is_authorized_user)
+
+                                if text and (is_direct or is_group):
                                     print(f"📥 Received Command: {text}", flush=True)
                                     response_text = await self.handle_command_async(text)
                                     await self.reporter.send_message(response_text)
@@ -1289,6 +1344,16 @@ class KiBotV3Orchestrator:
         while True:
             await asyncio.sleep(3600)
 
+    async def limit_order_watchdog_loop(self):
+        """Dedicated background task running every 60s to expire 4-hour limit orders and fallback safely."""
+        print("⏰ KiBot V3 Smart Limit Order Watchdog Active (60s tick)...", flush=True)
+        while True:
+            try:
+                await self.check_and_expire_limit_orders()
+            except Exception as e:
+                print(f"⚠️ Error in limit_order_watchdog_loop: {e}", flush=True)
+            await asyncio.sleep(60)
+
     async def run(self):
         """Main asynchronous event loop executing daemon tasks."""
         print("🚀 KiBot V3 Orchestrator Starting...", flush=True)
@@ -1296,6 +1361,7 @@ class KiBotV3Orchestrator:
             asyncio.create_task(self.poll_telegram_updates()),
             asyncio.create_task(self.scheduler_loop()),
             asyncio.create_task(self.poll_balance_deltas_loop()),
+            asyncio.create_task(self.limit_order_watchdog_loop()),
         ]
         if self.health_port:
             tasks.append(asyncio.create_task(self.run_health_server(self.health_host)))
