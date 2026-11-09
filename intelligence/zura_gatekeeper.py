@@ -100,3 +100,4 @@ def consult_zura_for_trade(pair: str, action: str, amount_idr: float, price_idr:
             "action": "VETO",
             "reason": f"Gagal menghubungi Zura Pre-Trade Gatekeeper: {e}"
         }
+
