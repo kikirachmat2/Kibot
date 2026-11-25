@@ -32,8 +32,8 @@ class IndodaxClient:
         timeout_seconds: float = 10.0,
         session: Optional[aiohttp.ClientSession] = None
     ):
-        self.api_key = api_key
-        self.api_secret = api_secret
+        self.api_key = api_key or os.getenv("INDODAX_API_KEY", "").strip()
+        self.api_secret = api_secret or os.getenv("INDODAX_SECRET", "").strip() or os.getenv("INDODAX_API_SECRET", "").strip()
         self.timeout = aiohttp.ClientTimeout(total=timeout_seconds)
         self._session = session
 
