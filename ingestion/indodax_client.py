@@ -9,6 +9,7 @@ References:
 [3] Binance Academy (2026). "API Key Security: Least Privilege, Read-Only / Trade-Only Scopes."
 """
 
+import os
 import hmac
 import hashlib
 import time
