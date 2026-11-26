@@ -621,8 +621,8 @@ class KiBotV3Orchestrator:
                 check["reason"] = f"Floating profit {pnl_pct:+.1f}% < +25.0% target"
             elif fg_score < 78:
                 check["reason"] = f"Fear & Greed {fg_score} < 78 (belum Extreme Greed)"
-            elif est_sell_idr < 50_000:
-                check["reason"] = f"Nilai jual Rp {est_sell_idr:,.0f} < batas minimum Rp 50.000"
+            elif est_sell_idr < 25_000:
+                check["reason"] = f"Nilai jual Rp {est_sell_idr:,.0f} < batas minimum Rp 25.000"
             elif in_cooldown:
                 days_left = round((cooldown_seconds - (now_ts - last_take_ts)) / 86400, 1)
                 check["reason"] = f"Masih dalam masa cooldown 14 hari ({days_left} hari tersisa)"
@@ -631,7 +631,7 @@ class KiBotV3Orchestrator:
                 check["reason"] = "Semua 4 kriteria terpenuhi!"
 
                 pair_name = f"{asset.lower()}_idr"
-                sell_fee = round(est_sell_idr * (IDR_SELL_FEES.maker_pct / 100.0), 2)
+                sell_fee = round(est_sell_idr * (IDR_SELL_FEES.taker_pct / 100.0), 2)
 
                 self.event_detector.set_trade_happened(True)
                 try:
@@ -1261,6 +1261,17 @@ class KiBotV3Orchestrator:
                             await self.reporter.send_message(
                                 f"⚠️ <b>AUTO IDLE-CASH TERTAHAN</b>\n• Dana: Rp {deploy_amt:,.0f}\n• Alasan: {'; '.join(res.get('errors', []))}"
                             )
+
+                # Autonomous Adaptive Profit-Taking Check (every 12h, gated by Zura)
+                if not self.paper_mode and not is_system_paused():
+                    last_pt_ts = getattr(self, "_last_auto_pt_ts", 0.0)
+                    if (time.time() - last_pt_ts) >= 43200.0:
+                        self._last_auto_pt_ts = time.time()
+                        pt = await self.evaluate_and_execute_partial_profit_take()
+                        if pt.get("executed_sells"):
+                            lines = ["💰 <b>AUTO PROFIT-TAKE (LIVE)</b>"]
+                            lines.extend(pt["executed_sells"])
+                            await self.reporter.send_message("\n".join(lines))
             except Exception as e:
                 self.consecutive_poll_failures += 1
                 now = time.time()
