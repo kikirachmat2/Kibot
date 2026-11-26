@@ -199,8 +199,8 @@ class KiBotV3Orchestrator:
         prices = self.get_current_prices(["BTC", "ETH"])
         price_age = time.time() - self._price_cache_ts
 
-        # If cache was already stale and still couldn't be refreshed, or price_age > 600s:
-        if not self.paper_mode and (price_age > 600.0 or initial_cache_age > 600.0):
+        # If cache is still stale after live refresh:
+        if not self.paper_mode and price_age > 600.0:
             alert_msg = (
                 f"🚨 <b>HARGA TIDAK FRESH: TOPUP TERTARIK/TERTAHAN</b>\n"
                 f"Harga pasar Indodax berasal dari cache yang berusia {price_age:.1f} detik (> 600 detik).\n"
@@ -218,7 +218,10 @@ class KiBotV3Orchestrator:
                 "guardrail_breached": "STALE_PRICES"
             }
 
-        deploy_breakdown = allocate(amount_idr)
+        deployable_idr = round(amount_idr * 0.99, 0)
+        deploy_breakdown = allocate(deployable_idr)
+        if any(0 < v < 25_000.0 for v in deploy_breakdown.values()):
+            deploy_breakdown = {"BTC": deployable_idr}
         # Official taker fee from config/fees.py (0.2111% -> 0.002111)
         buy_fee_pct = IDR_BUY_FEES.taker_pct / 100.0
 
@@ -370,7 +373,10 @@ class KiBotV3Orchestrator:
             }
 
         prices = self.get_current_prices(["BTC", "ETH"])
-        deploy_breakdown = allocate(amount_idr)
+        deployable_idr = round(amount_idr * 0.99, 0)
+        deploy_breakdown = allocate(deployable_idr)
+        if any(0 < v < 25_000.0 for v in deploy_breakdown.values()):
+            deploy_breakdown = {"BTC": deployable_idr}
         maker_fee_pct = IDR_BUY_FEES.maker_pct / 100.0
 
         executed_summary: List[str] = []
@@ -1188,7 +1194,7 @@ class KiBotV3Orchestrator:
 
                     for ev in events:
                         # 1. Manual Topup IDR -> Auto deploy 70% BTC / 30% ETH (Taker Market Buy)
-                        if ev.event_type == "manual_topup" and ev.amount >= 100_000.0:
+                        if ev.event_type == "manual_topup" and ev.amount >= float(self.settings.MIN_TOPUP_IDR):
                             alert = self.event_detector.format_telegram_alert(ev)
                             await self.reporter.send_message(alert)
                             # Auto-execute topup via unified method
@@ -1230,6 +1236,30 @@ class KiBotV3Orchestrator:
 
                 self._last_balance_snapshot = dict(current_bal)
                 self._save_last_balance_snapshot(self._last_balance_snapshot)
+
+                # Autonomous Idle-Cash Deployment (when IDR sits idle >= MIN_TOPUP_IDR, 6h cooldown)
+                if not self.paper_mode:
+                    curr_idr = float(current_bal.get("idr", 0.0) or 0.0)
+                    last_idle_ts = getattr(self, "_last_idle_deploy_ts", 0.0)
+                    if (
+                        curr_idr >= float(self.settings.MIN_TOPUP_IDR)
+                        and (time.time() - last_idle_ts) >= 21600.0
+                        and not is_system_paused()
+                    ):
+                        deploy_amt = min(curr_idr, float(self.settings.MAX_SINGLE_TRADE_IDR))
+                        self._last_idle_deploy_ts = time.time()
+                        res = await self._execute_topup_deployment(deploy_amt)
+                        if res["success"]:
+                            reply_lines = [
+                                f"🤖 <b>AUTO IDLE-CASH DEPLOYMENT (LIVE)</b>",
+                                f"• Dana Idle Terpakai: Rp {deploy_amt:,.0f}",
+                            ]
+                            reply_lines.extend(res["executed_summary"])
+                            await self.reporter.send_message("\n".join(reply_lines))
+                        else:
+                            await self.reporter.send_message(
+                                f"⚠️ <b>AUTO IDLE-CASH TERTAHAN</b>\n• Dana: Rp {deploy_amt:,.0f}\n• Alasan: {'; '.join(res.get('errors', []))}"
+                            )
             except Exception as e:
                 self.consecutive_poll_failures += 1
                 now = time.time()

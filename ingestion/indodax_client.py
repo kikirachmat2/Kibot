@@ -109,6 +109,15 @@ class IndodaxClient:
                 balances[asset] = free_amt
             return balances
 
+    @staticmethod
+    def _fmt_qty(val: float) -> str:
+        s = f"{float(val):.8f}".rstrip("0").rstrip(".")
+        return s or "0"
+
+    @staticmethod
+    def _fmt_price(val: float) -> str:
+        return str(int(round(float(val))))
+
     async def place_buy_order(
         self,
         pair: str,
@@ -128,12 +137,12 @@ class IndodaxClient:
             "symbol": pair_clean,
             "side": "BUY",
             "type": order_type.upper(),
-            "quantity": str(amount_asset),
+            "quantity": self._fmt_qty(amount_asset),
             "timestamp": int(time.time() * 1000),
             "recvWindow": 5000,
         }
         if order_type.upper() == "LIMIT":
-            params["price"] = str(price)
+            params["price"] = self._fmt_price(price)
 
         body_str = urlencode(params)
         signature = self._sign_payload_v2(params)
@@ -170,12 +179,12 @@ class IndodaxClient:
             "symbol": pair_clean,
             "side": "SELL",
             "type": order_type.upper(),
-            "quantity": str(amount_asset),
+            "quantity": self._fmt_qty(amount_asset),
             "timestamp": int(time.time() * 1000),
             "recvWindow": 5000,
         }
         if order_type.upper() == "LIMIT":
-            params["price"] = str(price)
+            params["price"] = self._fmt_price(price)
 
         body_str = urlencode(params)
         signature = self._sign_payload_v2(params)
@@ -194,7 +203,7 @@ class IndodaxClient:
             return await resp.json()
 
     async def cancel_order(self, pair: str, order_id: str) -> Dict[str, Any]:
-        """Cancel an open limit order via Trade API 2.0 POST /api/v2/order/cancel."""
+        """Cancel an open limit order via Trade API 2.0 DELETE /api/v2/order."""
         if not self.api_key or not self.api_secret:
             raise ValueError("API credentials missing for order cancellation")
 
@@ -205,17 +214,16 @@ class IndodaxClient:
             "timestamp": int(time.time() * 1000),
             "recvWindow": 5000,
         }
-        body_str = urlencode(params)
+        query_str = urlencode(params)
         signature = self._sign_payload_v2(params)
-        url = f"{self.PRIVATE_V2_BASE_URL}/api/v2/order/cancel"
+        url = f"{self.PRIVATE_V2_BASE_URL}/api/v2/order?{query_str}"
         headers = {
-            "Content-Type": "application/x-www-form-urlencoded",
             "X-APIKEY": self.api_key,
             "Sign": signature,
         }
 
         session = await self._get_session()
-        async with session.post(url, data=body_str, headers=headers) as resp:
+        async with session.delete(url, headers=headers) as resp:
             if resp.status != 200:
                 text = await resp.text()
                 raise RuntimeError(f"Cancel order failed (HTTP {resp.status}): {text}")
