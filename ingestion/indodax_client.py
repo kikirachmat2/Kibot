@@ -133,16 +133,20 @@ class IndodaxClient:
             raise ValueError("API credentials missing for trade execution")
 
         pair_clean = pair.lower().replace("_", "")
+        otype = order_type.upper()
         params = {
             "symbol": pair_clean,
             "side": "BUY",
-            "type": order_type.upper(),
-            "quantity": self._fmt_qty(amount_asset),
+            "type": otype,
             "timestamp": int(time.time() * 1000),
             "recvWindow": 5000,
         }
-        if order_type.upper() == "LIMIT":
-            params["price"] = self._fmt_price(price)
+        if otype == "MARKET":
+            params["quoteOrderQty"] = self._fmt_price(price * amount_asset)
+        else:
+            params["quantity"] = self._fmt_qty(amount_asset)
+            if otype == "LIMIT":
+                params["price"] = self._fmt_price(price)
 
         body_str = urlencode(params)
         signature = self._sign_payload_v2(params)
