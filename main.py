@@ -972,7 +972,7 @@ class KiBotV3Orchestrator:
 
         import aiohttp
         url = f"https://api.telegram.org/bot{self.reporter.bot_token}/getUpdates"
-        raw_saved_offset = self.portfolio.db.get_state("telegram_last_offset")
+        raw_saved_offset = self.portfolio.db.get_state("telegram_last_offset") if hasattr(self.portfolio.db, "get_state") else None
         offset = int(raw_saved_offset) if raw_saved_offset and raw_saved_offset.isdigit() else None
 
         print("🤖 KiBot V3 Telegram Poller Started...", flush=True)
@@ -993,7 +993,8 @@ class KiBotV3Orchestrator:
 
                             for item in data.get("result", []):
                                 offset = item["update_id"] + 1
-                                self.portfolio.db.set_state("telegram_last_offset", str(offset))
+                                if hasattr(self.portfolio.db, "set_state"):
+                                    self.portfolio.db.set_state("telegram_last_offset", str(offset))
                                 message = item.get("message", {})
                                 text = message.get("text")
                                 chat_id = str(message.get("chat", {}).get("id"))
