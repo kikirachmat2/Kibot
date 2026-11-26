@@ -52,7 +52,7 @@ class Settings(BaseModel):
         description="Maximum cumulative IDR topup permitted per calendar month"
     )
     MIN_TOPUP_IDR: float = Field(
-        default_factory=lambda: float(os.getenv("MIN_TOPUP_IDR", "100000.0")),
+        default_factory=lambda: float(os.getenv("MIN_TOPUP_IDR", "25000.0")),
         description="Minimum IDR topup amount"
     )
 
