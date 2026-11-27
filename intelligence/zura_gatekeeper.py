@@ -55,8 +55,16 @@ def is_system_paused() -> bool:
     if gate_path:
         try:
             gate_data = json.loads(gate_path.read_text(encoding="utf-8"))
-            if gate_data.get("system_paused") is True:
+            if (
+                gate_data.get("system_paused") is True
+                or gate_data.get("paused") is True
+                or gate_data.get("macro_circuit_breaker") is True
+            ):
                 return True
+            paused_until = float(gate_data.get("trading_paused_until", 0.0) or 0.0)
+            if paused_until > time.time():
+                return True
+            verified_clean = True
         except Exception:
             return True
 

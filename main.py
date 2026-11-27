@@ -1005,8 +1005,8 @@ class KiBotV3Orchestrator:
                                     text = text.split("@")[0].strip()
 
                                 is_authorized_user = (from_id == str(self.reporter.chat_id) or from_id == os.getenv("TELEGRAM_OWNER_ID", ""))
-                                is_direct = (chat_id == str(self.reporter.chat_id))
-                                is_group = (chat_id == "-5329037538" and is_authorized_user)
+                                is_direct = (chat_id == from_id and is_authorized_user)
+                                is_group = (chat_id in (str(self.reporter.chat_id), "-5329037538") and is_authorized_user)
 
                                 if text and (is_direct or is_group):
                                     print(f"📥 Received Command: {text}", flush=True)
@@ -1235,13 +1235,13 @@ class KiBotV3Orchestrator:
                             alert = self.event_detector.format_telegram_alert(ev)
                             await self.reporter.send_message(alert)
 
-                self._last_balance_snapshot = dict(current_bal)
-                self._save_last_balance_snapshot(self._last_balance_snapshot)
-
+                import html as _html
                 # Autonomous Idle-Cash Deployment (when IDR sits idle >= MIN_TOPUP_IDR, 6h cooldown)
                 if not self.paper_mode:
                     curr_idr = float(current_bal.get("idr", 0.0) or 0.0)
-                    last_idle_ts = getattr(self, "_last_idle_deploy_ts", 0.0)
+                    last_idle_ts = float(getattr(self, "_last_idle_deploy_ts", 0.0) or 0.0)
+                    if last_idle_ts == 0.0 and hasattr(self.db, "get_state"):
+                        last_idle_ts = float(self.db.get_state("last_idle_deploy_ts", "0") or "0")
                     if (
                         curr_idr >= float(self.settings.MIN_TOPUP_IDR)
                         and (time.time() - last_idle_ts) >= 21600.0
@@ -1249,29 +1249,45 @@ class KiBotV3Orchestrator:
                     ):
                         deploy_amt = min(curr_idr, float(self.settings.MAX_SINGLE_TRADE_IDR))
                         self._last_idle_deploy_ts = time.time()
+                        if hasattr(self.db, "set_state"):
+                            self.db.set_state("last_idle_deploy_ts", str(self._last_idle_deploy_ts))
                         res = await self._execute_topup_deployment(deploy_amt)
                         if res["success"]:
+                            current_bal = await self.indodax_client.get_balance()
                             reply_lines = [
-                                f"🤖 <b>AUTO IDLE-CASH DEPLOYMENT (LIVE)</b>",
+                                "🤖 <b>AUTO IDLE-CASH DEPLOYMENT (LIVE)</b>",
                                 f"• Dana Idle Terpakai: Rp {deploy_amt:,.0f}",
                             ]
                             reply_lines.extend(res["executed_summary"])
                             await self.reporter.send_message("\n".join(reply_lines))
                         else:
+                            err_msg = _html.escape("; ".join(res.get("errors", [])))
                             await self.reporter.send_message(
-                                f"⚠️ <b>AUTO IDLE-CASH TERTAHAN</b>\n• Dana: Rp {deploy_amt:,.0f}\n• Alasan: {'; '.join(res.get('errors', []))}"
+                                f"⚠️ <b>AUTO IDLE-CASH TERTAHAN</b>\n• Dana: Rp {deploy_amt:,.0f}\n• Alasan: {err_msg}"
                             )
 
                 # Autonomous Adaptive Profit-Taking Check (every 12h, gated by Zura)
                 if not self.paper_mode and not is_system_paused():
-                    last_pt_ts = getattr(self, "_last_auto_pt_ts", 0.0)
+                    last_pt_ts = float(getattr(self, "_last_auto_pt_ts", 0.0) or 0.0)
+                    if last_pt_ts == 0.0 and hasattr(self.db, "get_state"):
+                        last_pt_ts = float(self.db.get_state("last_auto_pt_ts", "0") or "0")
                     if (time.time() - last_pt_ts) >= 43200.0:
                         self._last_auto_pt_ts = time.time()
+                        if hasattr(self.db, "set_state"):
+                            self.db.set_state("last_auto_pt_ts", str(self._last_auto_pt_ts))
                         pt = await self.evaluate_and_execute_partial_profit_take()
                         if pt.get("executed_sells"):
+                            current_bal = await self.indodax_client.get_balance()
                             lines = ["💰 <b>AUTO PROFIT-TAKE (LIVE)</b>"]
-                            lines.extend(pt["executed_sells"])
+                            for s in pt["executed_sells"]:
+                                if isinstance(s, dict):
+                                    lines.append(f"• {s.get('asset','?')}: {s.get('amount',0)} @ Rp {float(s.get('price',0)):,.0f} (Est. Rp {float(s.get('idr_value',0)):,.0f})")
+                                else:
+                                    lines.append(str(s))
                             await self.reporter.send_message("\n".join(lines))
+
+                self._last_balance_snapshot = dict(current_bal)
+                self._save_last_balance_snapshot(self._last_balance_snapshot)
             except Exception as e:
                 self.consecutive_poll_failures += 1
                 now = time.time()

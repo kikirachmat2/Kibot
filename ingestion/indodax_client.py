@@ -105,8 +105,9 @@ class IndodaxClient:
             balances = {}
             for item in raw_balances:
                 asset = item.get("asset", "").lower()
-                free_amt = float(item.get("free", 0.0))
-                balances[asset] = free_amt
+                free_amt = float(item.get("free", 0.0) or 0.0)
+                locked_amt = float(item.get("locked", 0.0) or 0.0)
+                balances[asset] = free_amt + locked_amt
             return balances
 
     @staticmethod

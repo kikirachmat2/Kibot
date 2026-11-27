@@ -22,16 +22,6 @@ def _normalize_weights(btc: float, eth: float) -> Tuple[float, float]:
 
 
 def get_target_weights() -> Tuple[float, float]:
-    env_btc = os.getenv("TARGET_BTC_PCT")
-    env_eth = os.getenv("TARGET_ETH_PCT")
-    if env_btc is not None or env_eth is not None:
-        try:
-            btc = float(env_btc) if env_btc is not None else (1.0 - float(env_eth))
-            eth = float(env_eth) if env_eth is not None else (1.0 - btc)
-            return _normalize_weights(btc, eth)
-        except (TypeError, ValueError):
-            pass
-
     gate_candidates = [
         os.getenv("KIBOT_GATE_PATH"),
         "/home/ubuntu/zura-core/gates/kibot_gate.json",
@@ -47,6 +37,16 @@ def get_target_weights() -> Tuple[float, float]:
                     return _normalize_weights(float(alloc["BTC"]), float(alloc["ETH"]))
             except Exception:
                 pass
+
+    env_btc = os.getenv("TARGET_BTC_PCT")
+    env_eth = os.getenv("TARGET_ETH_PCT")
+    if env_btc is not None or env_eth is not None:
+        try:
+            btc = float(env_btc) if env_btc is not None else (1.0 - float(env_eth))
+            eth = float(env_eth) if env_eth is not None else (1.0 - btc)
+            return _normalize_weights(btc, eth)
+        except (TypeError, ValueError):
+            pass
 
     return 0.70, 0.30
 
